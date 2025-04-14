@@ -30,11 +30,8 @@ class FermionQubitEncoding(ABC):
         self.one_e_coeffs: np.ndarray = one_e_coeffs
         self.two_e_coeffs: np.ndarray = two_e_coeffs
         self.qubits: set[Hashable] = qubit_labels
-        self._qubit_iter: iter[Hashable] = iter(qubit_labels)
 
         self._validate_e_coeffs()
-        if not self._valid_qubit_number:
-            raise TypeError("Invalid number of qubits for encoding")
 
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
 
@@ -52,27 +49,11 @@ class FermionQubitEncoding(ABC):
                 f"ERIs not valid {self.one_e_coeffs.size} {self.two_e_coeffs.size}"
             )
 
-    def _next_qubit(self):
-        """yield a label up to the number of available qubits"""
-        try:
-            label = next(self._qubit_iter)
-            # logger.debug("Consuming qubit label %s", label)
-            return label
-        except StopIteration:
-            # logger.warning("All qubits used.")
-            raise StopIteration("All qubits have been assigned to modes.")
-
     @abstractmethod
     def _build_symplectic_matrix(
         self,
     ) -> tuple[np.ndarray[np.uint8], np.ndarray[np.uint8]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
-        pass
-
-    @property
-    @abstractmethod
-    def _valid_qubit_number(self):
-        """Ensure the qubit number is suitable for the mapping."""
         pass
 
     @staticmethod
@@ -83,8 +64,10 @@ class FermionQubitEncoding(ABC):
     def _pauli_to_symplectic(pauli: str) -> tuple[int, np.ndarray[np.uint8, np.uint8]]:
         return pauli_to_symplectic(pauli)
 
-    @cached_property
-    def _build_one_e_hamiltonian(self):
+    def _edge_operator_map(self):
+        return edge_operator_map(self)
+
+    def _build_one_e_hamiltonian(self, mode_op_map: dict= None):
         """Construct the symplectic representation of the one electron terms.
 
         NOTE: This assumes we are using the full Electronic Structure Hamiltonian.
@@ -94,8 +77,10 @@ class FermionQubitEncoding(ABC):
 
         for m in range(self.one_e_coeffs.shape[0]):
             for n in range(self.one_e_coeffs.shape[1]):
-                factor = 0.25  # if m == n else 0.25
-                coefficient = factor * self.one_e_coeffs[m, n]
+                coefficient = 0.25 * self.one_e_coeffs[mode_op_map[m], mode_op_map[n]]
+                if coefficient == 0:
+                    continue
+                
                 # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
                 first_term = sym_products[(2 * m, 2 * n)]
                 second_term = sym_products[(2 * m, 2 * n + 1)]
@@ -120,8 +105,7 @@ class FermionQubitEncoding(ABC):
 
         return {k: v for k, v in symplectic_hamiltonian.items() if abs(v) > 1e-16}
 
-    @cached_property
-    def _build_two_e_hamiltonian(self):
+    def _build_two_e_hamiltonian(self, mode_op_map:dict):
         """Construct the symplectic representation of the two electron terms.
 
         NOTE: This uses PHYSICISTS's notation.
@@ -141,7 +125,7 @@ class FermionQubitEncoding(ABC):
                     for l in range(self.two_e_coeffs.shape[3]):
                         if k == l:
                             continue
-                        coefficient = self.two_e_coeffs[m, n, k, l]
+                        coefficient = self.two_e_coeffs[mode_op_map[m], mode_op_map[n], mode_op_map[k], mode_op_map[l]]
                         if coefficient == 0:
                             continue
 
@@ -222,14 +206,16 @@ class FermionQubitEncoding(ABC):
 
         return product_ipowers, product_map
 
-    def to_symplectic_hamiltonian(self):
+    def to_symplectic_hamiltonian(self, mode_op_map:dict=None):
         """Output the hamiltonian in symplectic form.
 
         Remember, in symplectic form representation of XZ is literal.
         Convcerting to a Y will require an additional term.
         """
-        one_e_ham = self._build_one_e_hamiltonian
-        two_e_ham = self._build_two_e_hamiltonian
+        if mode_op_map is None:
+            mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
+        one_e_ham = self._build_one_e_hamiltonian(mode_op_map)
+        two_e_ham = self._build_two_e_hamiltonian(mode_op_map)
 
         total_ham = {k: v for k, v in one_e_ham.items() if v != 0}
         for k, v in two_e_ham.items():
@@ -256,9 +242,12 @@ class FermionQubitEncoding(ABC):
         terms = np.vstack(tuple(terms))
         return coeffs, terms
 
-    def to_qubit_hamiltonian(self):
-        one_e_ham = self._build_one_e_hamiltonian
-        two_e_ham = self._build_two_e_hamiltonian
+    def to_qubit_hamiltonian(self, mode_op_map:dict=None):
+        if mode_op_map is None:
+            mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
+            
+        one_e_ham = self._build_one_e_hamiltonian(mode_op_map)
+        two_e_ham = self._build_two_e_hamiltonian(mode_op_map)
 
         total_ham = {k: v for k, v in one_e_ham.items() if v != 0}
         for k, v in two_e_ham.items():
@@ -277,18 +266,64 @@ class FermionQubitEncoding(ABC):
             unhashed_symplectic = np.fromstring(term[1:-1], dtype=np.uint8, sep=" ")
             ipower, pauli_term = self._symplectic_to_pauli(unhashed_symplectic)
             coefficient = icount_to_sign(ipower) * coefficient
-
             coefficient = (coefficient + np.conj(coefficient)) / 2
+
+            if coefficient == 0:
+                continue
 
             if pauli_hamiltonian.get(pauli_term, None) is not None:
                 pauli_hamiltonian[pauli_term] += coefficient
             else:
                 pauli_hamiltonian[pauli_term] = coefficient
-
-        pauli_hamiltonian = {
-            k: v
-            for k, v in pauli_hamiltonian.items()
-            if np.real(v) != 0 or np.imag(v) != 0
-        }
-
         return pauli_hamiltonian
+
+
+def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
+    """Build a map of operators in the full hamiltonian to their constituent majoranas.
+    
+    """
+    majorana_symplectic = encoding._build_symplectic_matrix()[1]
+
+    icount, sym_products = encoding.symplectic_product_map
+    edge_map = {}
+
+    n_modes = majorana_symplectic.shape[1]//2
+
+    for m in range(n_modes):
+        for n in range(n_modes):
+            # if self.one_e_coeffs[m,n] == 0:
+                # continue
+            
+            factor = 0.25  # if m == n else 0.25
+            # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
+            first_term = sym_products[(2 * m, 2 * n)]
+            second_term = sym_products[(2 * m, 2 * n + 1)]
+            third_term = sym_products[(2 * m + 1, 2 * n)]
+            fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
+
+            factors = (
+                icount_to_sign(icount[2 * m, 2 * n]), 
+                icount_to_sign(icount[2 * m, 2 * n+1]+1),
+                icount_to_sign(icount[2 * m+1, 2 * n]+3), 
+                icount_to_sign(icount[2 * m+1, 2 * n+1]), 
+                                                )
+            terms = [first_term, second_term, third_term, fourth_term]
+
+            if m <= n:
+                edge_map[(m,n)] = {term: factor for term, factor in zip(terms, factors)}
+            # The other way round will always come second!
+            else:
+                for t, f in zip(terms, factors):
+                    edge_map[(n,m)][t] += f
+                    if edge_map[(n,m)][t] == 0:
+                        edge_map[(n,m)].pop(t)
+
+    weights = np.zeros((n_modes, n_modes))
+    for k,v in edge_map.items():
+        x_block, z_block = np.hsplit(np.vstack([np.fromstring(op[1:-1], dtype=np.uint8, sep=" ") for op in v.keys()]),2)
+        
+        mean_weight = np.mean(np.sum(np.bitwise_or(x_block, z_block), axis=1) * [factor for factor in v.values()])
+        weights[k[0], k[1]] = mean_weight
+        weights[k[1], k[0]] = mean_weight
+
+    return edge_map, weights

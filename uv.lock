@@ -313,6 +313,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyscf" },
     { name = "qiskit" },
+    { name = "scipy" },
 ]
 
 [package.dev-dependencies]
@@ -327,6 +328,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.2" },
     { name = "pyscf", specifier = ">=2.8.0" },
     { name = "qiskit", specifier = ">=1.4.2" },
+    { name = "scipy", specifier = ">=1.15.2" },
 ]
 
 [package.metadata.requires-dev]

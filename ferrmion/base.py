@@ -84,38 +84,7 @@ class FermionQubitEncoding(ABC):
         return pauli_to_symplectic(pauli)
 
     def _edge_operator_map(self):
-        """Build a map of operators in the full hamiltonian to their constituent majoranas.
-        
-        """
-        majorana_symplectic = self._build_symplectic_matrix()[1]
-
-        icount, sym_products = self.symplectic_product_map
-        edge_map = {}
-        factor_map = {}
-
-        for m in range(majorana_symplectic.shape[1]//2):
-            for n in range(majorana_symplectic.shape[1]//2):
-                # if self.one_e_coeffs[m,n] == 0:
-                    # continue
-                
-                factor = 0.25  # if m == n else 0.25
-                # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
-                first_term = sym_products[(2 * m, 2 * n)]
-                second_term = sym_products[(2 * m, 2 * n + 1)]
-                third_term = sym_products[(2 * m + 1, 2 * n)]
-                fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
-
-                factors = (
-                    factor * icount_to_sign(icount[2 * m, 2 * n]), 
-                    factor * icount_to_sign(icount[2 * m, 2 * n+1]+1), 
-                    factor * icount_to_sign(icount[2 * m+1, 2 * n]+3), 
-                    factor * icount_to_sign(icount[2 * m+1, 2 * n+1]), 
-                                                   )
-                terms = np.vstack([first_term, second_term, third_term, fourth_term])
-                factor_map[(m,n)] = factors
-                edge_map[(m,n)] = terms
-                
-        return factor, edge_map
+        return edge_operator_map(self)
 
     def _build_one_e_hamiltonian(self, mode_op_map: dict= None):
         """Construct the symplectic representation of the one electron terms.
@@ -326,3 +295,38 @@ class FermionQubitEncoding(ABC):
             else:
                 pauli_hamiltonian[pauli_term] = coefficient
         return pauli_hamiltonian
+
+
+def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
+        """Build a map of operators in the full hamiltonian to their constituent majoranas.
+        
+        """
+        majorana_symplectic = encoding._build_symplectic_matrix()[1]
+
+        icount, sym_products = encoding.symplectic_product_map
+        edge_map = {}
+        factor_map = {}
+
+        for m in range(majorana_symplectic.shape[1]//2):
+            for n in range(majorana_symplectic.shape[1]//2):
+                # if self.one_e_coeffs[m,n] == 0:
+                    # continue
+                
+                factor = 0.25  # if m == n else 0.25
+                # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
+                first_term = sym_products[(2 * m, 2 * n)]
+                second_term = sym_products[(2 * m, 2 * n + 1)]
+                third_term = sym_products[(2 * m + 1, 2 * n)]
+                fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
+
+                factors = (
+                    factor * icount_to_sign(icount[2 * m, 2 * n]), 
+                    factor * icount_to_sign(icount[2 * m, 2 * n+1]+1), 
+                    factor * icount_to_sign(icount[2 * m+1, 2 * n]+3), 
+                    factor * icount_to_sign(icount[2 * m+1, 2 * n+1]), 
+                                                   )
+                terms = np.vstack([first_term, second_term, third_term, fourth_term])
+                factor_map[(m,n)] = factors
+                edge_map[(m,n)] = terms
+                
+        return factor, edge_map

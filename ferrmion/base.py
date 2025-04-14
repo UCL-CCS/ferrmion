@@ -33,8 +33,6 @@ class FermionQubitEncoding(ABC):
         self._qubit_iter: iter[Hashable] = iter(qubit_labels)
 
         self._validate_e_coeffs()
-        if not self._valid_qubit_number:
-            raise TypeError("Invalid number of qubits for encoding")
 
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
 
@@ -67,12 +65,6 @@ class FermionQubitEncoding(ABC):
         self,
     ) -> tuple[np.ndarray[np.uint8], np.ndarray[np.uint8]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
-        pass
-
-    @property
-    @abstractmethod
-    def _valid_qubit_number(self):
-        """Ensure the qubit number is suitable for the mapping."""
         pass
 
     @staticmethod

@@ -15,7 +15,7 @@ class TernaryTree(FermionQubitEncoding):
         self,
         one_e_coeffs: np.ndarray,
         two_e_coeffs: np.ndarray,
-        qubits: set[Qubit],
+        qubits: set[Qubit] = None,
         root_node: TTNode = TTNode(),
         enumeration_scheme: dict[str, tuple[int, int]] | None = None,
     ):
@@ -31,9 +31,6 @@ class TernaryTree(FermionQubitEncoding):
             k: {"mode": i, "qubit": i} for i, k in enumerate(enumeration_scheme)
         }
         return enumeration_scheme
-
-    def _valid_qubit_number(self):
-        return len(self.fermionic_modes) == len(self.qubits)
 
     def as_dict(self):
         return self.root.as_dict()

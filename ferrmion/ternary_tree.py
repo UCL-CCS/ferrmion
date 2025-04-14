@@ -23,6 +23,7 @@ class TernaryTree(FermionQubitEncoding):
         self.root = root_node
         self.root.label = ""
         self.enumeration_scheme = enumeration_scheme
+        self.n_qubits = self.one_e_coeffs.shape[1]
 
     def default_enumeration_scheme(self):
         node_strings = self.root.child_strings
@@ -46,7 +47,6 @@ class TernaryTree(FermionQubitEncoding):
             if isinstance(getattr(node, char), TTNode):
                 node = getattr(node, char)
             else:
-                self._next_qubit()
                 node = node.add_child(char, node.label + char)
         return self
 
@@ -61,9 +61,8 @@ class TernaryTree(FermionQubitEncoding):
         node_indices = {node: i for i, node in enumerate(nodes)}
 
         branch_operator_map = {}
-        num_qubits = len(self.qubits)
         for branch in branches:
-            branch_operator_map[branch] = ["I"] * num_qubits
+            branch_operator_map[branch] = ["I"] * self.n_qubits
             node = self.root
             for char in branch:
                 node_index = node_indices[node.label]
@@ -116,9 +115,9 @@ class TernaryTree(FermionQubitEncoding):
             self.enumeration_scheme = self.default_enumeration_scheme()
 
         pauli_string_map = self.branch_operator_map
-        n_qubits = len(self.qubits)
-        symplectic = np.zeros((2 * n_qubits, 2 * n_qubits), dtype=np.byte)
-        ipowers = np.zeros((2 * n_qubits), dtype=np.uint8)
+        
+        symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=np.byte)
+        ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
         for node, operators in self.string_pairs.items():
             for offset, operator in enumerate(operators):
                 operator = pauli_string_map[operator]
@@ -137,7 +136,7 @@ class TernaryTree(FermionQubitEncoding):
             qubits=self.qubits,
             root_node=TTNode(),
         )
-        new_tree.add_node("z" * (len(self.qubits) - 1))
+        new_tree.add_node("z" * (self.n_qubits - 1))
         new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
         return new_tree
 

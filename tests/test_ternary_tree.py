@@ -461,13 +461,6 @@ def tests_bonsai_paper_tree():
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
 
-def test_all_qubts_used(six_mode_tree):
-    with pytest.raises(StopIteration) as e:
-        six_mode_tree.add_node("xxxxxxxx")
-
-    assert "All qubits have been assigned to modes." in str(e.value)
-
-
 def test_eigenvalues_with_openfermion(six_mode_tree):
     # qham_zeros = InteractionOperator(0, tt.one_e_coeffs, np.zeros(tt.two_e_coeffs.shape))
     # ofop_zeros = jordan_wigner(qham_zeros)

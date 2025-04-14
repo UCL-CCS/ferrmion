@@ -30,7 +30,6 @@ class FermionQubitEncoding(ABC):
         self.one_e_coeffs: np.ndarray = one_e_coeffs
         self.two_e_coeffs: np.ndarray = two_e_coeffs
         self.qubits: set[Hashable] = qubit_labels
-        self._qubit_iter: iter[Hashable] = iter(qubit_labels)
 
         self._validate_e_coeffs()
 
@@ -49,16 +48,6 @@ class FermionQubitEncoding(ABC):
             raise ValueError(
                 f"ERIs not valid {self.one_e_coeffs.size} {self.two_e_coeffs.size}"
             )
-
-    def _next_qubit(self):
-        """yield a label up to the number of available qubits"""
-        try:
-            label = next(self._qubit_iter)
-            # logger.debug("Consuming qubit label %s", label)
-            return label
-        except StopIteration:
-            # logger.warning("All qubits used.")
-            raise StopIteration("All qubits have been assigned to modes.")
 
     @abstractmethod
     def _build_symplectic_matrix(
@@ -290,35 +279,51 @@ class FermionQubitEncoding(ABC):
 
 
 def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
-        """Build a map of operators in the full hamiltonian to their constituent majoranas.
+    """Build a map of operators in the full hamiltonian to their constituent majoranas.
+    
+    """
+    majorana_symplectic = encoding._build_symplectic_matrix()[1]
+
+    icount, sym_products = encoding.symplectic_product_map
+    edge_map = {}
+
+    n_modes = majorana_symplectic.shape[1]//2
+
+    for m in range(n_modes):
+        for n in range(n_modes):
+            # if self.one_e_coeffs[m,n] == 0:
+                # continue
+            
+            factor = 0.25  # if m == n else 0.25
+            # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
+            first_term = sym_products[(2 * m, 2 * n)]
+            second_term = sym_products[(2 * m, 2 * n + 1)]
+            third_term = sym_products[(2 * m + 1, 2 * n)]
+            fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
+
+            factors = (
+                icount_to_sign(icount[2 * m, 2 * n]), 
+                icount_to_sign(icount[2 * m, 2 * n+1]+1),
+                icount_to_sign(icount[2 * m+1, 2 * n]+3), 
+                icount_to_sign(icount[2 * m+1, 2 * n+1]), 
+                                                )
+            terms = [first_term, second_term, third_term, fourth_term]
+
+            if m <= n:
+                edge_map[(m,n)] = {term: factor for term, factor in zip(terms, factors)}
+            # The other way round will always come second!
+            else:
+                for t, f in zip(terms, factors):
+                    edge_map[(n,m)][t] += f
+                    if edge_map[(n,m)][t] == 0:
+                        edge_map[(n,m)].pop(t)
+
+    weights = np.zeros((n_modes, n_modes))
+    for k,v in edge_map.items():
+        x_block, z_block = np.hsplit(np.vstack([np.fromstring(op[1:-1], dtype=np.uint8, sep=" ") for op in v.keys()]),2)
         
-        """
-        majorana_symplectic = encoding._build_symplectic_matrix()[1]
+        mean_weight = np.mean(np.sum(np.bitwise_or(x_block, z_block), axis=1) * [factor for factor in v.values()])
+        weights[k[0], k[1]] = mean_weight
+        weights[k[1], k[0]] = mean_weight
 
-        icount, sym_products = encoding.symplectic_product_map
-        edge_map = {}
-        factor_map = {}
-
-        for m in range(majorana_symplectic.shape[1]//2):
-            for n in range(majorana_symplectic.shape[1]//2):
-                # if self.one_e_coeffs[m,n] == 0:
-                    # continue
-                
-                factor = 0.25  # if m == n else 0.25
-                # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
-                first_term = sym_products[(2 * m, 2 * n)]
-                second_term = sym_products[(2 * m, 2 * n + 1)]
-                third_term = sym_products[(2 * m + 1, 2 * n)]
-                fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
-
-                factors = (
-                    factor * icount_to_sign(icount[2 * m, 2 * n]), 
-                    factor * icount_to_sign(icount[2 * m, 2 * n+1]+1), 
-                    factor * icount_to_sign(icount[2 * m+1, 2 * n]+3), 
-                    factor * icount_to_sign(icount[2 * m+1, 2 * n+1]), 
-                                                   )
-                terms = np.vstack([first_term, second_term, third_term, fourth_term])
-                factor_map[(m,n)] = factors
-                edge_map[(m,n)] = terms
-                
-        return factor, edge_map
+    return edge_map, weights

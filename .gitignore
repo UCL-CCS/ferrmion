@@ -174,4 +174,4 @@ cython_debug/
 .pypirc
 
 # Dev stuff
-.problem-solving.ipynb
+*.problem-solving.ipynb

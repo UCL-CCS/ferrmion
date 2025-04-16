@@ -22,8 +22,8 @@ class TTNode:
         self.y = None
         self.z = None
 
-    def __str__(self) -> str:
-        return f"{self.as_dict()}"
+    # def __str__(self) -> str:
+        # return f"{self.as_dict()}"
 
     def as_dict(self) -> dict:
         return as_dict(self)

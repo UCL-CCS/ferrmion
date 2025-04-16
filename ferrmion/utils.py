@@ -4,6 +4,7 @@ import numpy as np
 import datetime
 import json
 import logging
+import logging.config
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,6 @@ def symplectic_product(left, right) -> tuple[int, np.ndarray[np.uint8]]:
         left (np.ndarray): The first symplectic vector.
         right (np.ndarray): The second symplectic vector.
     """
-    logger.debug(f"Calculating symplectic product\n{left=}\n{right=}")
     term = np.bitwise_xor(left, right)
     # print(symplectics[i], symplectics[j], term)
 
@@ -63,7 +63,6 @@ def symplectic_to_pauli(symplectic: np.ndarray) -> str:
     Args:
         symplectic [np.ndarray[np.uint8]] : symplectic vector [X terms, Y terms]
     """
-    logger.debug(f"Converting symplectic to Pauli\n{symplectic}")
     half_length = len(symplectic) // 2
     xlist = ["X" if line == 1 else "" for line in symplectic[:half_length]]
     zlist = ["Z" if line == 1 else "" for line in symplectic[half_length:]]
@@ -83,7 +82,6 @@ def pauli_to_symplectic(pauli: str) -> tuple[int, np.ndarray[np.uint8, np.uint8]
     Args:
         pauli (str): The Pauli operator string.
     """
-    logger.debug(f"Converting Pauli to symplectic\t{pauli=}")
     pauli_array = np.array(list(pauli))
     x_map = {
         "I": 0,
@@ -247,3 +245,36 @@ def save_pauli_ham(pauli_hamiltonian: dict[str, float], filename: str = None) ->
     with open(filename, "w") as f:
         f.write(json.dumps(pauli_hamiltonian))
     logger.debug(f"Saved Pauli Hamiltonian to {filename}")
+
+
+def setup_logs() -> None:
+    """Initialise logging."""
+    config_dict = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {"format": "%(asctime)s: %(name)s: %(lineno)d: %(levelname)s: %(message)s"},
+        },
+        "handlers": {
+            "file_handler": {
+                "class": "logging.FileHandler",
+                "level": "DEBUG",
+                "formatter": "standard",
+                "filename": ".ferrmion.log",
+                "mode": "w",
+                "encoding": "utf-8",
+            },
+            "stream_handler": {
+                "class": "logging.StreamHandler",
+                "level": "WARNING",
+                "formatter": "standard",
+            },
+        },
+        "loggers": {
+            "": {"handlers": ["file_handler", "stream_handler"], "level": "DEBUG"}
+        },
+    }
+
+    logging.config.dictConfig(config_dict)
+    logger = logging.getLogger(__name__)
+    logger.debug("Logging initialised.")

@@ -37,6 +37,7 @@ class FermionQubitEncoding(ABC):
 
     def _validate_e_coeffs(self):
         """Check that the one and two electron integral coefficients are the right shape."""
+        logger.debug("Validating one and two electron coefficients")
         one_e_valid = np.all(
             [self.one_e_coeffs.shape[0] == size for size in self.one_e_coeffs.shape]
         )
@@ -71,7 +72,11 @@ class FermionQubitEncoding(ABC):
         """Construct the symplectic representation of the one electron terms.
 
         NOTE: This assumes we are using the full Electronic Structure Hamiltonian.
+
+        Args:
+            mode_op_map (dict): A dictionary mapping the mode indices to their corresponding qubit indices.
         """
+        logger.debug("Building one electron hamiltonian")
         icount, sym_products = self.symplectic_product_map
         symplectic_hamiltonian = {s: 0 for s in sym_products.values()}
 
@@ -109,7 +114,10 @@ class FermionQubitEncoding(ABC):
         """Construct the symplectic representation of the two electron terms.
 
         NOTE: This uses PHYSICISTS's notation.
+        Args:
+            mode_op_map (dict): A dictionary mapping the mode indices to their corresponding qubit indices.
         """
+        logger.debug("Building two electron hamiltonian")
         icount, sym_products = self.symplectic_product_map
         symplectic_hamiltonian = {}
 
@@ -191,6 +199,8 @@ class FermionQubitEncoding(ABC):
 
     @property
     def symplectic_product_map(self):
+        """Calculate the product of symplectic terms and cache them."""
+        logger.debug("Building symplectic product map")
         ipowers, symplectics = self._build_symplectic_matrix()
         product_ipowers = np.zeros(symplectics.shape, dtype=np.uint8)
 
@@ -211,12 +221,18 @@ class FermionQubitEncoding(ABC):
 
         Remember, in symplectic form representation of XZ is literal.
         Convcerting to a Y will require an additional term.
+
+        Args:
+            mode_op_map (dict): A dictionary mapping the mode indices to their corresponding qubit indices.
         """
+        logger.debug("Creating symplectic Hamiltonian")
         if mode_op_map is None:
+            logger.debug("No mode operator map provided, using default")
             mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
         one_e_ham = self._build_one_e_hamiltonian(mode_op_map)
         two_e_ham = self._build_two_e_hamiltonian(mode_op_map)
 
+        logger.debug("Combining one and two electron hamiltonians")
         total_ham = {k: v for k, v in one_e_ham.items() if v != 0}
         for k, v in two_e_ham.items():
             if v == 0:
@@ -243,12 +259,16 @@ class FermionQubitEncoding(ABC):
         return coeffs, terms
 
     def to_qubit_hamiltonian(self, mode_op_map:dict=None):
+        """Create qubit representation Hamiltonian."""
+        logger.debug("Creating qubit Hamiltonian")
         if mode_op_map is None:
+            logger.debug("No mode operator map provided, using default")
             mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
             
         one_e_ham = self._build_one_e_hamiltonian(mode_op_map)
         two_e_ham = self._build_two_e_hamiltonian(mode_op_map)
 
+        logger.debug("Combining one and two electron hamiltonians")
         total_ham = {k: v for k, v in one_e_ham.items() if v != 0}
         for k, v in two_e_ham.items():
             if v == 0:
@@ -279,9 +299,8 @@ class FermionQubitEncoding(ABC):
 
 
 def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
-    """Build a map of operators in the full hamiltonian to their constituent majoranas.
-    
-    """
+    """Build a map of operators in the full hamiltonian to their constituent majoranas."""
+    logger.debug("Building edge operator map")
     majorana_symplectic = encoding._build_symplectic_matrix()[1]
 
     icount, sym_products = encoding.symplectic_product_map
@@ -318,6 +337,8 @@ def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
                     if edge_map[(n,m)][t] == 0:
                         edge_map[(n,m)].pop(t)
 
+
+    logger.debug("Calculating mean weights")
     weights = np.zeros((n_modes, n_modes))
     for k,v in edge_map.items():
         x_block, z_block = np.hsplit(np.vstack([np.fromstring(op[1:-1], dtype=np.uint8, sep=" ") for op in v.keys()]),2)

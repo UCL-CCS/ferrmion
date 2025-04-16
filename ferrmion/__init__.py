@@ -8,14 +8,11 @@ from .utils import (
     symplectic_hash,
     symplectic_unhash,
     icount_to_sign,
+    setup_logs,
 )
 from .ternary_tree import TernaryTree
 from .ternary_tree_node import TTNode, node_sorter
 from .knto import KNTO, knto_symplectic_matrix
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 __all__ = [
     "FermionQubitEncoding",
@@ -31,3 +28,5 @@ __all__ = [
     "KNTO",
     "knto_symplectic_matrix",
 ]
+
+setup_logs()

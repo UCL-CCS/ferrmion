@@ -173,5 +173,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Dev stuff
-*.problem-solving.ipynb
+# Development
+*.development.ipynb

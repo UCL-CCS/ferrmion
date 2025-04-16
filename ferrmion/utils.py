@@ -4,12 +4,18 @@ import numpy as np
 import datetime
 import json
 import logging
+import logging.config
 
 logger = logging.getLogger(__name__)
 
 
 def symplectic_product(left, right) -> tuple[int, np.ndarray[np.uint8]]:
-    """Calculate the product of two symplectic vectors."""
+    """Calculate the product of two symplectic vectors.
+    
+    Args:
+        left (np.ndarray): The first symplectic vector.
+        right (np.ndarray): The second symplectic vector.
+    """
     term = np.bitwise_xor(left, right)
     # print(symplectics[i], symplectics[j], term)
 
@@ -25,7 +31,11 @@ def symplectic_product(left, right) -> tuple[int, np.ndarray[np.uint8]]:
 
 
 def icount_to_sign(icount: int) -> np.complex64:
-    """Convert a power of i to a complex value."""
+    """Convert a power of i to a complex value.
+    
+    Args:
+        icount (int): The power of i.
+    """
     vals = {0: 1, 1: 1j, 2: -1, 3: -1j}
     return vals[icount % 4]
 
@@ -53,7 +63,6 @@ def symplectic_to_pauli(symplectic: np.ndarray) -> str:
     Args:
         symplectic [np.ndarray[np.uint8]] : symplectic vector [X terms, Y terms]
     """
-    logger.debug(f"Converting symplectic to Pauli\n{symplectic}")
     half_length = len(symplectic) // 2
     xlist = ["X" if line == 1 else "" for line in symplectic[:half_length]]
     zlist = ["Z" if line == 1 else "" for line in symplectic[half_length:]]
@@ -68,6 +77,11 @@ def symplectic_to_pauli(symplectic: np.ndarray) -> str:
 
 
 def pauli_to_symplectic(pauli: str) -> tuple[int, np.ndarray[np.uint8, np.uint8]]:
+    """Convert a Pauli operator to symplectic form.
+     
+    Args:
+        pauli (str): The Pauli operator string.
+    """
     pauli_array = np.array(list(pauli))
     x_map = {
         "I": 0,
@@ -89,58 +103,75 @@ def pauli_to_symplectic(pauli: str) -> tuple[int, np.ndarray[np.uint8, np.uint8]
     return y_count, np.hstack((x_array, z_array), dtype=np.uint8)
 
 
-def xz_swap(symplectic, index=None) -> np.ndarray[np.uint8]:
-    """Swap X and Z Pauli operators in a symplectic matrix."""
-    if index is None:
-        x_block, z_block = np.hsplit(symplectic, 2)
-        new_x_block = np.copy(x_block)
-        new_x_block[np.where(z_block - x_block == 1)] = 1
-        new_x_block[np.where(x_block - z_block == 1)] = 0
-        new_x_block[np.where(x_block + z_block == 2)] = 1
+def xz_swap(symplectic) -> np.ndarray[np.uint8]:
+    """Swap X and Z Pauli operators in a symplectic matrix.
+    
+    Args:
+        symplectic (np.ndarray): The symplectic matrix.
+    """
+    logger.debug(f"Swapping X and Z in symplectic matrix\n{symplectic=}")
+    x_block, z_block = np.hsplit(symplectic, 2)
+    new_x_block = np.copy(x_block)
+    new_x_block[np.where(z_block - x_block == 1)] = 1
+    new_x_block[np.where(x_block - z_block == 1)] = 0
+    new_x_block[np.where(x_block + z_block == 2)] = 1
 
-        new_z_block = np.copy(z_block)
-        new_z_block[np.where(z_block - x_block == 1)] = 0
-        new_z_block[np.where(x_block - z_block == 1)] = 1
-        new_z_block[np.where(x_block + z_block == 2)] = 1
-        return np.hstack((new_x_block, new_z_block))
-
-
-def xy_swap(symplectic, index=None) -> np.ndarray[np.uint8]:
-    """Swap X and Z Pauli operators in a symplectic matrix."""
-    if index is None:
-        x_block, z_block = np.hsplit(symplectic, 2)
-        is_y = np.where(x_block + z_block == 2)
-        is_x = np.where(x_block - z_block == 1)
-
-        new_x_block = np.copy(x_block)
-        new_x_block[is_x] = 1
-        new_x_block[is_y] = 1
-
-        new_z_block = np.copy(z_block)
-        new_z_block[is_x] = 1
-        new_z_block[is_y] = 0
-        return np.hstack((new_x_block, new_z_block))
+    new_z_block = np.copy(z_block)
+    new_z_block[np.where(z_block - x_block == 1)] = 0
+    new_z_block[np.where(x_block - z_block == 1)] = 1
+    new_z_block[np.where(x_block + z_block == 2)] = 1
+    return np.hstack((new_x_block, new_z_block))
 
 
-def yz_swap(symplectic, index=None) -> np.ndarray[np.uint8]:
-    """Swap X and Z Pauli operators in a symplectic matrix."""
-    if index is None:
-        x_block, z_block = np.hsplit(symplectic, 2)
-        is_y = np.where(x_block + z_block == 2)
-        is_z = np.where(z_block - x_block == 1)
+def xy_swap(symplectic) -> np.ndarray[np.uint8]:
+    """Swap X and Z Pauli operators in a symplectic matrix.
+    
+    Args:
+        symplectic (np.ndarray): The symplectic matrix.
+    """
+    logger.debug(f"Swapping X and Y in symplectic matrix\n{symplectic=}")
+    x_block, z_block = np.hsplit(symplectic, 2)
+    is_y = np.where(x_block + z_block == 2)
+    is_x = np.where(x_block - z_block == 1)
 
-        new_x_block = np.copy(x_block)
-        new_x_block[is_y] = 0
-        new_x_block[is_z] = 1
+    new_x_block = np.copy(x_block)
+    new_x_block[is_x] = 1
+    new_x_block[is_y] = 1
 
-        new_z_block = np.copy(z_block)
-        new_z_block[is_y] = 1
-        new_z_block[is_z] = 1
-        return np.hstack((new_x_block, new_z_block)) 
+    new_z_block = np.copy(z_block)
+    new_z_block[is_x] = 1
+    new_z_block[is_y] = 0
+    return np.hstack((new_x_block, new_z_block))
+
+
+def yz_swap(symplectic) -> np.ndarray[np.uint8]:
+    """Swap X and Z Pauli operators in a symplectic matrix.
+    
+    Args:
+        symplectic (np.ndarray): The symplectic matrix.
+    """
+    x_block, z_block = np.hsplit(symplectic, 2)
+    is_y = np.where(x_block + z_block == 2)
+    is_z = np.where(z_block - x_block == 1)
+
+    new_x_block = np.copy(x_block)
+    new_x_block[is_y] = 0
+    new_x_block[is_z] = 1
+
+    new_z_block = np.copy(z_block)
+    new_z_block[is_y] = 1
+    new_z_block[is_z] = 1
+    return np.hstack((new_x_block, new_z_block)) 
 
 
 def qubit_swap(symplectic, index_pair) -> np.ndarray[np.uint8]:
-    """Swap the position of two qubits in a symplectic matrix."""
+    """Swap the position of two qubits in a symplectic matrix.
+    
+    Args:
+        symplectic (np.ndarray): The symplectic matrix.
+        index_pair (tuple[int]): The indices of the qubits to swap.
+    """
+    logger.debug(f"Swapping qubits {index_pair} in symplectic matrix\n{symplectic=}")
     half_length = symplectic.shape[1] // 2
     i1, i2 = index_pair
     x1 = np.copy(symplectic[:, i1])
@@ -155,7 +186,12 @@ def qubit_swap(symplectic, index_pair) -> np.ndarray[np.uint8]:
 
 
 def check_trivial_overlap(symplectic) -> tuple[bool, np.ndarray[int]]:
-    """Check the Non-trivial Overlap of a symplectic matrix."""
+    """Check the Non-trivial Overlap of a symplectic matrix.
+    
+    Args:
+        symplectic (np.ndarray): The symplectic matrix.
+    """
+    logger.debug(f"Checking trivial overlap\n{symplectic=}")
     x_length = int(len(symplectic[0]) / 2)
 
     symp_x = symplectic[:, :x_length]
@@ -182,16 +218,18 @@ def check_trivial_overlap(symplectic) -> tuple[bool, np.ndarray[int]]:
 
     satisfied = np.all((nto + np.eye(nto.shape[0])) % 2 == 1)
 
-    if not satisfied:
-        print("Not valid")
-    else:
-        print("Valid")
-
+    logger.debug(f"Trivial overlap satisfied: {satisfied}")
+    logger.debug(f"Trivial overlap matrix:\n{nto}")
     return satisfied, nto
 
 
 def find_pauli_weight(symplectic_hamiltonian) -> float:
-    """Find the average Pauli weight of a symplectic hamiltonian"""
+    """Find the average Pauli weight of a symplectic hamiltonian.
+    
+    Args:
+        symplectic_hamiltonian (np.ndarray): The symplectic Hamiltonian.
+    """
+    logger.debug(f"Finding Pauli weight of symplectic Hamiltonian")
     half_length = symplectic_hamiltonian.shape[-1] // 2
     has_pauli = np.bitwise_or(
         symplectic_hamiltonian[:, :half_length], symplectic_hamiltonian[:, half_length:]
@@ -200,9 +238,43 @@ def find_pauli_weight(symplectic_hamiltonian) -> float:
 
 
 def save_pauli_ham(pauli_hamiltonian: dict[str, float], filename: str = None) -> None:
+    """Save the Pauli Hamiltonian to a JSON file."""
     if filename is None:
         filename = "pauli_hamiltonian_" + str(datetime.datetime.now()) + ".json"
 
     with open(filename, "w") as f:
         f.write(json.dumps(pauli_hamiltonian))
     logger.debug(f"Saved Pauli Hamiltonian to {filename}")
+
+
+def setup_logs() -> None:
+    """Initialise logging."""
+    config_dict = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {"format": "%(asctime)s: %(name)s: %(lineno)d: %(levelname)s: %(message)s"},
+        },
+        "handlers": {
+            "file_handler": {
+                "class": "logging.FileHandler",
+                "level": "DEBUG",
+                "formatter": "standard",
+                "filename": ".ferrmion.log",
+                "mode": "w",
+                "encoding": "utf-8",
+            },
+            "stream_handler": {
+                "class": "logging.StreamHandler",
+                "level": "WARNING",
+                "formatter": "standard",
+            },
+        },
+        "loggers": {
+            "": {"handlers": ["file_handler", "stream_handler"], "level": "DEBUG"}
+        },
+    }
+
+    logging.config.dictConfig(config_dict)
+    logger = logging.getLogger(__name__)
+    logger.debug("Logging initialised.")

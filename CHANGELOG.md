@@ -1,0 +1,21 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- `FermionQubitEncoding` base class in `base`
+- `TernaryTree` class in `ternary_tree`
+- `KNTO` class in `knto`
+- basic unit test for the above classs in `tests/`
+- Logging setup in `utils.setup_logs`
+
+### Removed
+
+### Changed
+
+### Fixed 

@@ -3,7 +3,9 @@
 import numpy as np
 
 from .base import FermionQubitEncoding
+import logging
 
+logger = logging.getLogger(__name__)
 
 class KNTO(FermionQubitEncoding):
     def __init__(self, one_e_coeffs, two_e_coeffs, qubit_labels=None, mode_labels=None):
@@ -21,7 +23,14 @@ class KNTO(FermionQubitEncoding):
         return self.k + 1
 
 
-def knto_symplectic_matrix(k):
+def knto_symplectic_matrix(n_modes):
+    """Build a symplectic matrix of majorana operators for the k-NTO encoding.
+    
+    Args:
+        n_modes (int): The number of modes.
+    """
+    logger.debug(f"Building k-NTO symplectic matrix for {n_modes=}")
+    k = n_modes - 1
     if k % 2 != 1:
         raise ValueError("Only works for Odd k")
 

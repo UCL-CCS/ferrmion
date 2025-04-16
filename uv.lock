@@ -277,6 +277,41 @@ wheels = [
 ]
 
 [[package]]
+name = "ferrmion"
+version = "0.0.1"
+source = { virtual = "." }
+dependencies = [
+    { name = "numpy" },
+    { name = "openfermion" },
+    { name = "pydantic" },
+    { name = "pyscf" },
+    { name = "qiskit" },
+    { name = "scipy" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "jupyter" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.2.4" },
+    { name = "openfermion", specifier = ">=0.11.0" },
+    { name = "pydantic", specifier = ">=2.11.2" },
+    { name = "pyscf", specifier = ">=2.8.0" },
+    { name = "qiskit", specifier = ">=1.4.2" },
+    { name = "scipy", specifier = ">=1.15.2" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "jupyter", specifier = ">=1.1.1" },
+    { name = "pytest", specifier = ">=8.3.5" },
+]
+
+[[package]]
 name = "fqdn"
 version = "1.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1267,41 +1302,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1a/ee/7169ea6ea51b19a6387709b8ef49c2104f22c2635e4597deb4ec33f3b2f8/qiskit-2.0.0-cp39-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:0a289a9336fb04b48462b2e6d89da00ac82f7d03ea595dfe8c841d78aa8976c8", size = 7700066 },
     { url = "https://files.pythonhosted.org/packages/91/6b/1a251a18497eda67213efd16369ab6f35b0ca7db325a5bda810661aad25e/qiskit-2.0.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9459733ebd46a94af68586b71ca2975112459386fbe729c69cf3534a64ee17b1", size = 6475361 },
     { url = "https://files.pythonhosted.org/packages/df/f4/a264fc2c604d1407e930313044e43ef398cbeebe8b2c43833985c4da3dea/qiskit-2.0.0-cp39-abi3-win_amd64.whl", hash = "sha256:538e7d3a239d562a16f7f626e6fcb14502f755ff50d4c86f83d505939391fe61", size = 6228840 },
-]
-
-[[package]]
-name = "quantum-algorithms"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "numpy" },
-    { name = "openfermion" },
-    { name = "pydantic" },
-    { name = "pyscf" },
-    { name = "qiskit" },
-    { name = "scipy" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "jupyter" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "numpy", specifier = ">=2.2.4" },
-    { name = "openfermion", specifier = ">=0.11.0" },
-    { name = "pydantic", specifier = ">=2.11.2" },
-    { name = "pyscf", specifier = ">=2.8.0" },
-    { name = "qiskit", specifier = ">=1.4.2" },
-    { name = "scipy", specifier = ">=1.15.2" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "jupyter", specifier = ">=1.1.1" },
-    { name = "pytest", specifier = ">=8.3.5" },
 ]
 
 [[package]]

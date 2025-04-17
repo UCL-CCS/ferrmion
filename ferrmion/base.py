@@ -24,12 +24,9 @@ class FermionQubitEncoding(ABC):
         self,
         one_e_coeffs: np.ndarray,
         two_e_coeffs: np.ndarray,
-        qubit_labels: set[Qubit] = None,
-        mode_labels: set[int] = None,
     ):
         self.one_e_coeffs: np.ndarray = one_e_coeffs
         self.two_e_coeffs: np.ndarray = two_e_coeffs
-        self.qubits: set[Hashable] = qubit_labels
 
         self._validate_e_coeffs()
 

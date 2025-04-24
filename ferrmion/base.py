@@ -31,6 +31,10 @@ class FermionQubitEncoding(ABC):
         self._validate_e_coeffs()
 
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
+    
+    def __post_init__(self):
+        self._one_e_hamiltonian_template
+        self._two_e_hamiltonian_template
 
     def _validate_e_coeffs(self):
         """Check that the one and two electron integral coefficients are the right shape."""
@@ -65,58 +69,54 @@ class FermionQubitEncoding(ABC):
     def _edge_operator_map(self):
         return edge_operator_map(self)
 
-    def _build_one_e_hamiltonian(self, mode_op_map: dict= None):
-        """Construct the symplectic representation of the one electron terms.
+    @cached_property
+    def _one_e_hamiltonian_template(self):
+        """Build a map of operators in the full hamiltonian to their constituent majoranas."""
+        logger.debug("Building one electron hamiltonian template")
+        majorana_symplectic = self._build_symplectic_matrix()[1]
 
-        NOTE: This assumes we are using the full Electronic Structure Hamiltonian.
-
-        Args:
-            mode_op_map (dict): A dictionary mapping the mode indices to their corresponding qubit indices.
-        """
-        logger.debug("Building one electron hamiltonian")
         icount, sym_products = self.symplectic_product_map
-        symplectic_hamiltonian = {s: 0 for s in sym_products.values()}
+        hamiltonian = {}
 
-        for m in range(self.one_e_coeffs.shape[0]):
-            for n in range(self.one_e_coeffs.shape[1]):
-                coefficient = 0.25 * self.one_e_coeffs[mode_op_map[m], mode_op_map[n]]
-                if coefficient == 0:
-                    continue
+        n_modes = majorana_symplectic.shape[1]//2
+
+        for m in range(n_modes):
+            for n in range(n_modes):
+                # if self.one_e_coeffs[m,n] == 0:
+                    # continue
                 
+                # factor = 0.25  # if m == n else 0.25
                 # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
                 first_term = sym_products[(2 * m, 2 * n)]
                 second_term = sym_products[(2 * m, 2 * n + 1)]
                 third_term = sym_products[(2 * m + 1, 2 * n)]
                 fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
 
-                # first we add to the hamiltonian using the bitpack value
-                # we'll unpack these once at the end for human
-                # readable format
-                symplectic_hamiltonian[first_term] += coefficient * icount_to_sign(
-                    icount[2 * m, 2 * n]
-                )
-                symplectic_hamiltonian[second_term] += coefficient * icount_to_sign(
-                    icount[2 * m, 2 * n + 1] + 1
-                )
-                symplectic_hamiltonian[third_term] += coefficient * icount_to_sign(
-                    icount[2 * m + 1, 2 * n] + 3
-                )
-                symplectic_hamiltonian[fourth_term] += coefficient * icount_to_sign(
-                    icount[2 * m + 1, 2 * n + 1]
-                )
+                factors = (
+                    0.25 * icount_to_sign(icount[2 * m, 2 * n]), 
+                    0.25 * icount_to_sign(icount[2 * m, 2 * n+1]+1),
+                    0.25 * icount_to_sign(icount[2 * m+1, 2 * n]+3), 
+                    0.25 * icount_to_sign(icount[2 * m+1, 2 * n+1]), 
+                                                    )
+                terms = [first_term, second_term, third_term, fourth_term]
 
-        return {k: v for k, v in symplectic_hamiltonian.items() if abs(v) > 1e-16}
+                for t, f in zip(terms, factors):
+                    hamiltonian[t]= hamiltonian.get(t, {})
+                    hamiltonian[t][(m,n)] = hamiltonian[t].get((m,n), 0) + f
 
-    def _build_two_e_hamiltonian(self, mode_op_map:dict):
+        return hamiltonian
+
+    @cached_property
+    def _two_e_hamiltonian_template(self):
         """Construct the symplectic representation of the two electron terms.
 
         NOTE: This uses PHYSICISTS's notation.
         Args:
             mode_op_map (dict): A dictionary mapping the mode indices to their corresponding qubit indices.
         """
-        logger.debug("Building two electron hamiltonian")
+        logger.debug("Building two electron hamiltonian template")
         icount, sym_products = self.symplectic_product_map
-        symplectic_hamiltonian = {}
+        hamiltonian = {}
 
         # am+ an+ ak- al-
         # (2m - i 2m+1)(2n -i 2n+1)(2k +i 2k+1)(2l +i 2l+1)
@@ -129,9 +129,6 @@ class FermionQubitEncoding(ABC):
                 for k in range(self.two_e_coeffs.shape[2]):
                     for l in range(self.two_e_coeffs.shape[3]):
                         if k == l:
-                            continue
-                        coefficient = self.two_e_coeffs[mode_op_map[m], mode_op_map[n], mode_op_map[k], mode_op_map[l]]
-                        if coefficient == 0:
                             continue
 
                         # include the imaginary factors with terms in a tuple
@@ -184,15 +181,20 @@ class FermionQubitEncoding(ABC):
 
                                 product = np.array2string(product)
 
-                                if symplectic_hamiltonian.get(product, False) is False:
-                                    symplectic_hamiltonian[product] = 0
-
-                                symplectic_hamiltonian[product] += (
-                                    prefactor
-                                    * coefficient
-                                    * icount_to_sign(imaginary + left_im + right_im)
+                                hamiltonian[product] = hamiltonian.get(
+                                    product, {}
                                 )
-        return {k: v for k, v in symplectic_hamiltonian.items()}
+                                # ordered = (1 if m > n else -1) * (1 if k > l else -1)
+                                weight = prefactor * icount_to_sign(imaginary + left_im + right_im)
+                                # index = tuple(sorted([m, n]) + sorted([k, l]))
+                                index = (m,n,k,l)
+                                
+                                hamiltonian[product][index] = hamiltonian[product].get(index, 0) + weight
+                                if hamiltonian[product][index] == 0:
+                                    hamiltonian[product].pop(index)
+                                if hamiltonian[product] == {}:
+                                    hamiltonian.pop(product)
+        return hamiltonian
 
     @property
     def symplectic_product_map(self):
@@ -213,6 +215,28 @@ class FermionQubitEncoding(ABC):
 
         return product_ipowers, product_map
 
+    def fill_template(self, mode_op_map:dict) -> dict:
+        logger.debug(f"Filling template with map\n{mode_op_map}")
+        one_e_ham = self._one_e_hamiltonian_template
+        two_e_ham = self._two_e_hamiltonian_template
+
+        all_terms = set(one_e_ham).union(two_e_ham)
+
+        total_ham = {t:0 for t in all_terms}
+        for term in total_ham:
+            one_e_part = one_e_ham.get(term, {})
+            for item, factor in one_e_part.items():
+                total_ham[term] += factor * self.one_e_coeffs[*[mode_op_map[i] for i in item]]
+
+            two_e_part = two_e_ham.get(term, {})
+            for item, factor in two_e_part.items():
+                total_ham[term] += factor * self.two_e_coeffs[*[mode_op_map[i] for i in item]]
+
+            # print(total_ham[term])
+            # if total_ham[term] == 0:
+                # total_ham.pop(term)
+        return total_ham
+
     def to_symplectic_hamiltonian(self, mode_op_map:dict=None):
         """Output the hamiltonian in symplectic form.
 
@@ -226,17 +250,7 @@ class FermionQubitEncoding(ABC):
         if mode_op_map is None:
             logger.debug("No mode operator map provided, using default")
             mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
-        one_e_ham = self._build_one_e_hamiltonian(mode_op_map)
-        two_e_ham = self._build_two_e_hamiltonian(mode_op_map)
-
-        logger.debug("Combining one and two electron hamiltonians")
-        total_ham = {k: v for k, v in one_e_ham.items() if v != 0}
-        for k, v in two_e_ham.items():
-            if v == 0:
-                continue
-            if total_ham.get(k, False) is False:
-                total_ham[k] = 0
-            total_ham[k] += v
+        total_ham = self.fill_template(mode_op_map)
 
         coeffs = []
         terms = []
@@ -255,6 +269,7 @@ class FermionQubitEncoding(ABC):
         terms = np.vstack(tuple(terms))
         return coeffs, terms
 
+
     def to_qubit_hamiltonian(self, mode_op_map:dict=None):
         """Create qubit representation Hamiltonian."""
         logger.debug("Creating qubit Hamiltonian")
@@ -262,18 +277,7 @@ class FermionQubitEncoding(ABC):
             logger.debug("No mode operator map provided, using default")
             mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
             
-        one_e_ham = self._build_one_e_hamiltonian(mode_op_map)
-        two_e_ham = self._build_two_e_hamiltonian(mode_op_map)
-
-        logger.debug("Combining one and two electron hamiltonians")
-        total_ham = {k: v for k, v in one_e_ham.items() if v != 0}
-        for k, v in two_e_ham.items():
-            if v == 0:
-                continue
-
-            if total_ham.get(k, False) is False:
-                total_ham[k] = 0
-            total_ham[k] += v
+        total_ham = self.fill_template(mode_op_map)
 
         pauli_hamiltonian = {}
         for term, coefficient in total_ham.items():

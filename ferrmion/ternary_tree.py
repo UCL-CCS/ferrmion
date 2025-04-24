@@ -96,7 +96,6 @@ class TernaryTree(FermionQubitEncoding):
             node = self.root
             for char in branch:
                 node_index = node_indices[node.label]
-                # qubit_index = self.enumeration_scheme[node.label]["qubit"]
                 branch_operator_map[branch][node_index] = char.upper()
                 node = getattr(node, char, None)
             branch_operator_map[branch] = "".join(branch_operator_map[branch])
@@ -173,7 +172,6 @@ class TernaryTree(FermionQubitEncoding):
         new_tree = TernaryTree(
             one_e_coeffs=self.one_e_coeffs,
             two_e_coeffs=self.two_e_coeffs,
-            qubits=self.qubits,
             root_node=TTNode(),
         )
         new_tree.add_node("z" * (self.n_qubits - 1))
@@ -190,10 +188,9 @@ class TernaryTree(FermionQubitEncoding):
         new_tree = TernaryTree(
             one_e_coeffs=self.one_e_coeffs,
             two_e_coeffs=self.two_e_coeffs,
-            qubits=self.qubits,
             root_node=TTNode(),
         )
-        new_tree.add_node("x" * (len(self.qubits) - 1))
+        new_tree.add_node("x" * (self.n_qubits - 1))
         new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
         return new_tree
 
@@ -203,12 +200,11 @@ class TernaryTree(FermionQubitEncoding):
         new_tree = TernaryTree(
             one_e_coeffs=self.one_e_coeffs,
             two_e_coeffs=self.two_e_coeffs,
-            qubits=self.qubits,
             root_node=TTNode(),
         )
         branches = ["x"]
         # one is used for root, which is defined
-        remaining_qubits = len(self.qubits) - 1
+        remaining_qubits = self.n_qubits - 1
         while remaining_qubits > 0:
             new_branches = set()
             for item in branches:
@@ -234,12 +230,11 @@ class TernaryTree(FermionQubitEncoding):
         new_tree = TernaryTree(
             one_e_coeffs=self.one_e_coeffs,
             two_e_coeffs=self.two_e_coeffs,
-            qubits=self.qubits,
             root_node=TTNode(),
         )
         branches = ["x", "y", "z"]
         # one is used for root which is defined
-        remaining_qubits = len(self.qubits) - 1
+        remaining_qubits = self.n_qubits - 1
         while remaining_qubits > 0:
             new_branches = set()
             for item in branches:

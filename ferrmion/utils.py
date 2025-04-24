@@ -72,7 +72,6 @@ def symplectic_to_pauli(symplectic: np.ndarray) -> str:
     pauli_string = "".join(pauli_list)
     y_count = pauli_string.count("Y")
     ipower = (3 * y_count) % 4
-    logger.debug(f"{ipower=}, {pauli_string=}")
     return ipower, pauli_string
 
 

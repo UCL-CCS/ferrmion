@@ -17,5 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Changed
+- One and Two electron Hamiltonians are first found as templates with terms and coefficient labels, which can then be substituted without recalculating terms.
 
 ### Fixed 

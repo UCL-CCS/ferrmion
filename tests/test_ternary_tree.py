@@ -24,13 +24,8 @@ def fermion_modes():
 
 
 @pytest.fixture
-def qubit_labels():
-    return {i for i in range(6)}
-
-
-@pytest.fixture
-def six_mode_tree(one_e_ints, two_e_ints, qubit_labels):
-    tt = TernaryTree(one_e_ints, two_e_ints, qubit_labels, root_node=TTNode())
+def six_mode_tree(one_e_ints, two_e_ints):
+    tt = TernaryTree(one_e_ints, two_e_ints, root_node=TTNode())
     tt.enumeration_scheme = tt.default_enumeration_scheme()
     return tt
 
@@ -234,7 +229,7 @@ def test_bravyi_kitaev(six_mode_tree):
         'z': 'ZIIIII',
     }
 
-    assert len(tt.qubits) == len(tt.root.child_strings)
+    assert tt.n_qubits == len(tt.root.child_strings)
     assert np.all(
         tt._build_symplectic_matrix()[1]
         == np.array(
@@ -303,7 +298,7 @@ def test_bravyi_kitaev(six_mode_tree):
 
 def tests_bonsai_paper_tree():
     tt = TernaryTree(
-        np.zeros((11, 11)), np.zeros((11, 11, 11, 11)), {i for i in range(11)}
+        np.zeros((11, 11)), np.zeros((11, 11, 11, 11)),
     )
     tt = tt.add_node("x")
     tt = tt.add_node("y")
@@ -425,7 +420,7 @@ def tests_bonsai_paper_tree():
         'zzz': 'ZIIZIIIIIZI',
     }
 
-    assert len(tt.qubits) == len(tt.root.child_strings)
+    assert tt.n_qubits == len(tt.root.child_strings)
     assert np.all(
         tt._build_symplectic_matrix()[1]
         == np.array(

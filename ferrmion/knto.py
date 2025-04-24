@@ -8,16 +8,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 class KNTO(FermionQubitEncoding):
-    def __init__(self, one_e_coeffs, two_e_coeffs, qubit_labels=None, mode_labels=None):
-        self.k = one_e_coeffs.shape[0] - 1
-        if qubit_labels is None:
-            self.qubits = {i for i in range(self.k + 1)}
-        else:
-            self.qubits = qubit_labels
-        super().__init__(one_e_coeffs, two_e_coeffs, self.qubits, mode_labels)
+    def __init__(self, one_e_coeffs, two_e_coeffs):
+        self.k = one_e_coeffs.shape[0] -1
+        super().__init__(one_e_coeffs, two_e_coeffs)
 
     def _build_symplectic_matrix(self):
-        return knto_symplectic_matrix(self.k)
+        return knto_symplectic_matrix(self.one_e_coeffs.shape[0])
 
     def _valid_qubit_number(self):
         return self.k + 1

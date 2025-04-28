@@ -508,3 +508,10 @@ def test_eigencalues_across_encodings(six_mode_tree):
     diag2, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop2), k=6, which="SA")
 
     assert np.allclose(diag, diag2)
+
+def test_default_vaccum_state(six_mode_tree):
+    assert six_mode_tree.vaccum_state == np.array([0]*6)
+
+def test_valid_vaccum_state(six_mode_tree):
+    
+    with pytest.raises as e:

@@ -387,3 +387,16 @@ def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
         weights[k[1], k[0]] = mean_weight
 
     return edge_map, weights
+
+def hartree_fock_state(vaccum_state:np.ndarray, symplectic_operators:np.ndarray) -> np.ndarray:
+    """Find the Hartree-Fock state of a majorana string encoding.
+    
+    Args:
+        vaccum_state (np.ndarray): The vaccum state in computational basis.
+        symplectic_operators (np.ndarray): An array of majorana operators, appearing as ordered pairs, corresponding to the creation operators which must be applied.
+
+    Returns:
+        np.ndarray: The Hartree-Fock ground state in computational basis.
+    """
+
+    pass

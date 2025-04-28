@@ -32,3 +32,22 @@ def test_hamiltonian_coefficients_agree(four_mode_tt):
     pauli_ham = four_mode_tt.BK().to_qubit_hamiltonian()
 
     assert coefficents == [*pauli_ham.values()]
+
+def test_default_vaccum_state(four_mode_tt):
+    assert np.all(four_mode_tt.vaccum_state == np.array([0]*4))
+
+def test_valid_vaccum_state(four_mode_tt):
+
+    with pytest.raises(ValueError) as excinfo:
+        four_mode_tt.vaccum_state = [0]*3
+    assert "4" in str(excinfo.value)
+    assert "length" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        four_mode_tt.vaccum_state = [0]*5
+    assert "4" in str(excinfo.value)
+    assert "length" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        four_mode_tt.vaccum_state = np.array([[0],[0]])
+    assert "dimension" in str(excinfo.value)

@@ -24,18 +24,39 @@ class FermionQubitEncoding(ABC):
         self,
         one_e_coeffs: np.ndarray,
         two_e_coeffs: np.ndarray,
-        vaccum_state: np.ndarray | None,
+        vaccum_state: np.ndarray | None = None,
     ):
         self.one_e_coeffs: np.ndarray = one_e_coeffs
         self.two_e_coeffs: np.ndarray = two_e_coeffs
-
         self._validate_e_coeffs()
-
+        self.vaccum_state = vaccum_state
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
     
     def __post_init__(self):
         self._one_e_hamiltonian_template
         self._two_e_hamiltonian_template
+
+    @property
+    def vaccum_state(self):
+        return self._vaccum_state
+
+    @vaccum_state.setter
+    def vaccum_state(self, state:np.ndarray):
+        """Validate and set the vaccum state."""
+        logger.debug("Setting vaccum state as %s", state)
+        error_string = []
+        state = np.array(state) if type(state) is not np.ndarray else state
+
+        if len(state) != self.n_qubits:
+            error_string.append("Vaccum state must be length " + str(self.n_qubits))
+        if state.ndim != 1:
+            error_string.append("Vaccum state must be vector (dimension==1)")
+        
+        if error_string != []:
+            logger.error("\n".join(error_string))
+            raise ValueError("\n".join(error_string))
+        else:
+            self._vaccum_state = state
 
     def _validate_e_coeffs(self):
         """Check that the one and two electron integral coefficients are the right shape."""

@@ -15,7 +15,6 @@ class TernaryTree(FermionQubitEncoding):
         self,
         one_e_coeffs: np.ndarray,
         two_e_coeffs: np.ndarray,
-        vaccum_state: np.ndarray | None,
         root_node: TTNode = TTNode(),
         enumeration_scheme: dict[str, tuple[int, int]] | None = None,
     ):
@@ -28,34 +27,12 @@ class TernaryTree(FermionQubitEncoding):
             root_node (TTNode): The root node of the tree.
             enumeration_scheme (dict[str, tuple[int, int]]): The enumeration scheme.
         """
-        self.n_qubits = self.one_e_coeffs.shape[1]
-        self.vaccum_state = vaccum_state
-        self.root.label = ""
+        self.n_qubits = one_e_coeffs.shape[1]
         self.root = root_node
+        self.root.label = ""
         self.enumeration_scheme = enumeration_scheme
-        super().__init__(one_e_coeffs, two_e_coeffs)
-
-    @property
-    def vaccum_state(self):
-        return self._vaccum_state
-
-    @vaccum_state.setter
-    def vaccum_state(self, state:np.ndarray):
-        """Validate and set the vaccum state."""
-        logger.debug("Setting vaccum state as %s", state)
-        error_string = []
-        if len(state) != self.n_qubits:
-            error_string += "Vaccum state must be length %s", self.n_qubits
-        if state.ndim != 1:
-            error_string += "Vaccum state must be vector (dimension==1)"
-        if state.dtype not in [np.integer, np.bool]:
-            error_string += "Vaccum state must be vector of integers (or bools)"
-        
-        if error_string is not []:
-            logger.error("\n".join(error_string))
-            raise ValueError("\n".join(error_string))
-        else:
-            self._vaccum_state = state
+        vaccum_state = np.array([0]*self.n_qubits,dtype=np.uint8)
+        super().__init__(one_e_coeffs, two_e_coeffs, vaccum_state)
 
     def default_enumeration_scheme(self) -> dict[str, dict[str, int]]:
         """Create a default enumeration scheme for the tree.

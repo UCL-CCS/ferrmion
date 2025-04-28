@@ -28,13 +28,44 @@ class FermionQubitEncoding(ABC):
     ):
         self.one_e_coeffs: np.ndarray = one_e_coeffs
         self.two_e_coeffs: np.ndarray = two_e_coeffs
-        self._validate_e_coeffs()
         self.vaccum_state = vaccum_state
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
     
     def __post_init__(self):
         self._one_e_hamiltonian_template
         self._two_e_hamiltonian_template
+
+    @property
+    def one_e_coeffs(self):
+        return self._one_e_coeffs
+    
+    @one_e_coeffs.setter
+    def one_e_coeffs(self, coefficients):
+        size_valid = np.all(
+            [coefficients.shape[0] == size for size in coefficients.shape]
+        )
+        if size_valid:
+            self._one_e_coeffs = coefficients
+        else:
+            raise ValueError(
+                f"One electron integrals not valid."
+            )
+        
+    @property
+    def two_e_coeffs(self):
+        return self._two_e_coeffs
+    
+    @two_e_coeffs.setter
+    def two_e_coeffs(self, coefficients):
+        size_valid = np.all(
+            [coefficients.shape[0] == size for size in coefficients.shape]
+        )
+        if size_valid:
+            self._two_e_coeffs = coefficients
+        else:
+            raise ValueError(
+                f"Two electron integrals not valid."
+            )
 
     @property
     def vaccum_state(self):
@@ -57,21 +88,6 @@ class FermionQubitEncoding(ABC):
             raise ValueError("\n".join(error_string))
         else:
             self._vaccum_state = state
-
-    def _validate_e_coeffs(self):
-        """Check that the one and two electron integral coefficients are the right shape."""
-        logger.debug("Validating one and two electron coefficients")
-        one_e_valid = np.all(
-            [self.one_e_coeffs.shape[0] == size for size in self.one_e_coeffs.shape]
-        )
-        two_e_valid = np.all(
-            [self.one_e_coeffs.shape[0] == size for size in self.two_e_coeffs.shape]
-        )
-
-        if not one_e_valid and two_e_valid:
-            raise ValueError(
-                f"ERIs not valid {self.one_e_coeffs.size} {self.two_e_coeffs.size}"
-            )
 
     @abstractmethod
     def _build_symplectic_matrix(

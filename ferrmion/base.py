@@ -24,6 +24,7 @@ class FermionQubitEncoding(ABC):
         self,
         one_e_coeffs: np.ndarray,
         two_e_coeffs: np.ndarray,
+        vaccum_state: np.ndarray | None,
     ):
         self.one_e_coeffs: np.ndarray = one_e_coeffs
         self.two_e_coeffs: np.ndarray = two_e_coeffs

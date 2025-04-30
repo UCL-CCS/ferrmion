@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `KNTO` class in `knto`
 - basic unit test for the above classs in `tests/`
 - Logging setup in `utils.setup_logs`
+- `hartree_fock_state` function in base encoding
 
 ### Removed
 

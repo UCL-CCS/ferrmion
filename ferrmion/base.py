@@ -89,12 +89,31 @@ class FermionQubitEncoding(ABC):
         else:
             self._vaccum_state = state
 
+    @property
+    @abstractmethod
+    def default_mode_op_map(self):
+        """Define a default map from modes to majorana operator pairs i->(j,j+1)."""
+        pass
+
     @abstractmethod
     def _build_symplectic_matrix(
         self,
     ) -> tuple[np.ndarray[np.uint8], np.ndarray[np.uint8]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
+    
+    def hartree_fock_state(self, fermionic_hf_state:np.ndarray, mode_op_map:dict | None = None):
+        """Find the Hartree-Fock state of a majorana string encoding.
+        
+        Args:
+            vaccum_state (np.ndarray): The vaccum state in computational basis.
+            symplectic_operators (np.ndarray): An array of majorana operators, appearing as ordered pairs, corresponding to the creation operators which must be applied.
+
+        Returns:
+            np.ndarray: The Hartree-Fock ground state in computational basis.
+        """
+        return hartree_fock_state(self, fermionic_hf_state, mode_op_map)
+
 
     @staticmethod
     def _symplectic_to_pauli(symplectic: np.ndarray) -> str:
@@ -287,7 +306,7 @@ class FermionQubitEncoding(ABC):
         logger.debug("Creating symplectic Hamiltonian")
         if mode_op_map is None:
             logger.debug("No mode operator map provided, using default")
-            mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
+            mode_op_map = self.default_mode_op_map
         total_ham = self.fill_template(mode_op_map)
 
         coeffs = []
@@ -313,7 +332,7 @@ class FermionQubitEncoding(ABC):
         logger.debug("Creating qubit Hamiltonian")
         if mode_op_map is None:
             logger.debug("No mode operator map provided, using default")
-            mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
+            mode_op_map = self.default_mode_op_map
             
         total_ham = self.fill_template(mode_op_map)
 
@@ -388,7 +407,26 @@ def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
 
     return edge_map, weights
 
-def hartree_fock_state(vaccum_state:np.ndarray, symplectic_operators:np.ndarray) -> np.ndarray:
+def two_operator_product(creation: tuple[bool, bool], left, right):
+    # (a+ib)(c+id) -> ac, iad, ibc, -bd
+    first_term = symplectic_product(left[:,0], right[:,0])
+    second_term = symplectic_product(left[:,0], right[:,1])
+    third_term = symplectic_product(left[:,1], right[:,0])
+    fourth_term = symplectic_product(left[:,1], right[:,1])
+
+    # left creation -> -iad, +bd
+    # right creation -> -ibc, +bd
+    # both creation -> -iad, -ibc, -bd
+    if creation[0] is True:
+        second_term[0] += 2
+        fourth_term[0] += 2
+    if creation[1] is True:
+        third_term[0] += 2
+        fourth_term[0] += 2
+
+    return np.vstack((first_term, second_term, third_term, fourth_term))
+    
+def hartree_fock_state(encoding: FermionQubitEncoding, fermionic_hf_state:np.ndarray, mode_op_map:dict[int,int]) -> np.ndarray:
     """Find the Hartree-Fock state of a majorana string encoding.
     
     Args:
@@ -398,5 +436,44 @@ def hartree_fock_state(vaccum_state:np.ndarray, symplectic_operators:np.ndarray)
     Returns:
         np.ndarray: The Hartree-Fock ground state in computational basis.
     """
+    mode_op_map = encoding.default_mode_op_map if mode_op_map is None else mode_op_map
+    if len(fermionic_hf_state) != len(mode_op_map):
+        error_string = "Fermionic HF state must be same length as Mode-Operator Map"
+        logger.error(error_string)
+        raise ValueError(error_string)
 
-    pass
+    matrices = {
+        "X": np.array([[0,1],[1,0]]),
+        "XZ": np.array([[0,-1j],[1j,0]]),
+        "Z": np.array([[1,0],[0,-1]]),
+        "": np.array([[1,0],[0,1]])
+    }
+
+    logger.debug("Creating computational basis HF state")
+
+    modes = [mode_op_map[mode] for mode in np.where(fermionic_hf_state)[0]]
+    symplectic_operators = encoding._build_symplectic_matrix()[1]
+    symplectic_operators = np.vstack(symplectic_operators[[(2*mode, 2*mode+1) for mode in modes]])
+
+    half_length = symplectic_operators.shape[1] // 2
+    vaccum_state = [np.array([1,0]) if site==0 else np.array([0,1]) for site in encoding.vaccum_state]
+    for index in range(0,symplectic_operators.shape[0],2):
+        xlist = ["X" if line == 1 else "" for line in symplectic_operators[index,:half_length]]
+        zlist = ["Z" if line == 1 else "" for line in symplectic_operators[index,half_length:]]
+        left_operators = [matrices[f"{x}{z}"] for x, z in zip(xlist, zlist)]
+        # ipower = (3 * y_count) % 4
+        xlist = ["X" if line == 1 else "" for line in symplectic_operators[index+1,:half_length]]
+        zlist = ["Z" if line == 1 else "" for line in symplectic_operators[index+1,half_length:]]
+        right_operators = [1j*matrices[f"{x}{z}"] for x, z in zip(xlist, zlist)] 
+
+        total_ops = [left-right for left,right in zip(left_operators, right_operators)]
+
+        vaccum_state = [op @ state for op, state in zip(total_ops, vaccum_state)]
+    # vaccum_state = [(v*np.conj(v))/np.linalg.norm(v*np.conj(v)) for v in vaccum_state]
+    total_state = vaccum_state[0]
+    for state in vaccum_state[1:]:
+        total_state = np.kron(total_state, state)
+    coeffs = (total_state*np.conj(total_state))/np.linalg.norm(total_state*np.conj(total_state))
+    hf_components = [np.array(list(np.binary_repr(val, width=len(vaccum_state))), dtype=np.uint8) for val in np.where(coeffs)[0]]
+
+    return hf_components

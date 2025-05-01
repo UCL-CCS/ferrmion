@@ -33,23 +33,23 @@ def test_hamiltonian_coefficients_agree(four_mode_tt):
 
     assert coefficents == [*pauli_ham.values()]
 
-def test_default_vaccum_state(four_mode_tt):
-    assert np.all(four_mode_tt.vaccum_state == np.array([0]*4))
+def test_default_vacuum_state(four_mode_tt):
+    assert np.all(four_mode_tt.vacuum_state == np.array([0]*4))
 
-def test_valid_vaccum_state(four_mode_tt):
+def test_valid_vacuum_state(four_mode_tt):
 
     with pytest.raises(ValueError) as excinfo:
-        four_mode_tt.vaccum_state = [0]*3
+        four_mode_tt.vacuum_state = [0]*3
     assert "4" in str(excinfo.value)
     assert "length" in str(excinfo.value)
 
     with pytest.raises(ValueError) as excinfo:
-        four_mode_tt.vaccum_state = [0]*5
+        four_mode_tt.vacuum_state = [0]*5
     assert "4" in str(excinfo.value)
     assert "length" in str(excinfo.value)
 
     with pytest.raises(ValueError) as excinfo:
-        four_mode_tt.vaccum_state = np.array([[0],[0]])
+        four_mode_tt.vacuum_state = np.array([[0],[0]])
     assert "dimension" in str(excinfo.value)
 
 def test_hartree_fock_state(four_mode_tt):

@@ -31,8 +31,8 @@ class TernaryTree(FermionQubitEncoding):
         self.root = root_node
         self.root.label = ""
         self.enumeration_scheme = enumeration_scheme
-        vaccum_state = np.array([0]*self.n_qubits,dtype=np.uint8)
-        super().__init__(one_e_coeffs, two_e_coeffs, vaccum_state)
+        vacuum_state = np.array([0]*self.n_qubits,dtype=np.uint8)
+        super().__init__(one_e_coeffs, two_e_coeffs, vacuum_state)
 
     @property
     def default_mode_op_map(self):

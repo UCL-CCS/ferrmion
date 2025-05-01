@@ -24,11 +24,11 @@ class FermionQubitEncoding(ABC):
         self,
         one_e_coeffs: np.ndarray,
         two_e_coeffs: np.ndarray,
-        vaccum_state: np.ndarray | None = None,
+        vacuum_state: np.ndarray | None = None,
     ):
         self.one_e_coeffs: np.ndarray = one_e_coeffs
         self.two_e_coeffs: np.ndarray = two_e_coeffs
-        self.vaccum_state = vaccum_state
+        self.vacuum_state = vacuum_state
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
     
     def __post_init__(self):
@@ -68,26 +68,26 @@ class FermionQubitEncoding(ABC):
             )
 
     @property
-    def vaccum_state(self):
-        return self._vaccum_state
+    def vacuum_state(self):
+        return self._vacuum_state
 
-    @vaccum_state.setter
-    def vaccum_state(self, state:np.ndarray):
-        """Validate and set the vaccum state."""
-        logger.debug("Setting vaccum state as %s", state)
+    @vacuum_state.setter
+    def vacuum_state(self, state:np.ndarray):
+        """Validate and set the vacuum state."""
+        logger.debug("Setting vacuum state as %s", state)
         error_string = []
         state = np.array(state) if type(state) is not np.ndarray else state
 
         if len(state) != self.n_qubits:
-            error_string.append("Vaccum state must be length " + str(self.n_qubits))
+            error_string.append("vacuum state must be length " + str(self.n_qubits))
         if state.ndim != 1:
-            error_string.append("Vaccum state must be vector (dimension==1)")
+            error_string.append("vacuum state must be vector (dimension==1)")
         
         if error_string != []:
             logger.error("\n".join(error_string))
             raise ValueError("\n".join(error_string))
         else:
-            self._vaccum_state = state
+            self._vacuum_state = state
 
     @property
     @abstractmethod
@@ -106,7 +106,7 @@ class FermionQubitEncoding(ABC):
         """Find the Hartree-Fock state of a majorana string encoding.
         
         Args:
-            vaccum_state (np.ndarray): The vaccum state in computational basis.
+            vacuum_state (np.ndarray): The vacuum state in computational basis.
             symplectic_operators (np.ndarray): An array of majorana operators, appearing as ordered pairs, corresponding to the creation operators which must be applied.
 
         Returns:
@@ -430,7 +430,7 @@ def hartree_fock_state(encoding: FermionQubitEncoding, fermionic_hf_state:np.nda
     """Find the Hartree-Fock state of a majorana string encoding.
     
     Args:
-        vaccum_state (np.ndarray): The vaccum state in computational basis.
+        vacuum_state (np.ndarray): The vacuum state in computational basis.
         symplectic_operators (np.ndarray): An array of majorana operators, appearing as ordered pairs, corresponding to the creation operators which must be applied.
 
     Returns:
@@ -456,7 +456,7 @@ def hartree_fock_state(encoding: FermionQubitEncoding, fermionic_hf_state:np.nda
     symplectic_operators = np.vstack(symplectic_operators[[(2*mode, 2*mode+1) for mode in modes]])
 
     half_length = symplectic_operators.shape[1] // 2
-    vaccum_state = [np.array([1,0]) if site==0 else np.array([0,1]) for site in encoding.vaccum_state]
+    vacuum_state = [np.array([1,0]) if site==0 else np.array([0,1]) for site in encoding.vacuum_state]
     for index in range(0,symplectic_operators.shape[0],2):
         xlist = ["X" if line == 1 else "" for line in symplectic_operators[index,:half_length]]
         zlist = ["Z" if line == 1 else "" for line in symplectic_operators[index,half_length:]]
@@ -468,14 +468,14 @@ def hartree_fock_state(encoding: FermionQubitEncoding, fermionic_hf_state:np.nda
 
         total_ops = [left-right for left,right in zip(left_operators, right_operators)]
 
-        vaccum_state = [op @ state for op, state in zip(total_ops, vaccum_state)]
-    # vaccum_state = [(v*np.conj(v))/np.linalg.norm(v*np.conj(v)) for v in vaccum_state]
-    total_state = vaccum_state[0]
-    for state in vaccum_state[1:]:
+        vacuum_state = [op @ state for op, state in zip(total_ops, vacuum_state)]
+    # vacuum_state = [(v*np.conj(v))/np.linalg.norm(v*np.conj(v)) for v in vacuum_state]
+    total_state = vacuum_state[0]
+    for state in vacuum_state[1:]:
         total_state = np.kron(total_state, state)
 
     coeffs = (total_state*np.conj(total_state))/np.linalg.norm(total_state*np.conj(total_state))
-    hf_components = np.vstack([np.array(list(np.binary_repr(val, width=len(vaccum_state))), dtype=np.uint8) for val in np.where(coeffs)[0]])
+    hf_components = np.vstack([np.array(list(np.binary_repr(val, width=len(vacuum_state))), dtype=np.uint8) for val in np.where(coeffs)[0]])
     coeffs = [c for c in coeffs if c != 0]
 
     return coeffs, hf_components

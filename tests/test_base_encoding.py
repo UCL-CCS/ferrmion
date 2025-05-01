@@ -53,11 +53,13 @@ def test_valid_vaccum_state(four_mode_tt):
     assert "dimension" in str(excinfo.value)
 
 def test_hartree_fock_state(four_mode_tt):
-    assert np.all(four_mode_tt.JW().hartree_fock_state([1]*2 + [0]*2) == np.array([1,1,0,0]))
-    assert np.all(four_mode_tt.JW().hartree_fock_state([1]*3 + [0]*1) == np.array([1,1,1,0]))
+    assert np.all(four_mode_tt.JW().hartree_fock_state([1]*2 + [0]*2)[0] == [1])
+
+    assert np.all(four_mode_tt.JW().hartree_fock_state([1]*2 + [0]*2)[1] == np.array([1,1,0,0]))
+    assert np.all(four_mode_tt.JW().hartree_fock_state([1]*3 + [0]*1)[1] == np.array([1,1,1,0]))
     with pytest.raises(ValueError) as excinfo:
-        four_mode_tt.JW().hartree_fock_state([1]*3 + [0]*2) == np.array([1,1,0,0])
+        four_mode_tt.JW().hartree_fock_state([1]*3 + [0]*2)[1] == np.array([1,1,0,0])
     with pytest.raises(ValueError) as excinfo:
-        four_mode_tt.JW().hartree_fock_state([1]*4 + [0]*2) == np.array([1,1,0,0,0])
+        four_mode_tt.JW().hartree_fock_state([1]*4 + [0]*2)[1] == np.array([1,1,0,0,0])
 
     # add some tests here for other encodings, do them by hand to be confident if you like

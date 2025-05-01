@@ -473,7 +473,9 @@ def hartree_fock_state(encoding: FermionQubitEncoding, fermionic_hf_state:np.nda
     total_state = vaccum_state[0]
     for state in vaccum_state[1:]:
         total_state = np.kron(total_state, state)
-    coeffs = (total_state*np.conj(total_state))/np.linalg.norm(total_state*np.conj(total_state))
-    hf_components = [np.array(list(np.binary_repr(val, width=len(vaccum_state))), dtype=np.uint8) for val in np.where(coeffs)[0]]
 
-    return hf_components
+    coeffs = (total_state*np.conj(total_state))/np.linalg.norm(total_state*np.conj(total_state))
+    hf_components = np.vstack([np.array(list(np.binary_repr(val, width=len(vaccum_state))), dtype=np.uint8) for val in np.where(coeffs)[0]])
+    coeffs = [c for c in coeffs if c != 0]
+
+    return coeffs, hf_components

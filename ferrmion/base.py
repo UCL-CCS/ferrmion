@@ -24,32 +24,76 @@ class FermionQubitEncoding(ABC):
         self,
         one_e_coeffs: np.ndarray,
         two_e_coeffs: np.ndarray,
+        vacuum_state: np.ndarray | None = None,
     ):
         self.one_e_coeffs: np.ndarray = one_e_coeffs
         self.two_e_coeffs: np.ndarray = two_e_coeffs
-
-        self._validate_e_coeffs()
-
+        self.vacuum_state = vacuum_state
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
     
     def __post_init__(self):
         self._one_e_hamiltonian_template
         self._two_e_hamiltonian_template
 
-    def _validate_e_coeffs(self):
-        """Check that the one and two electron integral coefficients are the right shape."""
-        logger.debug("Validating one and two electron coefficients")
-        one_e_valid = np.all(
-            [self.one_e_coeffs.shape[0] == size for size in self.one_e_coeffs.shape]
+    @property
+    def one_e_coeffs(self):
+        return self._one_e_coeffs
+    
+    @one_e_coeffs.setter
+    def one_e_coeffs(self, coefficients):
+        size_valid = np.all(
+            [coefficients.shape[0] == size for size in coefficients.shape]
         )
-        two_e_valid = np.all(
-            [self.one_e_coeffs.shape[0] == size for size in self.two_e_coeffs.shape]
-        )
-
-        if not one_e_valid and two_e_valid:
+        if size_valid:
+            self._one_e_coeffs = coefficients
+        else:
             raise ValueError(
-                f"ERIs not valid {self.one_e_coeffs.size} {self.two_e_coeffs.size}"
+                f"One electron integrals not valid."
             )
+        
+    @property
+    def two_e_coeffs(self):
+        return self._two_e_coeffs
+    
+    @two_e_coeffs.setter
+    def two_e_coeffs(self, coefficients):
+        size_valid = np.all(
+            [coefficients.shape[0] == size for size in coefficients.shape]
+        )
+        if size_valid:
+            self._two_e_coeffs = coefficients
+        else:
+            raise ValueError(
+                f"Two electron integrals not valid."
+            )
+
+    @property
+    def vacuum_state(self):
+        return self._vacuum_state
+
+    @vacuum_state.setter
+    def vacuum_state(self, state:np.ndarray):
+        """Validate and set the vacuum state."""
+        logger.debug("Setting vacuum state as %s", state)
+        error_string = []
+        state = np.array(state) if type(state) is not np.ndarray else state
+
+        if len(state) != self.n_qubits:
+            error_string.append("vacuum state must be length " + str(self.n_qubits))
+        if state.ndim != 1:
+            error_string.append("vacuum state must be vector (dimension==1)")
+        
+        if error_string != []:
+            logger.error("\n".join(error_string))
+            raise ValueError("\n".join(error_string))
+        else:
+            self._vacuum_state = state
+
+    @property
+    @abstractmethod
+    def default_mode_op_map(self):
+        """Define a default map from modes to majorana operator pairs i->(j,j+1)."""
+        pass
 
     @abstractmethod
     def _build_symplectic_matrix(
@@ -57,6 +101,19 @@ class FermionQubitEncoding(ABC):
     ) -> tuple[np.ndarray[np.uint8], np.ndarray[np.uint8]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
+    
+    def hartree_fock_state(self, fermionic_hf_state:np.ndarray, mode_op_map:dict | None = None):
+        """Find the Hartree-Fock state of a majorana string encoding.
+        
+        Args:
+            fermionic_hf_state (np.ndarray[int]): An array of mode occupations.
+            mode_op_map (dict[int, int]): A dictionary mapping modes to sets of majorana strings i->(j,j+1).
+    
+        Returns:
+            np.ndarray: The Hartree-Fock ground state in computational basis.
+        """
+        return hartree_fock_state(self, fermionic_hf_state, mode_op_map)
+
 
     @staticmethod
     def _symplectic_to_pauli(symplectic: np.ndarray) -> str:
@@ -249,7 +306,7 @@ class FermionQubitEncoding(ABC):
         logger.debug("Creating symplectic Hamiltonian")
         if mode_op_map is None:
             logger.debug("No mode operator map provided, using default")
-            mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
+            mode_op_map = self.default_mode_op_map
         total_ham = self.fill_template(mode_op_map)
 
         coeffs = []
@@ -275,7 +332,7 @@ class FermionQubitEncoding(ABC):
         logger.debug("Creating qubit Hamiltonian")
         if mode_op_map is None:
             logger.debug("No mode operator map provided, using default")
-            mode_op_map = {i:i for i in range(self.one_e_coeffs.shape[1])}
+            mode_op_map = self.default_mode_op_map
             
         total_ham = self.fill_template(mode_op_map)
 
@@ -349,3 +406,77 @@ def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
         weights[k[1], k[0]] = mean_weight
 
     return edge_map, weights
+
+def two_operator_product(creation: tuple[bool, bool], left, right):
+    # (a+ib)(c+id) -> ac, iad, ibc, -bd
+    first_term = symplectic_product(left[:,0], right[:,0])
+    second_term = symplectic_product(left[:,0], right[:,1])
+    third_term = symplectic_product(left[:,1], right[:,0])
+    fourth_term = symplectic_product(left[:,1], right[:,1])
+
+    # left creation -> -iad, +bd
+    # right creation -> -ibc, +bd
+    # both creation -> -iad, -ibc, -bd
+    if creation[0] is True:
+        second_term[0] += 2
+        fourth_term[0] += 2
+    if creation[1] is True:
+        third_term[0] += 2
+        fourth_term[0] += 2
+
+    return np.vstack((first_term, second_term, third_term, fourth_term))
+    
+def hartree_fock_state(encoding: FermionQubitEncoding, fermionic_hf_state:np.ndarray, mode_op_map:dict[int,int]) -> np.ndarray:
+    """Find the Hartree-Fock state of a majorana string encoding.
+    
+    Args:
+        encoding (FermionQubitEncoding): a Majoprana string encoding.
+        fermionic_hf_state (np.ndarray[int]): An array of mode occupations.
+        mode_op_map (dict[int, int]): A dictionary mapping modes to sets of majorana strings i->(j,j+1).
+    
+    Returns:
+        np.ndarray: The Hartree-Fock ground state in computational basis.
+    """
+    mode_op_map = encoding.default_mode_op_map if mode_op_map is None else mode_op_map
+    if len(fermionic_hf_state) != len(mode_op_map):
+        error_string = "Fermionic HF state must be same length as Mode-Operator Map"
+        logger.error(error_string)
+        raise ValueError(error_string)
+
+    matrices = {
+        "X": np.array([[0,1],[1,0]]),
+        "XZ": np.array([[0,-1j],[1j,0]]),
+        "Z": np.array([[1,0],[0,-1]]),
+        "": np.array([[1,0],[0,1]])
+    }
+
+    logger.debug("Creating computational basis HF state")
+
+    modes = [mode_op_map[mode] for mode in np.where(fermionic_hf_state)[0]]
+    symplectic_operators = encoding._build_symplectic_matrix()[1]
+    symplectic_operators = np.vstack(symplectic_operators[[(2*mode, 2*mode+1) for mode in modes]])
+
+    half_length = symplectic_operators.shape[1] // 2
+    vacuum_state = [np.array([1,0]) if site==0 else np.array([0,1]) for site in encoding.vacuum_state]
+    for index in range(0,symplectic_operators.shape[0],2):
+        xlist = ["X" if line == 1 else "" for line in symplectic_operators[index,:half_length]]
+        zlist = ["Z" if line == 1 else "" for line in symplectic_operators[index,half_length:]]
+        left_operators = [matrices[f"{x}{z}"] for x, z in zip(xlist, zlist)]
+        # ipower = (3 * y_count) % 4
+        xlist = ["X" if line == 1 else "" for line in symplectic_operators[index+1,:half_length]]
+        zlist = ["Z" if line == 1 else "" for line in symplectic_operators[index+1,half_length:]]
+        right_operators = [1j*matrices[f"{x}{z}"] for x, z in zip(xlist, zlist)] 
+
+        total_ops = [left-right for left,right in zip(left_operators, right_operators)]
+
+        vacuum_state = [op @ state for op, state in zip(total_ops, vacuum_state)]
+    # vacuum_state = [(v*np.conj(v))/np.linalg.norm(v*np.conj(v)) for v in vacuum_state]
+    total_state = vacuum_state[0]
+    for state in vacuum_state[1:]:
+        total_state = np.kron(total_state, state)
+
+    coeffs = (total_state*np.conj(total_state))/np.linalg.norm(total_state*np.conj(total_state))
+    hf_components = np.vstack([np.array(list(np.binary_repr(val, width=len(vacuum_state))), dtype=np.uint8) for val in np.where(coeffs)[0]])
+    coeffs = [c for c in coeffs if c != 0]
+
+    return coeffs, hf_components

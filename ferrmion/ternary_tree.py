@@ -27,12 +27,17 @@ class TernaryTree(FermionQubitEncoding):
             root_node (TTNode): The root node of the tree.
             enumeration_scheme (dict[str, tuple[int, int]]): The enumeration scheme.
         """
-        super().__init__(one_e_coeffs, two_e_coeffs)
+        self.n_qubits = one_e_coeffs.shape[1]
         self.root = root_node
         self.root.label = ""
         self.enumeration_scheme = enumeration_scheme
-        self.n_qubits = self.one_e_coeffs.shape[1]
+        vacuum_state = np.array([0]*self.n_qubits,dtype=np.uint8)
+        super().__init__(one_e_coeffs, two_e_coeffs, vacuum_state)
 
+    @property
+    def default_mode_op_map(self):
+        return {i:i for i in range(self.n_qubits)}
+    
     def default_enumeration_scheme(self) -> dict[str, dict[str, int]]:
         """Create a default enumeration scheme for the tree.
         
@@ -45,7 +50,7 @@ class TernaryTree(FermionQubitEncoding):
             k: {"mode": i, "qubit": i} for i, k in enumerate(enumeration_scheme)
         }
         return enumeration_scheme
-
+    
     def as_dict(self):
         """Return the tree structure as a dictionary."""
         return self.root.as_dict()

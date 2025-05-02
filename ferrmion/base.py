@@ -106,9 +106,9 @@ class FermionQubitEncoding(ABC):
         """Find the Hartree-Fock state of a majorana string encoding.
         
         Args:
-            vacuum_state (np.ndarray): The vacuum state in computational basis.
-            symplectic_operators (np.ndarray): An array of majorana operators, appearing as ordered pairs, corresponding to the creation operators which must be applied.
-
+            fermionic_hf_state (np.ndarray[int]): An array of mode occupations.
+            mode_op_map (dict[int, int]): A dictionary mapping modes to sets of majorana strings i->(j,j+1).
+    
         Returns:
             np.ndarray: The Hartree-Fock ground state in computational basis.
         """
@@ -430,9 +430,10 @@ def hartree_fock_state(encoding: FermionQubitEncoding, fermionic_hf_state:np.nda
     """Find the Hartree-Fock state of a majorana string encoding.
     
     Args:
-        vacuum_state (np.ndarray): The vacuum state in computational basis.
-        symplectic_operators (np.ndarray): An array of majorana operators, appearing as ordered pairs, corresponding to the creation operators which must be applied.
-
+        encoding (FermionQubitEncoding): a Majoprana string encoding.
+        fermionic_hf_state (np.ndarray[int]): An array of mode occupations.
+        mode_op_map (dict[int, int]): A dictionary mapping modes to sets of majorana strings i->(j,j+1).
+    
     Returns:
         np.ndarray: The Hartree-Fock ground state in computational basis.
     """

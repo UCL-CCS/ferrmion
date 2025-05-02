@@ -9,4 +9,5 @@ name = "ferrmion"
 crate-type = ["cdylib"]
 
 [dependencies]
+ndarray = "0.16.1"
 pyo3 = "0.24.0"

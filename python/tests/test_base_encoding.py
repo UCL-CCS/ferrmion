@@ -1,7 +1,7 @@
 """Tests for base fermion to qubit encoding class"""
 import pytest
 import numpy as np
-from ferrmion import TernaryTree
+from ferrmion.ternary_tree import TernaryTree
 
 np.random.seed(1710)
 

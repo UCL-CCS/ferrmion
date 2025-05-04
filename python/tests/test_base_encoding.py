@@ -63,3 +63,6 @@ def test_hartree_fock_state(four_mode_tt):
         four_mode_tt.JW().hartree_fock_state([1]*4 + [0]*2)[1] == np.array([1,1,0,0,0])
 
     # add some tests here for other encodings, do them by hand to be confident if you like
+
+def test_benchmark_hf_state(benchmark, four_mode_tt):
+    result = benchmark(test_hartree_fock_state, four_mode_tt)

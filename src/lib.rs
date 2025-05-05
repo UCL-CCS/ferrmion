@@ -11,18 +11,18 @@ fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
 
 fn rust_symplectic_product(left: ArrayView1<bool>, right:ArrayView1<bool>) -> (usize, Array1<bool>) {
     // bitwise or between two vectors
-    // let left = left.as_array();
-    // let right = right.as_array();
     let product = &left ^ &right;
 
-    // bitwise sumof left z and right x
+    // bitwise sum of left z and right x
     let half_length: usize = left.len()/2;
     
     let mut zx_count: usize = 0;
     let left_z = left.slice(s![half_length..]);
     let right_x = right.slice(s![..half_length]);
     for index in 0..half_length {
-        zx_count = if &left_z[index] & &right_x[index] {zx_count + 1 } else {zx_count}; 
+        if &left_z[index] & &right_x[index] {
+            zx_count += 1; 
+        }; 
     }
 
     let ipower: usize = (2*zx_count) % 4;   

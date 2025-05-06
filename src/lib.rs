@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use ndarray::{azip, concatenate, Axis};
+use ndarray::{concatenate, Axis, Zip};
 use pyo3::{prelude::*, pymodule, Bound};
-use numpy::{Complex64, PyArray1, PyReadonlyArray1, PyReadwriteArray1};
-use numpy::ndarray::{Array, Array1, s, stack, arr1, arr2, ArrayView1, Array2, ArrayViewD};
-use numpy::ndarray::linalg::kron;
+use numpy::{Complex64, PyArray1, PyReadonlyArray1};
+use numpy::ndarray::{Array, Array1, s, arr1, arr2, ArrayView1,ArrayView2, Array2};
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
@@ -13,15 +12,16 @@ fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
 }
 
 fn vector_kron(left:&Array1<Complex64>, right:&Array1<Complex64>) -> Array1<Complex64> {
-    concatenate![Axis(1), left.mapv(|l| l*right[0]), left.mapv(|l| l*right[1])]
+    concatenate![Axis(0), left.mapv(|l| l*right[0]), left.mapv(|l| l*right[1])]
 }
 
+// super ugly function, should definitely work on writing nice rust
 fn rust_hartree_fock_state(
     vaccum_state: ArrayView1<f64>,
     fermionic_hf_state: ArrayView1<bool>,
     mode_op_map: HashMap<usize, usize>,
-    symplectic_matrix: ArrayViewD<bool>
-) ->()// (Array1<Complex64>, ArrayD<bool>)
+    symplectic_matrix: ArrayView2<bool>
+) -> (Array1<Complex64>, Array2<bool>)
  {
     let mut current_state = vec![Array1::from(
         vec![Complex64::new(1.,0.), Complex64::new(0.,0.)]); vaccum_state.len_of(Axis(0))];
@@ -44,7 +44,7 @@ fn rust_hartree_fock_state(
             [Complex64::new(0.,1.),Complex64::new(0.,0.)]]
         ));
 
-    let half_length = symplectic_matrix.len_of(ndarray::Axis(1));
+    let half_length = symplectic_matrix.len_of(ndarray::Axis(1))/2;
 
     for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
         if !occ {continue;}
@@ -62,37 +62,100 @@ fn rust_hartree_fock_state(
                 break;
             },
         };
-        let left = symplectic_matrix.index_axis(ndarray::Axis(0), left_index);
-        let right = symplectic_matrix.index_axis(ndarray::Axis(0), right_index);
-        
-        // would probably look nices as from_shape_fn
-        let vec = vec![matrices.get(&(false, false)).unwrap().to_owned(); vaccum_state.len_of(Axis(0))];
-        let mut operators: Array1<Array2<Complex64>> = Array::from_vec(vec);
 
-        // can try this as a Zip like in ffsim
-        for (pos,mut state) in current_state.iter().enumerate() {
-            let left_op = matrices.get(&(left[pos], left[pos + half_length]))?;
-            let right_op = matrices.get(&(right[pos], right[pos + half_length]))?;
-            let total_op = left_op - &(Complex64::new(0.,1.) * right_op);
-            // it seems ndarray does not have a good solution for complex matrix dot product?
-            // https://github.com/rust-ndarray/ndarray/issues/272
-            state = &arr1(&[
-                &total_op[[0,0]]*&state[0]
-                    +&total_op[[0,1]]*&state[1],
-                &total_op[[1,0]]*&state[0]
-                    +&total_op[[1,1]]*&state[1]
-                ]);
-        }
+        let (left_x, left_z) = symplectic_matrix
+            .index_axis(ndarray::Axis(0), left_index)
+            .split_at(Axis(0), half_length);
+        let (right_x, right_z) = symplectic_matrix
+            .index_axis(ndarray::Axis(0), right_index)
+            .split_at(Axis(0), half_length);
         
-        let mut comp_basis_state: Array1<Complex64> = Array1::from_vec(vec![
-            Complex64::new(vaccum_state[0],0.),
-            Complex64::new(1.-vaccum_state[0],0.)]);
-            
-        for state in current_state.slice(s![1..]) {
-            comp_basis_state = vector_kron(&comp_basis_state, &state);
-        }
+        // split the left and righ operators into x and z sections
+        Zip::from(&mut current_state)
+            .and(&left_x)
+            .and(&left_z)
+            .and(&right_x)
+            .and(&right_z)
+            .for_each(|s, &lx, &lz, &rx, &rz| {
+                // Create an operator to act on the state with
+                let left_op = matrices.get(&(lx, lz)).unwrap();
+                let right_op = matrices.get(&(rx, rz)).unwrap();
+                let total_op = left_op - right_op.map(|op| op * Complex64::new(0.,0.));
+                *s = arr1(&[
+                    &total_op[[0,0]]*&s[0]
+                        +&total_op[[0,1]]*&s[1],
+                    &total_op[[1,0]]*&s[0]
+                        +&total_op[[1,1]]*&s[1]
+                    ]);
+            });
     };
 
+    let mut vector_state: Array1<Complex64> = Array1::from_vec(vec![
+        Complex64::new(vaccum_state[0],0.),
+        Complex64::new(1.-vaccum_state[0],0.)]);
+        
+    for state in &current_state {
+        vector_state = vector_kron(&vector_state, &state);
+    }
+    let norm = vector_state.mapv(|s| s*s.conj()).sum().sqrt();
+    let mut coeffs = vector_state.mapv(|s| s/ norm);
+
+    let mut zero_coeffs = Vec::new(); 
+    let mut hf_components: Vec<u8> = Vec::new();
+    // convert vector state to computational basis state
+    for index in 0..coeffs.len() {
+        let coeff = coeffs[index];
+        if !(coeff == Complex64::new(0.,0.)) {
+            let binary = format!(
+                "{:0>width$}", 
+                format!("{index:b}"), 
+                width=(half_length)
+            );
+            let bin_vec = &Vec::from(binary);
+            hf_components.extend_from_slice(bin_vec);
+        } else {
+            zero_coeffs.push(index);
+        }
+    };
+    for index in zero_coeffs.iter().rev() {
+        coeffs.remove_index(Axis(0), *index);
+    }
+    println!("{}",coeffs.len());
+    println!("{}",hf_components.len());
+    let hf_components = Array2::from_shape_vec((coeffs.len(),vaccum_state.len()), hf_components).unwrap();
+    (coeffs, hf_components.map(|s| *s==1))
+}
+
+#[test]
+fn test_hartree_fock() {
+    let vaccum_state: ArrayView1<f64> = ArrayView1::from(&[0.,0.,0.,0.,0.,0.]);
+    let fermionic_hf_state: ArrayView1<bool> = ArrayView1::from(&[true, true, true, false, false, false]);
+    let mut mode_op_map: HashMap<usize, usize> = HashMap::new();
+    mode_op_map.insert(0, 0);
+    mode_op_map.insert(1, 1);
+    mode_op_map.insert(2, 2);
+    mode_op_map.insert(3, 3);
+    mode_op_map.insert(4, 4);
+    mode_op_map.insert(5, 5);
+    mode_op_map.insert(6, 6);
+    let symplectic_matrix: ArrayView2<bool> = ArrayView2::from(
+        &[[true , false, false, false, false, false, false, false, false, false, false, false],
+            [true , false, false, false, false, false, true , false, false, false, false, false],
+            [false, true , false, false, false, false, true , false, false, false, false, false],
+            [false, true , false, false, false, false, true , true , false, false, false, false],
+            [false, false, true , false, false, false, true , true , false, false, false, false],
+            [false, false, true , false, false, false, true , true , true , false, false, false],
+            [false, false, false, true , false, false, true , true , true , false, false, false],
+            [false, false, false, true , false, false, true , true , true , true , false, false],
+            [false, false, false, false, true , false, true , true , true , true , false, false],
+            [false, false, false, false, true , false, true , true , true , true , true , false],
+            [false, false, false, false, false, true , true , true , true , true , true , false],
+            [false, false, false, false, false, true , true , true , true , true , true , true ]]
+    );
+    let result = rust_hartree_fock_state(vaccum_state, fermionic_hf_state, mode_op_map, symplectic_matrix);
+    let c1 = Complex64::new(1.,0.);
+    assert!(result.0 == arr1(&[c1]));
+    assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
 }
 
 fn rust_symplectic_product(left: ArrayView1<bool>, right:ArrayView1<bool>) -> (usize, Array1<bool>) {

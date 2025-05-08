@@ -4,8 +4,9 @@ import numpy as np
 from .devices import Qubit
 from .base import FermionQubitEncoding
 from .ternary_tree_node import TTNode, node_sorter
-from .utils import symplectic_product, icount_to_sign
+from .utils import icount_to_sign
 from functools import cached_property
+from ferrmion import symplectic_product
 import logging
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,7 @@ class TernaryTree(FermionQubitEncoding):
 
         return pairs
 
-    def _build_symplectic_matrix(self) -> tuple[np.ndarray[np.uint8], np.ndarray[np.uint8]]:
+    def _build_symplectic_matrix(self) -> tuple[np.ndarray[np.bool], np.ndarray[np.bool]]:
         """Build the symplectic matrix for the tree.
         Returns:
             np.ndarray[np.uint8]: Powers of i for each row of the symplectic matrix.
@@ -158,7 +159,7 @@ class TernaryTree(FermionQubitEncoding):
 
         pauli_string_map = self.branch_operator_map
         
-        symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=np.byte)
+        symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=np.bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
         for node, operators in self.string_pairs.items():
             for offset, operator in enumerate(operators):

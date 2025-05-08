@@ -18,7 +18,7 @@ fn vector_kron(left:&Array1<Complex64>, right:&Array1<Complex64>) -> Array1<Comp
 }
 
 // super ugly function, should definitely work on writing nice rust
-fn rust_hartree_fock_state(
+fn hartree_fock_state(
     vaccum_state: ArrayView1<f64>,
     fermionic_hf_state: ArrayView1<bool>,
     mode_op_map: HashMap<usize, usize>,
@@ -141,17 +141,17 @@ fn test_hartree_fock() {
             [false, false, false, false, false, true , true , true , true , true , true , false],
             [false, false, false, false, false, true , true , true , true , true , true , true ]]
     );
-    let result = rust_hartree_fock_state(vaccum_state.clone(), fermionic_hf_state, mode_op_map.clone(), symplectic_matrix.clone());
+    let result = hartree_fock_state(vaccum_state.clone(), fermionic_hf_state, mode_op_map.clone(), symplectic_matrix.clone());
     let c1 = c64(1.,0.);
     assert!(result.0 == arr1(&[c1]));
     assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
 
-    let result2 = rust_hartree_fock_state(vaccum_state.clone(), ArrayView1::from(&[true, true, true, true, false, false]), mode_op_map.clone(), symplectic_matrix.clone());
+    let result2 = hartree_fock_state(vaccum_state.clone(), ArrayView1::from(&[true, true, true, true, false, false]), mode_op_map.clone(), symplectic_matrix.clone());
     assert!(result2.0 == arr1(&[c1]));
     assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
 }
 
-fn rust_symplectic_product(left: ArrayView1<bool>, right:ArrayView1<bool>) -> (usize, Array1<bool>) {
+fn symplectic_product(left: ArrayView1<bool>, right:ArrayView1<bool>) -> (usize, Array1<bool>) {
     // bitwise or between two vectors
     let product = &left ^ &right;
 
@@ -176,7 +176,7 @@ fn rust_symplectic_product(left: ArrayView1<bool>, right:ArrayView1<bool>) -> (u
 fn test_symplectic_product() {
     let xxx: Array1<bool> = arr1(&[true, true, true, false, false, false]);
     let zzz: Array1<bool> = arr1(&[false, false, false, true, true, true]);
-    let product_result  = rust_symplectic_product(xxx.view(), zzz.view());
+    let product_result  = symplectic_product(xxx.view(), zzz.view());
     let expected = (0 as usize, arr1(&[true, true, true, true, true, true]));
     assert_eq!(product_result, expected);
 }
@@ -188,7 +188,7 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
 
     #[pyfn(m)]
-    #[pyo3(name="rust_symplectic_product")]
+    #[pyo3(name="symplectic_product")]
     fn rust_symplectic_product_py<'py>(
         py: Python<'py>,
         left:PyReadonlyArray1<bool>,
@@ -196,13 +196,13 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> (usize, Bound<'py, PyArray1<bool>>) {
         let left = left.as_array();
         let right = right.as_array();
-        let (ipower , product) = rust_symplectic_product(left, right);
+        let (ipower , product) = symplectic_product(left, right);
         let pyproduct = PyArray1::from_owned_array(py, product);
         (ipower, pyproduct)
     }
 
     #[pyfn(m)]
-    #[pyo3(name="rust_hartree_fock_state")]
+    #[pyo3(name="hartree_fock_state")]
     fn rust_hartree_fock_state_py<'py>(
         py: Python<'py>,
         vaccum_state: PyReadonlyArray1<f64>,
@@ -214,7 +214,7 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let rust_mode_op_map: HashMap<usize, usize> = mode_op_map.extract().unwrap();
         let symplectic_matrix = symplectic_matrix.as_array();
-        let (coeffs, states) = rust_hartree_fock_state(vaccum_state, fermionic_hf_state, rust_mode_op_map, symplectic_matrix);
+        let (coeffs, states) = hartree_fock_state(vaccum_state, fermionic_hf_state, rust_mode_op_map, symplectic_matrix);
         (PyArray1::from_owned_array(py, coeffs), PyArray2::from_owned_array(py, states))
     }
     Ok(())

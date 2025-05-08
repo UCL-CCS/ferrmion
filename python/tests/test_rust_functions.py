@@ -1,12 +1,9 @@
 import pytest
 import ferrmion
 import numpy as np
+from ferrmion import symplectic_product
 
-def test_sum_as_string():
-    assert ferrmion.sum_as_string(1, 1) == "2"
-
-def test_rust_symplectic_product():
-    symplectic_product = ferrmion.rust_symplectic_product
+def test_symplectic_product():
     xyz = np.array([1, 1, 0, 0, 1, 1], dtype=np.bool)
     xxx = np.array([1, 1, 1, 0, 0, 0], dtype=np.bool)
     zzz = np.array([0, 0, 0, 1, 1, 1], dtype=np.bool)

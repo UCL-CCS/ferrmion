@@ -11,6 +11,10 @@ np.random.seed(1710)
 def four_mode_tt():
     return TernaryTree(np.random.random((4,4)), np.random.random((4,4,4,4)))
 
+@pytest.fixture
+def sixteen_mode_tt():
+    return TernaryTree(np.random.random((16,16)), np.random.random((16,16,16,16)))
+
 def test_edge_operator_map():
     edge_map, weights = TernaryTree(np.ones((4,4)), np.zeros((4,4,4,4))).JW()._edge_operator_map()
     assert edge_map == {
@@ -55,21 +59,24 @@ def test_valid_vaccum_state(four_mode_tt):
         four_mode_tt.vaccum_state = np.array([[0],[0]])
     assert "dimension" in str(excinfo.value)
 
-def test_hartree_fock_state(four_mode_tt):
-    jw = four_mode_tt.JW()
-    print(jw.hartree_fock_state(np.array([1]*2 + [0]*2, dtype=bool)))
-    assert(jw.hartree_fock_state(np.array([1]*2 + [0]*2, dtype=bool))[0]) == [1.]
-    assert(np.all(jw.hartree_fock_state(np.array([1]*2 + [0]*2, dtype=bool))
-[1] == np.array([[1,1,0,0]], dtype=np.bool)))
-    assert(np.all(jw.hartree_fock_state(np.array([1]*3 + [0]*1, dtype=bool))[1] == np.array([[1,1,1,0]], dtype=np.bool)))
+def test_hartree_fock_state(sixteen_mode_tt):
+    jw = sixteen_mode_tt.JW()
+    hartree_fock_state = jw.hartree_fock_state
+    nq = jw.n_qubits//2
+    print(hartree_fock_state(np.array([True]*nq + [False]*nq, dtype=bool)))
+    assert(hartree_fock_state(np.array([True]*nq + [False]*nq, dtype=bool))[0]) == [1.]
+    assert(np.all(hartree_fock_state(np.array([1]*nq + [0]*nq, dtype=bool))
+[1] == np.array([[True]*nq + [False]*nq], dtype=np.bool)))
+    assert(np.all(hartree_fock_state(np.array([1]*(nq+1) + [0]*(nq-1), dtype=bool))[1] == np.array([[True]*(nq+1) + [False]*(nq-1)], dtype=np.bool)))
 
-def test_slow_hartree_fock_state(four_mode_tt):
-    jw = four_mode_tt.JW()
+def test_slow_hartree_fock_state(sixteen_mode_tt):
+    jw = sixteen_mode_tt.JW()
     mode_op_map = jw.default_mode_op_map
+    nq = jw.n_qubits//2
 
-    assert np.all(slow_hartree_fock_state(jw, [1]*2 + [0]*2, mode_op_map)[0] == [1])
-    assert np.all(slow_hartree_fock_state(jw, [1]*2 + [0]*2, mode_op_map)[1] == np.array([1,1,0,0]))
-    assert np.all(slow_hartree_fock_state(jw, [1]*3 + [0]*1, mode_op_map)[1] == np.array([1,1,1,0]))
+    assert np.all(slow_hartree_fock_state(jw, [1]*nq + [0]*nq, mode_op_map)[0] == [1])
+    assert np.all(slow_hartree_fock_state(jw, [1]*nq + [0]*nq, mode_op_map)[1] == np.array([1]*nq + [0]*nq))
+    assert np.all(slow_hartree_fock_state(jw, [1]*(nq+1) + [0]*(nq-1), mode_op_map)[1] == np.array([1]*(nq+1) + [0]*(nq-1)))
 
 def test_slow_hartree_fock_state_errors(four_mode_tt):
     with pytest.raises(ValueError) as excinfo:
@@ -79,8 +86,8 @@ def test_slow_hartree_fock_state_errors(four_mode_tt):
 
     # add some tests here for other encodings, do them by hand to be confident if you like
 
-def test_benchmark_hf_state(benchmark, four_mode_tt):
-    result = benchmark(test_hartree_fock_state, four_mode_tt)
+def test_benchmark_hf_state(benchmark, sixteen_mode_tt):
+    result = benchmark(test_hartree_fock_state, sixteen_mode_tt)
 
-def test_benchmark_slow_hf_state(benchmark, four_mode_tt):
-    result = benchmark(test_slow_hartree_fock_state, four_mode_tt)
+def test_benchmark_slow_hf_state(benchmark, sixteen_mode_tt):
+    result = benchmark(test_slow_hartree_fock_state, sixteen_mode_tt)

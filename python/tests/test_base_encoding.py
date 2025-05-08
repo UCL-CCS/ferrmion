@@ -53,20 +53,22 @@ def test_valid_vaccum_state(four_mode_tt):
         four_mode_tt.vaccum_state = np.array([[0],[0]])
     assert "dimension" in str(excinfo.value)
 
-def test_hartree_fock_state(four_mode_tt):
+def test_rust_hartree_fock_state(four_mode_tt):
     vaccum_state = four_mode_tt.JW().vaccum_state
     mode_op_map = {i:i for i in range(4)}
     symplectic_matrix = np.array(four_mode_tt.JW()._build_symplectic_matrix()[1] == 1)
-    rcoeffs, rstates = ferrmion.rust_hartree_fock_state(vaccum_state, np.array([1]*2 + [0]*2, dtype=bool), mode_op_map, symplectic_matrix)
-    assert(rcoeffs == [1.])
-    assert(np.all(rstates == np.array([[1,1,0,0]], dtype=np.bool)))
+    assert(ferrmion.rust_hartree_fock_state(vaccum_state, np.array([1]*2 + [0]*2, dtype=bool), mode_op_map, symplectic_matrix)[0] == [1.])
+    assert(np.all(ferrmion.rust_hartree_fock_state(vaccum_state, np.array([1]*2 + [0]*2, dtype=bool), mode_op_map, symplectic_matrix)
+[1] == np.array([[1,1,0,0]], dtype=np.bool)))
+    assert(np.all(ferrmion.rust_hartree_fock_state(vaccum_state, np.array([1]*3 + [0]*1, dtype=bool), mode_op_map, symplectic_matrix)[1] == np.array([[1,1,1,0]], dtype=np.bool)))
 
-    rcoeffs, rstates = ferrmion.rust_hartree_fock_state(vaccum_state, np.array([1]*3 + [0]*1, dtype=bool), mode_op_map, symplectic_matrix)
-    assert(np.all(rstates == np.array([[1,1,1,0]], dtype=np.bool)))
+def test_hartree_fock_state(four_mode_tt):
+    jw = four_mode_tt.JW()
+    assert np.all(jw.hartree_fock_state([1]*2 + [0]*2)[0] == [1])
+    assert np.all(jw.hartree_fock_state([1]*2 + [0]*2)[1] == np.array([1,1,0,0]))
+    assert np.all(jw.hartree_fock_state([1]*3 + [0]*1)[1] == np.array([1,1,1,0]))
 
-    assert np.all(four_mode_tt.JW().hartree_fock_state([1]*2 + [0]*2)[0] == [1])
-    assert np.all(four_mode_tt.JW().hartree_fock_state([1]*2 + [0]*2)[1] == np.array([1,1,0,0]))
-    assert np.all(four_mode_tt.JW().hartree_fock_state([1]*3 + [0]*1)[1] == np.array([1,1,1,0]))
+def test_hartree_fock_state_errors(four_mode_tt):
     with pytest.raises(ValueError) as excinfo:
         four_mode_tt.JW().hartree_fock_state([1]*3 + [0]*2)[1] == np.array([1,1,0,0])
     with pytest.raises(ValueError) as excinfo:
@@ -77,3 +79,5 @@ def test_hartree_fock_state(four_mode_tt):
 def test_benchmark_hf_state(benchmark, four_mode_tt):
     result = benchmark(test_hartree_fock_state, four_mode_tt)
 
+def test_benchmark_rust_hf_state(benchmark, four_mode_tt):
+    result = benchmark(test_rust_hartree_fock_state, four_mode_tt)

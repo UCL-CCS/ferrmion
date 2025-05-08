@@ -80,7 +80,7 @@ fn rust_hartree_fock_state(
                 // Create an operator to act on the state with
                 let left_op = matrices.get(&(lx, lz)).unwrap();
                 let right_op = matrices.get(&(rx, rz)).unwrap();
-                let total_op = left_op - right_op.map(|op| op * Complex64::new(0.,0.));
+                let total_op = left_op - right_op.map(|op| op * Complex64::new(0.,1.));
                 *s = arr1(&[
                     &total_op[[0,0]]*&s[0]
                         +&total_op[[0,1]]*&s[1],
@@ -91,9 +91,8 @@ fn rust_hartree_fock_state(
     };
 
     let mut vector_state: Array1<Complex64> = Array1::from_vec(vec![
-        Complex64::new(vaccum_state[0],0.),
-        Complex64::new(1.-vaccum_state[0],0.)]);
-        
+        Complex64::new(1.-vaccum_state[0],0.),
+        Complex64::new(vaccum_state[0],0.)]);
     for state in &current_state {
         vector_state = vector_kron(&vector_state, &state);
     }
@@ -101,18 +100,20 @@ fn rust_hartree_fock_state(
     let mut coeffs = vector_state.mapv(|s| s/ norm);
 
     let mut zero_coeffs = Vec::new(); 
-    let mut hf_components: Vec<u8> = Vec::new();
+    let mut hf_components: Vec<bool> = Vec::new();
     // convert vector state to computational basis state
     for index in 0..coeffs.len() {
         let coeff = coeffs[index];
         if !(coeff == Complex64::new(0.,0.)) {
             let binary = format!(
-                "{:0>width$}", 
+                "{:0<width$}", 
                 format!("{index:b}"), 
                 width=(half_length)
             );
-            let bin_vec = &Vec::from(binary);
-            hf_components.extend_from_slice(bin_vec);
+            for val in binary.chars() {
+                println!("{}",val);
+                hf_components.push(val.to_digit(10).unwrap() == 1)
+                };
         } else {
             zero_coeffs.push(index);
         }
@@ -120,10 +121,9 @@ fn rust_hartree_fock_state(
     for index in zero_coeffs.iter().rev() {
         coeffs.remove_index(Axis(0), *index);
     }
-    println!("{}",coeffs.len());
-    println!("{}",hf_components.len());
+    coeffs = coeffs.mapv(|c| c/coeffs[0]);
     let hf_components = Array2::from_shape_vec((coeffs.len(),vaccum_state.len()), hf_components).unwrap();
-    (coeffs, hf_components.map(|s| *s==1))
+    (coeffs, hf_components)
 }
 
 #[test]
@@ -154,6 +154,8 @@ fn test_hartree_fock() {
     );
     let result = rust_hartree_fock_state(vaccum_state, fermionic_hf_state, mode_op_map, symplectic_matrix);
     let c1 = Complex64::new(1.,0.);
+    println!("{:?}", result.0);
+    println!("{:?}", result.1);
     assert!(result.0 == arr1(&[c1]));
     assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
 }

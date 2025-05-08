@@ -65,9 +65,9 @@ def test_hartree_fock_state(sixteen_mode_tt):
     nq = jw.n_qubits//2
     print(hartree_fock_state(np.array([True]*nq + [False]*nq, dtype=bool)))
     assert(hartree_fock_state(np.array([True]*nq + [False]*nq, dtype=bool))[0]) == [1.]
-    assert(np.all(hartree_fock_state(np.array([1]*nq + [0]*nq, dtype=bool))
+    assert(np.all(hartree_fock_state(np.array([True]*nq + [False]*nq, dtype=bool))
 [1] == np.array([[True]*nq + [False]*nq], dtype=np.bool)))
-    assert(np.all(hartree_fock_state(np.array([1]*(nq+1) + [0]*(nq-1), dtype=bool))[1] == np.array([[True]*(nq+1) + [False]*(nq-1)], dtype=np.bool)))
+    assert(np.all(hartree_fock_state(np.array([True]*(nq+1) + [False]*(nq-1), dtype=bool))[1] == np.array([[True]*(nq+1) + [False]*(nq-1)], dtype=np.bool)))
 
 def test_slow_hartree_fock_state(sixteen_mode_tt):
     jw = sixteen_mode_tt.JW()

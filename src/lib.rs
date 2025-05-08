@@ -71,9 +71,9 @@ fn rust_hartree_fock_state(
                 let right_op = matrices.get(&(rx, rz)).unwrap();
                 let total_op = left_op - right_op.map(|op| op * Complex64::new(0.,1.));
                 *s = arr1(&[
-                    &total_op[[0,0]]*&s[0]
+                    0.5*&total_op[[0,0]]*&s[0]
                         +&total_op[[0,1]]*&s[1],
-                    &total_op[[1,0]]*&s[0]
+                    0.5*&total_op[[1,0]]*&s[0]
                         +&total_op[[1,1]]*&s[1]
                     ]);
             });
@@ -216,7 +216,6 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let rust_mode_op_map: HashMap<usize, usize> = mode_op_map.extract().unwrap();
         let symplectic_matrix = symplectic_matrix.as_array();
         let (coeffs, states) = rust_hartree_fock_state(vaccum_state, fermionic_hf_state, rust_mode_op_map, symplectic_matrix);
-        
         (PyArray1::from_owned_array(py, coeffs), PyArray2::from_owned_array(py, states))
     }
     Ok(())

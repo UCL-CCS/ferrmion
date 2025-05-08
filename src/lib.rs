@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ndarray::{concatenate, Axis, Zip};
 use pyo3::types::PyDict;
 use pyo3::{prelude::*, pymodule, Bound};
-// use num_complex::Complex64;
+use num_complex::c64;
 use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, Complex64};
 use numpy::ndarray::{Array1, s, arr1, arr2, ArrayView1,ArrayView2, Array2};
 
@@ -26,24 +26,24 @@ fn rust_hartree_fock_state(
 ) -> (Array1<Complex64>, Array2<bool>)
  {
     let mut current_state = vec![Array1::from(
-        vec![Complex64::new(1.,0.), Complex64::new(0.,0.)]); vaccum_state.len_of(Axis(0))];
+        vec![c64(1.,0.), c64(0.,0.)]); vaccum_state.len_of(Axis(0))];
 
     let mut matrices: HashMap<(bool, bool), Array2<Complex64>> = HashMap::new();
     matrices.insert((false,false),arr2(
-        &[[Complex64::new(1.,0.),Complex64::new(0.,0.)],
-            [Complex64::new(0.,0.),Complex64::new(1.,0.)]]
+        &[[c64(1.,0.),c64(0.,0.)],
+            [c64(0.,0.),c64(1.,0.)]]
         ));
     matrices.insert((true, false),arr2(
-        &[[Complex64::new(0.,0.),Complex64::new(1.,0.)],
-            [Complex64::new(1.,0.),Complex64::new(0.,0.)]]
+        &[[c64(0.,0.),c64(1.,0.)],
+            [c64(1.,0.),c64(0.,0.)]]
         ));
     matrices.insert((false, true),arr2(
-        &[[Complex64::new(1.,0.),Complex64::new(0.,0.)],
-            [Complex64::new(0.,0.),Complex64::new(1.,0.)]]
+        &[[c64(1.,0.),c64(0.,0.)],
+            [c64(0.,0.),c64(1.,0.)]]
         ));
     matrices.insert((true, true),arr2(
-        &[[Complex64::new(0.,0.),Complex64::new(0.,-1.)],
-            [Complex64::new(0.,1.),Complex64::new(0.,0.)]]
+        &[[c64(0.,0.),c64(0.,-1.)],
+            [c64(0.,1.),c64(0.,0.)]]
         ));
 
     let half_length = symplectic_matrix.len_of(ndarray::Axis(1))/2;
@@ -69,32 +69,31 @@ fn rust_hartree_fock_state(
                 // Create an operator to act on the state with
                 let left_op = matrices.get(&(lx, lz)).unwrap();
                 let right_op = matrices.get(&(rx, rz)).unwrap();
-                let total_op = left_op - right_op.map(|op| op * Complex64::new(0.,1.));
+                let total_op = left_op - right_op.map(|op| op * c64(0.,1.));
                 *s = arr1(&[
-                    0.5*&total_op[[0,0]]*&s[0]
-                        +&total_op[[0,1]]*&s[1],
-                    0.5*&total_op[[1,0]]*&s[0]
-                        +&total_op[[1,1]]*&s[1]
+                    0.5*(&total_op[[0,0]]*&s[0]
+                        +&total_op[[0,1]]*&s[1]),
+                    0.5*(&total_op[[1,0]]*&s[0]
+                        +&total_op[[1,1]]*&s[1])
                     ]);
             });
     };
 
-    // this is going to break if the vaccum state isnt constant between qubits
-    let mut vector_state: Array1<Complex64> = Array1::from_vec(vec![
-        Complex64::new(1.-vaccum_state[0],0.),
-        Complex64::new(vaccum_state[0],0.)]);
-    for state in &current_state {
-        vector_state = vector_kron(&vector_state, &state);
-    }
+    let vector_state: Array1<Complex64> = Zip::from(&current_state)
+        .fold(Array1::from_elem(1, c64(1.,0.)), 
+        |acc, c| {vector_kron(&acc, &c)});
+
     let norm = vector_state.mapv(|s| s*s.conj()).sum().sqrt();
     let mut coeffs = vector_state.mapv(|s| s/ norm);
 
     let mut zero_coeffs = Vec::new(); 
     let mut hf_components: Vec<bool> = Vec::new();
-    // convert vector state to computational basis state
+    // According to ndarray docs, when we don't know the final size
+    // of a multidimensional array we want to build iteratively
+    // the best thing to do is create a flat array and then reshape
     for index in 0..coeffs.len() {
         let coeff = coeffs[index];
-        if !(coeff == Complex64::new(0.,0.)) {
+        if !(coeff == c64(0.,0.)) {
             let binary = format!(
                 "{:0<width$}", 
                 format!("{index:b}"), 
@@ -143,7 +142,7 @@ fn test_hartree_fock() {
             [false, false, false, false, false, true , true , true , true , true , true , true ]]
     );
     let result = rust_hartree_fock_state(vaccum_state.clone(), fermionic_hf_state, mode_op_map.clone(), symplectic_matrix.clone());
-    let c1 = Complex64::new(1.,0.);
+    let c1 = c64(1.,0.);
     assert!(result.0 == arr1(&[c1]));
     assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
 

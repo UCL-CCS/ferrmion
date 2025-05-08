@@ -49,8 +49,6 @@ fn rust_hartree_fock_state(
     let half_length = symplectic_matrix.len_of(ndarray::Axis(1))/2;
 
     for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
-        let left_index: usize;
-        let right_index: usize;
         if !occ {continue;}
         let mode_index = mode_op_map.get(&mode).unwrap();
 

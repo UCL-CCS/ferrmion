@@ -91,3 +91,9 @@ def test_benchmark_hf_state(benchmark, sixteen_mode_tt):
 
 def test_benchmark_slow_hf_state(benchmark, sixteen_mode_tt):
     result = benchmark(test_slow_hartree_fock_state, sixteen_mode_tt)
+
+def test_four_benchmark_hf_state(benchmark, four_mode_tt):
+    result = benchmark(test_hartree_fock_state, four_mode_tt)
+
+def test_four_benchmark_slow_hf_state(benchmark, four_mode_tt):
+    result = benchmark(test_slow_hartree_fock_state, four_mode_tt)

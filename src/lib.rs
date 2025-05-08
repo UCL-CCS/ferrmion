@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::vec;
 
 use ndarray::{concatenate, Axis, Zip};
 use pyo3::types::PyDict;
@@ -7,11 +8,6 @@ use num_complex::c64;
 use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, Complex64};
 use numpy::ndarray::{Array1, s, arr1, arr2, ArrayView1,ArrayView2, Array2};
 
-/// Formats the sum of two numbers as string.
-#[pyfunction]
-fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-    Ok((a + b).to_string())
-}
 
 fn vector_kron(left:&Array1<Complex64>, right:&Array1<Complex64>) -> Array1<Complex64> {
     concatenate![Axis(0), left.mapv(|l| l*right[0]), left.mapv(|l| l*right[1])]
@@ -28,36 +24,35 @@ fn hartree_fock_state(
     let mut current_state = vec![Array1::from(
         vec![c64(1.,0.), c64(0.,0.)]); vaccum_state.len_of(Axis(0))];
 
-    let mut matrices: HashMap<(bool, bool), Array2<Complex64>> = HashMap::new();
+    let mut matrices = HashMap::new();
     matrices.insert((false,false),arr2(
         &[[c64(1.,0.),c64(0.,0.)],
-            [c64(0.,0.),c64(1.,0.)]]
-        ));
+        [c64(0.,0.),c64(1.,0.)]]
+    ));
     matrices.insert((true, false),arr2(
         &[[c64(0.,0.),c64(1.,0.)],
-            [c64(1.,0.),c64(0.,0.)]]
-        ));
+        [c64(1.,0.),c64(0.,0.)]]
+    ));
     matrices.insert((false, true),arr2(
         &[[c64(1.,0.),c64(0.,0.)],
-            [c64(0.,0.),c64(1.,0.)]]
-        ));
+        [c64(0.,0.),c64(1.,0.)]]
+    ));
     matrices.insert((true, true),arr2(
         &[[c64(0.,0.),c64(0.,-1.)],
-            [c64(0.,1.),c64(0.,0.)]]
-        ));
+        [c64(0.,1.),c64(0.,0.)]]
+    ));
 
     let half_length = symplectic_matrix.len_of(ndarray::Axis(1))/2;
+    let (x_block, z_block) = symplectic_matrix.split_at(Axis(1), half_length);
 
     for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
         if !occ {continue;}
         let mode_index = mode_op_map.get(&mode).unwrap();
 
-        let (left_x, left_z) = symplectic_matrix
-            .index_axis(ndarray::Axis(0), 2*mode_index)
-            .split_at(Axis(0), half_length);
-        let (right_x, right_z) = symplectic_matrix
-            .index_axis(ndarray::Axis(0), 2*mode_index+1)
-            .split_at(Axis(0), half_length);
+        let left_x = x_block.index_axis(ndarray::Axis(0), 2*mode_index);
+        let right_x = x_block.index_axis(ndarray::Axis(0), 2*mode_index+1);
+        let left_z = z_block.index_axis(ndarray::Axis(0), 2*mode_index);
+        let right_z = z_block.index_axis(ndarray::Axis(0), 2*mode_index+1);
         
         // split the left and righ operators into x and z sections
         Zip::from(&mut current_state)
@@ -70,29 +65,21 @@ fn hartree_fock_state(
                 let left_op = matrices.get(&(lx, lz)).unwrap();
                 let right_op = matrices.get(&(rx, rz)).unwrap();
                 let total_op = left_op - right_op.map(|op| op * c64(0.,1.));
-                *s = arr1(&[
-                    0.5*(&total_op[[0,0]]*&s[0]
-                        +&total_op[[0,1]]*&s[1]),
-                    0.5*(&total_op[[1,0]]*&s[0]
-                        +&total_op[[1,1]]*&s[1])
-                    ]);
+                *s = total_op.dot(s);
             });
     };
 
-    let vector_state: Array1<Complex64> = Zip::from(&current_state)
+    let mut vector_state: Array1<Complex64> = Zip::from(&current_state)
         .fold(Array1::from_elem(1, c64(1.,0.)), 
         |acc, c| {vector_kron(&acc, &c)});
-
-    let norm = vector_state.mapv(|s| s*s.conj()).sum().sqrt();
-    let mut coeffs = vector_state.mapv(|s| s/ norm);
 
     let mut zero_coeffs = Vec::new(); 
     let mut hf_components: Vec<bool> = Vec::new();
     // According to ndarray docs, when we don't know the final size
     // of a multidimensional array we want to build iteratively
     // the best thing to do is create a flat array and then reshape
-    for index in 0..coeffs.len() {
-        let coeff = coeffs[index];
+    for index in 0..vector_state.len() {
+        let coeff = vector_state[index];
         if !(coeff == c64(0.,0.)) {
             let binary = format!(
                 "{:0<width$}", 
@@ -102,15 +89,18 @@ fn hartree_fock_state(
             for val in binary.chars() {
                 println!("{}",val);
                 hf_components.push(val.to_digit(10).unwrap() == 1)
-                };
+            };
         } else {
             zero_coeffs.push(index);
         }
     };
     for index in zero_coeffs.iter().rev() {
-        coeffs.remove_index(Axis(0), *index);
+        vector_state.remove_index(Axis(0), *index);
     }
-    coeffs = coeffs.mapv(|c| c/coeffs[0]);
+    // let norm = vector_state.mapv(|s| s*s.conj()).sum().sqrt();
+    // println!("{:?}",norm);
+    let coeffs = vector_state.mapv(|c| c/(vector_state[0]));
+    
     let hf_components = Array2::from_shape_vec((coeffs.len(),vaccum_state.len()), hf_components).unwrap();
     (coeffs, hf_components)
 }
@@ -185,8 +175,6 @@ fn test_symplectic_product() {
 /// A Python module implemented in Rust.
 #[pymodule]
 fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
-
     #[pyfn(m)]
     #[pyo3(name="symplectic_product")]
     fn rust_symplectic_product_py<'py>(

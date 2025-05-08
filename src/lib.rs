@@ -51,27 +51,16 @@ fn rust_hartree_fock_state(
     let half_length = symplectic_matrix.len_of(ndarray::Axis(1))/2;
 
     for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
+        let left_index: usize;
+        let right_index: usize;
         if !occ {continue;}
-        let left_index = match mode_op_map.get(&(2* mode)) {
-            Some(val)=> val.to_owned(),
-            None => {
-                eprintln!("Mode op map points to invalid operator number");
-                break;
-            },
-        };
-        let right_index = match mode_op_map.get(&(2* mode +1)) {
-            Some(val)=> val.to_owned(),
-            None => {
-                eprintln!("Mode op map points to invalid operator number");
-                break;
-            },
-        };
+        let mode_index = mode_op_map.get(&mode).unwrap();
 
         let (left_x, left_z) = symplectic_matrix
-            .index_axis(ndarray::Axis(0), left_index)
+            .index_axis(ndarray::Axis(0), 2*mode_index)
             .split_at(Axis(0), half_length);
         let (right_x, right_z) = symplectic_matrix
-            .index_axis(ndarray::Axis(0), right_index)
+            .index_axis(ndarray::Axis(0), 2*mode_index+1)
             .split_at(Axis(0), half_length);
         
         // split the left and righ operators into x and z sections
@@ -157,12 +146,14 @@ fn test_hartree_fock() {
             [false, false, false, false, false, true , true , true , true , true , true , false],
             [false, false, false, false, false, true , true , true , true , true , true , true ]]
     );
-    let result = rust_hartree_fock_state(vaccum_state, fermionic_hf_state, mode_op_map, symplectic_matrix);
+    let result = rust_hartree_fock_state(vaccum_state.clone(), fermionic_hf_state, mode_op_map.clone(), symplectic_matrix.clone());
     let c1 = Complex64::new(1.,0.);
-    println!("{:?}", result.0);
-    println!("{:?}", result.1);
     assert!(result.0 == arr1(&[c1]));
     assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
+
+    let result2 = rust_hartree_fock_state(vaccum_state.clone(), ArrayView1::from(&[true, true, true, true, false, false]), mode_op_map.clone(), symplectic_matrix.clone());
+    assert!(result2.0 == arr1(&[c1]));
+    assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
 }
 
 fn rust_symplectic_product(left: ArrayView1<bool>, right:ArrayView1<bool>) -> (usize, Array1<bool>) {

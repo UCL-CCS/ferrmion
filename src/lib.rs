@@ -1,13 +1,11 @@
 use std::collections::HashMap;
-use std::os::macos::raw::stat;
 
 use ndarray::{concatenate, Axis, Zip};
-use pyo3::conversion::FromPyObjectBound;
-use pyo3::types::{PyDict, PyComplex, PyInt};
+use pyo3::types::PyDict;
 use pyo3::{prelude::*, pymodule, Bound};
 // use num_complex::Complex64;
 use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, Complex64};
-use numpy::ndarray::{Array, Array1, s, arr1, arr2, ArrayView1,ArrayView2, Array2};
+use numpy::ndarray::{Array1, s, arr1, arr2, ArrayView1,ArrayView2, Array2};
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]

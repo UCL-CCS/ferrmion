@@ -1,8 +1,12 @@
 use std::collections::HashMap;
+use std::os::macos::raw::stat;
 
 use ndarray::{concatenate, Axis, Zip};
+use pyo3::conversion::FromPyObjectBound;
+use pyo3::types::{PyDict, PyComplex, PyInt};
 use pyo3::{prelude::*, pymodule, Bound};
-use numpy::{Complex64, PyArray1, PyReadonlyArray1};
+// use num_complex::Complex64;
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, Complex64};
 use numpy::ndarray::{Array, Array1, s, arr1, arr2, ArrayView1,ArrayView2, Array2};
 
 /// Formats the sum of two numbers as string.
@@ -90,6 +94,7 @@ fn rust_hartree_fock_state(
             });
     };
 
+    // this is going to break if the vaccum state isnt constant between qubits
     let mut vector_state: Array1<Complex64> = Array1::from_vec(vec![
         Complex64::new(1.-vaccum_state[0],0.),
         Complex64::new(vaccum_state[0],0.)]);
@@ -208,6 +213,24 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let (ipower , product) = rust_symplectic_product(left, right);
         let pyproduct = PyArray1::from_owned_array(py, product);
         (ipower, pyproduct)
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name="rust_hartree_fock_state")]
+    fn rust_hartree_fock_state_py<'py>(
+        py: Python<'py>,
+        vaccum_state: PyReadonlyArray1<f64>,
+        fermionic_hf_state: PyReadonlyArray1<bool>,
+        mode_op_map: Bound<'py, PyDict>,
+        symplectic_matrix: PyReadonlyArray2<bool>
+    ) -> (Bound<'py, PyArray1<Complex64>>, Bound<'py, PyArray2<bool>>) {
+        let vaccum_state = vaccum_state.as_array();
+        let fermionic_hf_state = fermionic_hf_state.as_array();
+        let rust_mode_op_map: HashMap<usize, usize> = mode_op_map.extract().unwrap();
+        let symplectic_matrix = symplectic_matrix.as_array();
+        let (coeffs, states) = rust_hartree_fock_state(vaccum_state, fermionic_hf_state, rust_mode_op_map, symplectic_matrix);
+        
+        (PyArray1::from_owned_array(py, coeffs), PyArray2::from_owned_array(py, states))
     }
     Ok(())
 }

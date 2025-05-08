@@ -482,7 +482,7 @@ def test_eigenvalues_with_openfermion(six_mode_tree):
     assert np.allclose(diag, diag2)
 
 
-def test_eigencalues_across_encodings(six_mode_tree):
+def test_eigenvalues_across_encodings(six_mode_tree):
     qham = six_mode_tree.JW().to_qubit_hamiltonian()
     ofop = QubitOperator()
     for k, v in qham.items():
@@ -509,5 +509,5 @@ def test_eigencalues_across_encodings(six_mode_tree):
 
     assert np.allclose(sorted(diag), sorted(diag2))
 
-def test_defaul_mode_op_map(six_mode_tree):
+def test_default_mode_op_map(six_mode_tree):
     assert six_mode_tree.default_mode_op_map == {i:i for i in range(six_mode_tree.n_qubits)}

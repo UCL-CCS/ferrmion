@@ -9,27 +9,6 @@ import logging.config
 logger = logging.getLogger(__name__)
 
 
-def symplectic_product(left, right) -> tuple[int, np.ndarray[np.uint8]]:
-    """Calculate the product of two symplectic vectors.
-    
-    Args:
-        left (np.ndarray): The first symplectic vector.
-        right (np.ndarray): The second symplectic vector.
-    """
-    term = np.bitwise_xor(left, right)
-    # print(symplectics[i], symplectics[j], term)
-
-    n_qubits = len(left) // 2
-
-    # any time S1 @ S2 involves Z on the left of an X we gain a -1
-    zx_count = np.sum(np.bitwise_and(left[n_qubits:], right[:n_qubits]))
-
-    # XZ products are stored as XZ and not as Y
-
-    ipower = (2 * zx_count) % 4
-    return ipower, term
-
-
 def icount_to_sign(icount: int) -> np.complex64:
     """Convert a power of i to a complex value.
     
@@ -39,19 +18,16 @@ def icount_to_sign(icount: int) -> np.complex64:
     vals = {0: 1, 1: 1j, 2: -1, 3: -1j}
     return vals[icount % 4]
 
-
-# Not in use, currently the code is set up using tostring
-def symplectic_hash(symp: np.ndarray[np.uint8]) -> bytes:
+def symplectic_hash(symp: np.ndarray[np.bool]) -> bytes:
     return np.packbits(symp).tobytes()
 
-
-def symplectic_unhash(symp: bytes, length: int) -> np.ndarray[np.uint8]:
+def symplectic_unhash(symp: bytes, length: int) -> np.ndarray[np.bool]:
     unpacked = np.unpackbits(np.frombuffer(symp, dtype=np.uint8))
     if len(unpacked) < length:
         unpacked = np.pad(
             unpacked, length - len(unpacked), "constant", constant_values=0
         )
-    return unpacked[:length]
+    return np.array(unpacked[:length], dtype=np.bool)
 
 
 def symplectic_to_pauli(symplectic: np.ndarray) -> str:

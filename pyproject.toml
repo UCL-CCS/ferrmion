@@ -1,20 +1,29 @@
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
+
 [project]
 name = "ferrmion"
-version = "0.0.1"
-description = "Fermion to qubit encodings methods (with rust acceleration?)"
-readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "numpy>=2.2.4",
-    "openfermion>=0.11.0",
-    "pydantic>=2.11.2",
-    "pyscf>=2.8.0",
-    "qiskit>=1.4.2",
-    "scipy>=1.15.2",
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
 ]
+dynamic = ["version"]
+dependencies = [
+    "numpy>=1.24.4",
+    "openfermion>=0.11.0",
+    "pydantic>=2.10.6",
+]
+
+[tool.maturin]
+python-source = "python"
+features = ["pyo3/extension-module"]
 
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
     "pytest>=8.3.5",
+    "pytest-benchmark>=4.0.0",
 ]

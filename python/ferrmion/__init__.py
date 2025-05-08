@@ -1,10 +1,10 @@
 """Init for fermion qubit encodings"""
+from .ferrmion import symplectic_product, hartree_fock_state
 
 from .base import FermionQubitEncoding
 from .utils import (
     pauli_to_symplectic,
     symplectic_to_pauli,
-    symplectic_product,
     symplectic_hash,
     symplectic_unhash,
     icount_to_sign,
@@ -27,6 +27,7 @@ __all__ = [
     "icount_to_sign",
     "KNTO",
     "knto_symplectic_matrix",
+    "hartree_fock_state",
 ]
 
 setup_logs()

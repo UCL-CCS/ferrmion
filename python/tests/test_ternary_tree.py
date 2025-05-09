@@ -26,7 +26,6 @@ def fermion_modes():
 @pytest.fixture
 def six_mode_tree(one_e_ints, two_e_ints):
     tt = TernaryTree(one_e_ints, two_e_ints, root_node=TTNode())
-    tt.enumeration_scheme = tt.default_enumeration_scheme()
     return tt
 
 
@@ -196,12 +195,12 @@ def test_bravyi_kitaev(six_mode_tree):
     }
 
     assert tt.default_enumeration_scheme() == {
-        "": {"mode": 0, "qubit": 0},
-        "x": {"mode": 1, "qubit": 1},
-        "xx": {"mode": 2, "qubit": 2},
-        "xz": {"mode": 3, "qubit": 3},
-        "xxx": {"mode": 4, "qubit": 4},
-        "xxz": {"mode": 5, "qubit": 5},
+        "": (0,0),
+        "x": (1,1),
+        "xx": (2,2),
+        "xz": (3,3),
+        "xxx": (4,4),
+        "xxz": (5,5),
     }
 
     assert tt.string_pairs == {
@@ -367,17 +366,17 @@ def tests_bonsai_paper_tree():
     }
 
     assert tt.default_enumeration_scheme() == {
-        "": {"mode": 0, "qubit": 0},
-        "x": {"mode": 1, "qubit": 1},
-        "y": {"mode": 2, "qubit": 2},
-        "z": {"mode": 3, "qubit": 3},
-        "xx": {"mode": 4, "qubit": 4},
-        "xy": {"mode": 5, "qubit": 5},
-        "yx": {"mode": 6, "qubit": 6},
-        "yy": {"mode": 7, "qubit": 7},
-        "yz": {"mode": 8, "qubit": 8},
-        "zz": {"mode": 9, "qubit": 9},
-        "yzz": {"mode": 10, "qubit": 10},
+        "": (0,0),
+        "x": (1,1),
+        "y": (2,2),
+        "z": (3,3),
+        "xx": (4,4),
+        "xy": (5,5),
+        "yx": (6,6),
+        "yy": (7,7),
+        "yz": (8,8),
+        "zz": (9,9),
+        "yzz": (10,10),
     }
 
     assert tt.string_pairs == {

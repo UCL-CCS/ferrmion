@@ -31,26 +31,64 @@ class TernaryTree(FermionQubitEncoding):
         self.n_qubits = one_e_coeffs.shape[1]
         self.root = root_node
         self.root.label = ""
-        self.enumeration_scheme = enumeration_scheme
         vaccum_state = np.array([0]*self.n_qubits,dtype=np.uint8)
+        self.default_mode_op_map = {i:i for i in range(self.n_qubits)}
         super().__init__(one_e_coeffs, two_e_coeffs, vaccum_state)
 
     @property
     def default_mode_op_map(self):
-        return {i:i for i in range(self.n_qubits)}
+        return self._default_mode_op_map
     
-    def default_enumeration_scheme(self) -> dict[str, dict[str, int]]:
-        """Create a default enumeration scheme for the tree.
+    @default_mode_op_map.setter
+    def default_mode_op_map(self, map_dict: dict[int, int]):
+        """Set the default mode operator map."""
+        logger.debug("Setting default mode operator map.")
+        error_string = ""
+        if set(map_dict.keys()) != {*range(self.n_qubits)} is not None:
+            error_string += "Default Mode op map does not cover all modes.\n"
+        if set(map_dict.values()) != {*range(self.n_qubits)} is not None:
+            error_string += "Default Mode op map does not cover all operators.\n"
         
-        Returns:
-            dict[str, dict[str, int]]: A dictionary of all node labels, j, with mode and qubit indices.
-        """
-        node_strings = self.root.child_strings
-        enumeration_scheme = {node: (None, None) for node in node_strings}
-        enumeration_scheme = {
-            k: {"mode": i, "qubit": i} for i, k in enumerate(enumeration_scheme)
-        }
-        return enumeration_scheme
+        if error_string != "":
+            logger.error(error_string)
+            logger.error(map_dict)
+            raise ValueError(error_string)
+        
+        self._default_mode_op_map = map_dict 
+
+    
+    @property
+    def enumeration_scheme(self) -> dict[str, tuple[int, int]]:
+        return self._enumeration_scheme
+    
+    @enumeration_scheme.setter
+    def enumeration_scheme(self, enumeration_dict:dict[str, tuple[int, int]]):
+        logger.debug("Setting enumeration scheme.")
+        error_string = ""
+        if set(self.root.child_strings) != set(enumeration_dict.keys()):
+            error_string += "Enumeration scheme must contain all nodes.\n"
+        
+        modes = set()
+        qubits = set()
+        for (m,q) in enumeration_dict.values():
+            logger.debug(f"{m=}{q=}")
+            modes.add(m)
+            qubits.add(q)
+        if len(modes) != self.n_qubits:
+            error_string += f"Not enough modes {len(modes)} in enumeration scheme.\n"
+        if len(qubits) != self.n_qubits:
+            error_string += f"Not enough qubits {len(qubits)} in enumeration scheme.\n"
+
+        if error_string != "":
+            logger.error(error_string)
+            raise ValueError(error_string)
+        
+        self._enumeration_scheme = enumeration_dict
+        
+    def default_enumeration_scheme(self):
+        logger.debug("Setting default enumeration scheme")
+        logger.debug("Child strings %s", self.root.child_strings)
+        return {child: (i,i) for i, child in enumerate(self.root.child_strings)}
     
     def as_dict(self):
         """Return the tree structure as a dictionary."""
@@ -87,9 +125,7 @@ class TernaryTree(FermionQubitEncoding):
             dict[str, str]: A dictionary of all branch strings with their corresponding Pauli strings.
         """
         logger.debug("Building branch operator map for TernaryTree.")
-        if self.enumeration_scheme is None:
-            logger.error("No enumeration scheme provided, using default.")
-            raise ValueError("enumeration scheme not set")
+
 
         branches = self.root.branch_strings
 
@@ -152,13 +188,12 @@ class TernaryTree(FermionQubitEncoding):
             np.ndarray[np.uint8]: Symplectic matrix.
         """
         logger.debug("Building symplectic matrix for TernaryTree.")
-        # If there isn't one provided, assume the naive one
         if self.enumeration_scheme is None:
-            logger.debug("No enumeration scheme provided, using default.")
+            logger.error("No enumeration scheme provided, using default.")
             self.enumeration_scheme = self.default_enumeration_scheme()
 
         pauli_string_map = self.branch_operator_map
-        
+
         symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=np.bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
         for node, operators in self.string_pairs.items():
@@ -167,7 +202,7 @@ class TernaryTree(FermionQubitEncoding):
                 operator = np.array(list(operator))
                 # If the string is X or Y then assign 1
                 term_ipower, symplectic_term = self._pauli_to_symplectic(operator)
-                fermion_mode = self.enumeration_scheme[node]["mode"]
+                fermion_mode = self.enumeration_scheme[node][0]
                 ipowers[2 * fermion_mode + offset] = term_ipower
                 symplectic[2 * fermion_mode + offset] = symplectic_term
         return ipowers, symplectic

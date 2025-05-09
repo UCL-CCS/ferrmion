@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [tool.maturin]
-python-source = "python"
+python-source = "python/"
 features = ["pyo3/extension-module"]
 
 [dependency-groups]

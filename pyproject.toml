@@ -28,6 +28,9 @@ dev = [
     "pytest>=8.3.5",
     "pytest-benchmark>=4.0.0",
 ]
+docs = [
+
+]
 
 [tool.ruff]
 exclude = ["docs/", "python/tests/", "python/ferrmion/__init__.py"]

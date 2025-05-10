@@ -1,7 +1,11 @@
-"""Init for fermion qubit encodings."""
+"""Init for fermion qubit encodings.
 
-from .base import FermionQubitEncoding
+This file is ignored by pre-commit as the pyo3 integration requires importing
+rust functions before importing functions from the python module.
+"""
+
 from .ferrmion import hartree_fock_state, symplectic_product
+from .base import FermionQubitEncoding
 from .knto import KNTO, knto_symplectic_matrix
 from .ternary_tree import TernaryTree
 from .ternary_tree_node import TTNode, node_sorter

@@ -30,7 +30,7 @@ dev = [
 ]
 
 [tool.ruff]
-exclude = ["docs/", "python/tests/"]
+exclude = ["docs/", "python/tests/", "python/ferrmion/__init__.py"]
 line-length = 88
 indent-width = 4
 

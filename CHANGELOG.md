@@ -23,4 +23,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - One and Two electron Hamiltonians are first found as templates with terms and coefficient labels, which can then be changed without recalculating terms.
 - Restructured project as a maturin mixed rust/python project.
 
-### Fixed 
+### Fixed

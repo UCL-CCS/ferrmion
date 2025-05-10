@@ -1,17 +1,33 @@
-"""Ternary Tree fermion to qubit mappings"""
+"""Ternary Tree fermion to qubit mappings."""
+
+import logging
 
 import numpy as np
-from .devices import Qubit
+
 from .base import FermionQubitEncoding
 from .ternary_tree_node import TTNode, node_sorter
-from .utils import icount_to_sign
-from functools import cached_property
-from ferrmion import symplectic_product
-import logging
 
 logger = logging.getLogger(__name__)
 
+
 class TernaryTree(FermionQubitEncoding):
+    """Ternary tree encoding for fermionic operators.
+
+    Attributes:
+        n_qubits (int): The number of qubits.
+        root (TTNode): The root node of the tree.
+        enumeration_scheme (dict[str, tuple[int, int]] | None): The enumeration scheme.
+
+    Methods:
+        default_mode_op_map(): Create a default mode operator map for the tree.
+        default_enumeration_scheme(): Create a default enumeration scheme for the tree.
+        as_dict(): Return the tree structure as a dictionary.
+        add_node(node_string: str): Add a node to the tree.
+        branch_operator_map(): Create a map from each branch string to a Pauli string.
+        string_pairs(): Return the pair of branch strings which correspond to each node.
+        _build_symplectic_matrix(): Build the symplectic matrix for the tree.
+    """
+
     def __init__(
         self,
         one_e_coeffs: np.ndarray,
@@ -20,7 +36,7 @@ class TernaryTree(FermionQubitEncoding):
         enumeration_scheme: dict[str, tuple[int, int]] | None = None,
     ):
         """Initialise a ternary tree.
-        
+
         Args:
             one_e_coeffs (np.ndarray): The one-electron coefficients.
             two_e_coeffs (np.ndarray): The two-electron coefficients.
@@ -32,16 +48,17 @@ class TernaryTree(FermionQubitEncoding):
         self.root = root_node
         self.root.label = ""
         self.enumeration_scheme = enumeration_scheme
-        vaccum_state = np.array([0]*self.n_qubits,dtype=np.uint8)
+        vaccum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
         super().__init__(one_e_coeffs, two_e_coeffs, vaccum_state)
 
     @property
     def default_mode_op_map(self):
-        return {i:i for i in range(self.n_qubits)}
-    
+        """Create a default mode operator map for the tree."""
+        return {i: i for i in range(self.n_qubits)}
+
     def default_enumeration_scheme(self) -> dict[str, dict[str, int]]:
         """Create a default enumeration scheme for the tree.
-        
+
         Returns:
             dict[str, dict[str, int]]: A dictionary of all node labels, j, with mode and qubit indices.
         """
@@ -51,17 +68,17 @@ class TernaryTree(FermionQubitEncoding):
             k: {"mode": i, "qubit": i} for i, k in enumerate(enumeration_scheme)
         }
         return enumeration_scheme
-    
+
     def as_dict(self):
         """Return the tree structure as a dictionary."""
         return self.root.as_dict()
 
     def add_node(self, node_string: str) -> "TernaryTree":
         """Add a node to the tree.
-        
+
         Args:
             node_string (str): The string representation of the node.
-            
+
         Returns:
             TernaryTree: The tree with the node added.
         """
@@ -82,7 +99,7 @@ class TernaryTree(FermionQubitEncoding):
     @property
     def branch_operator_map(self) -> dict[str, str]:
         """Create a map from each branch string to a Pauli string.
-        
+
         Returns:
             dict[str, str]: A dictionary of all branch strings with their corresponding Pauli strings.
         """
@@ -145,8 +162,11 @@ class TernaryTree(FermionQubitEncoding):
 
         return pairs
 
-    def _build_symplectic_matrix(self) -> tuple[np.ndarray[np.bool], np.ndarray[np.bool]]:
+    def _build_symplectic_matrix(
+        self,
+    ) -> tuple[np.ndarray[np.bool], np.ndarray[np.bool]]:
         """Build the symplectic matrix for the tree.
+
         Returns:
             np.ndarray[np.uint8]: Powers of i for each row of the symplectic matrix.
             np.ndarray[np.uint8]: Symplectic matrix.
@@ -158,7 +178,7 @@ class TernaryTree(FermionQubitEncoding):
             self.enumeration_scheme = self.default_enumeration_scheme()
 
         pauli_string_map = self.branch_operator_map
-        
+
         symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=np.bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
         for node, operators in self.string_pairs.items():

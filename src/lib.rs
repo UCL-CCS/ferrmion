@@ -53,7 +53,7 @@ fn hartree_fock_state(
         let right_x = x_block.index_axis(ndarray::Axis(0), 2*mode_index+1);
         let left_z = z_block.index_axis(ndarray::Axis(0), 2*mode_index);
         let right_z = z_block.index_axis(ndarray::Axis(0), 2*mode_index+1);
-        
+
         // split the left and righ operators into x and z sections
         Zip::from(&mut current_state)
             .and(&left_x)
@@ -70,10 +70,10 @@ fn hartree_fock_state(
     };
 
     let mut vector_state: Array1<Complex64> = Zip::from(&current_state)
-        .fold(Array1::from_elem(1, c64(1.,0.)), 
+        .fold(Array1::from_elem(1, c64(1.,0.)),
         |acc, c| {vector_kron(&acc, &c)});
 
-    let mut zero_coeffs = Vec::new(); 
+    let mut zero_coeffs = Vec::new();
     let mut hf_components: Vec<bool> = Vec::new();
     // According to ndarray docs, when we don't know the final size
     // of a multidimensional array we want to build iteratively
@@ -82,8 +82,8 @@ fn hartree_fock_state(
         let coeff = vector_state[index];
         if !(coeff == c64(0.,0.)) {
             let binary = format!(
-                "{:0<width$}", 
-                format!("{index:b}"), 
+                "{:0<width$}",
+                format!("{index:b}"),
                 width=(half_length)
             );
             for val in binary.chars() {
@@ -100,7 +100,7 @@ fn hartree_fock_state(
     // let norm = vector_state.mapv(|s| s*s.conj()).sum().sqrt();
     // println!("{:?}",norm);
     let coeffs = vector_state.mapv(|c| c/(vector_state[0]));
-    
+
     let hf_components = Array2::from_shape_vec((coeffs.len(),vaccum_state.len()), hf_components).unwrap();
     (coeffs, hf_components)
 }
@@ -147,17 +147,17 @@ fn symplectic_product(left: ArrayView1<bool>, right:ArrayView1<bool>) -> (usize,
 
     // bitwise sum of left z and right x
     let half_length: usize = left.len()/2;
-    
+
     let mut zx_count: usize = 0;
     let left_z = left.slice(s![half_length..]);
     let right_x = right.slice(s![..half_length]);
     for index in 0..half_length {
         if &left_z[index] & &right_x[index] {
-            zx_count += 1; 
-        }; 
+            zx_count += 1;
+        };
     }
 
-    let ipower: usize = (2*zx_count) % 4;   
+    let ipower: usize = (2*zx_count) % 4;
 
     (ipower, product)
 }

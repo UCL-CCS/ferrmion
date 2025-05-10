@@ -28,3 +28,20 @@ dev = [
     "pytest>=8.3.5",
     "pytest-benchmark>=4.0.0",
 ]
+
+[tool.ruff]
+exclude = ["docs/", "python/tests/"]
+line-length = 88
+indent-width = 4
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9",
+    "F",
+    "D", #pydocstyle (lets add this when we actually write docstrings)
+    "I", #isort
+]
+ignore = ["E741"]

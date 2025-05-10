@@ -3,7 +3,7 @@ use std::vec;
 
 use ndarray::{concatenate, Axis, Zip};
 use num_complex::c64;
-use numpy::ndarray::{arr1, arr2, s, Array1, Array2, ArrayView1, ArrayView2};
+use numpy::ndarray::{arr2, s, Array1, Array2, ArrayView1, ArrayView2};
 use numpy::{Complex64, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::types::PyDict;
 use pyo3::{prelude::*, pymodule, Bound};
@@ -75,7 +75,7 @@ fn hartree_fock_state(
 
     let mut vector_state: Array1<Complex64> = Zip::from(&current_state)
         .fold(Array1::from_elem(1, c64(1., 0.)), |acc, c| {
-            vector_kron(&acc, &c)
+            vector_kron(&acc, c)
         });
 
     let mut zero_coeffs = Vec::new();
@@ -165,7 +165,7 @@ fn test_hartree_fock() {
         symplectic_matrix.clone(),
     );
     let c1 = c64(1., 0.);
-    assert!(result.0 == arr1(&[c1]));
+    assert!(result.0 == ndarray::arr1(&[c1]));
     assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
 
     let result2 = hartree_fock_state(
@@ -174,7 +174,7 @@ fn test_hartree_fock() {
         mode_op_map.clone(),
         symplectic_matrix.clone(),
     );
-    assert!(result2.0 == arr1(&[c1]));
+    assert!(result2.0 == ndarray::arr1(&[c1]));
     assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
 }
 
@@ -189,7 +189,7 @@ fn symplectic_product(left: ArrayView1<bool>, right: ArrayView1<bool>) -> (usize
     let left_z = left.slice(s![half_length..]);
     let right_x = right.slice(s![..half_length]);
     for index in 0..half_length {
-        if &left_z[index] & &right_x[index] {
+        if left_z[index] & right_x[index] {
             zx_count += 1;
         };
     }
@@ -201,10 +201,13 @@ fn symplectic_product(left: ArrayView1<bool>, right: ArrayView1<bool>) -> (usize
 
 #[test]
 fn test_symplectic_product() {
-    let xxx: Array1<bool> = arr1(&[true, true, true, false, false, false]);
-    let zzz: Array1<bool> = arr1(&[false, false, false, true, true, true]);
+    let xxx: Array1<bool> = ndarray::arr1(&[true, true, true, false, false, false]);
+    let zzz: Array1<bool> = ndarray::arr1(&[false, false, false, true, true, true]);
     let product_result = symplectic_product(xxx.view(), zzz.view());
-    let expected = (0 as usize, arr1(&[true, true, true, true, true, true]));
+    let expected = (
+        0 as usize,
+        ndarray::arr1(&[true, true, true, true, true, true]),
+    );
     assert_eq!(product_result, expected);
 }
 

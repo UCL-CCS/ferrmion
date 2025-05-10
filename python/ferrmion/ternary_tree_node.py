@@ -1,21 +1,40 @@
 """Contains the class for ternary tree nodes."""
 
-from typing import Optional, Hashable
 import logging
+from typing import Hashable, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class TTNode:
+    """A node in a ternary tree.
+
+    Attributes:
+        parent (TTNode): The parent node.
+        label (Hashable): The qubit label.
+        x (TTNode): The x child node.
+        y (TTNode): The y child node.
+        z (TTNode): The z child node.
+
+    Methods:
+        as_dict(): Convert the node to a dictionary.
+        branch_strings(): Get the branch strings for the node.
+        child_strings(): Get the child strings for the node.
+        add_child(which_child, qubit_label): Add a child node to the current node.
+    """
+
     def __init__(
         self, parent: Optional["TTNode"] = None, qubit_label: Hashable | None = None
     ):
         """Initialise a ternary tree node.
+
         Args:
             parent (TTNode): The parent node.
             qubit_label (Hashable): The qubit label.
         """
-        logger.debug(f"Creating TTNode with parent {parent} and qubit label {qubit_label}")
+        logger.debug(
+            f"Creating TTNode with parent {parent} and qubit label {qubit_label}"
+        )
         self.parent = parent
         self.label = qubit_label
         self.x = None
@@ -23,31 +42,45 @@ class TTNode:
         self.z = None
 
     # def __str__(self) -> str:
-        # return f"{self.as_dict()}"
+    # return f"{self.as_dict()}"
 
     def as_dict(self) -> dict:
+        """Return the node structure as a dictionary."""
         return as_dict(self)
 
     @property
     def branch_strings(self) -> list[str]:
+        """Return a list of all branch strings for the node."""
         return branch_strings(self, prefix="")
 
     @property
     def child_strings(self) -> list[str]:
+        """Return a list of all child strings for the node."""
         return child_strings(self, prefix="")
 
     def add_child(
         self, which_child: str, qubit_label: Hashable | None = None
     ) -> "TTNode":
+        """Add a child node to the current node.
+
+        Args:
+            which_child (str): The child node to add.
+            qubit_label (Hashable): The qubit label.
+
+        Returns:
+            TTNode: self with the child added.
+        """
         return add_child(self, which_child, qubit_label)
 
 
 def add_child(parent, which_child: str, qubit_label: Hashable | None = None) -> TTNode:
     """Add a child node to a parent node.
+
     Args:
         parent (TTNode): The parent node.
         which_child (str): The child node to add.
         qubit_label (Hashable): The qubit label.
+
     Returns:
         TTNode: The parent node with the child added.
     """
@@ -62,8 +95,10 @@ def add_child(parent, which_child: str, qubit_label: Hashable | None = None) -> 
 
 def as_dict(node: TTNode) -> dict[str, dict]:
     """Create a dictionary of children for a node.
+
     Args:
         node (TTNode): The node to convert to a dictionary.
+
     Returns:
         dict[str, dict]: A nested dictionary of children for the node.
     """
@@ -79,9 +114,11 @@ def as_dict(node: TTNode) -> dict[str, dict]:
 
 def child_strings(node: TTNode, prefix: str = "") -> list[str]:
     """Create a list of all child strings for a node.
+
     Args:
         node (TTNode): The node to convert to a list of strings.
         prefix (str): The prefix for the string.
+
     Returns:
         list[str]: A list of all child strings for the node.
     """
@@ -96,9 +133,11 @@ def child_strings(node: TTNode, prefix: str = "") -> list[str]:
 
 def branch_strings(node: TTNode, prefix: str = "") -> set[str]:
     """Create a set of all branch strings for a node.
+
     Args:
         node (TTNode): The node to convert to a set of strings.
         prefix (str): The prefix for the string.
+
     Returns:
         set[str]: A set of all branch strings for the node.
     """
@@ -117,13 +156,15 @@ def branch_strings(node: TTNode, prefix: str = "") -> set[str]:
 
 def node_sorter(label: str) -> int:
     """This is used to keep the ordring of encodings consistent.
+
     Args:
         label (str): The label to sort.
+
     Returns:
         int: Integer label to sort by.
     """
     logger.debug("Sorting node %s", label)
-    
+
     if label == "":
         return 0
     pauli_dict = {"x": "1", "y": "2", "z": "3"}

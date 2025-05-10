@@ -1,8 +1,7 @@
-import pytest
-import ferrmion
 import numpy as np
 from ferrmion import symplectic_product
 from ferrmion.slow import slow_symplectic_product
+
 
 def test_symplectic_product():
     xyz = np.array([1, 1, 0, 0, 1, 1], dtype=np.bool)
@@ -34,6 +33,7 @@ def test_symplectic_product():
     assert np.all(symplectic_product(yzx, xyz)[1] == np.array([0, 1, 1, 1, 0, 1]))
     assert symplectic_product(xyz, yzx)[0] == 2
     assert np.all(symplectic_product(xyz, yzx)[1] == np.array([0, 1, 1, 1, 0, 1]))
+
 
 def test_slow_symplectic_product():
     xyz = np.array([1, 1, 0, 0, 1, 1], dtype=np.bool)

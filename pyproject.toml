@@ -24,6 +24,24 @@ features = ["pyo3/extension-module"]
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
+    "pre-commit>=3.5.0",
     "pytest>=8.3.5",
     "pytest-benchmark>=4.0.0",
 ]
+
+[tool.ruff]
+exclude = ["docs/", "python/tests/", "python/ferrmion/__init__.py"]
+line-length = 88
+indent-width = 4
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9",
+    "F",
+    "D", #pydocstyle (lets add this when we actually write docstrings)
+    "I", #isort
+]
+ignore = ["E741"]

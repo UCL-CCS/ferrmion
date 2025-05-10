@@ -1,4 +1,9 @@
 """Reduced entanglement Ternary Tree."""
+import random
+
+from deap import base
+from deap import creator
+from deap import tools
 
 from ferrmion.ternary_tree import TernaryTree
 from ferrmion.ternary_tree_node import TTNode

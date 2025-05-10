@@ -638,6 +638,39 @@ wheels = [
 ]
 
 [[package]]
+name = "deap"
+version = "1.4.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "numpy", version = "2.2.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/37/3a3d82ca07e9eb2d8cdc1979ff82add35f1b41988c984db53ae582959c13/deap-1.4.3.tar.gz", hash = "sha256:7c97088fb05835bdc255bec475cb0e778de2b43e44cbefbf2bcd655aeec865fd", size = 1072325 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d3/5f/3c7910097a5727f788f47c84d25d7782c7bafb595340ba586fd7d61fee52/deap-1.4.3-cp310-cp310-macosx_13_0_x86_64.whl", hash = "sha256:05be2be3a3f2922b83143c755b58e64d1795be7e35f962ad925e61f1eb498f15", size = 104484 },
+    { url = "https://files.pythonhosted.org/packages/c3/40/fdbdfe1142779dfc46e96e62b94f31f0fc78b54327da13c9d2ce373e77ef/deap-1.4.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3b8435f8e4400da6a69fecf4ffc93ac38d5a0439982cf7132168a052ab93800e", size = 135394 },
+    { url = "https://files.pythonhosted.org/packages/c0/3f/f7eb41c95eab49d4c6bbd347df3f19a91f64e6b684623fc40baa9fa1c55e/deap-1.4.3-cp310-cp310-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:433ff172be4eb41c45592c6705e8fdb2413b709ced874407b7a52d56ed55ae5f", size = 135566 },
+    { url = "https://files.pythonhosted.org/packages/b4/27/9eca548d25e412f3198396ed0d0d26d3d78cbc429f8e2672227b6c913604/deap-1.4.3-cp310-cp310-win_amd64.whl", hash = "sha256:ba65ca9c84b79c48a34cc8411f6de03bde6852b484a36ec9c7561675a514861a", size = 109719 },
+    { url = "https://files.pythonhosted.org/packages/6d/89/48a1f7b94a754d91634183c5a88b76a461620dc9c3fceb0abb3b6badbc3b/deap-1.4.3-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:4a9a940104b5b153e6bf010664882ba6994baf2c9c3f14f4ff515383e1fb16ad", size = 111429 },
+    { url = "https://files.pythonhosted.org/packages/10/f0/f3e51e16effc8518340288add53ed81659257fd48ad10838241577646c16/deap-1.4.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3ecfd57c96736c15edf2999b2fc357a4834fcefbfa59eba86646a48712cd6818", size = 135407 },
+    { url = "https://files.pythonhosted.org/packages/e6/7c/f7fb20f2fbbae6bd247b4621341cd0aaafb55e379115d57b4e88b21aec08/deap-1.4.3-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:624562222365d8546c65878a028573151916e606f419bd45e0bd653c79435cb9", size = 135605 },
+    { url = "https://files.pythonhosted.org/packages/b2/98/537dadfab160eb7c39da979f52018b6d416e1d8fc86895cf5638e4538a12/deap-1.4.3-cp311-cp311-win_amd64.whl", hash = "sha256:1b00a3cbd61da09560abccf86a513f33ade55b22b708f14cb54f3a36a4b343a4", size = 109716 },
+    { url = "https://files.pythonhosted.org/packages/cd/11/04eb0940138f07a4241bb548e10671adc5ab5f27439fd505464f603c093d/deap-1.4.3-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:42dc370be0bf315c85da16afcea49eae4d1065a23c2ebee07831e5c635a6af0b", size = 111608 },
+    { url = "https://files.pythonhosted.org/packages/d8/e1/f55c181ae31595715b550e7b80d7b52ff81ac3aa4769d26625aaa1f10c30/deap-1.4.3-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3128ef0b394c9026be7bf532f1e4e2527581af7bba19dabc30e91a42bc480114", size = 135782 },
+    { url = "https://files.pythonhosted.org/packages/b0/34/cba79381bccf50a24294c6a74e397b1c0163f347cf0d402bce7e83484358/deap-1.4.3-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c34f5d132ac23f7554c3a71b6e9c0c402505c0e0b3bcacabd211ddc6283043b8", size = 135963 },
+    { url = "https://files.pythonhosted.org/packages/2e/61/eb6508d90c4b250ae9cfea91849e3d4415ceff459f85310b7365077218a1/deap-1.4.3-cp312-cp312-win_amd64.whl", hash = "sha256:e0bd83ad16ca8a467e9e9cbe814e2361f2bb80f6f10735e3c562945a924ff270", size = 109791 },
+    { url = "https://files.pythonhosted.org/packages/f1/d0/768fd1a9f9bc026574b8796bfb2e26913e7ce386db1de76008e00ba108da/deap-1.4.3-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:7358b56bd921897304f0adafe57363628807c10b8ad2e6b9e9d104c26fcb47b8", size = 111291 },
+    { url = "https://files.pythonhosted.org/packages/c4/49/e5bc5231b0753b4b79df321f9a9013fad98066daf6bcc17ce5244b2cbd58/deap-1.4.3-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8451c9856bf717dae31f8ef282f15f8230ecf8589fea2b1bc845ac178747645b", size = 135736 },
+    { url = "https://files.pythonhosted.org/packages/7d/fe/fc9d6426e268036de4740d046bb53430032fef58ea1a4affd07cf5eae642/deap-1.4.3-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7b56cc88b7129332796489eb42f12f1a450ae6112722158a17b5a39c20d72ceb", size = 135908 },
+    { url = "https://files.pythonhosted.org/packages/9a/69/053e5e900a47280b4aaabed4af5fea522ed0c6badb854581050c614582d4/deap-1.4.3-cp313-cp313-win_amd64.whl", hash = "sha256:265fea2c4bc8b93871444721e4a4d96476ac2f5ff7a704140fa9be8112240d8d", size = 109791 },
+    { url = "https://files.pythonhosted.org/packages/dc/db/c98d848fdb9a86c8ec01e378b1c78eab60f38de14674a59f778676044900/deap-1.4.3-cp39-cp39-macosx_13_0_x86_64.whl", hash = "sha256:4c382dedf025d9dc71f502f492acfe372cb0000f9cf47dd7c240a9837ce0d075", size = 104643 },
+    { url = "https://files.pythonhosted.org/packages/51/3b/9d00807c5d7c6f3914c0059b8c2dbe55e38deb000529cebbe186cc8c60cc/deap-1.4.3-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9ff73579914f236426c75f8994bce079643f2378720f7f9976f816cf60844991", size = 135208 },
+    { url = "https://files.pythonhosted.org/packages/57/f5/baa17edd6ba89bc4eed959bec0ff6697f36f7b57e01e19ec963830c62d9b/deap-1.4.3-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1bfe194ba502676c15394f166b7d4ca2f2636fd1bdcf793f3bf08fa9bb62ef05", size = 135430 },
+    { url = "https://files.pythonhosted.org/packages/6c/b0/2c489532f246881277d1253aaa322af60215e4edf6f03d0475241c18f137/deap-1.4.3-cp39-cp39-win_amd64.whl", hash = "sha256:8cc997ab19e73d2a9cc38f321a97d8e7be7f2998f7a70f3ca175d72fb7d7d2bd", size = 110477 },
+]
+
+[[package]]
 name = "debugpy"
 version = "1.8.14"
 source = { registry = "https://pypi.org/simple" }
@@ -758,6 +791,7 @@ name = "ferrmion"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "deap" },
     { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "numpy", version = "2.2.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -777,6 +811,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "deap", specifier = ">=1.4.3" },
     { name = "numpy", specifier = ">=1.24.4" },
     { name = "openfermion", specifier = ">=0.11.0" },
     { name = "pydantic", specifier = ">=2.10.6" },

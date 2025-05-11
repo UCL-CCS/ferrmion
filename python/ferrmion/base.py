@@ -22,6 +22,27 @@ logger = logging.getLogger(__name__)
 class FermionQubitEncoding(ABC):
     """Fermion Encodings for the Electronic Structure Hamiltonian in symplectic form.
 
+    Attributes:
+        one_e_coeffs (np.ndarray): One electron coefficients.
+        two_e_coeffs (np.ndarray): Two electron coefficients.
+        vaccum_state (np.ndarray | None): The vaccum state of the encoding.
+        modes (set[int]): A set of modes.
+        n_qubits (int): The number of qubits.
+
+    Methods:
+        one_e_coeffs: Get or set the one electron coefficients.
+        two_e_coeffs: Get or set the two electron coefficients.
+        vaccum_state: Get or set the vaccum state.
+        default_mode_op_map: Get the default mode operator map.
+        _build_symplectic_matrix: Build a symplectic matrix representing terms for each operator in the Hamiltonian.
+        hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
+        _symplectic_to_pauli: Convert a symplectic matrix to a Pauli string.
+        _pauli_to_symplectic: Convert a Pauli string to a symplectic matrix.
+        _edge_operator_map: Build a map of operators in the full hamiltonian to their constituent majoranas.
+        fill_template: Fill a template with Hamiltonian coefficients.
+        to_symplectic_hamiltonian: Output the hamiltonian in symplectic form.
+        to_qubit_hamiltonian: Create qubit representation Hamiltonian.
+
     NOTE: A 'Y' pauli operator is mapped to -iXY so a (0+n)**3 term is needed.
     """
 
@@ -324,7 +345,7 @@ class FermionQubitEncoding(ABC):
         return product_ipowers, product_map
 
     def fill_template(self, mode_op_map: dict) -> dict:
-        """Fill the template with the coefficients.
+        """Fill a template with Hamiltonian coefficients.
 
         Args:
             mode_op_map (dict): A dictionary mapping the mode indices to their corresponding majorana operator indices.

@@ -7,7 +7,7 @@ build:
   os: "ubuntu-20.04"
   tools:
     python: "3.13"
-    rust: "1.84"
+    rust: "1.82"
 
 python:
   install:

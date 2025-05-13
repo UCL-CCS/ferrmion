@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from functools import cached_property
 
 import numpy as np
+from numpy.typing import NDArray
 
 from ferrmion import hartree_fock_state, symplectic_product
 
@@ -23,9 +24,9 @@ class FermionQubitEncoding(ABC):
     """Fermion Encodings for the Electronic Structure Hamiltonian in symplectic form.
 
     Attributes:
-        one_e_coeffs (np.ndarray): One electron coefficients.
-        two_e_coeffs (np.ndarray): Two electron coefficients.
-        vaccum_state (np.ndarray | None): The vaccum state of the encoding.
+        one_e_coeffs (NDArray): One electron coefficients.
+        two_e_coeffs (NDArray): Two electron coefficients.
+        vaccum_state (NDArray | None): The vaccum state of the encoding.
         modes (set[int]): A set of modes.
         n_qubits (int): The number of qubits.
 
@@ -48,19 +49,19 @@ class FermionQubitEncoding(ABC):
 
     def __init__(
         self,
-        one_e_coeffs: np.ndarray,
-        two_e_coeffs: np.ndarray,
-        vaccum_state: np.ndarray | None = None,
+        one_e_coeffs: NDArray,
+        two_e_coeffs: NDArray,
+        vaccum_state: NDArray | None = None,
     ):
         """Initialise encoding.
 
         Args:
-            one_e_coeffs (np.ndarray): One electron coefficients.
-            two_e_coeffs (np.ndarray): Two electron coefficients.
-            vaccum_state (np.ndarray | None): The vaccum state of the encoding.
+            one_e_coeffs (NDArray): One electron coefficients.
+            two_e_coeffs (NDArray): Two electron coefficients.
+            vaccum_state (NDArray | None): The vaccum state of the encoding.
         """
-        self.one_e_coeffs: np.ndarray = one_e_coeffs
-        self.two_e_coeffs: np.ndarray = two_e_coeffs
+        self.one_e_coeffs: NDArray = one_e_coeffs
+        self.two_e_coeffs: NDArray = two_e_coeffs
         self.vaccum_state = vaccum_state
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
 
@@ -80,7 +81,7 @@ class FermionQubitEncoding(ABC):
         """Set the one electron coefficients.
 
         Args:
-            coefficients (np.ndarray): The one electron coefficients.
+            coefficients (NDArray): The one electron coefficients.
         """
         logger.debug("Setting one electron coefficients as %s", coefficients)
         size_valid = np.all(
@@ -101,7 +102,7 @@ class FermionQubitEncoding(ABC):
         """Set the two electron coefficients.
 
         Args:
-            coefficients (np.ndarray): The two electron coefficients.
+            coefficients (NDArray): The two electron coefficients.
         """
         logger.debug("Setting two electron coefficients as %s", coefficients)
         size_valid = np.all(
@@ -118,11 +119,11 @@ class FermionQubitEncoding(ABC):
         return self._vaccum_state
 
     @vaccum_state.setter
-    def vaccum_state(self, state: np.ndarray):
+    def vaccum_state(self, state: NDArray):
         """Validate and set the vaccum state.
 
         Args:
-            state (np.ndarray): The vaccum state.
+            state (NDArray): The vaccum state.
         """
         logger.debug("Setting vaccum state as %s", state)
         error_string = []
@@ -148,12 +149,12 @@ class FermionQubitEncoding(ABC):
     @abstractmethod
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[np.ndarray[np.bool], np.ndarray[np.bool]]:
+    ) -> tuple[NDArray[np.number], NDArray[np.bool]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
     def hartree_fock_state(
-        self, fermionic_hf_state: np.ndarray, mode_op_map: dict | None = None
+        self, fermionic_hf_state: NDArray[np.bool], mode_op_map: dict | None = None
     ):
         """Find the Hartree-Fock state of a majorana string encoding.
 
@@ -162,11 +163,11 @@ class FermionQubitEncoding(ABC):
         The global phase so that the first component state has 0 phase.
 
         Args:
-            fermionic_hf_state (np.ndarray[int]): An array of mode occupations.
+            fermionic_hf_state (NDArray[int]): An array of mode occupations.
             mode_op_map (dict[int, int]): A dictionary mapping modes to sets of majorana strings i->(j,j+1).
 
         Returns:
-            np.ndarray: The Hartree-Fock ground state in computational basis.
+            NDArray: The Hartree-Fock ground state in computational basis.
         """
         if mode_op_map is None:
             mode_op_map = self.default_mode_op_map
@@ -179,16 +180,16 @@ class FermionQubitEncoding(ABC):
         )
 
     @staticmethod
-    def _symplectic_to_pauli(symplectic: np.ndarray) -> str:
+    def _symplectic_to_pauli(symplectic: NDArray) -> tuple[int, str]:
         """Convert a symplectic matrix to a Pauli string.
 
         Args:
-            symplectic (np.ndarray): A symplectic vector.
+            symplectic (NDArray): A symplectic vector.
         """
         return symplectic_to_pauli(symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(pauli: str) -> tuple[int, np.ndarray[np.uint8, np.uint8]]:
+    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.uint8, np.uint8]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:
@@ -376,8 +377,8 @@ class FermionQubitEncoding(ABC):
         return total_ham
 
     def to_symplectic_hamiltonian(
-        self, mode_op_map: dict = None
-    ) -> tuple[list[complex], np.ndarray]:
+        self, mode_op_map: dict | None = None
+    ) -> tuple[list[complex], NDArray]:
         """Output the hamiltonian in symplectic form.
 
         Remember, in symplectic form representation of XZ is literal.
@@ -387,7 +388,7 @@ class FermionQubitEncoding(ABC):
             mode_op_map (dict): A dictionary mapping the mode indices to their corresponding majorana operator indices.
 
         Returns:
-            tuple[list[complex], np.ndarray]: A tuple of coefficients and symplectic terms.
+            tuple[list[complex], NDArray]: A tuple of coefficients and symplectic terms.
         """
         logger.debug("Creating symplectic Hamiltonian")
         if mode_op_map is None:
@@ -412,7 +413,7 @@ class FermionQubitEncoding(ABC):
         terms = np.vstack(tuple(terms))
         return coeffs, terms
 
-    def to_qubit_hamiltonian(self, mode_op_map: dict = None) -> dict[str, float]:
+    def to_qubit_hamiltonian(self, mode_op_map: dict | None = None) -> dict[str, float]:
         """Create qubit representation Hamiltonian.
 
         Args:
@@ -514,16 +515,16 @@ def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
     return edge_map, weights
 
 
-def two_operator_product(creation: tuple[bool, bool], left, right) -> np.ndarray:
+def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
     """Calculate the product of two operators in symplectic form.
 
     Args:
         creation (tuple[bool, bool]): A tuple of two booleans indicating if the operators are creation operators.
-        left (np.ndarray): The left operator in symplectic form.
-        right (np.ndarray): The right operator in symplectic form.
+        left (NDArray): The left operator in symplectic form.
+        right (NDArray): The right operator in symplectic form.
 
     Returns:
-        np.ndarray: The product of the two operators in symplectic form.
+        NDArray: The product of the two operators in symplectic form.
 
     Example:
         >>> left = np.array([[1, 0], [0, 1]])

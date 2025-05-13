@@ -24,6 +24,7 @@ features = ["pyo3/extension-module"]
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
+    "mypy>=1.14.1",
     "pre-commit>=3.5.0",
     "pytest>=8.3.5",
     "pytest-benchmark>=4.0.0",

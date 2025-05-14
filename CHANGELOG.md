@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `hartree_fock_state` function in base encoding
 - Rust functions for `symplectic_product` and `hartree_fock_state`
 - `.pre-commit-config.yaml`
+- Sphinx docs set up in `docs/source/` using autodoc, myst with `.readthedocs.yaml` for hosting.
 
 ### Removed
 

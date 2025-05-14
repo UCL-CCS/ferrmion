@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ferrmion"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -29,6 +29,7 @@ dev = [
     "pytest-benchmark>=4.0.0",
 ]
 docs = [
+    "myst-parser>=4.0.1",
     "sphinx>=7.1.2",
     "sphinx-rtd-theme>=3.0.2",
 ]

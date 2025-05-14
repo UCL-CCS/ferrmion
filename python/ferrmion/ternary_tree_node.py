@@ -49,7 +49,7 @@ class TTNode:
         return as_dict(self)
 
     @property
-    def branch_strings(self) -> list[str]:
+    def branch_strings(self) -> set[str]:
         """Return a list of all branch strings for the node."""
         return branch_strings(self, prefix="")
 

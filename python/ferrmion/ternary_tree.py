@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+from numpy.typing import NDArray
 
 from .base import FermionQubitEncoding
 from .ternary_tree_node import TTNode, node_sorter
@@ -30,16 +31,16 @@ class TernaryTree(FermionQubitEncoding):
 
     def __init__(
         self,
-        one_e_coeffs: np.ndarray,
-        two_e_coeffs: np.ndarray,
+        one_e_coeffs: NDArray,
+        two_e_coeffs: NDArray,
         root_node: TTNode = TTNode(),
         enumeration_scheme: dict[str, tuple[int, int]] | None = None,
     ):
         """Initialise a ternary tree.
 
         Args:
-            one_e_coeffs (np.ndarray): The one-electron coefficients.
-            two_e_coeffs (np.ndarray): The two-electron coefficients.
+            one_e_coeffs (NDArray): The one-electron coefficients.
+            two_e_coeffs (NDArray): The two-electron coefficients.
             qubits (set[Qubit]): The qubits.
             root_node (TTNode): The root node of the tree.
             enumeration_scheme (dict[str, tuple[int, int]]): The enumeration scheme.
@@ -164,12 +165,12 @@ class TernaryTree(FermionQubitEncoding):
 
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[np.ndarray[np.bool], np.ndarray[np.bool]]:
+    ) -> tuple[NDArray[np.bool], NDArray[np.bool]]:
         """Build the symplectic matrix for the tree.
 
         Returns:
-            np.ndarray[np.uint8]: Powers of i for each row of the symplectic matrix.
-            np.ndarray[np.uint8]: Symplectic matrix.
+            NDArray[np.uint8]: Powers of i for each row of the symplectic matrix.
+            NDArray[np.uint8]: Symplectic matrix.
         """
         logger.debug("Building symplectic matrix for TernaryTree.")
         # If there isn't one provided, assume the naive one

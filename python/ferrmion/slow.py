@@ -6,18 +6,21 @@ These should be retained for testing backwards compatability.
 import logging
 
 import numpy as np
+from numpy.typing import NDArray
 
 from ferrmion.base import FermionQubitEncoding
 
 logger = logging.getLogger(__name__)
 
 
-def slow_symplectic_product(left, right) -> tuple[int, np.ndarray[np.uint8]]:
+def slow_symplectic_product(
+    left: NDArray[np.bool], right: NDArray[np.bool]
+) -> tuple[int, NDArray[np.bool]]:
     """Calculate the product of two symplectic vectors.
 
     Args:
-        left (np.ndarray): The first symplectic vector.
-        right (np.ndarray): The second symplectic vector.
+        left (NDArray): The first symplectic vector.
+        right (NDArray): The second symplectic vector.
     """
     term = np.bitwise_xor(left, right)
     # print(symplectics[i], symplectics[j], term)
@@ -35,9 +38,9 @@ def slow_symplectic_product(left, right) -> tuple[int, np.ndarray[np.uint8]]:
 
 def slow_hartree_fock_state(
     encoding: FermionQubitEncoding,
-    fermionic_hf_state: np.ndarray,
+    fermionic_hf_state: NDArray,
     mode_op_map: dict[int, int],
-) -> np.ndarray:
+) -> tuple[NDArray[np.number], NDArray[np.bool]]:
     """Find the Hartree-Fock state of a majorana string encoding.
 
     NOTE: This is the python-only version, the main codebase uses a rust rewrite.
@@ -45,11 +48,11 @@ def slow_hartree_fock_state(
 
     Args:
         encoding (FermionQubitEncoding): a Majoprana string encoding.
-        fermionic_hf_state (np.ndarray[int]): An array of mode occupations.
+        fermionic_hf_state (NDArray[int]): An array of mode occupations.
         mode_op_map (dict[int, int]): A dictionary mapping modes to sets of majorana strings i->(j,j+1).
 
     Returns:
-        np.ndarray: The Hartree-Fock ground state in computational basis.
+        NDArray: The Hartree-Fock ground state in computational basis.
     """
     mode_op_map = encoding.default_mode_op_map if mode_op_map is None else mode_op_map
     if len(fermionic_hf_state) != len(mode_op_map):

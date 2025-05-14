@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+from numpy.typing import NDArray
 
 from .base import FermionQubitEncoding
 
@@ -14,8 +15,8 @@ class KNTO(FermionQubitEncoding):
 
     Attributes:
         k (int): The number of modes.
-        one_e_coeffs (np.ndarray): The one-electron coefficients.
-        two_e_coeffs (np.ndarray): The two-electron coefficients.
+        one_e_coeffs (NDArray): The one-electron coefficients.
+        two_e_coeffs (NDArray): The two-electron coefficients.
 
     Methods:
         _build_symplectic_matrix(): Build the symplectic matrix for the k-NTO encoding.
@@ -26,17 +27,17 @@ class KNTO(FermionQubitEncoding):
         """Initialise a k-NTO encoding.
 
         Args:
-            one_e_coeffs (np.ndarray): The one-electron coefficients.
-            two_e_coeffs (np.ndarray): The two-electron coefficients.
+            one_e_coeffs (NDArray): The one-electron coefficients.
+            two_e_coeffs (NDArray): The two-electron coefficients.
         """
         self.k = one_e_coeffs.shape[0] - 1
         super().__init__(one_e_coeffs, two_e_coeffs)
 
-    def _build_symplectic_matrix(self) -> np.ndarray:
+    def _build_symplectic_matrix(self) -> tuple[NDArray[np.uint8], NDArray[np.bool]]:
         """Build the symplectic matrix for the k-NTO encoding.
 
         Returns:
-            np.ndarray: The symplectic matrix.
+            NDArray: The symplectic matrix.
         """
         return knto_symplectic_matrix(self.one_e_coeffs.shape[0])
 
@@ -49,14 +50,14 @@ class KNTO(FermionQubitEncoding):
         return self.k + 1
 
 
-def knto_symplectic_matrix(n_modes) -> tuple[np.ndarray, np.ndarray]:
+def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool]]:
     """Build a symplectic matrix of majorana operators for the k-NTO encoding.
 
     Args:
         n_modes (int): The number of modes.
 
     Returns:
-        tuple[np.ndarray, np.ndarray]: The y_count of each vector and the symplectic matrix.
+        tuple[NDArray, NDArray]: The y_count of each vector and the symplectic matrix.
     """
     logger.debug(f"Building k-NTO symplectic matrix for {n_modes=}")
     k = n_modes - 1
@@ -87,6 +88,6 @@ def knto_symplectic_matrix(n_modes) -> tuple[np.ndarray, np.ndarray]:
 
     # Y = iXZ
     y_count = np.sum(np.bitwise_and(left, right), axis=1) % 4
-    output = np.hstack((left, right), dtype=np.uint8)
+    output = np.hstack((left, right), dtype=np.bool)
 
     return y_count, output

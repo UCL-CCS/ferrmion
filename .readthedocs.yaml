@@ -19,4 +19,4 @@ build:
         - uv pip install --group docs
     build:
         html:
-          - uv run sphinx-build -T -b html docs/source $READTHEDOCS_OUTPUT/html
+          - uv run sphinx-build -T -b html docs/source/ $READTHEDOCS_OUTPUT/html

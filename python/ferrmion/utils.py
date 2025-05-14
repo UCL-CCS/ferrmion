@@ -202,7 +202,7 @@ def qubit_swap(symplectic, index_pair) -> NDArray[np.uint8]:
     return symplectic
 
 
-def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.int8]]:
+def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.uint]]:
     """Check the Non-trivial Overlap of a symplectic matrix.
 
     Args:
@@ -234,9 +234,9 @@ def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.int8]]:
     )
     all_trivial = i_trivial + same_p_trivial + one_i_trivial
 
-    nto = all_trivial.shape[0] / 2 - all_trivial
+    nto: NDArray[np.uint] = all_trivial.shape[0] / 2 - all_trivial
 
-    satisfied = np.all((nto + np.eye(nto.shape[0])) % 2 == 1)
+    satisfied: np.bool = np.all((nto + np.eye(nto.shape[0])) % 2 == 1)
 
     logger.debug(f"Trivial overlap satisfied: {satisfied}")
     logger.debug(f"Trivial overlap matrix:\n{nto}")

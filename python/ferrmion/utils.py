@@ -202,7 +202,7 @@ def qubit_swap(symplectic, index_pair) -> NDArray[np.uint8]:
     return symplectic
 
 
-def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.integer]]:
+def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.int8]]:
     """Check the Non-trivial Overlap of a symplectic matrix.
 
     Args:

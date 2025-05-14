@@ -189,7 +189,7 @@ class FermionQubitEncoding(ABC):
         return symplectic_to_pauli(symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.uint8, np.uint8]]:
+    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:

@@ -1,11 +1,11 @@
-from ferrmion.ternary_tree import TTNode, TernaryTree
-from ferrmion.utils import symplectic_hash, symplectic_unhash
 import numpy as np
 import pytest
-from openfermion import get_sparse_operator, QubitOperator
+import scipy as sp
+from ferrmion.ternary_tree import TernaryTree, TTNode
+from ferrmion.utils import symplectic_hash, symplectic_unhash
+from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator
 from openfermion.transforms import jordan_wigner
-import scipy as sp
 
 
 @pytest.fixture
@@ -225,7 +225,7 @@ def test_bravyi_kitaev(six_mode_tree):
         "xy": "XYIIII",
         "xxxz": "XXXIZI",
         "xxxy": "XXXIYI",
-        'z': 'ZIIIII',
+        "z": "ZIIIII",
     }
 
     assert tt.n_qubits == len(tt.root.child_strings)
@@ -297,7 +297,8 @@ def test_bravyi_kitaev(six_mode_tree):
 
 def tests_bonsai_paper_tree():
     tt = TernaryTree(
-        np.zeros((11, 11)), np.zeros((11, 11, 11, 11)),
+        np.zeros((11, 11)),
+        np.zeros((11, 11, 11, 11)),
     )
     tt = tt.add_node("x")
     tt = tt.add_node("y")
@@ -416,7 +417,7 @@ def tests_bonsai_paper_tree():
         "yzzy": "YIZIIIIIZIY",
         "zzx": "ZIIZIIIIIXI",
         "zy": "ZIIYIIIIIII",
-        'zzz': 'ZIIZIIIIIZI',
+        "zzz": "ZIIZIIIIIZI",
     }
 
     assert tt.n_qubits == len(tt.root.child_strings)
@@ -508,5 +509,8 @@ def test_eigenvalues_across_encodings(six_mode_tree):
 
     assert np.allclose(sorted(diag), sorted(diag2))
 
+
 def test_default_mode_op_map(six_mode_tree):
-    assert six_mode_tree.default_mode_op_map == {i:i for i in range(six_mode_tree.n_qubits)}
+    assert six_mode_tree.default_mode_op_map == {
+        i: i for i in range(six_mode_tree.n_qubits)
+    }

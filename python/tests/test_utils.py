@@ -4,9 +4,9 @@ import numpy as np
 from ferrmion.slow import slow_symplectic_product
 from ferrmion.utils import (
     icount_to_sign,
-    symplectic_to_pauli,
     pauli_to_symplectic,
     symplectic_hash,
+    symplectic_to_pauli,
     symplectic_unhash,
 )
 

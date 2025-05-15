@@ -1,27 +1,51 @@
-"""Utility functions"""
+"""Utility functions."""
 
-import numpy as np
 import datetime
 import json
 import logging
 import logging.config
+
+import numpy as np
+from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
 
 def icount_to_sign(icount: int) -> np.complex64:
     """Convert a power of i to a complex value.
-    
+
     Args:
         icount (int): The power of i.
+
+    Returns:
+        np.complex64: The complex value.
     """
     vals = {0: 1, 1: 1j, 2: -1, 3: -1j}
     return vals[icount % 4]
 
-def symplectic_hash(symp: np.ndarray[np.bool]) -> bytes:
+
+def symplectic_hash(symp: NDArray[np.bool]) -> bytes:
+    """Convert a symplectic vector into a hashable form.
+
+    Args:
+        symp (NDArray[np.bool]): The symplectic vector.
+
+    Returns:
+        bytes: The hashed form of the symplectic vector.
+    """
     return np.packbits(symp).tobytes()
 
-def symplectic_unhash(symp: bytes, length: int) -> np.ndarray[np.bool]:
+
+def symplectic_unhash(symp: bytes, length: int) -> NDArray[np.bool]:
+    """Convert a hashed symplectic vector back to its original form.
+
+    Args:
+        symp (bytes): The hashed form of the symplectic vector.
+        length (int): The length of the original symplectic vector.
+
+    Returns:
+        NDArray[np.bool]: The original symplectic vector.
+    """
     unpacked = np.unpackbits(np.frombuffer(symp, dtype=np.uint8))
     if len(unpacked) < length:
         unpacked = np.pad(
@@ -30,14 +54,17 @@ def symplectic_unhash(symp: bytes, length: int) -> np.ndarray[np.bool]:
     return np.array(unpacked[:length], dtype=np.bool)
 
 
-def symplectic_to_pauli(symplectic: np.ndarray) -> str:
-    """Convert a symplectic vector into a Pauli String
+def symplectic_to_pauli(symplectic: NDArray[np.bool]) -> tuple[int, str]:
+    """Convert a symplectic vector into a Pauli String.
+
+    Args:
+        symplectic (NDArray[np.uint8]) : symplectic vector [X terms, Y terms]
+
+    Returns:
+        tuple[int, str]: The imaginary cofactor and Pauli string.
 
     NOTE: symplectic XZ does represent XZ and not Y
         So Y=-iXZ needs an imaginary cofactor
-
-    Args:
-        symplectic [np.ndarray[np.uint8]] : symplectic vector [X terms, Y terms]
     """
     half_length = len(symplectic) // 2
     xlist = ["X" if line == 1 else "" for line in symplectic[:half_length]]
@@ -51,11 +78,14 @@ def symplectic_to_pauli(symplectic: np.ndarray) -> str:
     return ipower, pauli_string
 
 
-def pauli_to_symplectic(pauli: str) -> tuple[int, np.ndarray[np.uint8, np.uint8]]:
+def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool]]:
     """Convert a Pauli operator to symplectic form.
-     
+
     Args:
         pauli (str): The Pauli operator string.
+
+    Returns:
+        tuple[int, NDArray[np.uint8, np.uint8]]: The imaginary cofactor and symplectic matrix.
     """
     pauli_array = np.array(list(pauli))
     x_map = {
@@ -73,16 +103,19 @@ def pauli_to_symplectic(pauli: str) -> tuple[int, np.ndarray[np.uint8, np.uint8]
     # each y is turned into a iY=XZ
     y_count = np.count_nonzero(pauli_array == "Y") % 4
     # logger.debug(f{y_count=})
-    x_array = np.array([x_map[term] for term in pauli], dtype=np.uint8)
-    z_array = np.array([z_map[term] for term in pauli], dtype=np.uint8)
-    return y_count, np.hstack((x_array, z_array), dtype=np.uint8)
+    x_array = np.array([x_map[term] for term in pauli], dtype=np.bool)
+    z_array = np.array([z_map[term] for term in pauli], dtype=np.bool)
+    return y_count, np.hstack((x_array, z_array), dtype=np.bool)
 
 
-def xz_swap(symplectic) -> np.ndarray[np.uint8]:
+def xz_swap(symplectic) -> NDArray[np.uint8]:
     """Swap X and Z Pauli operators in a symplectic matrix.
-    
+
     Args:
-        symplectic (np.ndarray): The symplectic matrix.
+        symplectic (NDArray): The symplectic matrix.
+
+    Returns:
+        NDArray[np.uint8]: The symplectic matrix with X and Z swapped.
     """
     logger.debug(f"Swapping X and Z in symplectic matrix\n{symplectic=}")
     x_block, z_block = np.hsplit(symplectic, 2)
@@ -98,11 +131,14 @@ def xz_swap(symplectic) -> np.ndarray[np.uint8]:
     return np.hstack((new_x_block, new_z_block))
 
 
-def xy_swap(symplectic) -> np.ndarray[np.uint8]:
-    """Swap X and Z Pauli operators in a symplectic matrix.
-    
+def xy_swap(symplectic) -> NDArray[np.uint8]:
+    """Swap X and Y Pauli operators in a symplectic matrix.
+
     Args:
-        symplectic (np.ndarray): The symplectic matrix.
+        symplectic (NDArray): The symplectic matrix.
+
+    Returns:
+        NDArray[np.uint8]: The symplectic matrix with X and Y swapped.
     """
     logger.debug(f"Swapping X and Y in symplectic matrix\n{symplectic=}")
     x_block, z_block = np.hsplit(symplectic, 2)
@@ -119,11 +155,14 @@ def xy_swap(symplectic) -> np.ndarray[np.uint8]:
     return np.hstack((new_x_block, new_z_block))
 
 
-def yz_swap(symplectic) -> np.ndarray[np.uint8]:
-    """Swap X and Z Pauli operators in a symplectic matrix.
-    
+def yz_swap(symplectic) -> NDArray[np.uint8]:
+    """Swap Y and Z Pauli operators in a symplectic matrix.
+
     Args:
-        symplectic (np.ndarray): The symplectic matrix.
+        symplectic (NDArray): The symplectic matrix.
+
+    Returns:
+        NDArray[np.uint8]: The symplectic matrix with Y and Z swapped.
     """
     x_block, z_block = np.hsplit(symplectic, 2)
     is_y = np.where(x_block + z_block == 2)
@@ -136,15 +175,18 @@ def yz_swap(symplectic) -> np.ndarray[np.uint8]:
     new_z_block = np.copy(z_block)
     new_z_block[is_y] = 1
     new_z_block[is_z] = 1
-    return np.hstack((new_x_block, new_z_block)) 
+    return np.hstack((new_x_block, new_z_block))
 
 
-def qubit_swap(symplectic, index_pair) -> np.ndarray[np.uint8]:
+def qubit_swap(symplectic, index_pair) -> NDArray[np.uint8]:
     """Swap the position of two qubits in a symplectic matrix.
-    
+
     Args:
-        symplectic (np.ndarray): The symplectic matrix.
+        symplectic (NDArray): The symplectic matrix.
         index_pair (tuple[int]): The indices of the qubits to swap.
+
+    Returns:
+        NDArray[np.uint8]: The symplectic matrix with the qubits swapped.
     """
     logger.debug(f"Swapping qubits {index_pair} in symplectic matrix\n{symplectic=}")
     half_length = symplectic.shape[1] // 2
@@ -160,11 +202,14 @@ def qubit_swap(symplectic, index_pair) -> np.ndarray[np.uint8]:
     return symplectic
 
 
-def check_trivial_overlap(symplectic) -> tuple[bool, np.ndarray[int]]:
+def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.uint]]:
     """Check the Non-trivial Overlap of a symplectic matrix.
-    
+
     Args:
-        symplectic (np.ndarray): The symplectic matrix.
+        symplectic (NDArray): The symplectic matrix.
+
+    Returns:
+        tuple[bool, NDArray[int]]: A boolean indicating if the overlap is trivial and the overlap matrix.
     """
     logger.debug(f"Checking trivial overlap\n{symplectic=}")
     x_length = int(len(symplectic[0]) / 2)
@@ -189,22 +234,25 @@ def check_trivial_overlap(symplectic) -> tuple[bool, np.ndarray[int]]:
     )
     all_trivial = i_trivial + same_p_trivial + one_i_trivial
 
-    nto = all_trivial.shape[0] / 2 - all_trivial
+    nto: NDArray[np.uint] = all_trivial.shape[0] / 2 - all_trivial
 
-    satisfied = np.all((nto + np.eye(nto.shape[0])) % 2 == 1)
+    satisfied: np.bool = np.all((nto + np.eye(nto.shape[0])) % 2 == 1)
 
     logger.debug(f"Trivial overlap satisfied: {satisfied}")
     logger.debug(f"Trivial overlap matrix:\n{nto}")
     return satisfied, nto
 
 
-def find_pauli_weight(symplectic_hamiltonian) -> float:
+def find_pauli_weight(symplectic_hamiltonian: NDArray[np.bool]) -> np.floating:
     """Find the average Pauli weight of a symplectic hamiltonian.
-    
+
     Args:
-        symplectic_hamiltonian (np.ndarray): The symplectic Hamiltonian.
+        symplectic_hamiltonian (NDArray): The symplectic Hamiltonian.
+
+    Returns:
+        float: The average Pauli weight.
     """
-    logger.debug(f"Finding Pauli weight of symplectic Hamiltonian")
+    logger.debug("Finding Pauli weight of symplectic Hamiltonian")
     half_length = symplectic_hamiltonian.shape[-1] // 2
     has_pauli = np.bitwise_or(
         symplectic_hamiltonian[:, :half_length], symplectic_hamiltonian[:, half_length:]
@@ -212,8 +260,16 @@ def find_pauli_weight(symplectic_hamiltonian) -> float:
     return np.mean(np.sum(has_pauli, axis=1))
 
 
-def save_pauli_ham(pauli_hamiltonian: dict[str, float], filename: str = None) -> None:
-    """Save the Pauli Hamiltonian to a JSON file."""
+def save_pauli_ham(
+    pauli_hamiltonian: dict[str, float], filename: str | None = None
+) -> None:
+    """Save the Pauli Hamiltonian to a JSON file.
+
+    Args:
+        pauli_hamiltonian (dict[str, float]): The Pauli Hamiltonian.
+        filename (str, optional): The filename to save the Hamiltonian to. Defaults to None.
+    """
+    logger.debug("Saving Pauli Hamiltonian to JSON file")
     if filename is None:
         filename = "pauli_hamiltonian_" + str(datetime.datetime.now()) + ".json"
 
@@ -228,7 +284,9 @@ def setup_logs() -> None:
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
-            "standard": {"format": "%(asctime)s: %(name)s: %(lineno)d: %(levelname)s: %(message)s"},
+            "standard": {
+                "format": "%(asctime)s: %(name)s: %(lineno)d: %(levelname)s: %(message)s"
+            },
         },
         "handlers": {
             "file_handler": {

@@ -1,6 +1,7 @@
 """Ternary Tree fermion to qubit mappings."""
 
 import logging
+from typing import Hashable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -48,6 +49,8 @@ class TernaryTree(FermionQubitEncoding):
         self.n_qubits = one_e_coeffs.shape[1]
         self.root = root_node
         self.root.label = ""
+        if enumeration_scheme is None:
+            enumeration_scheme = self.default_enumeration_scheme()
         self.enumeration_scheme = enumeration_scheme
         vaccum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
         super().__init__(one_e_coeffs, two_e_coeffs, vaccum_state)
@@ -172,7 +175,7 @@ class TernaryTree(FermionQubitEncoding):
         return branch_operator_map
 
     @property
-    def string_pairs(self) -> dict[str, tuple[str, str]]:
+    def string_pairs(self) -> dict[Hashable, tuple[str, str]]:
         """Return the pair of branch strings which correspond to each node.
 
         Returns:
@@ -210,7 +213,7 @@ class TernaryTree(FermionQubitEncoding):
 
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.bool], NDArray[np.bool]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[np.bool]]:
         """Build the symplectic matrix for the tree.
 
         Returns:

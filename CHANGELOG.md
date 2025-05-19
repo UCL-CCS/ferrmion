@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust functions for `symplectic_product` and `hartree_fock_state`
 - `.pre-commit-config.yaml`
 - Sphinx docs set up in `docs/source/` using autodoc, myst with `.readthedocs.yaml` for hosting.
+- `optimize` section
+- `lambda_plus_mu` evolutionary algorithm for approximate enumeration optimization.
 
 ### Removed
 

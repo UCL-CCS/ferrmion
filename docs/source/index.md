@@ -10,9 +10,11 @@
 :maxdepth: 2
 
 encoding
+optimize
 devices
 utils
 slow
+development
 ```
 
 # Indices and tables

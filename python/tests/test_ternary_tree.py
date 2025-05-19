@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 import scipy as sp
-from ferrmion.ternary_tree import TernaryTree, TTNode
+from ferrmion.encoding.encoding.ternary_tree import TernaryTree, TTNode
 from ferrmion.utils import symplectic_hash, symplectic_unhash
 from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator

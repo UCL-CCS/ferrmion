@@ -1,7 +1,8 @@
 """Tests for functions in the optimize submodule."""
 
 from ferrmion.optimize.rett import reduced_entanglement_tree
-from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, lambda_plus_mu
+from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared
+from ferrmion.encoding import TernaryTree
 
 import numpy as np
 from pytest import fixture
@@ -39,3 +40,15 @@ def test_distance_squared(n2mi):
     assert distance_squared(n2mi , [*range(n2mi.shape[0]-1)]) == [np.inf]
     assert distance_squared(n2mi , [*range(n2mi.shape[0]+1)]) == [np.inf]
     assert distance_squared(n2mi , [*range(1, n2mi.shape[0]+1)]) == [np.inf]
+
+
+def test_rett(n2mi):
+    np.random.seed(1017)
+    n_modes = n2mi.shape[0]
+    tree = TernaryTree(
+        np.random.random((n_modes, n_modes)),
+        np.random.random((n_modes, n_modes, n_modes, n_modes))
+                       )
+    rett = reduced_entanglement_tree(tree, n2mi)
+    print(rett.branch_operator_map)
+    assert rett.branch_operator_map == {'zzzzx': 'ZZZZXIIIII', 'zzzx': 'ZZZXIIIIII', 'zzzzzzx': 'ZZZZZZXIII', 'zzx': 'ZZXIIIIIII', 'zzy': 'ZZYIIIIIII', 'zzzzzzzzx': 'ZZZZZZZZXI', 'zzzzy': 'ZZZZYIIIII', 'zzzzzzzzzy': 'ZZZZZZZZZY', 'y': 'YIIIIIIIII', 'zzzzzzzx': 'ZZZZZZZXII', 'zx': 'ZXIIIIIIII', 'zzzzzzy': 'ZZZZZZYIII', 'zy': 'ZYIIIIIIII', 'zzzy': 'ZZZYIIIIII', 'zzzzzzzzzz': 'ZZZZZZZZZZ', 'zzzzzzzy': 'ZZZZZZZYII', 'zzzzzy': 'ZZZZZYIIII', 'zzzzzzzzzx': 'ZZZZZZZZZX', 'zzzzzx': 'ZZZZZXIIII', 'zzzzzzzzy': 'ZZZZZZZZYI', 'x': 'XIIIIIIIII'}

@@ -1,7 +1,7 @@
 # Base Encoding
 
 ```{eval-rst}
-.. automodule:: ferrmion.base
+.. automodule:: ferrmion.encoding.base
    :members:
    :undoc-members:
    :show-inheritance:
@@ -10,7 +10,7 @@
 # Ternary Tree Encoding
 
 ```{eval-rst}
-.. automodule:: ferrmion.ternary_tree
+.. automodule:: ferrmion.encoding.ternary_tree
    :members:
    :undoc-members:
    :show-inheritance:
@@ -19,7 +19,7 @@
 # Ternary Tree Node
 
 ```{eval-rst}
-.. automodule:: ferrmion.ternary_tree_node
+.. automodule:: ferrmion.encoding.ternary_tree_node
    :members:
    :undoc-members:
    :show-inheritance:

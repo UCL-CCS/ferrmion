@@ -5,10 +5,10 @@ rust functions before importing functions from the python module.
 """
 
 from .ferrmion import hartree_fock_state, symplectic_product
-from .base import FermionQubitEncoding
-from .knto import KNTO, knto_symplectic_matrix
-from .ternary_tree import TernaryTree
-from .ternary_tree_node import TTNode, node_sorter
+from .encoding.base import FermionQubitEncoding
+from .encoding.knto import KNTO, knto_symplectic_matrix
+from .encoding.ternary_tree import TernaryTree
+from .encoding.ternary_tree_node import TTNode, node_sorter
 from .utils import (
     icount_to_sign,
     pauli_to_symplectic,

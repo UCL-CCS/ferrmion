@@ -7,12 +7,14 @@
 
 ```{toctree}
 :caption: 'Contents:'
-:maxdepth: 2
+:maxdepth: 1
 
-encoding
+encode
+optimize
 devices
 utils
 slow
+development
 ```
 
 # Indices and tables

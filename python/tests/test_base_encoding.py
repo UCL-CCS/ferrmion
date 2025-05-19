@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 from ferrmion.slow import slow_hartree_fock_state
-from ferrmion.ternary_tree import TernaryTree
+from ferrmion.encode.ternary_tree import TernaryTree
 
 np.random.seed(1710)
 

@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 
 from ferrmion import hartree_fock_state, symplectic_product
 
-from .utils import (
+from ..utils import (
     icount_to_sign,
     pauli_to_symplectic,
     symplectic_hash,

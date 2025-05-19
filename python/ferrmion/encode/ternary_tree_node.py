@@ -1,7 +1,7 @@
 """Contains the class for ternary tree nodes."""
 
 import logging
-from typing import Hashable, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class TTNode:
 
     Attributes:
         parent (TTNode): The parent node.
-        label (Hashable): The qubit label.
+        label (int | str): The qubit label.
         x (TTNode): The x child node.
         y (TTNode): The y child node.
         z (TTNode): The z child node.
@@ -24,13 +24,13 @@ class TTNode:
     """
 
     def __init__(
-        self, parent: Optional["TTNode"] = None, qubit_label: Hashable | None = None
+        self, parent: Optional["TTNode"] = None, qubit_label: int | str | None = None
     ):
         """Initialise a ternary tree node.
 
         Args:
-            parent (TTNode): The parent node.
-            qubit_label (Hashable): The qubit label.
+            parent (TTNode | None): The parent node.
+            qubit_label (int | str): The qubit label.
         """
         logger.debug(
             f"Creating TTNode with parent {parent} and qubit label {qubit_label}"
@@ -59,13 +59,13 @@ class TTNode:
         return child_strings(self, prefix="")
 
     def add_child(
-        self, which_child: str, qubit_label: Hashable | None = None
+        self, which_child: str, qubit_label: int | str | None = None
     ) -> "TTNode":
         """Add a child node to the current node.
 
         Args:
             which_child (str): The child node to add.
-            qubit_label (Hashable): The qubit label.
+            qubit_label (int | str): The qubit label.
 
         Returns:
             TTNode: self with the child added.
@@ -73,13 +73,13 @@ class TTNode:
         return add_child(self, which_child, qubit_label)
 
 
-def add_child(parent, which_child: str, qubit_label: Hashable | None = None) -> TTNode:
+def add_child(parent, which_child: str, qubit_label: int | str | None = None) -> TTNode:
     """Add a child node to a parent node.
 
     Args:
         parent (TTNode): The parent node.
         which_child (str): The child node to add.
-        qubit_label (Hashable): The qubit label.
+        qubit_label (int | str): The qubit label.
 
     Returns:
         TTNode: The parent node with the child added.

@@ -17,11 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust functions for `symplectic_product` and `hartree_fock_state`
 - `.pre-commit-config.yaml`
 - Sphinx docs set up in `docs/source/` using autodoc, myst with `.readthedocs.yaml` for hosting.
+- `optimize` section
+- `lambda_plus_mu` evolutionary algorithm for approximate enumeration optimization.
+- `reduced_entanglement_tree` optimization added to `ferrmion.optimize`
 
 ### Removed
 
 ### Changed
 - One and Two electron Hamiltonians are first found as templates with terms and coefficient labels, which can then be changed without recalculating terms.
 - Restructured project as a maturin mixed rust/python project.
+- Encodings moved from top level to `ferrmion.encode`
 
 ### Fixed

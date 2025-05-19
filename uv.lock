@@ -376,6 +376,29 @@ wheels = [
 ]
 
 [[package]]
+name = "deap"
+version = "1.4.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/37/3a3d82ca07e9eb2d8cdc1979ff82add35f1b41988c984db53ae582959c13/deap-1.4.3.tar.gz", hash = "sha256:7c97088fb05835bdc255bec475cb0e778de2b43e44cbefbf2bcd655aeec865fd", size = 1072325, upload-time = "2025-05-04T12:26:15.237Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6d/89/48a1f7b94a754d91634183c5a88b76a461620dc9c3fceb0abb3b6badbc3b/deap-1.4.3-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:4a9a940104b5b153e6bf010664882ba6994baf2c9c3f14f4ff515383e1fb16ad", size = 111429, upload-time = "2025-05-04T12:26:18.21Z" },
+    { url = "https://files.pythonhosted.org/packages/10/f0/f3e51e16effc8518340288add53ed81659257fd48ad10838241577646c16/deap-1.4.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3ecfd57c96736c15edf2999b2fc357a4834fcefbfa59eba86646a48712cd6818", size = 135407, upload-time = "2025-05-04T12:30:04.427Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/7c/f7fb20f2fbbae6bd247b4621341cd0aaafb55e379115d57b4e88b21aec08/deap-1.4.3-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:624562222365d8546c65878a028573151916e606f419bd45e0bd653c79435cb9", size = 135605, upload-time = "2025-05-04T12:30:53.437Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/98/537dadfab160eb7c39da979f52018b6d416e1d8fc86895cf5638e4538a12/deap-1.4.3-cp311-cp311-win_amd64.whl", hash = "sha256:1b00a3cbd61da09560abccf86a513f33ade55b22b708f14cb54f3a36a4b343a4", size = 109716, upload-time = "2025-05-04T12:28:47.615Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/11/04eb0940138f07a4241bb548e10671adc5ab5f27439fd505464f603c093d/deap-1.4.3-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:42dc370be0bf315c85da16afcea49eae4d1065a23c2ebee07831e5c635a6af0b", size = 111608, upload-time = "2025-05-04T12:26:26.337Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/e1/f55c181ae31595715b550e7b80d7b52ff81ac3aa4769d26625aaa1f10c30/deap-1.4.3-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3128ef0b394c9026be7bf532f1e4e2527581af7bba19dabc30e91a42bc480114", size = 135782, upload-time = "2025-05-04T12:29:51.143Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/34/cba79381bccf50a24294c6a74e397b1c0163f347cf0d402bce7e83484358/deap-1.4.3-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c34f5d132ac23f7554c3a71b6e9c0c402505c0e0b3bcacabd211ddc6283043b8", size = 135963, upload-time = "2025-05-04T12:31:08.026Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/61/eb6508d90c4b250ae9cfea91849e3d4415ceff459f85310b7365077218a1/deap-1.4.3-cp312-cp312-win_amd64.whl", hash = "sha256:e0bd83ad16ca8a467e9e9cbe814e2361f2bb80f6f10735e3c562945a924ff270", size = 109791, upload-time = "2025-05-04T12:28:27.654Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/d0/768fd1a9f9bc026574b8796bfb2e26913e7ce386db1de76008e00ba108da/deap-1.4.3-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:7358b56bd921897304f0adafe57363628807c10b8ad2e6b9e9d104c26fcb47b8", size = 111291, upload-time = "2025-05-04T12:26:18.846Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/49/e5bc5231b0753b4b79df321f9a9013fad98066daf6bcc17ce5244b2cbd58/deap-1.4.3-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8451c9856bf717dae31f8ef282f15f8230ecf8589fea2b1bc845ac178747645b", size = 135736, upload-time = "2025-05-04T12:30:40.042Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/fe/fc9d6426e268036de4740d046bb53430032fef58ea1a4affd07cf5eae642/deap-1.4.3-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7b56cc88b7129332796489eb42f12f1a450ae6112722158a17b5a39c20d72ceb", size = 135908, upload-time = "2025-05-04T12:31:08.992Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/69/053e5e900a47280b4aaabed4af5fea522ed0c6badb854581050c614582d4/deap-1.4.3-cp313-cp313-win_amd64.whl", hash = "sha256:265fea2c4bc8b93871444721e4a4d96476ac2f5ff7a704140fa9be8112240d8d", size = 109791, upload-time = "2025-05-04T12:28:27.943Z" },
+]
+
+[[package]]
 name = "debugpy"
 version = "1.8.14"
 source = { registry = "https://pypi.org/simple" }
@@ -475,6 +498,7 @@ wheels = [
 name = "ferrmion"
 source = { editable = "." }
 dependencies = [
+    { name = "deap" },
     { name = "numpy" },
     { name = "openfermion" },
     { name = "pydantic" },
@@ -495,6 +519,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "deap", specifier = ">=1.4.3" },
     { name = "numpy", specifier = ">=1.24.4" },
     { name = "openfermion", specifier = ">=0.11.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
@@ -929,7 +954,7 @@ wheels = [
 
 [[package]]
 name = "jupyter-server"
-version = "2.15.0"
+version = "2.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -952,9 +977,9 @@ dependencies = [
     { name = "traitlets" },
     { name = "websocket-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/61/8c/df09d4ab646141f130f9977b32b206ba8615d1969b2eba6a2e84b7f89137/jupyter_server-2.15.0.tar.gz", hash = "sha256:9d446b8697b4f7337a1b7cdcac40778babdd93ba614b6d68ab1c0c918f1c4084", size = 725227, upload-time = "2024-12-20T13:02:42.654Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/41/c8/ba2bbcd758c47f1124c4ca14061e8ce60d9c6fd537faee9534a95f83521a/jupyter_server-2.16.0.tar.gz", hash = "sha256:65d4b44fdf2dcbbdfe0aa1ace4a842d4aaf746a2b7b168134d5aaed35621b7f6", size = 728177, upload-time = "2025-05-12T16:44:46.245Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/a2/89eeaf0bb954a123a909859fa507fa86f96eb61b62dc30667b60dbd5fdaf/jupyter_server-2.15.0-py3-none-any.whl", hash = "sha256:872d989becf83517012ee669f09604aa4a28097c0bd90b2f424310156c2cdae3", size = 385826, upload-time = "2024-12-20T13:02:37.785Z" },
+    { url = "https://files.pythonhosted.org/packages/46/1f/5ebbced977171d09a7b0c08a285ff9a20aafb9c51bde07e52349ff1ddd71/jupyter_server-2.16.0-py3-none-any.whl", hash = "sha256:3d8db5be3bc64403b1c65b400a1d7f4647a5ce743f3b20dbdefe8ddb7b55af9e", size = 386904, upload-time = "2025-05-12T16:44:43.335Z" },
 ]
 
 [[package]]
@@ -2169,11 +2194,11 @@ wheels = [
 
 [[package]]
 name = "setuptools"
-version = "80.4.0"
+version = "80.7.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/95/32/0cc40fe41fd2adb80a2f388987f4f8db3c866c69e33e0b4c8b093fdf700e/setuptools-80.4.0.tar.gz", hash = "sha256:5a78f61820bc088c8e4add52932ae6b8cf423da2aff268c23f813cfbb13b4006", size = 1315008, upload-time = "2025-05-09T20:42:27.972Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/8b/dc1773e8e5d07fd27c1632c45c1de856ac3dbf09c0147f782ca6d990cf15/setuptools-80.7.1.tar.gz", hash = "sha256:f6ffc5f0142b1bd8d0ca94ee91b30c0ca862ffd50826da1ea85258a06fd94552", size = 1319188, upload-time = "2025-05-15T02:41:00.955Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/93/dba5ed08c2e31ec7cdc2ce75705a484ef0be1a2fecac8a58272489349de8/setuptools-80.4.0-py3-none-any.whl", hash = "sha256:6cdc8cb9a7d590b237dbe4493614a9b75d0559b888047c1f67d49ba50fc3edb2", size = 1200812, upload-time = "2025-05-09T20:42:25.325Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/18/0e835c3a557dc5faffc8f91092f62fc337c1dab1066715842e7a4b318ec4/setuptools-80.7.1-py3-none-any.whl", hash = "sha256:ca5cc1069b85dc23070a6628e6bcecb3292acac802399c7f8edc0100619f9009", size = 1200776, upload-time = "2025-05-15T02:40:58.887Z" },
 ]
 
 [[package]]

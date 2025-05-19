@@ -5,8 +5,8 @@ import logging
 import numpy as np
 from numpy.typing import NDArray
 
-from ..encoding.ternary_tree import TernaryTree
-from ..encoding.ternary_tree_node import TTNode
+from ..encode.ternary_tree import TernaryTree
+from ..encode.ternary_tree_node import TTNode
 
 logger = logging.getLogger(__name__)
 

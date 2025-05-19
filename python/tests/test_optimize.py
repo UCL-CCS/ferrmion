@@ -2,7 +2,7 @@
 
 from ferrmion.optimize.rett import reduced_entanglement_tree
 from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared
-from ferrmion.encoding import TernaryTree
+from ferrmion.encode import TernaryTree
 
 import numpy as np
 from pytest import fixture

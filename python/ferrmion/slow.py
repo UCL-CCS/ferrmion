@@ -8,7 +8,7 @@ import logging
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion.encoding.encoding.base import FermionQubitEncoding
+from ferrmion.encoding.base import FermionQubitEncoding
 
 logger = logging.getLogger(__name__)
 

@@ -31,7 +31,6 @@ def distance_squared(
         [25, 16,  9,  4,  1,  0]
         ])
     """
-    logger.debug("Calculating distance squared cost function.")
     n_mode = mutual_information.shape[0]
     if set(permutation) != set(range(n_mode)):
         logger.warning(

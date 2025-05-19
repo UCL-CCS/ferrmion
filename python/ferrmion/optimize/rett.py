@@ -3,9 +3,10 @@
 import logging
 
 import numpy as np
+from numpy.typing import NDArray
+
 from ferrmion.ternary_tree import TernaryTree
 from ferrmion.ternary_tree_node import TTNode
-from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 

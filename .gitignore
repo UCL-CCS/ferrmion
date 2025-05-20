@@ -174,5 +174,6 @@ cython_debug/
 .pypirc
 
 # Development
+development/
 *.development.ipynb
 .benchmarks/

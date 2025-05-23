@@ -76,9 +76,9 @@ def slow_hartree_fock_state(
     )
 
     half_length = symplectic_operators.shape[1] // 2
-    vaccum_state = [
+    vacuum_state = [
         np.array([1, 0]) if site == 0 else np.array([0, 1])
-        for site in encoding.vaccum_state
+        for site in encoding.vacuum_state
     ]
     for index in range(0, symplectic_operators.shape[0], 2):
         xlist = [
@@ -105,16 +105,16 @@ def slow_hartree_fock_state(
             left - right for left, right in zip(left_operators, right_operators)
         ]
 
-        vaccum_state = [op @ state for op, state in zip(total_ops, vaccum_state)]
-    # vaccum_state = [(v*np.conj(v))/np.linalg.norm(v*np.conj(v)) for v in vaccum_state]
-    total_state = vaccum_state[0]
-    for state in vaccum_state[1:]:
+        vacuum_state = [op @ state for op, state in zip(total_ops, vacuum_state)]
+    # vacuum_state = [(v*np.conj(v))/np.linalg.norm(v*np.conj(v)) for v in vacuum_state]
+    total_state = vacuum_state[0]
+    for state in vacuum_state[1:]:
         total_state = np.kron(total_state, state)
 
     coeffs = total_state / np.linalg.norm(total_state * np.conj(total_state))
     hf_components = np.vstack(
         [
-            np.array(list(np.binary_repr(val, width=len(vaccum_state))), dtype=np.uint8)
+            np.array(list(np.binary_repr(val, width=len(vacuum_state))), dtype=np.uint8)
             for val in np.where(coeffs)[0]
         ]
     )

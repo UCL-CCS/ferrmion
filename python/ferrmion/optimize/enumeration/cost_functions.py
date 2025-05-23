@@ -6,6 +6,9 @@ from functools import partial
 import numpy as np
 from numpy.typing import NDArray
 
+from ferrmion.encode import FermionQubitEncoding
+from ferrmion.utils import symplectic_unhash
+
 from .evolutionary import lambda_plus_mu
 
 logger = logging.getLogger(__name__)
@@ -78,3 +81,30 @@ def minimise_mi_distance(
         best = np.stack((2 * best, (2 * best) + 1)).T.flatten()
     logger.debug("Found best ordering %s", best)
     return best
+
+
+def pauli_weighted_norm(
+    encoding: FermionQubitEncoding, permutation: list[int]
+) -> list[float]:
+    """The Pauli-weight of a template scaled by the term coefficients.
+
+    Args:
+        encoding (FermionQubitEncoding): An encdoing with template calculated.
+        permutation (list[int]): A list of integer mode labels, assigned to operator pairs [0,...,N]
+
+    Return:
+        list[float]: A single value in a list (needed for deap) giving the cost.
+    """
+    ham = encoding.fill_template(
+        {i: j for i, j in zip(range(encoding.n_modes), permutation)}
+    )
+
+    def hashed_term_pauli_weight(hashed_term):
+        return np.sum(
+            np.bitwise_or(
+                *np.hsplit(symplectic_unhash(hashed_term, encoding.n_modes), 2)
+            )
+        )
+
+    weighted_terms = [hashed_term_pauli_weight(k) * np.abs(v) for k, v in ham.items()]
+    return [np.sum(weighted_terms)]

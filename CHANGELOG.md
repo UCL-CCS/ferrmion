@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `optimize` section
 - `lambda_plus_mu` evolutionary algorithm for approximate enumeration optimization.
 - `reduced_entanglement_tree` optimization added to `ferrmion.optimize`
-- `scaled_pauli_weight` and `minimis_mi_distance` cost functions
+- `pauli_weighted_norm` and `minimis_mi_distance` cost functions
 
 ### Removed
 

@@ -48,35 +48,8 @@ class TernaryTree(FermionQubitEncoding):
         self.n_qubits = one_e_coeffs.shape[1]
         self.root = root_node
         self.root.label = ""
-        vaccum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
-        self.default_mode_op_map = {i: i for i in range(self.n_qubits)}
-        super().__init__(one_e_coeffs, two_e_coeffs, vaccum_state)
-
-    @property
-    def default_mode_op_map(self):
-        """Create a default mode operator map for the tree."""
-        return self._default_mode_op_map
-
-    @default_mode_op_map.setter
-    def default_mode_op_map(self, map_dict: dict[int, int]):
-        """Set the default mode operator map.
-
-        Args:
-            map_dict (dict[int, int]): A dictionary mapping modes to operators.
-        """
-        logger.debug("Setting default mode operator map.")
-        error_string = ""
-        if set(map_dict.keys()) != {*range(self.n_qubits)}:
-            error_string += "Default Mode op map does not cover all modes.\n"
-        if set(map_dict.values()) != {*range(self.n_qubits)}:
-            error_string += "Default Mode op map does not cover all operators.\n"
-
-        if error_string != "":
-            logger.error(error_string)
-            logger.error(map_dict)
-            raise ValueError(error_string)
-
-        self._default_mode_op_map = map_dict
+        self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
+        super().__init__(one_e_coeffs, two_e_coeffs)
 
     @property
     def enumeration_scheme(self) -> dict[str, tuple[int, int]]:

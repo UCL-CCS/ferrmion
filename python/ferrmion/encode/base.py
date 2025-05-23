@@ -26,14 +26,11 @@ class FermionQubitEncoding(ABC):
     Attributes:
         one_e_coeffs (NDArray): One electron coefficients.
         two_e_coeffs (NDArray): Two electron coefficients.
-        vaccum_state (NDArray | None): The vaccum state of the encoding.
+        vacuum_state (NDArray | None): The vacuum state of the encoding.
         modes (set[int]): A set of modes.
         n_qubits (int): The number of qubits.
 
     Methods:
-        one_e_coeffs: Get or set the one electron coefficients.
-        two_e_coeffs: Get or set the two electron coefficients.
-        vaccum_state: Get or set the vaccum state.
         default_mode_op_map: Get the default mode operator map.
         _build_symplectic_matrix: Build a symplectic matrix representing terms for each operator in the Hamiltonian.
         hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
@@ -51,25 +48,51 @@ class FermionQubitEncoding(ABC):
         self,
         one_e_coeffs: NDArray,
         two_e_coeffs: NDArray,
-        vaccum_state: NDArray | None = None,
     ):
         """Initialise encoding.
 
         Args:
             one_e_coeffs (NDArray): One electron coefficients.
             two_e_coeffs (NDArray): Two electron coefficients.
-            vaccum_state (NDArray | None): The vaccum state of the encoding.
+            vacuum_state (NDArray | None): The vacuum state of the encoding.
         """
         self.one_e_coeffs: NDArray = one_e_coeffs
         self.two_e_coeffs: NDArray = two_e_coeffs
-        self.vaccum_state = vaccum_state
         self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
+        self.n_modes = len(self.modes)
+        self.default_mode_op_map = {i: i for i in range(self.n_modes)}
 
     def __post_init__(self):
         """Post init function to validate the encoding."""
         logger.debug("Post init of FermionQubitEncoding")
         self._one_e_hamiltonian_template
         self._two_e_hamiltonian_template
+
+    @property
+    def default_mode_op_map(self):
+        """Create a default mode operator map for the tree."""
+        return self._default_mode_op_map
+
+    @default_mode_op_map.setter
+    def default_mode_op_map(self, map_dict: dict[int, int]):
+        """Set the default mode operator map.
+
+        Args:
+            map_dict (dict[int, int]): A dictionary mapping modes to operators.
+        """
+        logger.debug("Setting default mode operator map.")
+        error_string = ""
+        if set(map_dict.keys()) != {*range(self.n_modes)}:
+            error_string += "Default Mode op map does not cover all modes.\n"
+        if set(map_dict.values()) != {*range(self.n_modes)}:
+            error_string += "Default Mode op map does not cover all operators.\n"
+
+        if error_string != "":
+            logger.error(error_string)
+            logger.error(map_dict)
+            raise ValueError(error_string)
+
+        self._default_mode_op_map = map_dict
 
     @property
     def one_e_coeffs(self):
@@ -114,37 +137,31 @@ class FermionQubitEncoding(ABC):
             raise ValueError("Two electron integrals not valid.")
 
     @property
-    def vaccum_state(self):
-        """Return the vaccum state."""
-        return self._vaccum_state
+    def vacuum_state(self):
+        """Return the vacuum state."""
+        return self._vacuum_state
 
-    @vaccum_state.setter
-    def vaccum_state(self, state: NDArray):
-        """Validate and set the vaccum state.
+    @vacuum_state.setter
+    def vacuum_state(self, state: NDArray):
+        """Validate and set the vacuum state.
 
         Args:
-            state (NDArray): The vaccum state.
+            state (NDArray): The vacuum state.
         """
-        logger.debug("Setting vaccum state as %s", state)
+        logger.debug("Setting vacuum state as %s", state)
         error_string = []
         state = np.array(state, dtype=np.float64)
 
         if len(state) != self.n_qubits:
-            error_string.append("vaccum state must be length " + str(self.n_qubits))
+            error_string.append("vacuum state must be length " + str(self.n_qubits))
         if state.ndim != 1:
-            error_string.append("vaccum state must be vector (dimension==1)")
+            error_string.append("vacuum state must be vector (dimension==1)")
 
         if error_string != []:
             logger.error("\n".join(error_string))
             raise ValueError("\n".join(error_string))
         else:
-            self._vaccum_state = state
-
-    @property
-    @abstractmethod
-    def default_mode_op_map(self):
-        """Define a default map from modes to majorana operator pairs i->(j,j+1)."""
-        pass
+            self._vacuum_state = state
 
     @abstractmethod
     def _build_symplectic_matrix(
@@ -159,7 +176,7 @@ class FermionQubitEncoding(ABC):
         """Find the Hartree-Fock state of a majorana string encoding.
 
         This function calls to the rust implementatin in `src/lib.rs`.
-        It assumes that the vaccum state is a single state vector, though the HF state may not be
+        It assumes that the vacuum state is a single state vector, though the HF state may not be
         The global phase so that the first component state has 0 phase.
 
         Args:
@@ -173,7 +190,7 @@ class FermionQubitEncoding(ABC):
             mode_op_map = self.default_mode_op_map
 
         return hartree_fock_state(
-            self.vaccum_state,
+            self.vacuum_state,
             fermionic_hf_state,
             mode_op_map,
             self._build_symplectic_matrix()[1],

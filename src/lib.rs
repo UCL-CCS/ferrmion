@@ -159,20 +159,20 @@ fn test_hartree_fock() {
         ],
     ]);
     let result = hartree_fock_state(
-        vaccum_state.clone(),
+        vaccum_state,
         fermionic_hf_state,
         mode_op_map.clone(),
-        symplectic_matrix.clone(),
+        symplectic_matrix,
     );
     let c1 = c64(1., 0.);
     assert!(result.0 == ndarray::arr1(&[c1]));
     assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
 
     let result2 = hartree_fock_state(
-        vaccum_state.clone(),
+        vaccum_state,
         ArrayView1::from(&[true, true, true, true, false, false]),
         mode_op_map.clone(),
-        symplectic_matrix.clone(),
+        symplectic_matrix,
     );
     assert!(result2.0 == ndarray::arr1(&[c1]));
     assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
@@ -204,10 +204,7 @@ fn test_symplectic_product() {
     let xxx: Array1<bool> = ndarray::arr1(&[true, true, true, false, false, false]);
     let zzz: Array1<bool> = ndarray::arr1(&[false, false, false, true, true, true]);
     let product_result = symplectic_product(xxx.view(), zzz.view());
-    let expected = (
-        0 as usize,
-        ndarray::arr1(&[true, true, true, true, true, true]),
-    );
+    let expected = (0, ndarray::arr1(&[true, true, true, true, true, true]));
     assert_eq!(product_result, expected);
 }
 

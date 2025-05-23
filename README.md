@@ -17,7 +17,7 @@ This codebase contains methods to generate qubit Hamiltonians from fermionic Ham
 ## Optimizations
 
 ### Enumeration Scheme
-- $(\lambda+\mu)$ Evolutationary Algorithm
+- $(\lambda+\mu)$ Evolutionary Algorithm
 
 ### Ternary Trees
 - Reduced Entanglement Ternary Trees

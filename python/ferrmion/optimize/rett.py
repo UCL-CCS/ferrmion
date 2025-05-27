@@ -30,7 +30,7 @@ def reduced_entanglement_tree(
     """
     logger.debug("Creating Reduced entanglement TT.")
     enumeration_scheme = {}
-    new_tree = TernaryTree(tree.one_e_coeffs, tree.two_e_coeffs, root_node=TTNode())
+    new_tree = TernaryTree(tree.n_modes, root_node=TTNode())
 
     # First combine the MI information for alpha and beta spins
     squash_rows = mutual_information[::2] + mutual_information[1::2]

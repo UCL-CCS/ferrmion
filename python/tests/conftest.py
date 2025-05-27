@@ -2,8 +2,10 @@
 
 import pickle
 from pytest import fixture
-from ferrmion.encode import TernaryTree, KNTO
+from ferrmion.encode import TernaryTree
 from pathlib import Path
+from openfermion import InteractionOperator, jordan_wigner, get_sparse_operator
+from scipy.sparse.linalg import eigsh
 
 @fixture(scope="module")
 def water_integrals():
@@ -17,8 +19,19 @@ def water_integrals():
 
 @fixture(scope="module")
 def water_tt(water_integrals) -> TernaryTree:
-    return TernaryTree(*water_integrals)
+    return TernaryTree.from_hamiltonian_coefficients(water_integrals)
 
 # @fixture(scope="module")
 # def water_knto(water_integrals) -> KNTO:
 #     return KNTO(*water_integrals)
+
+@fixture(scope="module")
+def water_eigenvalues(water_integrals) -> list[float]:
+    qham = InteractionOperator(
+        0, water_integrals[0], water_integrals[1]
+    )
+    # print(qham)
+    ofop = jordan_wigner(qham)
+    # print(f"diff {ofop-ofop_zeros}")
+    diag, _ = eigsh(get_sparse_operator(ofop), k=6, which="SA")
+    return diag

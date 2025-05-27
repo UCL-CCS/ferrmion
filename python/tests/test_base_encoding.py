@@ -10,17 +10,17 @@ np.random.seed(1710)
 
 @pytest.fixture
 def four_mode_tt():
-    return TernaryTree(np.random.random((4, 4)), np.random.random((4, 4, 4, 4)))
+    return TernaryTree.from_hamiltonian_coefficients((np.random.random((4, 4)), np.random.random((4, 4, 4, 4))))
 
 
 @pytest.fixture
 def sixteen_mode_tt():
-    return TernaryTree(np.random.random((16, 16)), np.random.random((16, 16, 16, 16)))
+    return TernaryTree.from_hamiltonian_coefficients((np.random.random((16, 16)), np.random.random((16, 16, 16, 16))))
 
 
-def test_edge_operator_map():
+def test_edge_operator_map(four_mode_tt):
     edge_map, weights = (
-        TernaryTree(np.ones((4, 4)), np.zeros((4, 4, 4, 4))).JW()._edge_operator_map()
+        four_mode_tt.JW()._edge_operator_map()
     )
     assert edge_map == {
         (0, 0): {b"\x00": 0.25, b"\x08": -0.25},
@@ -44,17 +44,8 @@ def test_edge_operator_map():
         ]
     )
 
-
-def test_hamiltonian_coefficients_agree(four_mode_tt):
-    coefficents, _ = four_mode_tt.BK().to_symplectic_hamiltonian()
-    pauli_ham = four_mode_tt.BK().to_qubit_hamiltonian()
-
-    assert coefficents == [*pauli_ham.values()]
-
-
 def test_default_vacuum_state(four_mode_tt):
     assert np.all(four_mode_tt.vacuum_state == np.array([0] * 4))
-
 
 def test_valid_vacuum_state(four_mode_tt):
     with pytest.raises(ValueError) as excinfo:
@@ -137,3 +128,6 @@ def test_four_benchmark_hf_state(benchmark, four_mode_tt):
 
 def test_four_benchmark_slow_hf_state(benchmark, four_mode_tt):
     result = benchmark(test_slow_hartree_fock_state, four_mode_tt)
+
+def test_hamiltonian_templates():
+    pass

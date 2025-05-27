@@ -2,7 +2,8 @@
 
 from ferrmion.optimize.rett import reduced_entanglement_tree
 from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, pauli_weighted_norm
-from ferrmion.encode import TernaryTree, FermionQubitEncoding
+from ferrmion.encode import TernaryTree
+from ferrmion.hamiltonians import molecular_hamiltonian_template
 
 import numpy as np
 from pytest import fixture
@@ -45,14 +46,22 @@ def test_distance_squared(n2mi):
 def test_rett(n2mi):
     np.random.seed(1017)
     n_modes = n2mi.shape[0]
-    tree = TernaryTree(
-        np.random.random((n_modes, n_modes)),
-        np.random.random((n_modes, n_modes, n_modes, n_modes))
-                       )
+    tree = TernaryTree(n_modes)
     rett = reduced_entanglement_tree(tree, n2mi)
     print(rett.branch_operator_map)
     assert rett.branch_operator_map == {'zzzzx': 'ZZZZXIIIII', 'zzzx': 'ZZZXIIIIII', 'zzzzzzx': 'ZZZZZZXIII', 'zzx': 'ZZXIIIIIII', 'zzy': 'ZZYIIIIIII', 'zzzzzzzzx': 'ZZZZZZZZXI', 'zzzzy': 'ZZZZYIIIII', 'zzzzzzzzzy': 'ZZZZZZZZZY', 'y': 'YIIIIIIIII', 'zzzzzzzx': 'ZZZZZZZXII', 'zx': 'ZXIIIIIIII', 'zzzzzzy': 'ZZZZZZYIII', 'zy': 'ZYIIIIIIII', 'zzzy': 'ZZZYIIIIII', 'zzzzzzzzzz': 'ZZZZZZZZZZ', 'zzzzzzzy': 'ZZZZZZZYII', 'zzzzzy': 'ZZZZZYIIII', 'zzzzzzzzzx': 'ZZZZZZZZZX', 'zzzzzx': 'ZZZZZXIIII', 'zzzzzzzzy': 'ZZZZZZZZYI', 'x': 'XIIIIIIIII'}
 
-def test_pauli_weighted_norm(water_tt):
-    assert np.allclose(pauli_weighted_norm(water_tt.JW(), [*range(water_tt.JW().n_modes)]), [np.float64(62.824084706896755)])
-    assert np.allclose(pauli_weighted_norm(water_tt.ParityEncoding(), [*range(water_tt.ParityEncoding().n_modes)]), [np.float64(122.77711007722083)])
+from ferrmion.hamiltonians import fill_template
+
+def test_pauli_weighted_norm(water_tt, water_integrals):
+    ipowers, symplectics = water_tt.JW()._build_symplectic_matrix()
+    jw_hashed_hamiltonian = molecular_hamiltonian_template(ipowers, symplectics)
+    jw_filled_template = fill_template(water_integrals[0], water_integrals[1], jw_hashed_hamiltonian, water_tt.JW().default_mode_op_map)
+    jw_norm = pauli_weighted_norm(jw_filled_template, [*range(water_tt.JW().n_modes)])
+    assert np.allclose(jw_norm, [np.float64(272.4190655251233)])
+
+    ipowers, symplectics = water_tt.ParityEncoding()._build_symplectic_matrix()
+    pe_hashed_hamiltonian = molecular_hamiltonian_template(ipowers, symplectics)
+    pe_filled_template = fill_template(water_integrals[0], water_integrals[1], pe_hashed_hamiltonian, water_tt.JW().default_mode_op_map)
+    pe_norm = pauli_weighted_norm(pe_filled_template, [*range(water_tt.ParityEncoding().n_modes)])
+    assert np.allclose(pe_norm, [np.float64(354.23056347814577)])

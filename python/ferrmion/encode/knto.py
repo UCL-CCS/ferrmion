@@ -28,7 +28,7 @@ class KNTO(FermionQubitEncoding):
             n_modes (int): The number of fermionic modes
         """
         self.n_modes = n_modes
-        super().__init__(n_modes)
+        super().__init__(n_modes=n_modes, n_qubits=n_modes)
 
     def _build_symplectic_matrix(self) -> tuple[NDArray[np.number], NDArray[bool]]:
         """Build the symplectic matrix for the k-NTO encoding.

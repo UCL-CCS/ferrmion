@@ -5,56 +5,17 @@ import logging
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion import symplectic_product
+from ferrmion import FermionQubitEncoding, symplectic_product
 from ferrmion.utils import icount_to_sign, symplectic_hash, symplectic_unhash
 
-from .utils import symplectic_product_map
+from .utils import fill_template, symplectic_product_map, to_qubit_hamiltonian
 
 logger = logging.getLogger(__name__)
 
 
-def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
-    """Calculate the product of two operators in symplectic form.
-
-    Args:
-        creation (tuple[bool, bool]): A tuple of two booleans indicating if the operators are creation operators.
-        left (NDArray): The left operator in symplectic form.
-        right (NDArray): The right operator in symplectic form.
-
-    Returns:
-        NDArray: The product of the two operators in symplectic form.
-
-    Example:
-        >>> left = np.array([[1, 0], [0, 1]])
-        >>> right = np.array([[0, 1], [1, 0]])
-        >>> creation = (True, False)
-        >>> two_operator_product(creation, left, right)
-        array([[0, 1],
-               [1, 0]])
-    """
-    logger.debug("Calculating two operator product.")
-    # (a+ib)(c+id) -> ac, iad, ibc, -bd
-    first_term = symplectic_product(left[:, 0], right[:, 0])
-    second_term = symplectic_product(left[:, 0], right[:, 1])
-    third_term = symplectic_product(left[:, 1], right[:, 0])
-    fourth_term = symplectic_product(left[:, 1], right[:, 1])
-
-    # left creation -> -iad, +bd
-    # right creation -> -ibc, +bd
-    # both creation -> -iad, -ibc, -bd
-    if creation[0] is True:
-        second_term[0] += 2
-        fourth_term[0] += 2
-    if creation[1] is True:
-        third_term[0] += 2
-        fourth_term[0] += 2
-
-    return np.vstack((first_term, second_term, third_term, fourth_term))
-
-
 def molecular_hamiltonian_template(
     ipowers: NDArray[np.number],
-    majorana_symplectic: NDArray[np.bool],
+    majorana_symplectic: NDArray[bool],
 ) -> dict[str, dict[tuple[int, int] | tuple[int, int, int, int], np.complexfloating]]:
     """Build a map of operators in the full hamiltonian to their constituent majoranas."""
     logger.debug("Building hamiltonian template")
@@ -168,3 +129,13 @@ def molecular_hamiltonian_template(
 
     logger.debug("Completed Hamiltonian Template")
     return hamiltonian
+
+
+def molecular_hamiltonian(encoding: FermionQubitEncoding, one_e_coeffs, two_e_coeffs):
+    """Return an encoded electronic stucture hamiltonain with niave enumeration."""
+    ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
+    template = molecular_hamiltonian_template(ipowers, majorana_symplectic)
+    hashed_hamiltonian = fill_template(
+        one_e_coeffs, two_e_coeffs, template, mode_op_map=encoding.default_mode_op_map
+    )
+    return to_qubit_hamiltonian(encoding.n_qubits, hashed_hamiltonian)

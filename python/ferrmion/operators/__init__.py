@@ -1,6 +1,6 @@
 """Initialisation for Hamiltonians."""
 
-from .molecular import molecular_hamiltonian_template
+from .molecular import molecular_hamiltonian, molecular_hamiltonian_template
 from .utils import (
     fill_template,
     symplectic_product_map,
@@ -10,6 +10,7 @@ from .utils import (
 
 __all__ = [
     "molecular_hamiltonian_template",
+    "molecular_hamiltonian",
     "fill_template",
     "to_qubit_hamiltonian",
     "to_symplectic_hamiltonian",

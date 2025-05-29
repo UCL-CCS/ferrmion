@@ -73,13 +73,13 @@ def test_hartree_fock_state(sixteen_mode_tt):
     ) == [1.0]
     assert np.all(
         hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool))[1]
-        == np.array([[True] * nq + [False] * nq], dtype=np.bool)
+        == np.array([[True] * nq + [False] * nq], dtype=bool)
     )
     assert np.all(
         hartree_fock_state(
             np.array([True] * (nq + 1) + [False] * (nq - 1), dtype=bool)
         )[1]
-        == np.array([[True] * (nq + 1) + [False] * (nq - 1)], dtype=np.bool)
+        == np.array([[True] * (nq + 1) + [False] * (nq - 1)], dtype=bool)
     )
 
 
@@ -130,4 +130,10 @@ def test_four_benchmark_slow_hf_state(benchmark, four_mode_tt):
     result = benchmark(test_slow_hartree_fock_state, four_mode_tt)
 
 def test_hamiltonian_templates():
+    pass
+
+def test_number_operator():
+    pass
+
+def test_edge_operator():
     pass

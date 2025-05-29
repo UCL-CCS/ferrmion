@@ -131,11 +131,20 @@ def molecular_hamiltonian_template(
     return hamiltonian
 
 
-def molecular_hamiltonian(encoding: FermionQubitEncoding, one_e_coeffs, two_e_coeffs):
+def molecular_hamiltonian(
+    encoding: FermionQubitEncoding,
+    one_e_coeffs: NDArray,
+    two_e_coeffs: NDArray,
+    constant_energy: float,
+):
     """Return an encoded electronic stucture hamiltonain with niave enumeration."""
     ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
     template = molecular_hamiltonian_template(ipowers, majorana_symplectic)
     hashed_hamiltonian = fill_template(
-        one_e_coeffs, two_e_coeffs, template, mode_op_map=encoding.default_mode_op_map
+        one_e_coeffs,
+        two_e_coeffs,
+        template,
+        mode_op_map=encoding.default_mode_op_map,
+        constant_energy=constant_energy,
     )
     return to_qubit_hamiltonian(encoding.n_qubits, hashed_hamiltonian)

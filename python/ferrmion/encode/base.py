@@ -114,12 +114,12 @@ class FermionQubitEncoding(ABC):
     @abstractmethod
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.number], NDArray[np.bool]]:
+    ) -> tuple[NDArray[np.number], NDArray[bool]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
     def hartree_fock_state(
-        self, fermionic_hf_state: NDArray[np.bool], mode_op_map: dict | None = None
+        self, fermionic_hf_state: NDArray[bool], mode_op_map: dict | None = None
     ):
         """Find the Hartree-Fock state of a majorana string encoding.
 
@@ -154,7 +154,7 @@ class FermionQubitEncoding(ABC):
         return symplectic_to_pauli(symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool]]:
+    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[bool]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:
@@ -183,6 +183,67 @@ class FermionQubitEncoding(ABC):
                 product_map[(m, n)] = symplectic_hash(np.copy(term))
 
         return product_ipowers, product_map
+
+    def number_operator(self, mode: int) -> list[tuple[str, float]]:
+        """Return the number operator of a mode for this encoding.
+
+        Args:
+            mode (int): The mode index to obtain a number operator for.
+        """
+        return number_operator(self, mode)
+
+    def edge_operator(self, edge_indices: tuple[int, int]) -> list[tuple[str, float]]:
+        """Return the edge operator of a pair of modes for this encoding.
+
+        Args:
+            edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
+        """
+        return edge_operator(self, edge_indices)
+
+
+def number_operator(
+    encoding: FermionQubitEncoding, mode: int
+) -> list[tuple[str, float]]:
+    """Return the number operator for a given encoding and mode.
+
+    Args:
+        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
+        mode (int): The mode index to obtain a number operator for.
+    """
+    return edge_operator(encoding, (mode, mode))
+
+
+def edge_operator(
+    encoding: FermionQubitEncoding, edge_indices: tuple[int, int]
+) -> list[tuple[str, float]]:
+    """Return the number operator for a given encoding and pair of modes.
+
+    Args:
+        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
+        edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
+    """
+    icount, sym_products = encoding.symplectic_product_map
+    m, n = edge_indices
+    m = encoding.default_mode_op_map[m]
+    n = encoding.default_mode_op_map[n]
+
+    first_term = sym_products[(2 * m, 2 * n)]
+    second_term = sym_products[(2 * m, 2 * n + 1)]
+    third_term = sym_products[(2 * m + 1, 2 * n)]
+    fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
+
+    terms = [first_term, second_term, third_term, fourth_term]
+    terms = [
+        symplectic_to_pauli(symplectic_unhash(t, 2 * encoding.n_qubits)) for t in terms
+    ]
+    factors = (
+        0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0]),
+        0.25 * icount_to_sign(icount[2 * m, 2 * n + 1] + 1 + terms[1][0]),
+        0.25 * icount_to_sign(icount[2 * m + 1, 2 * n] + 3 + terms[2][0]),
+        0.25 * icount_to_sign(icount[2 * m + 1, 2 * n + 1] + terms[3][0]),
+    )
+
+    return [(t[1], f) for t, f in zip(terms, factors)]
 
 
 def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:

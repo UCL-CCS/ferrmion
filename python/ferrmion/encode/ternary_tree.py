@@ -195,7 +195,7 @@ class TernaryTree(FermionQubitEncoding):
 
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[np.bool]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build the symplectic matrix for the tree.
 
         Returns:
@@ -209,7 +209,7 @@ class TernaryTree(FermionQubitEncoding):
 
         pauli_string_map = self.branch_operator_map
 
-        symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=np.bool)
+        symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
         for node, operators in self.string_pairs.items():
             for offset, operator in enumerate(operators):

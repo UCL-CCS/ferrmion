@@ -3,7 +3,7 @@
 from ferrmion.optimize.rett import reduced_entanglement_tree
 from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, pauli_weighted_norm
 from ferrmion.encode import TernaryTree
-from ferrmion.hamiltonians import molecular_hamiltonian_template
+from ferrmion.operators import molecular_hamiltonian_template
 
 import numpy as np
 from pytest import fixture
@@ -51,7 +51,7 @@ def test_rett(n2mi):
     print(rett.branch_operator_map)
     assert rett.branch_operator_map == {'zzzzx': 'ZZZZXIIIII', 'zzzx': 'ZZZXIIIIII', 'zzzzzzx': 'ZZZZZZXIII', 'zzx': 'ZZXIIIIIII', 'zzy': 'ZZYIIIIIII', 'zzzzzzzzx': 'ZZZZZZZZXI', 'zzzzy': 'ZZZZYIIIII', 'zzzzzzzzzy': 'ZZZZZZZZZY', 'y': 'YIIIIIIIII', 'zzzzzzzx': 'ZZZZZZZXII', 'zx': 'ZXIIIIIIII', 'zzzzzzy': 'ZZZZZZYIII', 'zy': 'ZYIIIIIIII', 'zzzy': 'ZZZYIIIIII', 'zzzzzzzzzz': 'ZZZZZZZZZZ', 'zzzzzzzy': 'ZZZZZZZYII', 'zzzzzy': 'ZZZZZYIIII', 'zzzzzzzzzx': 'ZZZZZZZZZX', 'zzzzzx': 'ZZZZZXIIII', 'zzzzzzzzy': 'ZZZZZZZZYI', 'x': 'XIIIIIIIII'}
 
-from ferrmion.hamiltonians import fill_template
+from ferrmion.operators import fill_template
 
 def test_pauli_weighted_norm(water_tt, water_integrals):
     ipowers, symplectics = water_tt.JW()._build_symplectic_matrix()

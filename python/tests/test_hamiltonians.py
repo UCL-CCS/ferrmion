@@ -1,9 +1,9 @@
 """Tests for Hamiltonan Functions."""
 
-from ferrmion.hamiltonians import molecular_hamiltonian_template
+from ferrmion.operators import molecular_hamiltonian_template
 import numpy as np
-from ferrmion.hamiltonians.utils import fill_template
-from ferrmion.hamiltonians.utils import to_qubit_hamiltonian, to_symplectic_hamiltonian
+from ferrmion.operators.utils import fill_template
+from ferrmion.operators.utils import to_qubit_hamiltonian, to_symplectic_hamiltonian
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
 from pytest import fixture

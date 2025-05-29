@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def symplectic_product_map(
-    ipowers: NDArray[np.uint8], symplectics: NDArray[np.bool]
+    ipowers: NDArray[np.uint8], symplectics: NDArray[bool]
 ) -> tuple[NDArray[np.uint8], dict[tuple[int, int], bytes]]:
     """Calculate the product of symplectic terms and cache them.
 
@@ -49,6 +49,7 @@ def fill_template(
     two_e_coeffs,
     template: dict,
     mode_op_map: dict,
+    constant_energy=0,
     precision: float = 1e-12,
 ) -> dict:
     """Fill a template with Hamiltonian coefficients.
@@ -58,6 +59,7 @@ def fill_template(
         two_e_coeffs (NDArray): Two electron hamiltonian coefficients
         template (dict): A template Hamilonian
         mode_op_map (dict): A dictionary mapping the mode indices to their corresponding majorana operator indices.
+        constant_energy (float): A constant term to be added to the Hamiltonian.
         precision (float): Cutoff for inclusion of terms, defaults to 1e-12
 
     Returns:
@@ -66,6 +68,10 @@ def fill_template(
     logger.debug(f"Filling template with map\n{mode_op_map}")
 
     total_ham = {t: 0 for t in template}
+    total_ham[symplectic_hash(np.zeros(2 * len(mode_op_map), dtype=bool))] += (
+        constant_energy
+    )
+
     for term, component in template.items():
         for item, factor in component.items():
             match len(item):

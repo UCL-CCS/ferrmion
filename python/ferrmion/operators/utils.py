@@ -139,7 +139,7 @@ def to_qubit_hamiltonian(n_qubits: int, hashed_hamiltonian) -> dict[str, float]:
     """
     logger.debug("Creating qubit Hamiltonian")
 
-    pauli_hamiltonian = {}
+    pauli_hamiltonian: dict[str, float] = {}
     for term, coefficient in hashed_hamiltonian.items():
         if np.real(coefficient) == 0:
             continue

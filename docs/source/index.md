@@ -11,6 +11,8 @@
 
 encode
 optimize
+interop
+operators
 devices
 utils
 slow

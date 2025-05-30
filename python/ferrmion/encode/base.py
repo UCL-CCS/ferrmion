@@ -224,6 +224,10 @@ def edge_operator(
         encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
         edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
     """
+    if not set(edge_indices).issubset(set(encoding.default_mode_op_map.keys())):
+        logger.error("Edge operator indices invalid %s", edge_indices)
+        raise ValueError("Edge operator indices invalid %s", edge_indices)
+
     icount, sym_products = encoding.symplectic_product_map
     m, n = edge_indices
     m = encoding.default_mode_op_map[m]

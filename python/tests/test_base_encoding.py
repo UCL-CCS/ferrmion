@@ -129,11 +129,51 @@ def test_four_benchmark_hf_state(benchmark, four_mode_tt):
 def test_four_benchmark_slow_hf_state(benchmark, four_mode_tt):
     result = benchmark(test_slow_hartree_fock_state, four_mode_tt)
 
-def test_hamiltonian_templates():
+def test_hamiltonian_templates(four_mode_tt):
     pass
 
-def test_number_operator():
-    pass
+def test_number_operator(four_mode_tt):
+    tree = four_mode_tt.JW()
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    assert tree.edge_operator((0,0)) == tree.number_operator(0)
+    assert tree.edge_operator((1,1)) == tree.number_operator(1)
+    assert tree.edge_operator((2,2)) == tree.number_operator(2)
+    assert tree.edge_operator((3,3)) == tree.number_operator(3)
 
-def test_edge_operator():
-    pass
+    with pytest.raises(ValueError) as excinfo:
+        tree.number_operator(tree.n_modes+1)
+    assert "indices invalid" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.number_operator(-1)
+    assert "indices invalid" in str(excinfo.value)
+
+def test_edge_operator(four_mode_tt):
+    tree = four_mode_tt.JW()
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    assert tree.edge_operator((0,0)) == tree.number_operator(0)
+    tree.edge_operator((0,1)) == [('YXII', -0.25j), ('YYII', 0.25), ('XXII', 0.25), ('XYII', 0.25j)]
+
+    left = np.array([t[1] for t in tree.edge_operator((1,0))], dtype=np.complexfloating)
+    right = np.array([np.conjugate(t[1]) for t in tree.edge_operator((0,1))], dtype=np.complexfloating)
+    assert np.all(left == right)
+
+    tree = four_mode_tt.JKMN()
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    assert tree.edge_operator((0,3)) == [('YZIX', -0.25j), ('YZIY', 0.25), ('XIZX', 0.25), ('XIZY', 0.25j)]
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.edge_operator((0, tree.n_modes+1))
+    assert "indices invalid" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.edge_operator((tree.n_modes+1, 0))
+    assert "indices invalid" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.number_operator((0, -1))
+    assert "indices invalid" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.number_operator((-1, 0))
+    assert "indices invalid" in str(excinfo.value)

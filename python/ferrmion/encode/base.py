@@ -114,7 +114,7 @@ class FermionQubitEncoding(ABC):
     @abstractmethod
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.number], NDArray[bool]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
@@ -184,7 +184,7 @@ class FermionQubitEncoding(ABC):
 
         return product_ipowers, product_map
 
-    def number_operator(self, mode: int) -> list[tuple[str, float]]:
+    def number_operator(self, mode: int) -> list[tuple[str, np.complexfloating]]:
         """Return the number operator of a mode for this encoding.
 
         Args:
@@ -192,7 +192,9 @@ class FermionQubitEncoding(ABC):
         """
         return number_operator(self, mode)
 
-    def edge_operator(self, edge_indices: tuple[int, int]) -> list[tuple[str, float]]:
+    def edge_operator(
+        self, edge_indices: tuple[int, int]
+    ) -> list[tuple[str, np.complexfloating]]:
         """Return the edge operator of a pair of modes for this encoding.
 
         Args:
@@ -203,7 +205,7 @@ class FermionQubitEncoding(ABC):
 
 def number_operator(
     encoding: FermionQubitEncoding, mode: int
-) -> list[tuple[str, float]]:
+) -> list[tuple[str, np.complexfloating]]:
     """Return the number operator for a given encoding and mode.
 
     Args:
@@ -215,7 +217,7 @@ def number_operator(
 
 def edge_operator(
     encoding: FermionQubitEncoding, edge_indices: tuple[int, int]
-) -> list[tuple[str, float]]:
+) -> list[tuple[str, np.complexfloating]]:
     """Return the number operator for a given encoding and pair of modes.
 
     Args:
@@ -233,7 +235,7 @@ def edge_operator(
     fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
 
     terms = [first_term, second_term, third_term, fourth_term]
-    terms = [
+    terms: list[str] = [
         symplectic_to_pauli(symplectic_unhash(t, 2 * encoding.n_qubits)) for t in terms
     ]
     factors = (

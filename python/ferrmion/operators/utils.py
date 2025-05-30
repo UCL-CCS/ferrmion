@@ -109,7 +109,7 @@ def to_symplectic_hamiltonian(
     """
     logger.debug("Creating symplectic Hamiltonian")
 
-    coeffs = []
+    coeffs: list[complex] = []
     terms = []
     for term, coeff in hashed_hamiltonian.items():
         term = symplectic_unhash(term, 2 * n_qubits)
@@ -123,8 +123,7 @@ def to_symplectic_hamiltonian(
             coeffs.append(coeff)
             terms.append(term)
 
-    terms = np.vstack(tuple(terms))
-    return coeffs, terms
+    return coeffs, np.vstack(tuple(terms))
 
 
 def to_qubit_hamiltonian(n_qubits: int, hashed_hamiltonian) -> dict[str, float]:

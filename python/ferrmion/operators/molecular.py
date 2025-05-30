@@ -14,10 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 def molecular_hamiltonian_template(
-    ipowers: NDArray[np.number],
+    ipowers: NDArray[np.uint8],
     majorana_symplectic: NDArray[bool],
-) -> dict[str, dict[tuple[int, int] | tuple[int, int, int, int], np.complexfloating]]:
-    """Build a map of operators in the full hamiltonian to their constituent majoranas."""
+) -> dict[bytes, dict[tuple[int, int] | tuple[int, int, int, int], np.complexfloating]]:
+    """Build a map of operators in the full hamiltonian to their constituent majoranas.
+
+    Args:
+        ipowers (NDArray[np.uint8]): Powers of i associated to each symplectic operator.
+        majorana_symplectic (NDArray[bool]): Operators in symplectic form.
+    """
     logger.debug("Building hamiltonian template")
     n_modes = majorana_symplectic.shape[0] // 2
     n_qubits = majorana_symplectic.shape[1] // 2
@@ -26,7 +31,7 @@ def molecular_hamiltonian_template(
         ipowers=ipowers, symplectics=majorana_symplectic
     )
     hamiltonian: dict[
-        str, dict[tuple[int, int] | tuple[int, int, int, int], np.complexfloating]
+        bytes, dict[tuple[int, int] | tuple[int, int, int, int], np.complexfloating]
     ] = {}
 
     # am+ an+ ak- al-
@@ -137,7 +142,14 @@ def molecular_hamiltonian(
     two_e_coeffs: NDArray,
     constant_energy: float,
 ):
-    """Return an encoded electronic stucture hamiltonain with niave enumeration."""
+    """Return an encoded electronic stucture hamiltonain with niave enumeration.
+
+    Args:
+        encoding (FermionQubitEncoding): The encoding to use.
+        one_e_coeffs (NDArray): One electron hamiltonian coefficients in spinorb format.
+        two_e_coeffs (NDArray): Two electron hamiltonian coefficients in spinorb format.
+        constant_energy (float): Constant energy offset.
+    """
     ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
     template = molecular_hamiltonian_template(ipowers, majorana_symplectic)
     hashed_hamiltonian = fill_template(

@@ -129,9 +129,6 @@ def test_four_benchmark_hf_state(benchmark, four_mode_tt):
 def test_four_benchmark_slow_hf_state(benchmark, four_mode_tt):
     result = benchmark(test_slow_hartree_fock_state, four_mode_tt)
 
-def test_hamiltonian_templates(four_mode_tt):
-    pass
-
 def test_number_operator(four_mode_tt):
     tree = four_mode_tt.JW()
     tree.enumeration_scheme = tree.default_enumeration_scheme()

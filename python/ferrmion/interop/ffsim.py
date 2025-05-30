@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 
+import numpy as np
 from ferrmion import FermionQubitEncoding
 from ffsim import variational
 from ffsim.qiskit.gates.orbital_rotation import (
     OrbitalRotationJW,
 )
+from numpy.typing import NDArray
 from qiskit.circuit import (
     CircuitInstruction,
     Gate,
@@ -21,6 +23,8 @@ from qiskit.quantum_info import SparsePauliOp
 
 
 class UCJOpSpinBalancedGeneric(Gate):
+    """Qiskit Gate for the UCJ Operator with arbitrary encoding."""
+
     def __init__(
         self,
         ucj_op: variational.UCJOpSpinBalanced,
@@ -32,6 +36,7 @@ class UCJOpSpinBalancedGeneric(Gate):
 
         Args:
             ucj_op: The UCJ operator.
+            encoding: A fermion qubit encoding.
             label: The label of the gate.
         """
         self.ucj_op = ucj_op
@@ -49,14 +54,12 @@ class UCJOpSpinBalancedGeneric(Gate):
         )
 
 
-""" In here the important bit is the DiagCoulomb Term."""
-
-
 def _ucj_op_spin_balanced_generic(
     qubits: Sequence[Qubit],
     ucj_op: variational.UCJOpSpinBalanced,
     encoding: FermionQubitEncoding,
 ) -> Iterator[CircuitInstruction]:
+    """Create circuit instructions for the UCJ oprator in any encoding."""
     for (diag_coulomb_mat_aa, diag_coulomb_mat_ab), orbital_rotation in zip(
         ucj_op.diag_coulomb_mats, ucj_op.orbital_rotations
     ):
@@ -86,11 +89,12 @@ def _ucj_op_spin_balanced_generic(
 
 
 class DiagCoulombEvolutionGeneric(Gate):
+    """Qiskit Gate for the diagonal coulomb term in arbitrary encoding."""
+
     def __init__(
         self,
         norb: int,
-        mat: np.ndarray
-        | tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None],
+        mat: NDArray | tuple[NDArray | None, NDArray | None, NDArray | None],
         time: float,
         *,
         z_representation: bool = False,
@@ -112,6 +116,7 @@ class DiagCoulombEvolutionGeneric(Gate):
             time: The evolution time.
             z_representation: Whether the input matrices are in the "Z" representation.
             label: The label of the gate.
+            encoding (FermionQubitEncoding): A fermion-qubit encoding method.
         """
         self.norb = norb
         self.mat = mat
@@ -149,15 +154,16 @@ class DiagCoulombEvolutionGeneric(Gate):
 
 def _diag_coulomb_evo_num_rep_generic(
     qubits: Sequence[Qubit],
-    mat: np.ndarray | tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None],
+    mat: NDArray | tuple[NDArray | None, NDArray | None, NDArray | None],
     time: float,
     norb: int,
     encoding: FermionQubitEncoding,
 ) -> Iterator[CircuitInstruction]:
+    """Craeate circuit instructions for the Diagonal Coulomb Term in a generic encoding."""
     assert len(qubits) == 2 * norb
-    mat_aa: np.ndarray | None
-    mat_ab: np.ndarray | None
-    mat_bb: np.ndarray | None
+    mat_aa: NDArray | None
+    mat_ab: NDArray | None
+    mat_bb: NDArray | None
     if isinstance(mat, np.ndarray) and mat.ndim == 2:
         mat_aa, mat_ab, mat_bb = mat, mat, mat
     else:

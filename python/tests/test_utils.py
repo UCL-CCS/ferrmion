@@ -7,6 +7,7 @@ from ferrmion.utils import (
     pauli_to_symplectic,
     symplectic_hash,
     symplectic_to_pauli,
+    symplectic_to_sparse,
     symplectic_unhash,
 )
 
@@ -59,7 +60,6 @@ def test_symplectic_hashing() -> None:
 def test_symplectic_pauli_conversion() -> None:
     symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=np.uint8)
 
-    print(pauli_to_symplectic(symplectic_to_pauli(symplectic)[1])[1])
     assert symplectic_to_pauli(symplectic) == (3, "IZXY")
     assert np.all(
         symplectic == pauli_to_symplectic(symplectic_to_pauli(symplectic)[1])[1]
@@ -69,3 +69,10 @@ def test_symplectic_pauli_conversion() -> None:
         + symplectic_to_pauli(symplectic)[0]
         == 4
     )
+
+def test_symplectic_sparse_conversion() -> None:
+    symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=np.uint8)
+
+    assert symplectic_to_sparse(symplectic)[0] == 3
+    assert symplectic_to_sparse(symplectic)[1] == "ZXY"
+    assert np.array_equal(symplectic_to_sparse(symplectic)[2], [1,2,3])

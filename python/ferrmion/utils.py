@@ -80,6 +80,30 @@ def symplectic_to_pauli(symplectic: NDArray[bool]) -> tuple[int, str]:
     return ipower, pauli_string
 
 
+def symplectic_to_sparse(symplectic: NDArray[bool]) -> tuple[int, str, NDArray[int]]:
+    """Convert a symplectic vector into a Pauli String.
+
+    Args:
+        symplectic (NDArray[np.uint8]) : symplectic vector [X terms, Y terms]
+
+    Returns:
+        tuple[int, str]: The imaginary cofactor and Pauli string.
+
+    NOTE: symplectic XZ does represent XZ and not Y
+        So Y=-iXZ needs an imaginary cofactor
+    """
+    xhalf, zhalf = np.hsplit(symplectic, 2)
+    total = xhalf + 2 * zhalf
+    two_p = {0: "", 1: "X", 2: "Z", 3: "Y"}
+
+    pauli_list = [two_p[t] for t in total]
+    pauli_string = "".join(pauli_list)
+    indices = np.where(total != 0)[0]
+    y_count = pauli_string.count("Y")
+    ipower = (3 * y_count) % 4
+    return ipower, pauli_string, indices
+
+
 def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[bool]]:
     """Convert a Pauli operator to symplectic form.
 

@@ -12,7 +12,7 @@
 encode
 optimize
 interop
-operators
+hamiltonians
 devices
 utils
 slow

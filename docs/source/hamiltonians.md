@@ -1,4 +1,4 @@
-# Fermionic Operators
+# Fermionic Hamiltonianss
 
 ```{eval-rst}
 .. automodule:: ferrmion.hamiltonians

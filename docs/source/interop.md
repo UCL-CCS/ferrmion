@@ -15,17 +15,7 @@ ferrmion_qham = to_qubit_hamiltonian(encoding, hashed_hamiltonian)
 pwop = PauliWordOp.from_dict(ferrmion_qham)
 ```
 
-# Inbuilt Methods
-
-Where the interaction with another code base is more complex, or the desired functionality isn't made easy by an SDK, functions to smooth this over are included in `ferrmion.interop`.
-
 ## ffsim
 
 A method is prodived in `ffsim` to create a Unitary Cluster Jastrow operator, but strictly for the Jordan-Wigner encoding. `ferrmion.interop` contains slightly altered methods for allowing the use of arbitrary encodings.
-
-```{eval-rst}
-.. automodule:: ferrmion.interop
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
+<!-- TODO link to notebook -->

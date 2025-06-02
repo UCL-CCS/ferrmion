@@ -68,12 +68,23 @@ def symplectic_to_pauli(symplectic: NDArray[bool]) -> tuple[int, str]:
     NOTE: symplectic XZ does represent XZ and not Y
         So Y=-iXZ needs an imaginary cofactor
     """
-    half_length = len(symplectic) // 2
-    xlist = ["X" if line == 1 else "" for line in symplectic[:half_length]]
-    zlist = ["Z" if line == 1 else "" for line in symplectic[half_length:]]
-    two_p = {"": "I", "X": "X", "Y": "Y", "Z": "Z", "XZ": "Y"}
+    left, right = np.hsplit(symplectic, 2)
+    total = left + 2 * right
 
-    pauli_list = [two_p[x + z] for x, z in zip(xlist, zlist)]
+    def to_pauli(x):
+        match x:
+            case 0:
+                return "I"
+            case 1:
+                return "X"
+            case 2:
+                return "Z"
+            case 3:
+                return "Y"
+
+    to_paulis = np.vectorize(to_pauli)
+    pauli_list = to_paulis(total)
+
     pauli_string = "".join(pauli_list)
     y_count = pauli_string.count("Y")
     ipower = (3 * y_count) % 4
@@ -94,9 +105,21 @@ def symplectic_to_sparse(symplectic: NDArray[bool]) -> tuple[int, str, NDArray[i
     """
     xhalf, zhalf = np.hsplit(symplectic, 2)
     total = xhalf + 2 * zhalf
-    two_p = {0: "", 1: "X", 2: "Z", 3: "Y"}
 
-    pauli_list = [two_p[t] for t in total]
+    def to_pauli(x):
+        match x:
+            case 0:
+                return ""
+            case 1:
+                return "X"
+            case 2:
+                return "Z"
+            case 3:
+                return "Y"
+
+    to_paulis = np.vectorize(to_pauli)
+    pauli_list = to_paulis(total)
+
     pauli_string = "".join(pauli_list)
     indices = np.where(total != 0)[0]
     y_count = pauli_string.count("Y")
@@ -134,7 +157,7 @@ def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[bool]]:
     return y_count, np.hstack((x_array, z_array), dtype=bool)
 
 
-def xz_swap(symplectic) -> NDArray[np.uint8]:
+def xz_swap(symplectic) -> NDArray[bool]:
     """Swap X and Z Pauli operators in a symplectic matrix.
 
     Args:
@@ -145,15 +168,16 @@ def xz_swap(symplectic) -> NDArray[np.uint8]:
     """
     logger.debug(f"Swapping X and Z in symplectic matrix\n{symplectic=}")
     x_block, z_block = np.hsplit(symplectic, 2)
+    is_z = np.where(np.logical_and(z_block, np.logical_not(x_block)))
+    is_x = np.where(np.logical_and(x_block, np.logical_not(z_block)))
+
     new_x_block = np.copy(x_block)
-    new_x_block[np.where(z_block - x_block == 1)] = 1
-    new_x_block[np.where(x_block - z_block == 1)] = 0
-    new_x_block[np.where(x_block + z_block == 2)] = 1
+    new_x_block[is_z] = True
+    new_x_block[is_x] = False
 
     new_z_block = np.copy(z_block)
-    new_z_block[np.where(z_block - x_block == 1)] = 0
-    new_z_block[np.where(x_block - z_block == 1)] = 1
-    new_z_block[np.where(x_block + z_block == 2)] = 1
+    new_z_block[is_x] = True
+    new_z_block[is_z] = False
     return np.hstack((new_x_block, new_z_block))
 
 

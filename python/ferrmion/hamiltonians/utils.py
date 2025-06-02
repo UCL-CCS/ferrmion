@@ -86,7 +86,6 @@ def fill_template(
 
         # print(total_ham[term])
         if np.abs(total_ham[term]) < precision:
-            logger.debug("Removing low-weight term %s", term)
             total_ham.pop(term)
     return total_ham
 

@@ -1,7 +1,7 @@
 # Fermionic Operators
 
 ```{eval-rst}
-.. automodule:: ferrmion.operators
+.. automodule:: ferrmion.hamiltonians
    :members:
    :undoc-members:
    :show-inheritance:

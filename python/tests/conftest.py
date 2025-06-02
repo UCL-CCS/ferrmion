@@ -28,7 +28,7 @@ def water_tt(water_integrals) -> TernaryTree:
 @fixture(scope="module")
 def water_eigenvalues(water_integrals) -> list[float]:
     qham = InteractionOperator(
-        0, water_integrals[0], water_integrals[1]
+        0, water_integrals[0], 0.5*water_integrals[1]
     )
     # print(qham)
     ofop = jordan_wigner(qham)

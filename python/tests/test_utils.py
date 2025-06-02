@@ -52,13 +52,13 @@ def test_icount_to_sign() -> None:
 
 
 def test_symplectic_hashing() -> None:
-    symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=np.uint8)
+    symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=bool)
     print(symplectic_hash(symplectic))
     print(symplectic_unhash(symplectic_hash(symplectic), len(symplectic)))
 
 
 def test_symplectic_pauli_conversion() -> None:
-    symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=np.uint8)
+    symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=bool)
 
     assert symplectic_to_pauli(symplectic) == (3, "IZXY")
     assert np.all(
@@ -71,7 +71,7 @@ def test_symplectic_pauli_conversion() -> None:
     )
 
 def test_symplectic_sparse_conversion() -> None:
-    symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=np.uint8)
+    symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=bool)
 
     assert symplectic_to_sparse(symplectic)[0] == 3
     assert symplectic_to_sparse(symplectic)[1] == "ZXY"

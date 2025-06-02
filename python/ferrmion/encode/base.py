@@ -12,6 +12,7 @@ from ferrmion.utils import (
     pauli_to_symplectic,
     symplectic_hash,
     symplectic_to_pauli,
+    symplectic_to_sparse,
     symplectic_unhash,
 )
 
@@ -217,13 +218,14 @@ def number_operator(
 
 def edge_operator(
     encoding: FermionQubitEncoding, edge_indices: tuple[int, int]
-) -> list[tuple[str, np.complexfloating]]:
+) -> list[tuple[str, NDArray, np.complexfloating]]:
     """Return the number operator for a given encoding and pair of modes.
 
     Args:
         encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
         edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
     """
+    logger.debug("Finding edge operator %s", edge_indices)
     if not set(edge_indices).issubset(set(encoding.default_mode_op_map.keys())):
         logger.error("Edge operator indices invalid %s", edge_indices)
         raise ValueError("Edge operator indices invalid %s", edge_indices)
@@ -239,8 +241,8 @@ def edge_operator(
     fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
 
     terms = [first_term, second_term, third_term, fourth_term]
-    terms: list[str] = [
-        symplectic_to_pauli(symplectic_unhash(t, 2 * encoding.n_qubits)) for t in terms
+    terms: list[tuple[int, str, NDArray]] = [
+        symplectic_to_sparse(symplectic_unhash(t, 2 * encoding.n_qubits)) for t in terms
     ]
     factors = (
         0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0]),
@@ -249,7 +251,7 @@ def edge_operator(
         0.25 * icount_to_sign(icount[2 * m + 1, 2 * n + 1] + terms[3][0]),
     )
 
-    return [(t[1], f) for t, f in zip(terms, factors)]
+    return [(t[1], t[2], f) for t, f in zip(terms, factors)]
 
 
 def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:

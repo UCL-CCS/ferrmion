@@ -10,12 +10,12 @@ np.random.seed(1710)
 
 @pytest.fixture
 def four_mode_tt():
-    return TernaryTree.from_hamiltonian_coefficients((np.random.random((4, 4)), np.random.random((4, 4, 4, 4))))
+    return TernaryTree(n_modes=4)
 
 
 @pytest.fixture
 def sixteen_mode_tt():
-    return TernaryTree.from_hamiltonian_coefficients((np.random.random((16, 16)), np.random.random((16, 16, 16, 16))))
+    return TernaryTree(n_modes=16)
 
 
 def test_edge_operator_map(four_mode_tt):
@@ -132,10 +132,11 @@ def test_four_benchmark_slow_hf_state(benchmark, four_mode_tt):
 def test_number_operator(four_mode_tt):
     tree = four_mode_tt.JW()
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    assert tree.edge_operator((0,0)) == tree.number_operator(0)
-    assert tree.edge_operator((1,1)) == tree.number_operator(1)
-    assert tree.edge_operator((2,2)) == tree.number_operator(2)
-    assert tree.edge_operator((3,3)) == tree.number_operator(3)
+    # numpy doesn't like comparing empty arrays
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((0,0))) == str(TernaryTree(n_modes=4).JW().number_operator(0))
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((1,1))) == str(TernaryTree(n_modes=4).JW().number_operator(1))
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((2,2))) == str(TernaryTree(n_modes=4).JW().number_operator(2))
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((3,3))) == str(TernaryTree(n_modes=4).JW().number_operator(3))
 
     with pytest.raises(ValueError) as excinfo:
         tree.number_operator(tree.n_modes+1)
@@ -146,18 +147,18 @@ def test_number_operator(four_mode_tt):
     assert "indices invalid" in str(excinfo.value)
 
 def test_edge_operator(four_mode_tt):
-    tree = four_mode_tt.JW()
-    tree.enumeration_scheme = tree.default_enumeration_scheme()
-    assert tree.edge_operator((0,0)) == tree.number_operator(0)
-    tree.edge_operator((0,1)) == [('YXII', -0.25j), ('YYII', 0.25), ('XXII', 0.25), ('XYII', 0.25j)]
-
-    left = np.array([t[1] for t in tree.edge_operator((1,0))], dtype=np.complexfloating)
-    right = np.array([np.conjugate(t[1]) for t in tree.edge_operator((0,1))], dtype=np.complexfloating)
-    assert np.all(left == right)
-
     tree = four_mode_tt.JKMN()
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    assert tree.edge_operator((0,3)) == [('YZIX', -0.25j), ('YZIY', 0.25), ('XIZX', 0.25), ('XIZY', 0.25j)]
+    left = np.array([t[2] for t in tree.edge_operator((1,0))], dtype=np.complexfloating)
+    right = np.array([np.conjugate(t[2]) for t in tree.edge_operator((0,1))], dtype=np.complexfloating)
+    assert np.all(right == left[[0,2,1,3]])
+    assert np.all(left == np.array([ 0.  -0.25j,  -0.25+0.j  , 0.25+0.j  ,  0.  +0.25j]))
+    assert np.all(right == np.array([ 0.  -0.25j,  0.25+0.j  , -0.25+0.j  ,  0.  +0.25j]))
+
+    assert str(tree.edge_operator((0,3))[0]) == str(('YZX', np.array([0,1,3]), -0-0.25j))
+    assert str(tree.edge_operator((0,3))[1]) == str(('YZY', np.array([0,1,3]), 0.25))
+    assert str(tree.edge_operator((0,3))[2]) == str(('XZX', np.array([0,2,3]), 0.25))
+    assert str(tree.edge_operator((0,3))[3]) == str(('XZY', np.array([0,2,3]), 0+0.25j))
 
     with pytest.raises(ValueError) as excinfo:
         tree.edge_operator((0, tree.n_modes+1))

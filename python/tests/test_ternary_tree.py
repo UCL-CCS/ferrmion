@@ -6,22 +6,7 @@ from ferrmion.utils import symplectic_hash, symplectic_unhash
 from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator
 from openfermion.transforms import jordan_wigner
-from ferrmion.operators.molecular import molecular_hamiltonian
-
-
-@pytest.fixture
-def one_e_ints():
-    return np.random.random((6, 6))
-
-
-@pytest.fixture
-def two_e_ints():
-    return np.random.random((6, 6, 6, 6))
-
-
-@pytest.fixture
-def fermion_modes():
-    return {i for i in range(6)}
+from ferrmion.hamiltonians.molecular import molecular_hamiltonian
 
 
 @pytest.fixture
@@ -452,9 +437,10 @@ def tests_bonsai_paper_tree():
     for line in tt._build_symplectic_matrix()[1]:
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
-def test_eigenvalues_with_openfermion(six_mode_tree, one_e_ints, two_e_ints):
+def test_eigenvalues_with_openfermion(water_eigenvalues, water_integrals):
     # qham_zeros = InteractionOperator(0, tt.one_e_coeffs, np.zeros(tt.two_e_coeffs.shape))
     # ofop_zeros = jordan_wigner(qham_zeros)
+    one_e_ints, two_e_ints = water_integrals
     qham = InteractionOperator(
         0, one_e_ints, 0.5*two_e_ints
     )
@@ -463,8 +449,13 @@ def test_eigenvalues_with_openfermion(six_mode_tree, one_e_ints, two_e_ints):
     # print(f"diff {ofop-ofop_zeros}")
     diag, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop), k=6, which="SA")
 
-    qham2 = molecular_hamiltonian(six_mode_tree.JW(), one_e_ints, 0.5*two_e_ints, 0)
+    assert np.allclose(sorted(diag), sorted(water_eigenvalues))
 
+
+def test_eigenvalues_across_encodings(water_eigenvalues, water_tt, water_integrals):
+    one_e_ints, two_e_ints = water_integrals
+
+    qham2 = molecular_hamiltonian(water_tt.JKMN(), one_e_ints, 0.5*two_e_ints, 0)
     ofop2 = QubitOperator()
     for k, v in qham2.items():
         string = " ".join(
@@ -476,38 +467,10 @@ def test_eigenvalues_with_openfermion(six_mode_tree, one_e_ints, two_e_ints):
         ofop2 += QubitOperator(term=string, coefficient=v)
     diag2, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop2), k=6, which="SA")
 
-    assert np.allclose(diag, diag2)
+    assert np.allclose(sorted(water_eigenvalues), sorted(diag2))
 
 
-def test_eigenvalues_across_encodings(six_mode_tree, one_e_ints, two_e_ints):
-    qham = molecular_hamiltonian(six_mode_tree.JW(), one_e_ints, 0.5*two_e_ints, 0)
-    ofop = QubitOperator()
-    for k, v in qham.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop += QubitOperator(term=string, coefficient=v)
-    diag, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop), k=6, which="SA")
-
-    qham2 = molecular_hamiltonian(six_mode_tree.JKMN(), one_e_ints, 0.5*two_e_ints, 0)
-    ofop2 = QubitOperator()
-    for k, v in qham2.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop2 += QubitOperator(term=string, coefficient=v)
-    diag2, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop2), k=6, which="SA")
-
-    assert np.allclose(sorted(diag), sorted(diag2))
-
-
-def test_default_mode_op_map(six_mode_tree):
-    assert six_mode_tree.default_mode_op_map == {
-        i: i for i in range(six_mode_tree.n_qubits)
+def test_default_mode_op_map(water_tt):
+    assert water_tt.default_mode_op_map == {
+        i: i for i in range(water_tt.n_qubits)
     }

@@ -22,6 +22,10 @@ This codebase contains methods to generate qubit Hamiltonians from fermionic Ham
 ### Ternary Trees
 - Reduced Entanglement Ternary Trees
 
+## Hamiltonians
+Functions to produce Hamiltonian templates and enumerated encodings are available in `ferrmion.hamiltonians`
+
+- Molecular Hamiltonian (Born-Oppenheimer Approximation)
 
 ## Development
 For information on development, check out the project [documentation](https://ferrmion.readthedocs.io/en/latest/development.html).

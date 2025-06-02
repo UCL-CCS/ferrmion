@@ -34,8 +34,6 @@ docs = [
     "myst-parser>=4.0.1",
     "sphinx>=7.1.2",
     "sphinx-rtd-theme>=3.0.2",
-]
-interop = [
     "ffsim>=0.0.56",
     "qiskit>=2.0.2",
 ]

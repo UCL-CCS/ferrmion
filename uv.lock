@@ -581,13 +581,11 @@ dev = [
     { name = "pytest-cov" },
 ]
 docs = [
+    { name = "ffsim" },
     { name = "myst-parser" },
+    { name = "qiskit" },
     { name = "sphinx" },
     { name = "sphinx-rtd-theme" },
-]
-interop = [
-    { name = "ffsim" },
-    { name = "qiskit" },
 ]
 
 [package.metadata]
@@ -607,13 +605,11 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.1.1" },
 ]
 docs = [
+    { name = "ffsim", specifier = ">=0.0.56" },
     { name = "myst-parser", specifier = ">=4.0.1" },
+    { name = "qiskit", specifier = ">=2.0.2" },
     { name = "sphinx", specifier = ">=7.1.2" },
     { name = "sphinx-rtd-theme", specifier = ">=3.0.2" },
-]
-interop = [
-    { name = "ffsim", specifier = ">=0.0.56" },
-    { name = "qiskit", specifier = ">=2.0.2" },
 ]
 
 [[package]]

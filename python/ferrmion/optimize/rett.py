@@ -12,14 +12,18 @@ logger = logging.getLogger(__name__)
 
 
 def reduced_entanglement_tree(
-    tree: TernaryTree, mutual_information: NDArray, cutoff: float = 0.5
+    tree: TernaryTree,
+    mutual_information: NDArray,
+    cutoff: float = 0.5,
+    max_branches: int | None = None,
 ) -> TernaryTree:
     """Creates the reduced entanglement TernaryTree.
 
     Args:
         tree (TernaryTree): A ternary tree encoding.
         mutual_information (NDArray): A 2D array of mode mutual information.
-        cutoff (float | None): The average MI between spatial orbitals
+        cutoff (float | None): The average MI between spatial orbitals.
+        max_branches (int): The maximum allowed number of Parity branches.
 
     Returns:
         TernaryTree: A new ternary tree.
@@ -30,7 +34,7 @@ def reduced_entanglement_tree(
     """
     logger.debug("Creating Reduced entanglement TT.")
     enumeration_scheme = {}
-    new_tree = TernaryTree(tree.one_e_coeffs, tree.two_e_coeffs, root_node=TTNode())
+    new_tree = TernaryTree(tree.n_modes, root_node=TTNode())
 
     # First combine the MI information for alpha and beta spins
     squash_rows = mutual_information[::2] + mutual_information[1::2]
@@ -44,6 +48,9 @@ def reduced_entanglement_tree(
     branches = []
     unused_indices = {i for i in range(squash_matrix.shape[0])}
     for squash_index in squash_indices:
+        if max_branches is not None and len(branches) >= max_branches:
+            break
+
         if not unused_indices.issuperset(squash_index):
             logger.debug("Indices %s previously assigned to branch.", squash_index)
             continue

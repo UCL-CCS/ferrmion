@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 def slow_symplectic_product(
-    left: NDArray[np.bool], right: NDArray[np.bool]
-) -> tuple[int, NDArray[np.bool]]:
+    left: NDArray[bool], right: NDArray[bool]
+) -> tuple[int, NDArray[bool]]:
     """Calculate the product of two symplectic vectors.
 
     Args:
@@ -40,7 +40,7 @@ def slow_hartree_fock_state(
     encoding: FermionQubitEncoding,
     fermionic_hf_state: NDArray,
     mode_op_map: dict[int, int],
-) -> tuple[NDArray[np.number], NDArray[np.bool]]:
+) -> tuple[NDArray[np.number], NDArray[bool]]:
     """Find the Hartree-Fock state of a majorana string encoding.
 
     NOTE: This is the python-only version, the main codebase uses a rust rewrite.

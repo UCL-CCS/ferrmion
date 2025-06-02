@@ -28,11 +28,14 @@ dev = [
     "pre-commit>=3.5.0",
     "pytest>=8.3.5",
     "pytest-benchmark>=4.0.0",
+    "pytest-cov>=6.1.1",
 ]
 docs = [
     "myst-parser>=4.0.1",
     "sphinx>=7.1.2",
     "sphinx-rtd-theme>=3.0.2",
+    "ffsim>=0.0.56",
+    "qiskit>=2.0.2",
 ]
 
 [tool.ruff]

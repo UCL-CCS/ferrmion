@@ -14,32 +14,29 @@ class KNTO(FermionQubitEncoding):
     """k-NTO encoding for fermionic operators.
 
     Attributes:
-        k (int): The number of modes.
-        one_e_coeffs (NDArray): The one-electron coefficients.
-        two_e_coeffs (NDArray): The two-electron coefficients.
+        n_modes (int): The number of modes.
 
     Methods:
         _build_symplectic_matrix(): Build the symplectic matrix for the k-NTO encoding.
         _valid_qubit_number(): Check if the number of qubits is valid for the k-NTO encoding.
     """
 
-    def __init__(self, one_e_coeffs, two_e_coeffs):
+    def __init__(self, n_modes):
         """Initialise a k-NTO encoding.
 
         Args:
-            one_e_coeffs (NDArray): The one-electron coefficients.
-            two_e_coeffs (NDArray): The two-electron coefficients.
+            n_modes (int): The number of fermionic modes
         """
-        self.k = one_e_coeffs.shape[0] - 1
-        super().__init__(one_e_coeffs, two_e_coeffs)
+        self.n_modes = n_modes
+        super().__init__(n_modes=n_modes, n_qubits=n_modes)
 
-    def _build_symplectic_matrix(self) -> tuple[NDArray[np.uint8], NDArray[np.bool]]:
+    def _build_symplectic_matrix(self) -> tuple[NDArray[np.number], NDArray[bool]]:
         """Build the symplectic matrix for the k-NTO encoding.
 
         Returns:
             NDArray: The symplectic matrix.
         """
-        return knto_symplectic_matrix(self.one_e_coeffs.shape[0])
+        return knto_symplectic_matrix(self.n_modes)
 
     def _valid_qubit_number(self) -> int:
         """Check if the number of qubits is valid for the k-NTO encoding.
@@ -47,10 +44,10 @@ class KNTO(FermionQubitEncoding):
         Returns:
             int: The number of qubits.
         """
-        return self.k + 1
+        return self.n_modes
 
 
-def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool]]:
+def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[bool]]:
     """Build a symplectic matrix of majorana operators for the k-NTO encoding.
 
     Args:
@@ -66,12 +63,12 @@ def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool
 
     # Choice of right and left is arbitary but at least for TNs
     # having the simple block on the left was better.
-    right = np.ones(((k + 1) * 2, k + 1), dtype=np.bool)
+    right = np.ones(((k + 1) * 2, k + 1), dtype=bool)
 
     right[::2, :] = right[::2, :] - np.eye(k + 1)
     right[1::2, :] = right[1::2, :] - np.eye(k + 1)
 
-    left = np.zeros(((k + 1) * 2, k + 1), dtype=np.bool)
+    left = np.zeros(((k + 1) * 2, k + 1), dtype=bool)
 
     for i in range(k + 1):
         if i % 2 == 1:
@@ -88,6 +85,6 @@ def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool
 
     # Y = iXZ
     y_count = np.sum(np.bitwise_and(left, right), axis=1) % 4
-    output = np.hstack((left, right), dtype=np.bool)
+    output = np.hstack((left, right), dtype=bool)
 
     return y_count, output

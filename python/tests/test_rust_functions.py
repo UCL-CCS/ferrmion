@@ -4,11 +4,11 @@ from ferrmion.slow import slow_symplectic_product
 
 
 def test_symplectic_product():
-    xyz = np.array([1, 1, 0, 0, 1, 1], dtype=np.bool)
-    xxx = np.array([1, 1, 1, 0, 0, 0], dtype=np.bool)
-    zzz = np.array([0, 0, 0, 1, 1, 1], dtype=np.bool)
-    yyy = np.array([1, 1, 1, 1, 1, 1], dtype=np.bool)
-    yzx = np.array([1, 0, 1, 1, 1, 0], dtype=np.bool)
+    xyz = np.array([1, 1, 0, 0, 1, 1], dtype=bool)
+    xxx = np.array([1, 1, 1, 0, 0, 0], dtype=bool)
+    zzz = np.array([0, 0, 0, 1, 1, 1], dtype=bool)
+    yyy = np.array([1, 1, 1, 1, 1, 1], dtype=bool)
+    yzx = np.array([1, 0, 1, 1, 1, 0], dtype=bool)
     assert symplectic_product(xxx, zzz)[0] == 0
     assert np.all(symplectic_product(xxx, zzz)[1] == np.array([1, 1, 1, 1, 1, 1]))
     assert symplectic_product(zzz, xxx)[0] == 2
@@ -36,11 +36,11 @@ def test_symplectic_product():
 
 
 def test_slow_symplectic_product():
-    xyz = np.array([1, 1, 0, 0, 1, 1], dtype=np.bool)
-    xxx = np.array([1, 1, 1, 0, 0, 0], dtype=np.bool)
-    zzz = np.array([0, 0, 0, 1, 1, 1], dtype=np.bool)
-    yyy = np.array([1, 1, 1, 1, 1, 1], dtype=np.bool)
-    yzx = np.array([1, 0, 1, 1, 1, 0], dtype=np.bool)
+    xyz = np.array([1, 1, 0, 0, 1, 1], dtype=bool)
+    xxx = np.array([1, 1, 1, 0, 0, 0], dtype=bool)
+    zzz = np.array([0, 0, 0, 1, 1, 1], dtype=bool)
+    yyy = np.array([1, 1, 1, 1, 1, 1], dtype=bool)
+    yzx = np.array([1, 0, 1, 1, 1, 0], dtype=bool)
     assert slow_symplectic_product(xxx, zzz)[0] == 0
     assert np.all(slow_symplectic_product(xxx, zzz)[1] == np.array([1, 1, 1, 1, 1, 1]))
     assert slow_symplectic_product(zzz, xxx)[0] == 2

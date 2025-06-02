@@ -2,18 +2,17 @@
 
 import logging
 from abc import ABC, abstractmethod
-from functools import cached_property
 
 import numpy as np
 from numpy.typing import NDArray
 
 from ferrmion import hartree_fock_state, symplectic_product
-
-from ..utils import (
+from ferrmion.utils import (
     icount_to_sign,
     pauli_to_symplectic,
     symplectic_hash,
     symplectic_to_pauli,
+    symplectic_to_sparse,
     symplectic_unhash,
 )
 
@@ -46,27 +45,19 @@ class FermionQubitEncoding(ABC):
 
     def __init__(
         self,
-        one_e_coeffs: NDArray,
-        two_e_coeffs: NDArray,
+        n_modes: int,
+        n_qubits: int,
     ):
         """Initialise encoding.
 
         Args:
-            one_e_coeffs (NDArray): One electron coefficients.
-            two_e_coeffs (NDArray): Two electron coefficients.
+            n_modes (int): Number of Fermion modes to encode.
+            n_qubits (int): Number of Qubits used to encode.
             vacuum_state (NDArray | None): The vacuum state of the encoding.
         """
-        self.one_e_coeffs: NDArray = one_e_coeffs
-        self.two_e_coeffs: NDArray = two_e_coeffs
-        self.modes = {m for m in range(self.one_e_coeffs.shape[0])}
-        self.n_modes = len(self.modes)
+        self.n_modes = n_modes
+        self.n_qubits = n_qubits
         self.default_mode_op_map = {i: i for i in range(self.n_modes)}
-
-    def __post_init__(self):
-        """Post init function to validate the encoding."""
-        logger.debug("Post init of FermionQubitEncoding")
-        self._one_e_hamiltonian_template
-        self._two_e_hamiltonian_template
 
     @property
     def default_mode_op_map(self):
@@ -93,48 +84,6 @@ class FermionQubitEncoding(ABC):
             raise ValueError(error_string)
 
         self._default_mode_op_map = map_dict
-
-    @property
-    def one_e_coeffs(self):
-        """Return the one electron coefficients."""
-        return self._one_e_coeffs
-
-    @one_e_coeffs.setter
-    def one_e_coeffs(self, coefficients):
-        """Set the one electron coefficients.
-
-        Args:
-            coefficients (NDArray): The one electron coefficients.
-        """
-        logger.debug("Setting one electron coefficients as %s", coefficients)
-        size_valid = np.all(
-            [coefficients.shape[0] == size for size in coefficients.shape]
-        )
-        if size_valid:
-            self._one_e_coeffs = coefficients
-        else:
-            raise ValueError("One electron integrals not valid.")
-
-    @property
-    def two_e_coeffs(self):
-        """Return the two electron coefficients."""
-        return self._two_e_coeffs
-
-    @two_e_coeffs.setter
-    def two_e_coeffs(self, coefficients):
-        """Set the two electron coefficients.
-
-        Args:
-            coefficients (NDArray): The two electron coefficients.
-        """
-        logger.debug("Setting two electron coefficients as %s", coefficients)
-        size_valid = np.all(
-            [coefficients.shape[0] == size for size in coefficients.shape]
-        )
-        if size_valid:
-            self._two_e_coeffs = coefficients
-        else:
-            raise ValueError("Two electron integrals not valid.")
 
     @property
     def vacuum_state(self):
@@ -166,12 +115,12 @@ class FermionQubitEncoding(ABC):
     @abstractmethod
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.number], NDArray[np.bool]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
     def hartree_fock_state(
-        self, fermionic_hf_state: NDArray[np.bool], mode_op_map: dict | None = None
+        self, fermionic_hf_state: NDArray[bool], mode_op_map: dict | None = None
     ):
         """Find the Hartree-Fock state of a majorana string encoding.
 
@@ -206,7 +155,7 @@ class FermionQubitEncoding(ABC):
         return symplectic_to_pauli(symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool]]:
+    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[bool]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:
@@ -216,132 +165,6 @@ class FermionQubitEncoding(ABC):
 
     def _edge_operator_map(self):
         return edge_operator_map(self)
-
-    @cached_property
-    def _one_e_hamiltonian_template(self):
-        """Build a map of operators in the full hamiltonian to their constituent majoranas."""
-        logger.debug("Building one electron hamiltonian template")
-        majorana_symplectic = self._build_symplectic_matrix()[1]
-
-        icount, sym_products = self.symplectic_product_map
-        hamiltonian = {}
-
-        n_modes = majorana_symplectic.shape[1] // 2
-
-        for m in range(n_modes):
-            for n in range(n_modes):
-                # if self.one_e_coeffs[m,n] == 0:
-                # continue
-
-                # factor = 0.25  # if m == n else 0.25
-                # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
-                first_term = sym_products[(2 * m, 2 * n)]
-                second_term = sym_products[(2 * m, 2 * n + 1)]
-                third_term = sym_products[(2 * m + 1, 2 * n)]
-                fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
-
-                factors = (
-                    0.25 * icount_to_sign(icount[2 * m, 2 * n]),
-                    0.25 * icount_to_sign(icount[2 * m, 2 * n + 1] + 1),
-                    0.25 * icount_to_sign(icount[2 * m + 1, 2 * n] + 3),
-                    0.25 * icount_to_sign(icount[2 * m + 1, 2 * n + 1]),
-                )
-                terms = [first_term, second_term, third_term, fourth_term]
-
-                for t, f in zip(terms, factors):
-                    hamiltonian[t] = hamiltonian.get(t, {})
-                    hamiltonian[t][(m, n)] = hamiltonian[t].get((m, n), 0) + f
-
-        return hamiltonian
-
-    @cached_property
-    def _two_e_hamiltonian_template(self):
-        """Construct the symplectic representation of the two electron terms.
-
-        NOTE: This uses PHYSICISTS's notation.
-
-        Args:
-            mode_op_map (dict): A dictionary mapping the mode indices to their corresponding qubit indices.
-        """
-        logger.debug("Building two electron hamiltonian template")
-        icount, sym_products = self.symplectic_product_map
-        hamiltonian = {}
-
-        # am+ an+ ak- al-
-        # (2m - i 2m+1)(2n -i 2n+1)(2k +i 2k+1)(2l +i 2l+1)
-        # (l1 -i l2 -i l3 - l4)(r1 +i r2 +i r3 - r4)
-        for m in range(self.two_e_coeffs.shape[0]):
-            for n in range(self.two_e_coeffs.shape[1]):
-                # Skip double applicatons of operators
-                if m == n:
-                    continue
-                for k in range(self.two_e_coeffs.shape[2]):
-                    for l in range(self.two_e_coeffs.shape[3]):
-                        if k == l:
-                            continue
-
-                        # include the imaginary factors with terms in a tuple
-                        creation_terms = [
-                            (0 + icount[2 * m, 2 * n], sym_products[(2 * m, 2 * n)]),
-                            (
-                                3 + icount[2 * m, 2 * n + 1],
-                                sym_products[(2 * m, 2 * n + 1)],
-                            ),
-                            (
-                                3 + icount[2 * m + 1, 2 * n],
-                                sym_products[(2 * m + 1, 2 * n)],
-                            ),
-                            (
-                                2 + icount[2 * m + 1, 2 * n + 1],
-                                sym_products[(2 * m + 1, 2 * n + 1)],
-                            ),
-                        ]
-                        annihiliation_terms = [
-                            (0 + icount[2 * k, 2 * l], sym_products[(2 * k, 2 * l)]),
-                            (
-                                1 + icount[2 * k, 2 * l + 1],
-                                sym_products[(2 * k, 2 * l + 1)],
-                            ),
-                            (
-                                1 + icount[2 * k + 1, 2 * l],
-                                sym_products[(2 * k + 1, 2 * l)],
-                            ),
-                            (
-                                2 + icount[2 * k + 1, 2 * l + 1],
-                                sym_products[(2 * k + 1, 2 * l + 1)],
-                            ),
-                        ]
-
-                        # In the symplectic form, the coefficients actually carry around an imaginary factor
-                        # for pauli terms with an odd number of Ys
-                        # So we need to account for taking the hermitian conjugate
-                        # as we can arrive at the same 'product' from each term and its HC
-                        prefactor = 1.0 / 16
-                        for left_im, left_term in creation_terms:
-                            for right_im, right_term in annihiliation_terms:
-                                imaginary, product = symplectic_product(
-                                    symplectic_unhash(left_term, 2 * self.n_qubits),
-                                    symplectic_unhash(right_term, 2 * self.n_qubits),
-                                )
-
-                                product = symplectic_hash(product)
-
-                                hamiltonian[product] = hamiltonian.get(product, {})
-                                # ordered = (1 if m > n else -1) * (1 if k > l else -1)
-                                weight = prefactor * icount_to_sign(
-                                    imaginary + left_im + right_im
-                                )
-                                # index = tuple(sorted([m, n]) + sorted([k, l]))
-                                index = (m, n, k, l)
-
-                                hamiltonian[product][index] = (
-                                    hamiltonian[product].get(index, 0) + weight
-                                )
-                                if hamiltonian[product][index] == 0:
-                                    hamiltonian[product].pop(index)
-                                if hamiltonian[product] == {}:
-                                    hamiltonian.pop(product)
-        return hamiltonian
 
     @property
     def symplectic_product_map(self):
@@ -362,108 +185,73 @@ class FermionQubitEncoding(ABC):
 
         return product_ipowers, product_map
 
-    def fill_template(self, mode_op_map: dict) -> dict:
-        """Fill a template with Hamiltonian coefficients.
+    def number_operator(self, mode: int) -> list[tuple[str, np.complexfloating]]:
+        """Return the number operator of a mode for this encoding.
 
         Args:
-            mode_op_map (dict): A dictionary mapping the mode indices to their corresponding majorana operator indices.
+            mode (int): The mode index to obtain a number operator for.
         """
-        logger.debug(f"Filling template with map\n{mode_op_map}")
-        one_e_ham = self._one_e_hamiltonian_template
-        two_e_ham = self._two_e_hamiltonian_template
+        return number_operator(self, mode)
 
-        all_terms = set(one_e_ham).union(two_e_ham)
-
-        total_ham = {t: 0 for t in all_terms}
-        for term in total_ham:
-            one_e_part = one_e_ham.get(term, {})
-            for item, factor in one_e_part.items():
-                total_ham[term] += (
-                    factor * self.one_e_coeffs[*[mode_op_map[i] for i in item]]
-                )
-
-            two_e_part = two_e_ham.get(term, {})
-            for item, factor in two_e_part.items():
-                total_ham[term] += (
-                    factor * self.two_e_coeffs[*[mode_op_map[i] for i in item]]
-                )
-
-            # print(total_ham[term])
-            # if total_ham[term] == 0:
-            # total_ham.pop(term)
-        return total_ham
-
-    def to_symplectic_hamiltonian(
-        self, mode_op_map: dict | None = None
-    ) -> tuple[list[complex], NDArray]:
-        """Output the hamiltonian in symplectic form.
-
-        Remember, in symplectic form representation of XZ is literal.
-        Convcerting to a Y will require an additional term.
+    def edge_operator(
+        self, edge_indices: tuple[int, int]
+    ) -> list[tuple[str, np.complexfloating]]:
+        """Return the edge operator of a pair of modes for this encoding.
 
         Args:
-            mode_op_map (dict): A dictionary mapping the mode indices to their corresponding majorana operator indices.
-
-        Returns:
-            tuple[list[complex], NDArray]: A tuple of coefficients and symplectic terms.
+            edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
         """
-        logger.debug("Creating symplectic Hamiltonian")
-        if mode_op_map is None:
-            logger.debug("No mode operator map provided, using default")
-            mode_op_map = self.default_mode_op_map
-        total_ham = self.fill_template(mode_op_map)
+        return edge_operator(self, edge_indices)
 
-        coeffs = []
-        terms = []
-        for term, coeff in total_ham.items():
-            term = symplectic_unhash(term, 2 * self.n_qubits)
-            half_length = len(term) // 2
-            y_count = np.sum(np.bitwise_and(term[half_length:], term[:half_length]))
-            coeff = icount_to_sign(y_count * 3) * coeff
-            if y_count % 2 == 1:
-                coeff = (coeff + np.conj(coeff)) / 2
 
-            if coeff != 0:
-                coeffs.append(coeff)
-                terms.append(term)
+def number_operator(
+    encoding: FermionQubitEncoding, mode: int
+) -> list[tuple[str, np.complexfloating]]:
+    """Return the number operator for a given encoding and mode.
 
-        terms = np.vstack(tuple(terms))
-        return coeffs, terms
+    Args:
+        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
+        mode (int): The mode index to obtain a number operator for.
+    """
+    return edge_operator(encoding, (mode, mode))
 
-    def to_qubit_hamiltonian(self, mode_op_map: dict | None = None) -> dict[str, float]:
-        """Create qubit representation Hamiltonian.
 
-        Args:
-            mode_op_map (dict): A dictionary mapping the mode indices to their corresponding majorana operator indices.
+def edge_operator(
+    encoding: FermionQubitEncoding, edge_indices: tuple[int, int]
+) -> list[tuple[str, NDArray, np.complexfloating]]:
+    """Return the number operator for a given encoding and pair of modes.
 
-        Returns:
-            dict[str, float]: A dictionary of Pauli strings and their coefficients.
-        """
-        logger.debug("Creating qubit Hamiltonian")
-        if mode_op_map is None:
-            logger.debug("No mode operator map provided, using default")
-            mode_op_map = self.default_mode_op_map
+    Args:
+        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
+        edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
+    """
+    logger.debug("Finding edge operator %s", edge_indices)
+    if not set(edge_indices).issubset(set(encoding.default_mode_op_map.keys())):
+        logger.error("Edge operator indices invalid %s", edge_indices)
+        raise ValueError("Edge operator indices invalid %s", edge_indices)
 
-        total_ham = self.fill_template(mode_op_map)
+    icount, sym_products = encoding.symplectic_product_map
+    m, n = edge_indices
+    m = encoding.default_mode_op_map[m]
+    n = encoding.default_mode_op_map[n]
 
-        pauli_hamiltonian = {}
-        for term, coefficient in total_ham.items():
-            if np.real(coefficient) == 0:
-                continue
+    first_term = sym_products[(2 * m, 2 * n)]
+    second_term = sym_products[(2 * m, 2 * n + 1)]
+    third_term = sym_products[(2 * m + 1, 2 * n)]
+    fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
 
-            unhashed_symplectic = symplectic_unhash(term, 2 * self.n_qubits)
-            ipower, pauli_term = self._symplectic_to_pauli(unhashed_symplectic)
-            coefficient = icount_to_sign(ipower) * coefficient
-            coefficient = (coefficient + np.conj(coefficient)) / 2
+    terms = [first_term, second_term, third_term, fourth_term]
+    terms: list[tuple[int, str, NDArray]] = [
+        symplectic_to_sparse(symplectic_unhash(t, 2 * encoding.n_qubits)) for t in terms
+    ]
+    factors = (
+        0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0]),
+        0.25 * icount_to_sign(icount[2 * m, 2 * n + 1] + 1 + terms[1][0]),
+        0.25 * icount_to_sign(icount[2 * m + 1, 2 * n] + 3 + terms[2][0]),
+        0.25 * icount_to_sign(icount[2 * m + 1, 2 * n + 1] + terms[3][0]),
+    )
 
-            if coefficient == 0:
-                continue
-
-            if pauli_hamiltonian.get(pauli_term, None) is not None:
-                pauli_hamiltonian[pauli_term] += coefficient
-            else:
-                pauli_hamiltonian[pauli_term] = coefficient
-        return pauli_hamiltonian
+    return [(t[1], t[2], f) for t, f in zip(terms, factors)]
 
 
 def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
@@ -530,41 +318,3 @@ def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
         weights[k[1], k[0]] = mean_weight
 
     return edge_map, weights
-
-
-def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
-    """Calculate the product of two operators in symplectic form.
-
-    Args:
-        creation (tuple[bool, bool]): A tuple of two booleans indicating if the operators are creation operators.
-        left (NDArray): The left operator in symplectic form.
-        right (NDArray): The right operator in symplectic form.
-
-    Returns:
-        NDArray: The product of the two operators in symplectic form.
-
-    Example:
-        >>> left = np.array([[1, 0], [0, 1]])
-        >>> right = np.array([[0, 1], [1, 0]])
-        >>> creation = (True, False)
-        >>> two_operator_product(creation, left, right)
-        array([[0, 1],
-               [1, 0]])
-    """
-    # (a+ib)(c+id) -> ac, iad, ibc, -bd
-    first_term = symplectic_product(left[:, 0], right[:, 0])
-    second_term = symplectic_product(left[:, 0], right[:, 1])
-    third_term = symplectic_product(left[:, 1], right[:, 0])
-    fourth_term = symplectic_product(left[:, 1], right[:, 1])
-
-    # left creation -> -iad, +bd
-    # right creation -> -ibc, +bd
-    # both creation -> -iad, -ibc, -bd
-    if creation[0] is True:
-        second_term[0] += 2
-        fourth_term[0] += 2
-    if creation[1] is True:
-        third_term[0] += 2
-        fourth_term[0] += 2
-
-    return np.vstack((first_term, second_term, third_term, fourth_term))

@@ -8,6 +8,8 @@ import logging.config
 import numpy as np
 from numpy.typing import NDArray
 
+from ferrmion import symplectic_product
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,11 +26,11 @@ def icount_to_sign(icount: int) -> np.complex64:
     return vals[icount % 4]
 
 
-def symplectic_hash(symp: NDArray[np.bool]) -> bytes:
+def symplectic_hash(symp: NDArray[bool]) -> bytes:
     """Convert a symplectic vector into a hashable form.
 
     Args:
-        symp (NDArray[np.bool]): The symplectic vector.
+        symp (NDArray[bool]): The symplectic vector.
 
     Returns:
         bytes: The hashed form of the symplectic vector.
@@ -36,7 +38,7 @@ def symplectic_hash(symp: NDArray[np.bool]) -> bytes:
     return np.packbits(symp).tobytes()
 
 
-def symplectic_unhash(symp: bytes, length: int) -> NDArray[np.bool]:
+def symplectic_unhash(symp: bytes, length: int) -> NDArray[bool]:
     """Convert a hashed symplectic vector back to its original form.
 
     Args:
@@ -44,17 +46,17 @@ def symplectic_unhash(symp: bytes, length: int) -> NDArray[np.bool]:
         length (int): The length of the original symplectic vector.
 
     Returns:
-        NDArray[np.bool]: The original symplectic vector.
+        NDArray[bool]: The original symplectic vector.
     """
     unpacked = np.unpackbits(np.frombuffer(symp, dtype=np.uint8))
     if len(unpacked) < length:
         unpacked = np.pad(
             unpacked, length - len(unpacked), "constant", constant_values=0
         )
-    return np.array(unpacked[:length], dtype=np.bool)
+    return np.array(unpacked[:length], dtype=bool)
 
 
-def symplectic_to_pauli(symplectic: NDArray[np.bool]) -> tuple[int, str]:
+def symplectic_to_pauli(symplectic: NDArray[bool]) -> tuple[int, str]:
     """Convert a symplectic vector into a Pauli String.
 
     Args:
@@ -66,19 +68,66 @@ def symplectic_to_pauli(symplectic: NDArray[np.bool]) -> tuple[int, str]:
     NOTE: symplectic XZ does represent XZ and not Y
         So Y=-iXZ needs an imaginary cofactor
     """
-    half_length = len(symplectic) // 2
-    xlist = ["X" if line == 1 else "" for line in symplectic[:half_length]]
-    zlist = ["Z" if line == 1 else "" for line in symplectic[half_length:]]
-    two_p = {"": "I", "X": "X", "Y": "Y", "Z": "Z", "XZ": "Y"}
+    left, right = np.hsplit(symplectic, 2)
+    total = left + 2 * right
 
-    pauli_list = [two_p[x + z] for x, z in zip(xlist, zlist)]
+    def to_pauli(x):
+        match x:
+            case 0:
+                return "I"
+            case 1:
+                return "X"
+            case 2:
+                return "Z"
+            case 3:
+                return "Y"
+
+    to_paulis = np.vectorize(to_pauli)
+    pauli_list = to_paulis(total)
+
     pauli_string = "".join(pauli_list)
     y_count = pauli_string.count("Y")
     ipower = (3 * y_count) % 4
     return ipower, pauli_string
 
 
-def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool]]:
+def symplectic_to_sparse(symplectic: NDArray[bool]) -> tuple[int, str, NDArray[int]]:
+    """Convert a symplectic vector into a Pauli String.
+
+    Args:
+        symplectic (NDArray[np.uint8]) : symplectic vector [X terms, Y terms]
+
+    Returns:
+        tuple[int, str]: The imaginary cofactor and Pauli string.
+
+    NOTE: symplectic XZ does represent XZ and not Y
+        So Y=-iXZ needs an imaginary cofactor
+    """
+    xhalf, zhalf = np.hsplit(symplectic, 2)
+    total = xhalf + 2 * zhalf
+
+    def to_pauli(x):
+        match x:
+            case 0:
+                return ""
+            case 1:
+                return "X"
+            case 2:
+                return "Z"
+            case 3:
+                return "Y"
+
+    to_paulis = np.vectorize(to_pauli)
+    pauli_list = to_paulis(total)
+
+    pauli_string = "".join(pauli_list)
+    indices = np.where(total != 0)[0]
+    y_count = pauli_string.count("Y")
+    ipower = (3 * y_count) % 4
+    return ipower, pauli_string, indices
+
+
+def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[bool]]:
     """Convert a Pauli operator to symplectic form.
 
     Args:
@@ -103,12 +152,12 @@ def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool]]:
     # each y is turned into a iY=XZ
     y_count = np.count_nonzero(pauli_array == "Y") % 4
     # logger.debug(f{y_count=})
-    x_array = np.array([x_map[term] for term in pauli], dtype=np.bool)
-    z_array = np.array([z_map[term] for term in pauli], dtype=np.bool)
-    return y_count, np.hstack((x_array, z_array), dtype=np.bool)
+    x_array = np.array([x_map[term] for term in pauli], dtype=bool)
+    z_array = np.array([z_map[term] for term in pauli], dtype=bool)
+    return y_count, np.hstack((x_array, z_array), dtype=bool)
 
 
-def xz_swap(symplectic) -> NDArray[np.uint8]:
+def xz_swap(symplectic) -> NDArray[bool]:
     """Swap X and Z Pauli operators in a symplectic matrix.
 
     Args:
@@ -119,15 +168,16 @@ def xz_swap(symplectic) -> NDArray[np.uint8]:
     """
     logger.debug(f"Swapping X and Z in symplectic matrix\n{symplectic=}")
     x_block, z_block = np.hsplit(symplectic, 2)
+    is_z = np.where(np.logical_and(z_block, np.logical_not(x_block)))
+    is_x = np.where(np.logical_and(x_block, np.logical_not(z_block)))
+
     new_x_block = np.copy(x_block)
-    new_x_block[np.where(z_block - x_block == 1)] = 1
-    new_x_block[np.where(x_block - z_block == 1)] = 0
-    new_x_block[np.where(x_block + z_block == 2)] = 1
+    new_x_block[is_z] = True
+    new_x_block[is_x] = False
 
     new_z_block = np.copy(z_block)
-    new_z_block[np.where(z_block - x_block == 1)] = 0
-    new_z_block[np.where(x_block - z_block == 1)] = 1
-    new_z_block[np.where(x_block + z_block == 2)] = 1
+    new_z_block[is_x] = True
+    new_z_block[is_z] = False
     return np.hstack((new_x_block, new_z_block))
 
 
@@ -236,14 +286,53 @@ def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.uint]]:
 
     nto: NDArray[np.uint] = all_trivial.shape[0] / 2 - all_trivial
 
-    satisfied: np.bool = np.all((nto + np.eye(nto.shape[0])) % 2 == 1)
+    satisfied: bool = np.all((nto + np.eye(nto.shape[0])) % 2 == 1)
 
     logger.debug(f"Trivial overlap satisfied: {satisfied}")
     logger.debug(f"Trivial overlap matrix:\n{nto}")
     return satisfied, nto
 
 
-def find_pauli_weight(symplectic_hamiltonian: NDArray[np.bool]) -> np.floating:
+def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
+    """Calculate the product of two operators in symplectic form.
+
+    Args:
+        creation (tuple[bool, bool]): A tuple of two booleans indicating if the operators are creation operators.
+        left (NDArray): The left operator in symplectic form.
+        right (NDArray): The right operator in symplectic form.
+
+    Returns:
+        NDArray: The product of the two operators in symplectic form.
+
+    Example:
+        >>> left = np.array([[1, 0], [0, 1]])
+        >>> right = np.array([[0, 1], [1, 0]])
+        >>> creation = (True, False)
+        >>> two_operator_product(creation, left, right)
+        array([[0, 1],
+               [1, 0]])
+    """
+    logger.debug("Calculating two operator product.")
+    # (a+ib)(c+id) -> ac, iad, ibc, -bd
+    first_term = symplectic_product(left[:, 0], right[:, 0])
+    second_term = symplectic_product(left[:, 0], right[:, 1])
+    third_term = symplectic_product(left[:, 1], right[:, 0])
+    fourth_term = symplectic_product(left[:, 1], right[:, 1])
+
+    # left creation -> -iad, +bd
+    # right creation -> -ibc, +bd
+    # both creation -> -iad, -ibc, -bd
+    if creation[0] is True:
+        second_term[0] += 2
+        fourth_term[0] += 2
+    if creation[1] is True:
+        third_term[0] += 2
+        fourth_term[0] += 2
+
+    return np.vstack((first_term, second_term, third_term, fourth_term))
+
+
+def find_pauli_weight(symplectic_hamiltonian: NDArray[bool]) -> np.floating:
     """Find the average Pauli weight of a symplectic hamiltonian.
 
     Args:

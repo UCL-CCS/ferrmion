@@ -10,17 +10,17 @@ np.random.seed(1710)
 
 @pytest.fixture
 def four_mode_tt():
-    return TernaryTree(np.random.random((4, 4)), np.random.random((4, 4, 4, 4)))
+    return TernaryTree(n_modes=4)
 
 
 @pytest.fixture
 def sixteen_mode_tt():
-    return TernaryTree(np.random.random((16, 16)), np.random.random((16, 16, 16, 16)))
+    return TernaryTree(n_modes=16)
 
 
-def test_edge_operator_map():
+def test_edge_operator_map(four_mode_tt):
     edge_map, weights = (
-        TernaryTree(np.ones((4, 4)), np.zeros((4, 4, 4, 4))).JW()._edge_operator_map()
+        four_mode_tt.JW()._edge_operator_map()
     )
     assert edge_map == {
         (0, 0): {b"\x00": 0.25, b"\x08": -0.25},
@@ -44,17 +44,8 @@ def test_edge_operator_map():
         ]
     )
 
-
-def test_hamiltonian_coefficients_agree(four_mode_tt):
-    coefficents, _ = four_mode_tt.BK().to_symplectic_hamiltonian()
-    pauli_ham = four_mode_tt.BK().to_qubit_hamiltonian()
-
-    assert coefficents == [*pauli_ham.values()]
-
-
 def test_default_vacuum_state(four_mode_tt):
     assert np.all(four_mode_tt.vacuum_state == np.array([0] * 4))
-
 
 def test_valid_vacuum_state(four_mode_tt):
     with pytest.raises(ValueError) as excinfo:
@@ -82,13 +73,13 @@ def test_hartree_fock_state(sixteen_mode_tt):
     ) == [1.0]
     assert np.all(
         hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool))[1]
-        == np.array([[True] * nq + [False] * nq], dtype=np.bool)
+        == np.array([[True] * nq + [False] * nq], dtype=bool)
     )
     assert np.all(
         hartree_fock_state(
             np.array([True] * (nq + 1) + [False] * (nq - 1), dtype=bool)
         )[1]
-        == np.array([[True] * (nq + 1) + [False] * (nq - 1)], dtype=np.bool)
+        == np.array([[True] * (nq + 1) + [False] * (nq - 1)], dtype=bool)
     )
 
 
@@ -137,3 +128,50 @@ def test_four_benchmark_hf_state(benchmark, four_mode_tt):
 
 def test_four_benchmark_slow_hf_state(benchmark, four_mode_tt):
     result = benchmark(test_slow_hartree_fock_state, four_mode_tt)
+
+def test_number_operator(four_mode_tt):
+    tree = four_mode_tt.JW()
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    # numpy doesn't like comparing empty arrays
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((0,0))) == str(TernaryTree(n_modes=4).JW().number_operator(0))
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((1,1))) == str(TernaryTree(n_modes=4).JW().number_operator(1))
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((2,2))) == str(TernaryTree(n_modes=4).JW().number_operator(2))
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((3,3))) == str(TernaryTree(n_modes=4).JW().number_operator(3))
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.number_operator(tree.n_modes+1)
+    assert "indices invalid" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.number_operator(-1)
+    assert "indices invalid" in str(excinfo.value)
+
+def test_edge_operator(four_mode_tt):
+    tree = four_mode_tt.JKMN()
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    left = np.array([t[2] for t in tree.edge_operator((1,0))], dtype=np.complexfloating)
+    right = np.array([np.conjugate(t[2]) for t in tree.edge_operator((0,1))], dtype=np.complexfloating)
+    assert np.all(right == left[[0,2,1,3]])
+    assert np.all(left == np.array([ 0.  -0.25j,  -0.25+0.j  , 0.25+0.j  ,  0.  +0.25j]))
+    assert np.all(right == np.array([ 0.  -0.25j,  0.25+0.j  , -0.25+0.j  ,  0.  +0.25j]))
+
+    assert str(tree.edge_operator((0,3))[0]) == str(('YZX', np.array([0,1,3]), -0-0.25j))
+    assert str(tree.edge_operator((0,3))[1]) == str(('YZY', np.array([0,1,3]), 0.25))
+    assert str(tree.edge_operator((0,3))[2]) == str(('XZX', np.array([0,2,3]), 0.25))
+    assert str(tree.edge_operator((0,3))[3]) == str(('XZY', np.array([0,2,3]), 0+0.25j))
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.edge_operator((0, tree.n_modes+1))
+    assert "indices invalid" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.edge_operator((tree.n_modes+1, 0))
+    assert "indices invalid" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.number_operator((0, -1))
+    assert "indices invalid" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        tree.number_operator((-1, 0))
+    assert "indices invalid" in str(excinfo.value)

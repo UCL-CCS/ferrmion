@@ -16,6 +16,7 @@ from .utils import (
     symplectic_hash,
     symplectic_to_pauli,
     symplectic_unhash,
+    two_operator_product,
 )
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "KNTO",
     "knto_symplectic_matrix",
     "hartree_fock_state",
+    "two_operator_product",
 ]
 
 setup_logs()

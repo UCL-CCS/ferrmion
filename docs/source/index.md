@@ -11,6 +11,8 @@
 
 encode
 optimize
+interop
+hamiltonians
 devices
 utils
 slow

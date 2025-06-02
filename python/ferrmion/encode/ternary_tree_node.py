@@ -56,7 +56,7 @@ class TTNode:
     @property
     def child_strings(self) -> list[str]:
         """Return a list of all child strings for the node."""
-        return child_strings(self, prefix="")
+        return sorted(child_strings(self, prefix=""), key=node_sorter)
 
     def add_child(
         self, which_child: str, qubit_label: int | str | None = None
@@ -128,7 +128,8 @@ def child_strings(node: TTNode, prefix: str = "") -> list[str]:
         child = getattr(node, pauli, None)
         if child is not None:
             strings = strings.union(child_strings(node=child, prefix=f"{prefix+pauli}"))
-    return sorted(strings, key=node_sorter)
+    logger.debug("Sorting nodes.")
+    return strings
 
 
 def branch_strings(node: TTNode, prefix: str = "") -> set[str]:
@@ -163,8 +164,6 @@ def node_sorter(label: str) -> int:
     Returns:
         int: Integer label to sort by.
     """
-    logger.debug("Sorting node %s", label)
-
     if label == "":
         return 0
     pauli_dict = {"x": "1", "y": "2", "z": "3"}

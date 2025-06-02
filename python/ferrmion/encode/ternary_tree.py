@@ -31,25 +31,37 @@ class TernaryTree(FermionQubitEncoding):
 
     def __init__(
         self,
-        one_e_coeffs: NDArray,
-        two_e_coeffs: NDArray,
+        n_modes: int,
         root_node: TTNode = TTNode(),
-        enumeration_scheme: dict[str, tuple[int, int]] | None = None,
     ):
         """Initialise a ternary tree.
 
         Args:
-            one_e_coeffs (NDArray): The one-electron coefficients.
-            two_e_coeffs (NDArray): The two-electron coefficients.
-            qubits (set[Qubit]): The qubits.
+            n_modes (int): How many fermionic modes in the encoding.
             root_node (TTNode): The root node of the tree.
             enumeration_scheme (dict[str, tuple[int, int]]): The enumeration scheme.
         """
-        self.n_qubits = one_e_coeffs.shape[1]
+        self.n_modes = n_modes
+        self.n_qubits = n_modes
         self.root = root_node
         self.root.label = ""
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
-        super().__init__(one_e_coeffs, two_e_coeffs)
+        super().__init__(self.n_modes, self.n_qubits)
+
+    @classmethod
+    def from_hamiltonian_coefficients(cls, coeffs: tuple[NDArray]) -> "TernaryTree":
+        """Create an encoding by passing coefficients.
+
+        Args:
+            coeffs (tuple): The electron integrals for some hamiltonian.
+
+        Returns:
+            FermionQubitEncoding: An initialised encoding.
+        """
+        if not all([set(coeff.shape) == set(coeffs[0].shape) for coeff in coeffs]):
+            logger.error("Coeff axes must be of equal size for all terms.")
+
+        return cls(coeffs[0].shape[0])
 
     @property
     def enumeration_scheme(self) -> dict[str, tuple[int, int]]:
@@ -66,7 +78,7 @@ class TernaryTree(FermionQubitEncoding):
         logger.debug("Setting enumeration scheme.")
         error_string = ""
         if set(self.root.child_strings) != set(enumeration_dict.keys()):
-            error_string += "Enumeration scheme must contain all nodes.\n"
+            error_string += f"Enumeration scheme {enumeration_dict} must contain all nodes {self.root.child_strings}.\n"
 
         modes = set()
         qubits = set()
@@ -183,7 +195,7 @@ class TernaryTree(FermionQubitEncoding):
 
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[np.bool]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build the symplectic matrix for the tree.
 
         Returns:
@@ -197,7 +209,7 @@ class TernaryTree(FermionQubitEncoding):
 
         pauli_string_map = self.branch_operator_map
 
-        symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=np.bool)
+        symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
         for node, operators in self.string_pairs.items():
             for offset, operator in enumerate(operators):
@@ -214,11 +226,10 @@ class TernaryTree(FermionQubitEncoding):
         """Create a new tree with the Jordan-Wigner encoding."""
         logger.debug("Creating Jordan-Wigner encoding tree")
         new_tree = TernaryTree(
-            one_e_coeffs=self.one_e_coeffs,
-            two_e_coeffs=self.two_e_coeffs,
+            n_modes=self.n_modes,
             root_node=TTNode(),
         )
-        new_tree.add_node("z" * (self.n_qubits - 1))
+        new_tree.add_node("z" * (self.n_modes - 1))
         new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
         return new_tree
 
@@ -230,8 +241,7 @@ class TernaryTree(FermionQubitEncoding):
         """Create a new tree with the parity encoding."""
         logger.debug("Creating parity encoding tree")
         new_tree = TernaryTree(
-            one_e_coeffs=self.one_e_coeffs,
-            two_e_coeffs=self.two_e_coeffs,
+            n_modes=self.n_modes,
             root_node=TTNode(),
         )
         new_tree.add_node("x" * (self.n_qubits - 1))
@@ -242,8 +252,7 @@ class TernaryTree(FermionQubitEncoding):
         """Create a new tree with the Bravyi-Kitaev encoding."""
         logger.debug("Creating Bravyi-Kitaev encoding tree")
         new_tree = TernaryTree(
-            one_e_coeffs=self.one_e_coeffs,
-            two_e_coeffs=self.two_e_coeffs,
+            n_modes=self.n_modes,
             root_node=TTNode(),
         )
         branches = ["x"]
@@ -272,8 +281,7 @@ class TernaryTree(FermionQubitEncoding):
         """Create a new tree with the JKMN encoding."""
         logger.debug("Creating JKMN encoding tree.")
         new_tree = TernaryTree(
-            one_e_coeffs=self.one_e_coeffs,
-            two_e_coeffs=self.two_e_coeffs,
+            n_modes=self.n_modes,
             root_node=TTNode(),
         )
         branches = ["x", "y", "z"]

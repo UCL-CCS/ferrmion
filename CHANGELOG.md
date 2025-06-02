@@ -21,12 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `lambda_plus_mu` evolutionary algorithm for approximate enumeration optimization.
 - `reduced_entanglement_tree` optimization added to `ferrmion.optimize`
 - `pauli_weighted_norm` and `minimis_mi_distance` cost functions
+- `molcular_hamiltonian` and `molecular_hamiltonian_template` functions in `.hamiltonians.molecular`
 
 ### Removed
 
 ### Changed
-- One and Two electron Hamiltonians are first found as templates with terms and coefficient labels, which can then be changed without recalculating terms.
-- Restructured project as a maturin mixed rust/python project.
-- Encodings moved from top level to `ferrmion.encode`
 
 ### Fixed

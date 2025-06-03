@@ -5,7 +5,7 @@ use ndarray::{concatenate, Axis, Zip};
 use num_complex::c64;
 use numpy::ndarray::{arr2, s, Array1, Array2, ArrayView1, ArrayView2};
 use numpy::{Complex64, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 
 fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array1<Complex64> {
@@ -178,6 +178,88 @@ fn test_hartree_fock() {
     assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
 }
 
+fn symplectic_to_pauli(symplectic: ArrayView1<bool>) -> (usize, String) {
+    let block_width = symplectic.len_of(Axis(0)) / 2;
+    let mut ipower: usize = 0;
+    let (x_block, z_block) = symplectic.split_at(Axis(0), block_width);
+    let mut pauli_string = String::new();
+    Zip::from(x_block)
+        .and(z_block)
+        .for_each(|&x, &z| match (&x, &z) {
+            (&true, &true) => {
+                pauli_string.push('Y');
+                ipower += 1;
+            }
+            (&true, &false) => pauli_string.push('X'),
+            (&false, &true) => pauli_string.push('Z'),
+            (&false, &false) => pauli_string.push('I'),
+        });
+    ((3 * ipower) % 4, pauli_string)
+}
+
+#[test]
+fn test_symplectic_to_pauli() {
+    // YXZI
+    let symplectic = ndarray::arr1(&[true, true, false, false, true, false, true, false]);
+    assert_eq!(
+        symplectic_to_pauli(symplectic.view()),
+        (3, String::from("YXZI"))
+    );
+}
+
+fn _valid_pauli_string(pauli: &str) -> bool {
+    pauli.chars().all(|c| matches!(c, 'X' | 'Y' | 'Z' | 'I'))
+}
+
+#[test]
+fn test_valid_pauli_string() {
+    assert!(_valid_pauli_string("XYZI"));
+    assert!(_valid_pauli_string("X"));
+    assert!(_valid_pauli_string("Y"));
+    assert!(_valid_pauli_string("Z"));
+    assert!(_valid_pauli_string("I"));
+    assert!(!_valid_pauli_string("XYZA"));
+}
+
+fn pauli_to_symplectic(pauli: String) -> (usize, Array1<bool>) {
+    let string_len = pauli.len();
+    assert!(_valid_pauli_string(&pauli));
+
+    let mut ipower: usize = 0;
+    let mut x_block: Array1<bool> = Array1::from_elem(string_len, false);
+    let mut z_block: Array1<bool> = Array1::from_elem(string_len, false);
+    Zip::from(&Array1::from_iter(pauli.chars()))
+        .and(&mut x_block)
+        .and(&mut z_block)
+        .for_each(|c, x, z| match c {
+            'X' => *x = true,
+            'Z' => *z = true,
+            'Y' => {
+                *x = true;
+                *z = true;
+                ipower += 1;
+            }
+            _ => {
+                *x = false;
+                *z = false;
+            }
+        });
+    (ipower % 4, concatenate![Axis(0), x_block, z_block])
+}
+
+#[test]
+fn test_pauli_to_symplectic() {
+    let valid_string = String::from("IXZY");
+    let valid_symplectic = ndarray::arr1(&[false, true, false, true, false, false, true, true]);
+    assert_eq!(pauli_to_symplectic(valid_string), (1, valid_symplectic));
+
+    let all_y = String::from("YYY");
+    assert_eq!(
+        pauli_to_symplectic(all_y),
+        (3, ndarray::arr1(&[true, true, true, true, true, true]))
+    )
+}
+
 fn symplectic_product(left: ArrayView1<bool>, right: ArrayView1<bool>) -> (usize, Array1<bool>) {
     // bitwise or between two vectors
     let product = &left ^ &right;
@@ -210,10 +292,11 @@ fn test_symplectic_product() {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pyo3(name = "core")]
+fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyfn(m)]
     #[pyo3(name = "symplectic_product")]
-    fn rust_symplectic_product_py<'py>(
+    fn wrap_symplectic_product_py<'py>(
         py: Python<'py>,
         left: PyReadonlyArray1<bool>,
         right: PyReadonlyArray1<bool>,
@@ -227,7 +310,7 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     #[pyfn(m)]
     #[pyo3(name = "hartree_fock_state")]
-    fn rust_hartree_fock_state_py<'py>(
+    fn wrap_hartree_fock_state_py<'py>(
         py: Python<'py>,
         vacuum_state: PyReadonlyArray1<f64>,
         fermionic_hf_state: PyReadonlyArray1<bool>,
@@ -247,6 +330,31 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
         (
             PyArray1::from_owned_array(py, coeffs),
             PyArray2::from_owned_array(py, states),
+        )
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "symplectic_to_pauli")]
+    fn wrap_symplectic_to_pauli<'py>(
+        py: Python<'py>,
+        symplectic: PyReadonlyArray1<bool>,
+    ) -> (Bound<'py, PyInt>, Bound<'py, PyString>) {
+        let symplectic = symplectic.as_array();
+        let (ipower, pauli) = symplectic_to_pauli(symplectic);
+        (PyInt::new(py, ipower), PyString::new(py, &pauli))
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "puali_to_symplectic")]
+    fn wrap_pauli_to_symplectic(
+        py: Python<'_>,
+        pauli: String,
+    ) -> (Bound<'_, PyInt>, Bound<'_, PyArray1<bool>>) {
+        // let pauli = pauli.extract();
+        let (ipower, symplectic) = pauli_to_symplectic(pauli);
+        (
+            PyInt::new(py, ipower),
+            PyArray1::from_owned_array(py, symplectic),
         )
     }
     Ok(())

@@ -8,7 +8,7 @@ import logging.config
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion import symplectic_product
+from ferrmion.core import symplectic_product
 
 logger = logging.getLogger(__name__)
 

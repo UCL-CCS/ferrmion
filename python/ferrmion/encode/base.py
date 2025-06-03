@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion import hartree_fock_state, symplectic_product
+from ferrmion.core import hartree_fock_state, symplectic_product
 from ferrmion.utils import (
     icount_to_sign,
     pauli_to_symplectic,

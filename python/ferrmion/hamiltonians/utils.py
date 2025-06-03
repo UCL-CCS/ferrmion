@@ -5,7 +5,7 @@ import logging
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion import symplectic_product
+from ferrmion.core import symplectic_product
 from ferrmion.utils import (
     icount_to_sign,
     symplectic_hash,

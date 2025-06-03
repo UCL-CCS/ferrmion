@@ -5,7 +5,8 @@ import logging
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion import FermionQubitEncoding, symplectic_product
+from ferrmion import FermionQubitEncoding
+from ferrmion.core import symplectic_product
 from ferrmion.utils import icount_to_sign, symplectic_hash, symplectic_unhash
 
 from .utils import fill_template, symplectic_product_map, to_qubit_hamiltonian

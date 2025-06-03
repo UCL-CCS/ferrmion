@@ -1,5 +1,5 @@
 import numpy as np
-from ferrmion import symplectic_product
+from ferrmion.core import symplectic_product
 from ferrmion.slow import slow_symplectic_product
 
 

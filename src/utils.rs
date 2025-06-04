@@ -301,7 +301,7 @@ pub fn symplectic_product_map(
 
     let mut product_powers: Array2<usize> = Array2::zeros((n_majoranas, n_majoranas));
     let mut product_map: Array3<bool> =
-        Array3::from_elem((n_majoranas, n_majoranas, n_majoranas), false);
+        Array3::from_elem((n_majoranas, n_majoranas, symplectics.ncols()), false);
     azip!((index (l, r), pow in &mut product_powers) {
         let left = symplectics.slice(s![l,..]);
         let right = symplectics.slice(s![r,..]);
@@ -323,5 +323,6 @@ fn test_symplectic_product_map() {
     let (iproducts, symplectic_products) =
         symplectic_product_map(ipowers.view(), symplectics.view());
     println!("{}", iproducts);
+    println!("{}", symplectic_products);
     // assert_eq!(iproducts, ndarray::arr2(&[[0,0],[0,0]]));
 }

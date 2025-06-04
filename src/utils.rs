@@ -296,7 +296,9 @@ pub fn symplectic_product_map(
     ipowers: ArrayView1<usize>,
     symplectics: ArrayView2<bool>,
 ) -> (Array2<usize>, Array3<bool>) {
-    let n_majoranas = symplectics.len_of(Axis(0));
+    let n_majoranas = symplectics.nrows();
+    assert_eq!(n_majoranas, ipowers.len());
+
     let mut product_powers: Array2<usize> = Array2::zeros((n_majoranas, n_majoranas));
     let mut product_map: Array3<bool> =
         Array3::from_elem((n_majoranas, n_majoranas, n_majoranas), false);
@@ -316,5 +318,10 @@ pub fn symplectic_product_map(
 
 #[test]
 fn test_symplectic_product_map() {
-    todo!()
+    let ipowers = ndarray::arr1(&[0, 1]);
+    let symplectics = ndarray::arr2(&[[true, true, false, false], [true, false, true, false]]);
+    let (iproducts, symplectic_products) =
+        symplectic_product_map(ipowers.view(), symplectics.view());
+    println!("{}", iproducts);
+    // assert_eq!(iproducts, ndarray::arr2(&[[0,0],[0,0]]));
 }

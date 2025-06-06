@@ -67,6 +67,26 @@ pub fn molecular(
     hamiltonian
 }
 
+#[test]
+fn test_molecular() {
+    let ipowers = ndarray::arr1(&[0, 1, 2, 3]);
+    let symplectics = ndarray::arr2(&[
+        [true, false, false, false],
+        [true, false, true, false],
+        [false, true, true, false],
+        [false, true, true, true],
+    ]);
+    let ham = molecular(ipowers.view(), symplectics.view());
+    let mut expected: HashMap<String, HashMap<String, Complex64>> = HashMap::new();
+    expected.insert(String::from("IIII"), {
+        let mut value = HashMap::new();
+        value.insert(String::from("01"), Complex64::new(1., 0.));
+        value
+    });
+    println!("{:#?}", ham);
+    assert!(ham.keys().all(|k| expected.contains_key(k)));
+}
+
 #[allow(dead_code)]
 pub fn fill_template(
     template: HashMap<String, HashMap<String, Complex64>>,

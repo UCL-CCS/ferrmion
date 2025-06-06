@@ -9,6 +9,7 @@ name = "ferrmion"
 crate-type = ["cdylib"]
 
 [dependencies]
+itertools = "0.14.0"
 ndarray = "0.16.1"
 num-complex = "0.4.6"
 numpy = "0.24.0"

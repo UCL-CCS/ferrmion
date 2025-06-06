@@ -35,7 +35,10 @@ def molecular_hamiltonian_template(
         bytes, dict[tuple[int, int] | tuple[int, int, int, int], np.complexfloating]
     ] = {}
 
-    # am+ an+ ak- al-
+    # there are two hamiltonian terms to calculate
+    # one-e: am+ an-
+    # (2m - i 2m+1)(2n +i 2n+1)
+    # two-e: am+ an+ ak- al-
     # (2m - i 2m+1)(2n -i 2n+1)(2k +i 2k+1)(2l +i 2l+1)
     # (l1 -i l2 -i l3 - l4)(r1 +i r2 +i r3 - r4)
     for m in range(n_modes):

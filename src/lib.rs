@@ -1,10 +1,12 @@
 use numpy::{Complex64, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::types::{PyDict, PyInt, PyString};
+use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
 
 mod utils;
 use crate::utils::*;
+mod hamiltonians;
+use crate::hamiltonians::molecular;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -90,5 +92,19 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
     }
 
+    #[pyfn(m)]
+    #[pyo3(name = "molecular_hamiltonian_template")]
+    fn wrap_molecular_hamiltonian<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<usize>,
+        symplectics: PyReadonlyArray2<bool>,
+    ) -> Bound<'py, PyDict> {
+        let ipowers = ipowers.as_array();
+        let symplectics = symplectics.as_array();
+        let hamiltonian = molecular(ipowers, symplectics);
+        hamiltonian
+            .into_py_dict(py)
+            .expect("Cannot parse Hamiltonian dict.")
+    }
     Ok(())
 }

@@ -5,6 +5,16 @@ use numpy::Complex64;
 use std::collections::HashMap;
 use std::vec;
 
+pub fn icount_to_sign(icount: usize) -> Complex64 {
+    match icount % 4 {
+        0 => Complex64::new(1., 0.),
+        1 => Complex64::new(0., 1.),
+        2 => Complex64::new(-1., 0.),
+        3 => Complex64::new(0., -1.),
+        _ => panic!(),
+    }
+}
+
 fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array1<Complex64> {
     concatenate![
         Axis(0),
@@ -324,5 +334,13 @@ fn test_symplectic_product_map() {
         symplectic_product_map(ipowers.view(), symplectics.view());
     println!("{}", iproducts);
     println!("{}", symplectic_products);
-    // assert_eq!(iproducts, ndarray::arr2(&[[0,0],[0,0]]));
+    assert_eq!(iproducts, ndarray::arr2(&[[0, 1], [3, 0]]));
+    assert_eq!(
+        symplectic_products.view(),
+        ndarray::arr3(&[
+            [[false, false, false, false], [false, true, true, false]],
+            [[false, true, true, false], [false, false, false, false]]
+        ])
+        .view()
+    );
 }

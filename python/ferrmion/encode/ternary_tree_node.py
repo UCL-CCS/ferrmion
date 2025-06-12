@@ -3,6 +3,8 @@
 import logging
 from typing import Optional
 
+import rustworkx as rx
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,6 +73,17 @@ class TTNode:
             TTNode: self with the child added.
         """
         return add_child(self, which_child, qubit_label)
+
+    def to_rustworkx(self) -> rx.PyDiGraph:
+        """Create a rustworkx graph from this node and its children.
+
+        Example:
+            ```
+            tree = ferrmion.encode.TernaryTree(10).BK()
+            rx_graph = tree.root.to_rustworkx()
+            ```
+        """
+        return to_rustworkx(self)
 
 
 def add_child(parent, which_child: str, qubit_label: int | str | None = None) -> TTNode:
@@ -167,4 +180,26 @@ def node_sorter(label: str) -> int:
     if label == "":
         return 0
     pauli_dict = {"x": "1", "y": "2", "z": "3"}
-    return int("".join([pauli_dict[item] for item in label]))
+    return int("".join([pauli_dict[item] for item in label.lower()]))
+
+
+def to_rustworkx(root: TTNode) -> rx.PyDiGraph:
+    """Convert a TT node and its children to a rustworkx PyDiGraph.
+
+    Args:
+        root (TTNode): A node to be the root of the rx graph.
+
+    Example:
+        ```
+        tree = ferrmion.encode.TernaryTree(10).BK()
+        rx_graph = to_rustworkx(tree.root)
+        ```
+    """
+    graph = rx.PyDiGraph(check_cycle=True)
+    child_dict = {s: i for i, s in enumerate(root.child_strings)}
+    graph.add_nodes_from(child_dict)
+    for string in root.child_strings:
+        if len(string) == 0:
+            continue
+        graph.add_edge(child_dict[string[:-1]], child_dict[string], string[-1])
+    return graph

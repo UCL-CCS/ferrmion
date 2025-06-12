@@ -12,18 +12,18 @@ logger = logging.getLogger(__name__)
 
 
 def reduced_entanglement_tree(
-    tree: TernaryTree,
     mutual_information: NDArray,
     cutoff: float = 0.5,
     max_branches: int | None = None,
+    squash: bool = True,
 ) -> TernaryTree:
     """Creates the reduced entanglement TernaryTree.
 
     Args:
-        tree (TernaryTree): A ternary tree encoding.
         mutual_information (NDArray): A 2D array of mode mutual information.
         cutoff (float | None): The average MI between spatial orbitals.
         max_branches (int): The maximum allowed number of Parity branches.
+        squash (bool): Whether to squash the mutual_information from spin-orbit form to spinless.
 
     Returns:
         TernaryTree: A new ternary tree.
@@ -31,21 +31,43 @@ def reduced_entanglement_tree(
     Note:
         Assumes that the MI matrix is in spin-orb ordering
         So that each block of four contains [[aa, ab], [ba,bb]]
+
+    Example:
+    ```
+    import numpy as np
+    mi = 0.5 * np.random.random((10,10))
+    mi = mi + mi.T
+
+    rett = reduced_entanglement_tt(mi)
+    ```
+
+    To enforce a specific number of branches:
+    ```
+    rett = reduced_entanglement_tt(mi, cutoff=0, max_branches=3)
+    ```
+
     """
     logger.debug("Creating Reduced entanglement TT.")
     enumeration_scheme = {}
-    new_tree = TernaryTree(tree.n_modes, root_node=TTNode())
+    n_modes = mutual_information.shape[0]
+    n_modes *= 1 if squash else 2
 
-    # First combine the MI information for alpha and beta spins
-    squash_rows = mutual_information[::2] + mutual_information[1::2]
-    squash_matrix = squash_rows[:, ::2] + squash_rows[:, 1::2]
+    new_tree = TernaryTree(n_modes, root_node=TTNode())
+
+    if squash:
+        # First combine the MI information for alpha and beta spins
+        squash_rows = mutual_information[::2] + mutual_information[1::2]
+        squash_matrix = squash_rows[:, ::2] + squash_rows[:, 1::2]
+        squash_matrix *= 0.25
+    else:
+        squash_matrix = mutual_information
 
     mi_rank = np.triu(squash_matrix).flatten().argsort()[::-1]
     squash_indices = [np.unravel_index(index, squash_matrix.shape) for index in mi_rank]
     squash_indices = [(int(i[0]), int(i[1])) for i in squash_indices]
     logger.debug(f"Spatial orbital mutual information rank {squash_indices}")
 
-    branches = []
+    branches: list[tuple[int, int, int, int]] = []
     unused_indices = {i for i in range(squash_matrix.shape[0])}
     for squash_index in squash_indices:
         if max_branches is not None and len(branches) >= max_branches:
@@ -55,7 +77,7 @@ def reduced_entanglement_tree(
             logger.debug("Indices %s previously assigned to branch.", squash_index)
             continue
 
-        if squash_matrix[squash_index] >= 4 * cutoff:
+        if squash_matrix[squash_index] >= cutoff:
             branch = (
                 2 * squash_index[0],
                 2 * squash_index[0] + 1,

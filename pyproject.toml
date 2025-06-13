@@ -37,6 +37,7 @@ docs = [
     "sphinx-rtd-theme>=3.0.2",
     "ffsim>=0.0.56",
     "qiskit>=2.0.2",
+    "myst-nb>=1.2.0",
 ]
 
 [tool.ruff]

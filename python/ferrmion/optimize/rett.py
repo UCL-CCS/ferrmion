@@ -15,7 +15,7 @@ def reduced_entanglement_tree(
     mutual_information: NDArray,
     cutoff: float = 0.5,
     max_branches: int | None = None,
-    squash: bool = True,
+    squash: bool = False,
 ) -> TernaryTree:
     """Creates the reduced entanglement TernaryTree.
 
@@ -29,7 +29,7 @@ def reduced_entanglement_tree(
         TernaryTree: A new ternary tree.
 
     Note:
-        Assumes that the MI matrix is in spin-orb ordering
+        Assumes that the MI matrix gives MI between spinless spatial orbitals
         So that each block of four contains [[aa, ab], [ba,bb]]
 
     Example:
@@ -51,7 +51,6 @@ def reduced_entanglement_tree(
     new_tree = TernaryTree(n_modes, root_node=TTNode())
 
     if squash:
-        logger.debug("Converting MI matrix from spinorb to spatial.")
         # First combine the MI information for alpha and beta spins
         squash_rows = mutual_information[::2] + mutual_information[1::2]
         squash_matrix = squash_rows[:, ::2] + squash_rows[:, 1::2]
@@ -59,7 +58,6 @@ def reduced_entanglement_tree(
     else:
         squash_matrix = mutual_information
 
-    # Using only the upper triangle, find the indices for which MI is highest.
     mi_rank = np.triu(squash_matrix).flatten().argsort()[::-1]
     # Convert back to square format from flattened
     sorted_indices = [np.unravel_index(index, squash_matrix.shape) for index in mi_rank]

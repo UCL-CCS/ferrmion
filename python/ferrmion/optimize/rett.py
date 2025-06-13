@@ -33,19 +33,15 @@ def reduced_entanglement_tree(
         So that each block of four contains [[aa, ab], [ba,bb]]
 
     Example:
-    ```
-    import numpy as np
-    mi = 0.5 * np.random.random((10,10))
-    mi = mi + mi.T
+        >>> import numpy as np
+        >>> from ferrmion.optimize.rett import reduced_entanglement_tree
+        >>> mi = 0.5 * np.random.random((6,6))
+        >>> mi = mi + mi.T
+        >>> tree = reduced_entanglement_tree(mi)
+        >>> tree.as_dict()
 
-    rett = reduced_entanglement_tt(mi)
-    ```
-
-    To enforce a specific number of branches:
-    ```
-    rett = reduced_entanglement_tt(mi, cutoff=0, max_branches=3)
-    ```
-
+    Advanced example (with options):
+        >>> tree = reduced_entanglement_tree(mi, cutoff=0.1, max_branches=2, squash=False)
     """
     logger.debug("Creating Reduced entanglement TT.")
     enumeration_scheme = {}
@@ -55,6 +51,7 @@ def reduced_entanglement_tree(
     new_tree = TernaryTree(n_modes, root_node=TTNode())
 
     if squash:
+        logger.debug("Converting MI matrix from spinorb to spatial.")
         # First combine the MI information for alpha and beta spins
         squash_rows = mutual_information[::2] + mutual_information[1::2]
         squash_matrix = squash_rows[:, ::2] + squash_rows[:, 1::2]
@@ -62,14 +59,16 @@ def reduced_entanglement_tree(
     else:
         squash_matrix = mutual_information
 
+    # Using only the upper triangle, find the indices for which MI is highest.
     mi_rank = np.triu(squash_matrix).flatten().argsort()[::-1]
-    squash_indices = [np.unravel_index(index, squash_matrix.shape) for index in mi_rank]
-    squash_indices = [(int(i[0]), int(i[1])) for i in squash_indices]
-    logger.debug(f"Spatial orbital mutual information rank {squash_indices}")
+    # Convert back to square format from flattened
+    sorted_indices = [np.unravel_index(index, squash_matrix.shape) for index in mi_rank]
+    sorted_indices = [(int(i[0]), int(i[1])) for i in sorted_indices]
+    logger.debug(f"Matrix indices sorted by decreasing MI: {sorted_indices}")
 
     branches: list[tuple[int, int, int, int]] = []
     unused_indices = {i for i in range(squash_matrix.shape[0])}
-    for squash_index in squash_indices:
+    for squash_index in sorted_indices:
         if max_branches is not None and len(branches) >= max_branches:
             break
 

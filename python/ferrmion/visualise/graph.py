@@ -14,8 +14,11 @@ def draw_tt(graph: rx.PyDiGraph, enumeration_scheme=None):
         enumeration_scheme (dict[str, tuple[int, int]]): A mapping from node labels to a tuple of (mode index, qubit index).
 
     Example:
-        tree = ferrmion.encode.TernaryTree(10).BK()
-        draw_tt(tree.root.to_rustworkx())
+        >>> from ferrmion.encode.ternary_tree import TernaryTree
+        >>> from ferrmion.visualise.graph import draw_tt
+        >>> tree = TernaryTree(3).Parity()
+        >>> rx_graph = tree.root.to_rustworkx()
+        >>> draw_tt(rx_graph)
     """
 
     def y_pos(label) -> float:

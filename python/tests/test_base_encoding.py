@@ -149,8 +149,8 @@ def test_number_operator(four_mode_tt):
 def test_edge_operator(four_mode_tt):
     tree = four_mode_tt.JKMN()
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    left = np.array([t[2] for t in tree.edge_operator((1,0))], dtype=np.complexfloating)
-    right = np.array([np.conjugate(t[2]) for t in tree.edge_operator((0,1))], dtype=np.complexfloating)
+    left = np.array([t[2] for t in tree.edge_operator((1,0))], dtype=complex)
+    right = np.array([np.conjugate(t[2]) for t in tree.edge_operator((0,1))], dtype=complex)
     assert np.all(right == left[[0,2,1,3]])
     assert np.all(left == np.array([ 0.  -0.25j,  -0.25+0.j  , 0.25+0.j  ,  0.  +0.25j]))
     assert np.all(right == np.array([ 0.  -0.25j,  0.25+0.j  , -0.25+0.j  ,  0.  +0.25j]))

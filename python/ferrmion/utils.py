@@ -21,6 +21,13 @@ def icount_to_sign(icount: int) -> np.complex64:
 
     Returns:
         np.complex64: The complex value.
+
+    Example:
+        >>> from ferrmion.utils import icount_to_sign
+        >>> icount_to_sign(1)
+        1j
+        >>> icount_to_sign(2)
+        -1
     """
     vals = {0: 1, 1: 1j, 2: -1, 3: -1j}
     return vals[icount % 4]
@@ -34,6 +41,14 @@ def symplectic_hash(symp: NDArray[bool]) -> bytes:
 
     Returns:
         bytes: The hashed form of the symplectic vector.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import symplectic_hash
+        >>> symp = np.array([True, False, True, False], dtype=bool)
+        >>> h = symplectic_hash(symp)
+        >>> isinstance(h, bytes)
+        True
     """
     return np.packbits(symp).tobytes()
 
@@ -47,6 +62,15 @@ def symplectic_unhash(symp: bytes, length: int) -> NDArray[bool]:
 
     Returns:
         NDArray[bool]: The original symplectic vector.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import symplectic_hash, symplectic_unhash
+        >>> arr = np.array([True, False, True, False], dtype=bool)
+        >>> h = symplectic_hash(arr)
+        >>> arr2 = symplectic_unhash(h, 4)
+        >>> np.all(arr == arr2)
+        True
     """
     unpacked = np.unpackbits(np.frombuffer(symp, dtype=np.uint8))
     if len(unpacked) < length:
@@ -67,6 +91,14 @@ def symplectic_to_pauli(symplectic: NDArray[bool]) -> tuple[int, str]:
 
     NOTE: symplectic XZ does represent XZ and not Y
         So Y=-iXZ needs an imaginary cofactor
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import symplectic_to_pauli
+        >>> arr = np.array([1, 0, 0, 1], dtype=bool)
+        >>> ipower, pauli = symplectic_to_pauli(arr)
+        >>> isinstance(pauli, str)
+        True
     """
     left, right = np.hsplit(symplectic, 2)
     total = left + 2 * right
@@ -92,16 +124,26 @@ def symplectic_to_pauli(symplectic: NDArray[bool]) -> tuple[int, str]:
 
 
 def symplectic_to_sparse(symplectic: NDArray[bool]) -> tuple[int, str, NDArray[int]]:
-    """Convert a symplectic vector into a Pauli String.
+    """Convert a symplectic vector into a Pauli String (sparse form).
 
     Args:
         symplectic (NDArray[np.uint8]) : symplectic vector [X terms, Y terms]
 
     Returns:
-        tuple[int, str]: The imaginary cofactor and Pauli string.
+        tuple[int, str, NDArray[int]]: The imaginary cofactor, Pauli string, and indices of non-identity terms.
 
     NOTE: symplectic XZ does represent XZ and not Y
         So Y=-iXZ needs an imaginary cofactor
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import symplectic_to_sparse
+        >>> arr = np.array([1, 0, 0, 1], dtype=bool)
+        >>> ipower, pauli, idx = symplectic_to_sparse(arr)
+        >>> isinstance(pauli, str)
+        True
+        >>> isinstance(idx, np.ndarray)
+        True
     """
     xhalf, zhalf = np.hsplit(symplectic, 2)
     total = xhalf + 2 * zhalf
@@ -135,6 +177,11 @@ def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[bool]]:
 
     Returns:
         tuple[int, NDArray[np.uint8, np.uint8]]: The imaginary cofactor and symplectic matrix.
+
+    Example:
+        >>> from ferrmion.utils import pauli_to_symplectic
+        >>> ipower, symp = pauli_to_symplectic('XIZY')
+
     """
     pauli_array = np.array(list(pauli))
     x_map = {
@@ -165,6 +212,13 @@ def xz_swap(symplectic) -> NDArray[bool]:
 
     Returns:
         NDArray[np.uint8]: The symplectic matrix with X and Z swapped.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import xz_swap
+        >>> arr = np.zeros((2, 4), dtype=bool)
+        >>> swapped = xz_swap(arr)
+
     """
     logger.debug(f"Swapping X and Z in symplectic matrix\n{symplectic=}")
     x_block, z_block = np.hsplit(symplectic, 2)
@@ -189,6 +243,13 @@ def xy_swap(symplectic) -> NDArray[np.uint8]:
 
     Returns:
         NDArray[np.uint8]: The symplectic matrix with X and Y swapped.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import xy_swap
+        >>> arr = np.zeros((2, 4), dtype=bool)
+        >>> swapped = xy_swap(arr)
+
     """
     logger.debug(f"Swapping X and Y in symplectic matrix\n{symplectic=}")
     x_block, z_block = np.hsplit(symplectic, 2)
@@ -213,6 +274,13 @@ def yz_swap(symplectic) -> NDArray[np.uint8]:
 
     Returns:
         NDArray[np.uint8]: The symplectic matrix with Y and Z swapped.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import yz_swap
+        >>> arr = np.zeros((2, 4), dtype=bool)
+        >>> swapped = yz_swap(arr)
+
     """
     x_block, z_block = np.hsplit(symplectic, 2)
     is_y = np.where(x_block + z_block == 2)
@@ -237,6 +305,13 @@ def qubit_swap(symplectic, index_pair) -> NDArray[np.uint8]:
 
     Returns:
         NDArray[np.uint8]: The symplectic matrix with the qubits swapped.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import qubit_swap
+        >>> arr = np.zeros((2, 4), dtype=bool)
+        >>> swapped = qubit_swap(arr, (0, 1))
+
     """
     logger.debug(f"Swapping qubits {index_pair} in symplectic matrix\n{symplectic=}")
     half_length = symplectic.shape[1] // 2
@@ -260,6 +335,14 @@ def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.uint]]:
 
     Returns:
         tuple[bool, NDArray[int]]: A boolean indicating if the overlap is trivial and the overlap matrix.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import check_trivial_overlap
+        >>> arr = np.eye((4, 4), dtype=bool)
+        >>> satisfied, nto = check_trivial_overlap(arr)
+        >>> isinstance(satisfied, bool)
+        True
     """
     logger.debug(f"Checking trivial overlap\n{symplectic=}")
     x_length = int(len(symplectic[0]) / 2)
@@ -309,8 +392,11 @@ def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
         >>> right = np.array([[0, 1], [1, 0]])
         >>> creation = (True, False)
         >>> two_operator_product(creation, left, right)
-        array([[0, 1],
-               [1, 0]])
+            array([
+                [0, 0],
+                [1, 0]
+                [0, 1],
+                [0, 0]])
     """
     logger.debug("Calculating two operator product.")
     # (a+ib)(c+id) -> ac, iad, ibc, -bd
@@ -340,6 +426,13 @@ def find_pauli_weight(symplectic_hamiltonian: NDArray[bool]) -> np.floating:
 
     Returns:
         float: The average Pauli weight.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.utils import find_pauli_weight
+        >>> arr = np.eye((2, 4), dtype=bool)
+        >>> find_pauli_weight(arr)
+        1.0
     """
     logger.debug("Finding Pauli weight of symplectic Hamiltonian")
     half_length = symplectic_hamiltonian.shape[-1] // 2
@@ -356,13 +449,17 @@ def save_pauli_ham(
 
     Args:
         pauli_hamiltonian (dict[str, float]): The Pauli Hamiltonian.
-        filename (str, optional): The filename to save the Hamiltonian to. Defaults to None.
+        filename (str, optional): The filename (without extension) to save the Hamiltonian to. Defaults to None.
+
+    Example:
+        >>> from ferrmion.utils import save_pauli_ham
+        >>> save_pauli_ham({'X': 1.0, 'Z': -1.0}, filename='test_ham')
     """
     logger.debug("Saving Pauli Hamiltonian to JSON file")
     if filename is None:
-        filename = "pauli_hamiltonian_" + str(datetime.datetime.now()) + ".json"
+        filename = "pauli_hamiltonian_" + str(datetime.datetime.now())
 
-    with open(filename, "w") as f:
+    with open(f"{filename}.json", "w") as f:
         f.write(json.dumps(pauli_hamiltonian))
     logger.debug(f"Saved Pauli Hamiltonian to {filename}")
 

@@ -26,6 +26,14 @@ def lambda_plus_mu(
 
     Returns:
         NDArray: The best mode ordering found.
+
+    Example:
+        >>> import numpy as np
+        >>> from functools import partial
+        >>> from ferrmion.optimize.enumeration.evolutionary import lambda_plus_mu
+        >>> def dummy_eval(x): return [sum(x)]
+        >>> evaluate = partial(dummy_eval)
+        >>> lambda_plus_mu(3, evaluate, pop_size=10, ngen=2)
     """
     size = n_modes
     creator.create("FitnessMin", base.Fitness, weights=(-1.0,))

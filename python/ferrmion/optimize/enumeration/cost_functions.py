@@ -32,6 +32,12 @@ def distance_squared(
         [16,  9,  4,  1,  0,  1],
         [25, 16,  9,  4,  1,  0]
         ])
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.optimize.enumeration.cost_functions import distance_squared
+        >>> mi = np.ones((3,3))
+        >>> distance_squared(mi, [0,1,2])
     """
     n_mode = mutual_information.shape[0]
     if set(permutation) != set(range(n_mode)):
@@ -65,6 +71,13 @@ def minimise_mi_distance(
 
     Returns:
         NDArray: The best mode ordering found.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.optimize.enumeration.cost_functions import minimise_mi_distance
+        >>> mi = 0.5 * np.random.random((3,3))
+        >>> mi = mi + mi.T
+        >>> minimise_mi_distance(mi, pop_size=10, ngen=2)
     """
     logger.debug("Minimising disance between high MI modes.")
     if pair_spins:
@@ -93,6 +106,12 @@ def pauli_weighted_norm(
 
     Return:
         list[float]: A single value in a list (needed for deap) giving the cost.
+
+    Example:
+        >>> from ferrmion.optimize.enumeration.cost_functions import pauli_weighted_norm
+        >>> from ferrmion.utils import symplectic_hash
+        >>> hashed_vec = symplectic_hash(np.array([True, False, False, True]))
+        >>> pauli_weighted_norm({hashed_vec:1}, [0,1,2])
     """
     logger.debug("Calculating Pauli-weighted Norm")
 

@@ -23,6 +23,12 @@ class TTNode:
         branch_strings(): Get the branch strings for the node.
         child_strings(): Get the child strings for the node.
         add_child(which_child, qubit_label): Add a child node to the current node.
+
+    Simple Example:
+        >>> from ferrmion.encode.ternary_tree_node import TTNode
+        >>> node = TTNode()
+        >>> node.add_child('x')
+        >>> node.as_dict()
     """
 
     def __init__(
@@ -47,17 +53,38 @@ class TTNode:
     # return f"{self.as_dict()}"
 
     def as_dict(self) -> dict:
-        """Return the node structure as a dictionary."""
+        """Return the node structure as a dictionary.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree_node import TTNode
+            >>> node = TTNode()
+            >>> node.add_child('x')
+            >>> node.as_dict()
+        """
         return as_dict(self)
 
     @property
     def branch_strings(self) -> set[str]:
-        """Return a list of all branch strings for the node."""
+        """Return a list of all branch strings for the node.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree_node import TTNode
+            >>> node = TTNode()
+            >>> node.add_child('x')
+            >>> node.branch_strings
+        """
         return branch_strings(self, prefix="")
 
     @property
     def child_strings(self) -> list[str]:
-        """Return a list of all child strings for the node."""
+        """Return a list of all child strings for the node.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree_node import TTNode
+            >>> node = TTNode()
+            >>> node.add_child('x')
+            >>> node.child_strings
+        """
         return sorted(child_strings(self, prefix=""), key=node_sorter)
 
     def add_child(
@@ -71,6 +98,11 @@ class TTNode:
 
         Returns:
             TTNode: self with the child added.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree_node import TTNode
+            >>> node = TTNode()
+            >>> node.add_child('x')
         """
         return add_child(self, which_child, qubit_label)
 
@@ -78,10 +110,9 @@ class TTNode:
         """Create a rustworkx graph from this node and its children.
 
         Example:
-            ```
-            tree = ferrmion.encode.TernaryTree(10).BK()
-            rx_graph = tree.root.to_rustworkx()
-            ```
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(10).BK()
+            >>> rx_graph = tree.root.to_rustworkx()
         """
         return to_rustworkx(self)
 
@@ -96,6 +127,11 @@ def add_child(parent, which_child: str, qubit_label: int | str | None = None) ->
 
     Returns:
         TTNode: The parent node with the child added.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree_node import TTNode, add_child
+        >>> node = TTNode()
+        >>> add_child(node, 'x')
     """
     logger.debug("Adding child %s to parent %s", which_child, parent)
     if getattr(parent, which_child, None) is not None:
@@ -114,6 +150,12 @@ def as_dict(node: TTNode) -> dict[str, dict]:
 
     Returns:
         dict[str, dict]: A nested dictionary of children for the node.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree_node import TTNode, as_dict
+        >>> node = TTNode()
+        >>> node.add_child('x')
+        >>> as_dict(node)
     """
     logger.debug("Converting node to dict %s", node)
     children = {"x": node.x, "y": node.y, "z": node.z}
@@ -134,6 +176,12 @@ def child_strings(node: TTNode, prefix: str = "") -> list[str]:
 
     Returns:
         list[str]: A list of all child strings for the node.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree_node import TTNode, child_strings
+        >>> node = TTNode()
+        >>> node.add_child('x')
+        >>> child_strings(node)
     """
     logger.debug("Creating child strings for node %s", node)
     strings = {prefix}
@@ -154,6 +202,12 @@ def branch_strings(node: TTNode, prefix: str = "") -> set[str]:
 
     Returns:
         set[str]: A set of all branch strings for the node.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree_node import TTNode, branch_strings
+        >>> node = TTNode()
+        >>> node.add_child('x')
+        >>> branch_strings(node)
     """
     logger.debug("Creating branch strings for node %s", node)
     strings = set()
@@ -176,6 +230,15 @@ def node_sorter(label: str) -> int:
 
     Returns:
         int: Integer label to sort by.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree_node import node_sorter
+        >>> node_sorter('xyz')
+        123
+        >>> node_sorter('xx')
+        11
+        >>> node_sorter('z')
+        3
     """
     if label == "":
         return 0
@@ -190,10 +253,9 @@ def to_rustworkx(root: TTNode) -> rx.PyDiGraph:
         root (TTNode): A node to be the root of the rx graph.
 
     Example:
-        ```
-        tree = ferrmion.encode.TernaryTree(10).BK()
-        rx_graph = to_rustworkx(tree.root)
-        ```
+        >>> from ferrmion.encode.ternary_tree import TernaryTree
+        >>> tree = TernaryTree(10).BK()
+        >>> rx_graph = to_rustworkx(tree.root)
     """
     graph = rx.PyDiGraph(check_cycle=True)
     child_dict = {s: i for i, s in enumerate(root.child_strings)}

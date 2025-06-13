@@ -22,6 +22,13 @@ def molecular_hamiltonian_template(
     Args:
         ipowers (NDArray[np.uint8]): Powers of i associated to each symplectic operator.
         majorana_symplectic (NDArray[bool]): Operators in symplectic form.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.hamiltonians.molecular import molecular_hamiltonian_template
+        >>> ipowers = np.zeros(4, dtype=np.uint8)
+        >>> sympl = np.eye((4, 4), dtype=bool)
+        >>> molecular_hamiltonian_template(ipowers, sympl)
     """
     logger.debug("Building hamiltonian template")
     n_modes = majorana_symplectic.shape[0] // 2
@@ -149,6 +156,15 @@ def molecular_hamiltonian(
         one_e_coeffs (NDArray): One electron hamiltonian coefficients in spinorb format.
         two_e_coeffs (NDArray): Two electron hamiltonian coefficients in spinorb format.
         constant_energy (float): Constant energy offset.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.hamiltonians.molecular import molecular_hamiltonian
+        >>> from ferrmion.encode import TernaryTree
+        >>> tree = TernaryTree(12).JW()
+        >>> one_e = np.eye((2,2))
+        >>> two_e = np.eye((2,2,2,2))
+        >>> molecular_hamiltonian(tree, one_e, two_e, 0.0)
     """
     ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
     template = molecular_hamiltonian_template(ipowers, majorana_symplectic)

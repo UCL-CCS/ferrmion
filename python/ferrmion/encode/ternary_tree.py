@@ -27,6 +27,21 @@ class TernaryTree(FermionQubitEncoding):
         branch_operator_map(): Create a map from each branch string to a Pauli string.
         string_pairs(): Return the pair of branch strings which correspond to each node.
         _build_symplectic_matrix(): Build the symplectic matrix for the tree.
+
+    Simple Example:
+        >>> from ferrmion.encode.ternary_tree import TernaryTree
+        >>> tree = TernaryTree(4)
+        >>> tree.add_node('x')
+        >>> tree.enumeration_scheme = tree.default_enumeration_scheme()
+        >>> tree.as_dict()
+
+    Advanced Usage:
+        >>> from ferrmion.encode.ternary_tree import TernaryTree
+        >>> tree = TernaryTree(4)
+        >>> jordan_wigner = tree.JW()
+        >>> bravyi_kitaev = tree.BK()
+        >>> parity = tree.Parity()
+        >>> minimum_height_tree = tree.JKMN()
     """
 
     def __init__(
@@ -49,7 +64,7 @@ class TernaryTree(FermionQubitEncoding):
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
-    def from_hamiltonian_coefficients(cls, coeffs: tuple[NDArray]) -> "TernaryTree":
+    def from_hamiltonian_coefficients(cls, coeffs: tuple) -> "TernaryTree":
         """Create an encoding by passing coefficients.
 
         Args:
@@ -57,6 +72,12 @@ class TernaryTree(FermionQubitEncoding):
 
         Returns:
             FermionQubitEncoding: An initialised encoding.
+
+        Example:
+            >>> import numpy as np
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> coeffs = (np.zeros((4, 4)), np.zeros((4, 4, 4, 4)))
+            >>> tree = TernaryTree.from_hamiltonian_coefficients(coeffs)
         """
         if not all([set(coeff.shape) == set(coeffs[0].shape) for coeff in coeffs]):
             logger.error("Coeff axes must be of equal size for all terms.")
@@ -102,6 +123,12 @@ class TernaryTree(FermionQubitEncoding):
 
         Note:
             The tuple is organised as (modes, qubits).
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(3).JW()
+            >>> tree.default_enumeration_scheme()
+            {"": (0,0), "z": (1,1), "zz": (2,2)}
         """
         logger.debug("Setting default enumeration scheme")
         logger.debug("Child strings %s", self.root.child_strings)
@@ -119,6 +146,11 @@ class TernaryTree(FermionQubitEncoding):
 
         Returns:
             TernaryTree: The tree with the node added.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(3)
+            >>> tree.add_node('x')
         """
         logger.debug("Adding node %s to TernaryTree", node_string)
         node_string = node_string.lower()
@@ -140,6 +172,20 @@ class TernaryTree(FermionQubitEncoding):
 
         Returns:
             dict[str, str]: A dictionary of all branch strings with their corresponding Pauli strings.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(3)
+            >>> tree.add_node('x')
+            >>> tree.add_node('xz')
+            >>> tree.branch_operator_map
+            {'xx': 'XXI',
+            'xzx': 'XZX',
+            'y': 'YII',
+            'xy': 'XYI',
+            'xzz': 'XZZ',
+            'xzy': 'XZY',
+            'z': 'ZII'}
         """
         logger.debug("Building branch operator map for TernaryTree.")
 
@@ -166,6 +212,14 @@ class TernaryTree(FermionQubitEncoding):
 
         Returns:
             dict[str, tuple(str,str)]: A dictionary of all node labels, j,  with branch strings (2j, 2j+1).
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(3)
+            >>> tree.add_node('x')
+            >>> tree.add_node('xz')
+            >>> tree.string_pairs
+            {'': ('xzz', 'y'), 'x': ('xx', 'xy'), 'xz': ('xzx', 'xzy')}
         """
         logger.debug("Building string pairs for TernaryTree.")
         node_set = self.root.child_strings
@@ -205,6 +259,20 @@ class TernaryTree(FermionQubitEncoding):
         Returns:
             NDArray[np.uint8]: Powers of i for each row of the symplectic matrix.
             NDArray[np.uint8]: Symplectic matrix.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(3)
+            >>> tree.add_node('x')
+            >>> tree.enumeration_scheme = tree.default_enumeration_scheme()
+            >>> tree._build_symplectic_matrix()
+            (array([0, 1, 0, 1, 0, 1], dtype=uint8),
+            array([[ True, False, False, False,  True,  True],
+                    [ True, False, False,  True, False, False],
+                    [ True,  True, False, False, False, False],
+                    [ True,  True, False, False,  True, False],
+                    [ True, False,  True, False,  True, False],
+                    [ True, False,  True, False,  True,  True]]))
         """
         logger.debug("Building symplectic matrix for TernaryTree.")
         if self.enumeration_scheme is None:
@@ -227,7 +295,12 @@ class TernaryTree(FermionQubitEncoding):
         return ipowers, symplectic
 
     def JordanWigner(self) -> "TernaryTree":
-        """Create a new tree with the Jordan-Wigner encoding."""
+        """Create a new tree with the Jordan-Wigner encoding.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> jw_tree = TernaryTree(3).JordanWigner()
+        """
         logger.debug("Creating Jordan-Wigner encoding tree")
         new_tree = TernaryTree(
             n_modes=self.n_modes,
@@ -242,7 +315,12 @@ class TernaryTree(FermionQubitEncoding):
         return self.JordanWigner()
 
     def ParityEncoding(self) -> "TernaryTree":
-        """Create a new tree with the parity encoding."""
+        """Create a new tree with the parity encoding.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> parity_tree = TernaryTree(3).ParityEncoding()
+        """
         logger.debug("Creating parity encoding tree")
         new_tree = TernaryTree(
             n_modes=self.n_modes,
@@ -253,7 +331,12 @@ class TernaryTree(FermionQubitEncoding):
         return new_tree
 
     def BravyiKitaev(self) -> "TernaryTree":
-        """Create a new tree with the Bravyi-Kitaev encoding."""
+        """Create a new tree with the Bravyi-Kitaev encoding.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> bk_tree = TernaryTree(3).BravyiKitaev()
+        """
         logger.debug("Creating Bravyi-Kitaev encoding tree")
         new_tree = TernaryTree(
             n_modes=self.n_modes,
@@ -282,7 +365,14 @@ class TernaryTree(FermionQubitEncoding):
         return self.BravyiKitaev()
 
     def JKMN(self) -> "TernaryTree":
-        """Create a new tree with the JKMN encoding."""
+        """Create a new tree with the JKMN encoding.
+
+        The JKMN encoding gives a ternary tree with the minimum Pauli-weight.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> min_height_tree = TernaryTree(3).JKMN()
+        """
         logger.debug("Creating JKMN encoding tree.")
         new_tree = TernaryTree(
             n_modes=self.n_modes,

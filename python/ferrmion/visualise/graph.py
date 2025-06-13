@@ -3,23 +3,29 @@
 import rustworkx as rx
 from rustworkx.visualization import mpl_draw
 
-from ferrmion.encode.ternary_tree_node import node_sorter
+from ferrmion.encode import TernaryTree
+from ferrmion.encode.ternary_tree_node import TTNode, node_sorter
 
 
-def draw_tt(graph: rx.PyDiGraph, enumeration_scheme=None):
+def draw_tt(graph: rx.PyDiGraph | TTNode | TernaryTree, enumeration_scheme=None):
     """Draws a rustworkx graph with nodes positioned as a ternary tree.
 
     Args:
-        graph (rustworkx.PyDiGraph): A ternary tree graph.
+        graph (rustworkx.PyDiGraph | ferrmion.TTNode | TernaryTree): A ternary tree.
         enumeration_scheme (dict[str, tuple[int, int]]): A mapping from node labels to a tuple of (mode index, qubit index).
 
     Example:
         >>> from ferrmion.encode.ternary_tree import TernaryTree
         >>> from ferrmion.visualise.graph import draw_tt
         >>> tree = TernaryTree(3).Parity()
-        >>> rx_graph = tree.root.to_rustworkx()
-        >>> draw_tt(rx_graph)
+        >>> draw_tt(tree)
+        >>> draw_tt(tree.root)
+        >>> draw_tt(tree.root.to_rustworkx())
     """
+    if isinstance(graph, TTNode):
+        graph = graph.to_rustworkx()
+    elif isinstance(graph, TernaryTree):
+        graph = graph.root.to_rustworkx()
 
     def y_pos(label) -> float:
         return -3 * len(label)

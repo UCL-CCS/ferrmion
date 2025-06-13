@@ -73,7 +73,7 @@ class TernaryTree(FermionQubitEncoding):
         """Set the enumeration scheme.
 
         Args:
-            enumeration_dict (dict[str, tuple[int, int]]): An dictionary mapping modes to mode and qubit indices.
+            enumeration_dict (dict[str, tuple[int, int]]): An dictionary mapping tree nodes to (mode, qubit) indices
         """
         logger.debug("Setting enumeration scheme.")
         error_string = ""
@@ -98,7 +98,11 @@ class TernaryTree(FermionQubitEncoding):
         self._enumeration_scheme = enumeration_dict
 
     def default_enumeration_scheme(self) -> dict[str, tuple[int, int]]:
-        """Create a default enumeration scheme for the tree."""
+        """Create a default enumeration scheme for the tree.
+
+        Note:
+            The tuple is organised as (modes, qubits).
+        """
         logger.debug("Setting default enumeration scheme")
         logger.debug("Child strings %s", self.root.child_strings)
         return {child: (i, i) for i, child in enumerate(self.root.child_strings)}

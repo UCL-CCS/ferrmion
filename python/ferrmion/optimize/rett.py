@@ -67,6 +67,10 @@ def reduced_entanglement_tree(
     branches: list[tuple[int, int, int, int]] = []
     unused_indices = {i for i in range(squash_matrix.shape[0])}
     for squash_index in sorted_indices:
+        if len(set(squash_index)) == 1:
+            logger.warning("MI Matrix contains non-zero diagonal elements, skipping.")
+            continue
+
         if max_branches is not None and len(branches) >= max_branches:
             break
 

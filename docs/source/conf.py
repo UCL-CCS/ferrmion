@@ -23,16 +23,15 @@ author = 'Michael Williams de la Bastida'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = ["sphinx.ext.autodoc",
-    "sphinx.ext.doctest",
-    "sphinx.ext.todo",
-    "sphinx.ext.mathjax",
-    "sphinx.ext.ifconfig",
-    "sphinx.ext.viewcode",
-    "sphinx.ext.githubpages",
-    "sphinx.ext.napoleon",
+    # "sphinx.ext.doctest",
+    # "sphinx.ext.todo",
+    # "sphinx.ext.mathjax",
+    # "sphinx.ext.ifconfig",
+    # "sphinx.ext.viewcode",
+    # "sphinx.ext.githubpages",
+    # "sphinx.ext.napoleon",
+    "myst_nb",
     "sphinx_rtd_theme",
-    "myst_parser",
-    "myst_nb"
     ]
 
 templates_path = ['_templates']

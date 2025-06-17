@@ -45,11 +45,10 @@ def test_distance_squared(n2mi):
 
 def test_rett(n2mi):
     np.random.seed(1017)
-    n_modes = n2mi.shape[0]
-    tree = TernaryTree(n_modes)
-    rett = reduced_entanglement_tree(tree, n2mi)
-    print(rett.branch_operator_map)
+    rett = reduced_entanglement_tree(n2mi)
     assert rett.branch_operator_map == {'zzzzx': 'ZZZZXIIIII', 'zzzx': 'ZZZXIIIIII', 'zzzzzzx': 'ZZZZZZXIII', 'zzx': 'ZZXIIIIIII', 'zzy': 'ZZYIIIIIII', 'zzzzzzzzx': 'ZZZZZZZZXI', 'zzzzy': 'ZZZZYIIIII', 'zzzzzzzzzy': 'ZZZZZZZZZY', 'y': 'YIIIIIIIII', 'zzzzzzzx': 'ZZZZZZZXII', 'zx': 'ZXIIIIIIII', 'zzzzzzy': 'ZZZZZZYIII', 'zy': 'ZYIIIIIIII', 'zzzy': 'ZZZYIIIIII', 'zzzzzzzzzz': 'ZZZZZZZZZZ', 'zzzzzzzy': 'ZZZZZZZYII', 'zzzzzy': 'ZZZZZYIIII', 'zzzzzzzzzx': 'ZZZZZZZZZX', 'zzzzzx': 'ZZZZZXIIII', 'zzzzzzzzy': 'ZZZZZZZZYI', 'x': 'XIIIIIIIII'}
+
+
 
 from ferrmion.hamiltonians import fill_template
 

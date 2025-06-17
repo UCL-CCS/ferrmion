@@ -9,6 +9,18 @@ use pyo3::types::PyDict;
 use pyo3::{prelude::*, pymodule, Bound};
 
 fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array1<Complex64> {
+    /*
+    Computes the Kronecker product between two complex vectors.
+
+    # Simple example
+    ```rust
+    use ndarray::arr1;
+    use numpy::Complex64;
+    let a = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(0.0, 0.0)]);
+    let b = arr1(&[Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0)]);
+    let result = vector_kron(&a, &b);
+    ```
+    */
     concatenate![
         Axis(0),
         left.mapv(|l| l * right[0]),
@@ -23,6 +35,30 @@ fn hartree_fock_state(
     mode_op_map: HashMap<usize, usize>,
     symplectic_matrix: ArrayView2<bool>,
 ) -> (Array1<Complex64>, Array2<bool>) {
+    /*
+    Computes the Hartree-Fock state from the given parameters.
+
+    # Simple example
+    ```rust
+    use ndarray::{arr1, arr2, ArrayView1, ArrayView2};
+    use std::collections::HashMap;
+    let vacuum = arr1(&[0., 0., 0.]);
+    let hf = arr1(&[true, false, true]);
+    let mut map = HashMap::new();
+    map.insert(0, 0);
+    map.insert(1, 1);
+    map.insert(2, 2);
+    let sympl = arr2(&[[true, false, false, false, false, false],
+                      [false, true, false, false, false, false],
+                      [false, false, true, false, false, false]]);
+    let (coeffs, states) = hartree_fock_state(vacuum.view(), hf.view(), map, sympl.view());
+    ```
+
+    # Advanced example (with more modes and symmetry)
+    ```rust
+    // Use a larger symplectic_matrix and a custom mode_op_map
+    ```
+    */
     let mut current_state =
         vec![Array1::from(vec![c64(1., 0.), c64(0., 0.)]); vacuum_state.len_of(Axis(0))];
 
@@ -179,6 +215,17 @@ fn test_hartree_fock() {
 }
 
 fn symplectic_product(left: ArrayView1<bool>, right: ArrayView1<bool>) -> (usize, Array1<bool>) {
+    /*
+    Computes the symplectic product between two boolean vectors.
+
+    # Simple example
+    ```rust
+    use ndarray::arr1;
+    let a = arr1(&[true, false, false, true]);
+    let b = arr1(&[false, true, true, false]);
+    let (ipower, product) = symplectic_product(a.view(), b.view());
+    ```
+    */
     // bitwise or between two vectors
     let product = &left ^ &right;
 
@@ -211,6 +258,9 @@ fn test_symplectic_product() {
 /// A Python module implemented in Rust.
 #[pymodule]
 fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    /*
+    Python module implemented in Rust.
+    */
     #[pyfn(m)]
     #[pyo3(name = "symplectic_product")]
     fn rust_symplectic_product_py<'py>(
@@ -218,6 +268,18 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
         left: PyReadonlyArray1<bool>,
         right: PyReadonlyArray1<bool>,
     ) -> (usize, Bound<'py, PyArray1<bool>>) {
+        /*
+        Computes the symplectic product between two numpy boolean arrays.
+
+        # Simple example
+        ```python
+        import ferrmion
+        import numpy as np
+        a = np.array([True, False, True, False])
+        b = np.array([False, True, False, True])
+        ipower, product = ferrmion.symplectic_product(a, b)
+        ```
+        */
         let left = left.as_array();
         let right = right.as_array();
         let (ipower, product) = symplectic_product(left, right);
@@ -234,6 +296,20 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
         mode_op_map: Bound<'py, PyDict>,
         symplectic_matrix: PyReadonlyArray2<bool>,
     ) -> (Bound<'py, PyArray1<Complex64>>, Bound<'py, PyArray2<bool>>) {
+        /*
+        Computes the Hartree-Fock state from Python using numpy arrays.
+
+        # Simple example
+        ```python
+        import ferrmion
+        import numpy as np
+        vacuum = np.zeros(6)
+        hf = np.array([True, True, False, False, False, False])
+        mode_op_map = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
+        symplectic = np.eye(6, 12, dtype=bool)
+        coeffs, states = ferrmion.hartree_fock_state(vacuum, hf, mode_op_map, symplectic)
+        ```
+        */
         let vacuum_state = vacuum_state.as_array();
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let rust_mode_op_map: HashMap<usize, usize> = mode_op_map.extract().unwrap();

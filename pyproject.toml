@@ -16,6 +16,7 @@ dependencies = [
     "numpy>=1.24.4",
     "openfermion>=0.11.0",
     "pydantic>=2.10.6",
+    "rustworkx>=0.16.0",
 ]
 
 [tool.maturin]
@@ -36,6 +37,7 @@ docs = [
     "sphinx-rtd-theme>=3.0.2",
     "ffsim>=0.0.56",
     "qiskit>=2.0.2",
+    "myst-nb>=1.2.0",
 ]
 
 [tool.ruff]

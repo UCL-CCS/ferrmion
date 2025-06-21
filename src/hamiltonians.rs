@@ -10,15 +10,22 @@ use crate::utils::{
     icount_to_sign, symplectic_product, symplectic_product_map, symplectic_to_pauli,
 };
 
+#[derive(::core::cmp::Eq, Hash)]
+enum IntegralIndex {
+    OneE(usize, usize),
+    TwoE(usize, usize, usize, usize)
+}
+
+
 pub fn molecular(
-    ipowers: ArrayView1<usize>,
+    ipowers: ArrayView1<u8>,
     symplectics: ArrayView2<bool>,
-) -> HashMap<String, HashMap<String, Complex64>> {
+) -> HashMap<String, HashMap<IntegralIndex, Complex64>> {
     assert_eq!(ipowers.len(), symplectics.nrows());
 
     let (iproducts, sym_products) = symplectic_product_map(ipowers, symplectics);
 
-    let mut hamiltonian: HashMap<String, HashMap<String, Complex64>> = HashMap::new();
+    let mut hamiltonian: HashMap<String, HashMap<IntegralIndex, Complex64>> = HashMap::new();
     // assume 8-fold symmetry
     let n_modes = symplectics.nrows() / 2;
     for m in 0..n_modes {
@@ -28,10 +35,10 @@ pub fn molecular(
                 let (im_term_pauli, pauli_string) = symplectic_to_pauli(term);
                 let weight = 0.25
                     * icount_to_sign(
-                        iproducts[[2 * m + l, 2 * n + r]] + im_term_pauli + ((l - r) % 4),
+                        iproducts[[2 * m + l, 2 * n + r]] as usize + im_term_pauli + ((l - r) % 4),
                     );
                 let components = hamiltonian.entry(pauli_string).or_default();
-                components.insert(format!("{},{}", m, n), weight);
+                components.insert(IntegralIndex::OneE(m, n), weight);
             }
             // 2e terms cancel
             if m == n {
@@ -52,8 +59,8 @@ pub fn molecular(
                                         + im_term_pauli
                                         + 3 * (l1 + l2)
                                         + (r1 + r2)
-                                        + iproducts[[2 * m + l1, 2 * n + l2]]
-                                        + iproducts[[2 * p + r1, 2 * q + r2]],
+                                        + iproducts[[2 * m + l1, 2 * n + l2]] as usize
+                                        + iproducts[[2 * p + r1, 2 * q + r2]] as usize,
                                 );
 
                             let components = hamiltonian.entry(pauli_string).or_default();
@@ -78,9 +85,21 @@ fn test_molecular() {
     ]);
     let ham = molecular(ipowers.view(), symplectics.view());
     let mut expected: HashMap<String, HashMap<String, Complex64>> = HashMap::new();
-    expected.insert(String::from("IIII"), {
+
+    expected.insert(String::from("YX"), {
         let mut value = HashMap::new();
-        value.insert(String::from("01"), Complex64::new(1., 0.));
+        value.insert(String::from("0,1,0,0"), Complex64::new(0., 0.0625));
+        value.insert(String::from("1,0"), Complex64::new(0., -0.25));
+        value.insert(String::from("1,0,0,0"), Complex64::new(0., -0.0625));
+        value.insert(String::from("0,1"), Complex64::new(0., 0.25));
+        value.insert(String::from("0,1,1,1"), Complex64::new(0., 0.0625));
+        value.insert(String::from("1,0,1,1"), Complex64::new(0., -0.0625));
+        value
+    });
+    expected.insert(String::from("II"), {
+        let mut value = HashMap::new();
+        value.insert(String::from("0,0"), Complex64::new(0.25, 0.));
+        value.insert(String::from("1,1"), Complex64::new(0.25, 0.));
         value
     });
     println!("{:#?}", ham);

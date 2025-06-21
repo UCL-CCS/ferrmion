@@ -1,6 +1,7 @@
 """Tests for Hamiltonan Functions."""
 
 from ferrmion.hamiltonians import molecular_hamiltonian_template
+from ferrmion import core
 import numpy as np
 from ferrmion.hamiltonians.utils import fill_template
 from ferrmion.hamiltonians.utils import to_qubit_hamiltonian, to_symplectic_hamiltonian
@@ -11,15 +12,14 @@ from pytest import fixture
 @fixture(scope="module")
 def filled_template(water_integrals, water_tt):
     symplectic_operators = water_tt.JW()._build_symplectic_matrix()
-    func_ham = molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
+    # func_ham = molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
+    func_ham = core.molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
     filled_template = fill_template(water_integrals[0], 0.5*water_integrals[1], func_ham, water_tt.default_mode_op_map)
     return filled_template
 
 def test_water_template(filled_template, water_eigenvalues, water_tt):
-    new_ham = to_qubit_hamiltonian(water_tt.n_qubits, filled_template)
-
     ofop3 = QubitOperator()
-    for k, v in new_ham.items():
+    for k, v in filled_template.items():
         string = " ".join(
             [
                 f"{char.upper()}{pos}" if char != "I" else ""

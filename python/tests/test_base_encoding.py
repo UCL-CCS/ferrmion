@@ -17,33 +17,6 @@ def four_mode_tt():
 def sixteen_mode_tt():
     return TernaryTree(n_modes=16)
 
-
-def test_edge_operator_map(four_mode_tt):
-    edge_map, weights = (
-        four_mode_tt.JW()._edge_operator_map()
-    )
-    assert edge_map == {
-        (0, 0): {b"\x00": 0.25, b"\x08": -0.25},
-        (0, 1): {b"\xc0": 0.5, b"\xcc": -0.5},
-        (0, 2): {b"\xa4": 0.5, b"\xae": -0.5},
-        (0, 3): {b"\x96": 0.5, b"\x9f": -0.5},
-        (1, 1): {b"\x00": 0.25, b"\x04": -0.25},
-        (1, 2): {b"`": 0.5, b"f": -0.5},
-        (1, 3): {b"R": 0.5, b"W": -0.5},
-        (2, 2): {b"\x00": 0.25, b"\x02": -0.25},
-        (2, 3): {b"0": 0.5, b"3": -0.5},
-        (3, 3): {b"\x00": 0.25, b"\x01": -0.25},
-    }
-    assert np.all(
-        weights
-        == [
-            [-0.125, 0.0, 0.0, 0.0],
-            [0.0, -0.125, 0.0, 0.0],
-            [0.0, 0.0, -0.125, 0.0],
-            [0.0, 0.0, 0.0, -0.125],
-        ]
-    )
-
 def test_default_vacuum_state(four_mode_tt):
     assert np.all(four_mode_tt.vacuum_state == np.array([0] * 4))
 
@@ -149,8 +122,8 @@ def test_number_operator(four_mode_tt):
 def test_edge_operator(four_mode_tt):
     tree = four_mode_tt.JKMN()
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    left = np.array([t[2] for t in tree.edge_operator((1,0))], dtype=np.complexfloating)
-    right = np.array([np.conjugate(t[2]) for t in tree.edge_operator((0,1))], dtype=np.complexfloating)
+    left = np.array([t[2] for t in tree.edge_operator((1,0))], dtype=complex)
+    right = np.array([np.conjugate(t[2]) for t in tree.edge_operator((0,1))], dtype=complex)
     assert np.all(right == left[[0,2,1,3]])
     assert np.all(left == np.array([ 0.  -0.25j,  -0.25+0.j  , 0.25+0.j  ,  0.  +0.25j]))
     assert np.all(right == np.array([ 0.  -0.25j,  0.25+0.j  , -0.25+0.j  ,  0.  +0.25j]))

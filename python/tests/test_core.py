@@ -2,7 +2,6 @@ import numpy as np
 from ferrmion.core import symplectic_product
 from ferrmion.slow import slow_symplectic_product
 
-
 def test_symplectic_product():
     xyz = np.array([1, 1, 0, 0, 1, 1], dtype=bool)
     xxx = np.array([1, 1, 1, 0, 0, 0], dtype=bool)

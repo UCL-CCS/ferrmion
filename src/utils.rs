@@ -1,3 +1,4 @@
+use anyhow::Result;
 use ndarray::{azip, concatenate, Axis, Zip};
 use num_complex::c64;
 use numpy::ndarray::{arr2, s, Array1, Array2, Array3, ArrayView1, ArrayView2};
@@ -11,7 +12,7 @@ pub fn icount_to_sign(icount: usize) -> Complex64 {
         1 => Complex64::new(0., 1.),
         2 => Complex64::new(-1., 0.),
         3 => Complex64::new(0., -1.),
-        _ => panic!(),
+        _ => unreachable!(),
     }
 }
 
@@ -29,7 +30,7 @@ pub fn hartree_fock_state(
     fermionic_hf_state: ArrayView1<bool>,
     mode_op_map: HashMap<usize, usize>,
     symplectic_matrix: ArrayView2<bool>,
-) -> (Array1<Complex64>, Array2<bool>) {
+) -> Result<(Array1<Complex64>, Array2<bool>)> {
     let mut current_state =
         vec![Array1::from(vec![c64(1., 0.), c64(0., 0.)]); vacuum_state.len_of(Axis(0))];
 
@@ -108,9 +109,8 @@ pub fn hartree_fock_state(
 
     let coeffs = vector_state.mapv(|c| c / (vector_state[0]));
 
-    let hf_components =
-        Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components).unwrap();
-    (coeffs, hf_components)
+    let hf_components = Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)?;
+    Ok((coeffs, hf_components))
 }
 
 #[test]
@@ -169,7 +169,8 @@ fn test_hartree_fock() {
         fermionic_hf_state,
         mode_op_map.clone(),
         symplectic_matrix,
-    );
+    )
+    .unwrap();
     let c1 = c64(1., 0.);
     assert!(result.0 == ndarray::arr1(&[c1]));
     assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
@@ -179,7 +180,8 @@ fn test_hartree_fock() {
         ArrayView1::from(&[true, true, true, true, false, false]),
         mode_op_map.clone(),
         symplectic_matrix,
-    );
+    )
+    .unwrap();
     assert!(result2.0 == ndarray::arr1(&[c1]));
     assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
 }
@@ -206,10 +208,47 @@ pub fn symplectic_to_pauli(symplectic: ArrayView1<bool>) -> (usize, String) {
 #[test]
 fn test_symplectic_to_pauli() {
     // YXZI
-    let symplectic = ndarray::arr1(&[true, true, false, false, true, false, true, false]);
+    let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
+        ndarray::arr1(&[true, true, false, false, true, false, true, false]);
     assert_eq!(
         symplectic_to_pauli(symplectic.view()),
         (3, String::from("YXZI"))
+    );
+}
+
+pub fn symplectic_to_sparse(symplectic: ArrayView1<bool>) -> (u8, String, Array1<usize>) {
+    let ipower: usize = 0;
+    let (x_block, z_block) = symplectic.split_at(Axis(0), symplectic.len_of(Axis(0)) / 2);
+    let mut pauli_string = String::new();
+    let mut indices: Vec<usize> = Vec::new();
+    let mut index: usize = 0;
+    Zip::from(x_block).and(z_block).for_each(|&x, &z| {
+        let pauli = match (&x, &z) {
+            (&false, &false) => 'I',
+            (&true, &true) => 'Y',
+            (&true, &false) => 'X',
+            (&false, &true) => 'Z',
+        };
+        match pauli {
+            'I' => {}
+            _ => {
+                pauli_string.push(pauli);
+                indices.push(index);
+            }
+        };
+        index += 1;
+    });
+    let ipower = ipower % 4;
+    (ipower as u8, pauli_string, ndarray::arr1(&indices))
+}
+
+#[test]
+fn test_symplectic_to_sparse() {
+    let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
+        ndarray::arr1(&[true, true, false, false, true, false, true, false]);
+    assert_eq!(
+        symplectic_to_sparse(symplectic.view()),
+        (0, "YXZ".to_string(), ndarray::arr1(&[0, 1, 2]))
     );
 }
 
@@ -303,13 +342,13 @@ fn test_symplectic_product() {
 // four times for each pair of fermionic operators
 // it does require memory scaling On^3 so if that becomes an issue we can be more clever.
 pub fn symplectic_product_map(
-    ipowers: ArrayView1<usize>,
+    ipowers: ArrayView1<u8>,
     symplectics: ArrayView2<bool>,
-) -> (Array2<usize>, Array3<bool>) {
+) -> (Array2<u8>, Array3<bool>) {
     let n_majoranas = symplectics.nrows();
     assert_eq!(n_majoranas, ipowers.len());
 
-    let mut product_powers: Array2<usize> = Array2::zeros((n_majoranas, n_majoranas));
+    let mut product_powers: Array2<u8> = Array2::zeros((n_majoranas, n_majoranas));
     let mut product_map: Array3<bool> =
         Array3::from_elem((n_majoranas, n_majoranas, symplectics.ncols()), false);
     azip!((index (l, r), pow in &mut product_powers) {
@@ -317,7 +356,7 @@ pub fn symplectic_product_map(
         let right = symplectics.slice(s![r,..]);
         let (imaginary, term) = symplectic_product(left, right);
 
-        *pow += &((imaginary + ipowers[[l]] + ipowers[[r]]) % 4);
+        *pow += &((imaginary as u8 + ipowers[[l]] + ipowers[[r]]) % 4);
         product_map.slice_mut(s![l,r,..]).assign(&term);
     });
 

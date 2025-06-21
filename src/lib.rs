@@ -37,14 +37,18 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> (Bound<'py, PyArray1<Complex64>>, Bound<'py, PyArray2<bool>>) {
         let vacuum_state = vacuum_state.as_array();
         let fermionic_hf_state = fermionic_hf_state.as_array();
-        let rust_mode_op_map: HashMap<usize, usize> = mode_op_map.extract().unwrap();
+        let rust_mode_op_map: HashMap<usize, usize> = match mode_op_map.extract() {
+            Ok(hashmap) => hashmap,
+            Err(_) => panic!("Mode op map cannot be parsed as HashMap."),
+        };
         let symplectic_matrix = symplectic_matrix.as_array();
         let (coeffs, states) = hartree_fock_state(
             vacuum_state,
             fermionic_hf_state,
             rust_mode_op_map,
             symplectic_matrix,
-        );
+        )
+        .unwrap();
         (
             PyArray1::from_owned_array(py, coeffs),
             PyArray2::from_owned_array(py, states),
@@ -78,11 +82,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     #[pyfn(m)]
     #[pyo3(name = "symplectic_product_map")]
-    fn wray_symplectic_product_map<'py>(
+    fn wrap_symplectic_product_map<'py>(
         py: Python<'py>,
-        ipowers: PyReadonlyArray1<usize>,
+        ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
-    ) -> (Bound<'py, PyArray2<usize>>, Bound<'py, PyArray3<bool>>) {
+    ) -> (Bound<'py, PyArray2<u8>>, Bound<'py, PyArray3<bool>>) {
         let ipowers = ipowers.as_array();
         let symplectics = symplectics.as_array();
         let (power_map, product_map) = symplectic_product_map(ipowers, symplectics);
@@ -96,7 +100,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "molecular_hamiltonian_template")]
     fn wrap_molecular_hamiltonian<'py>(
         py: Python<'py>,
-        ipowers: PyReadonlyArray1<usize>,
+        ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
     ) -> Bound<'py, PyDict> {
         let ipowers = ipowers.as_array();
@@ -105,6 +109,25 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         hamiltonian
             .into_py_dict(py)
             .expect("Cannot parse Hamiltonian dict.")
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "symplectic_to_sparse")]
+    fn wrap_symplectic_to_sparse<'py>(
+        py: Python<'py>,
+        symplectic: PyReadonlyArray1<bool>,
+    ) -> (
+        Bound<'py, PyInt>,
+        Bound<'py, PyString>,
+        Bound<'py, PyArray1<usize>>,
+    ) {
+        let symplectic = symplectic.as_array();
+        let (ipower, pauli_string, position_vec) = symplectic_to_sparse(symplectic);
+        (
+            PyInt::new(py, ipower),
+            PyString::new(py, &pauli_string),
+            PyArray1::from_owned_array(py, position_vec),
+        )
     }
     Ok(())
 }

@@ -16,34 +16,6 @@ from ferrmion.utils import (
 logger = logging.getLogger(__name__)
 
 
-def symplectic_product_map(
-    ipowers: NDArray[np.uint8], symplectics: NDArray[bool]
-) -> tuple[NDArray[np.uint8], dict[tuple[int, int], bytes]]:
-    """Calculate the product of symplectic terms and cache them.
-
-    Args:
-        ipowers (NDArray): Powers of i associated to each symplectic operator.
-        symplectics (NDArray): Operators in symplectic form.
-
-    Returns:
-        tuple: A set of powers of i, associated to an array byte-hashed symplectic operators.
-    """
-    logger.debug("Building symplectic product map")
-    product_ipowers = np.zeros(symplectics.shape, dtype=np.uint8)
-
-    product_map = {}
-    # For each product we need to keep track of the
-    # imaginary factor, so that we can combine this with the
-    # correct prefactor for each fermionic operation
-    for m in range(symplectics.shape[0]):
-        for n in range(symplectics.shape[0]):
-            imaginary, term = symplectic_product(symplectics[m], symplectics[n])
-            product_ipowers[m, n] = (imaginary + ipowers[m] + ipowers[n]) % 4
-            product_map[(m, n)] = symplectic_hash(np.copy(term))
-
-    return product_ipowers, product_map
-
-
 def fill_template(
     one_e_coeffs,
     two_e_coeffs,
@@ -68,7 +40,7 @@ def fill_template(
     logger.debug(f"Filling template with map\n{mode_op_map}")
 
     total_ham = {t: 0 for t in template}
-    total_ham[symplectic_hash(np.zeros(2 * len(mode_op_map), dtype=bool))] += (
+    total_ham["I" * len(mode_op_map)] += (
         constant_energy
     )
 

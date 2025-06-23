@@ -4,18 +4,18 @@ use ndarray::Axis;
 use itertools::izip;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
+use pyo3::IntoPyObject;
 use std::collections::HashMap;
 
 use crate::utils::{
     icount_to_sign, symplectic_product, symplectic_product_map, symplectic_to_pauli,
 };
 
-#[derive(::core::cmp::Eq, Hash)]
-enum IntegralIndex {
+#[derive(Eq, PartialEq, Hash, IntoPyObject, Debug)]
+pub enum IntegralIndex {
     OneE(usize, usize),
-    TwoE(usize, usize, usize, usize)
+    TwoE(usize, usize, usize, usize),
 }
-
 
 pub fn molecular(
     ipowers: ArrayView1<u8>,
@@ -64,7 +64,7 @@ pub fn molecular(
                                 );
 
                             let components = hamiltonian.entry(pauli_string).or_default();
-                            components.insert(format!("{},{},{},{}", m, n, p, q), weight);
+                            components.insert(IntegralIndex::TwoE(m, n, p, q), weight);
                         }
                     }
                 }

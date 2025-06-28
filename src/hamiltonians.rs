@@ -1,6 +1,6 @@
 use ndarray::{Axis, Zip};
 // use ndarray::{azip, concatenate, Axis, Zip};
-use itertools::izip;
+use itertools::iproduct;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
 use pyo3::{FromPyObject, IntoPyObject};
@@ -36,10 +36,10 @@ pub fn molecular(
     let n_modes = symplectics.nrows() / 2;
     for m in 0..n_modes {
         for n in 0..n_modes {
-            for (l, r) in std::iter::zip(0..1, 0..1) {
+            for (l, r) in iproduct!(0..2, 0..2) {
                 let term = sym_products.slice(s![2 * m + l, 2 * n + r, ..]);
                 let (im_term_pauli, pauli_string) = symplectic_to_pauli(term);
-                let weight = 0.25
+                let weight = Complex64::new(0.25, 0.)
                     * icount_to_sign(
                         iproducts[[2 * m + l, 2 * n + r]] as usize
                             + im_term_pauli
@@ -47,7 +47,10 @@ pub fn molecular(
                             + 3 * y_count(term),
                     );
                 let components = hamiltonian.entry(pauli_string).or_default();
-                components.insert(IntegralIndex::OneE(m, n), weight);
+                components
+                    .entry(IntegralIndex::OneE(m, n))
+                    .and_modify(|e| *e += weight)
+                    .or_insert(weight);
             }
             // 2e terms cancel
             if m == n {
@@ -55,27 +58,32 @@ pub fn molecular(
             }
             for p in 0..n_modes {
                 for q in 0..n_modes {
-                    if (p == q) | (m == p && n == q) | (m == q && n == p) {
+                    if (p == q) {
+                        //| (m == p && n == q) | (m == q && n == p) {
                         continue;
                     }
-                    for (l1, l2, r1, r2) in izip!(0..1, 0..1, 0..1, 0..1) {
+                    for (l1, l2, r1, r2) in iproduct!(0..2, 0..2, 0..2, 0..2) {
                         let left = sym_products.slice(s![2 * m + l1, 2 * n + l2, ..]);
                         let right = sym_products.slice(s![2 * p + r1, 2 * q + r2, ..]);
-                        let product = symplectic_product(left, right);
-                        let (im_term_pauli, pauli_string) = symplectic_to_pauli(product.1.view());
-                        let weight = 0.0625
+                        let (iproduct, product_term) = symplectic_product(left, right);
+                        let (im_term_pauli, pauli_string) =
+                            symplectic_to_pauli(product_term.view());
+                        let weight = Complex64::new(0.0625, 0.)
                             * icount_to_sign(
-                                product.0
+                                iproduct
                                     + im_term_pauli
                                     + 3 * (l1 + l2)
                                     + (r1 + r2)
                                     + iproducts[[2 * m + l1, 2 * n + l2]] as usize
                                     + iproducts[[2 * p + r1, 2 * q + r2]] as usize
-                                    + 3 * y_count(product.1.view()),
+                                    + 3 * y_count(product_term.view()),
                             );
 
                         let components = hamiltonian.entry(pauli_string).or_default();
-                        components.insert(IntegralIndex::TwoE(m, n, p, q), weight);
+                        components
+                            .entry(IntegralIndex::TwoE(m, n, p, q))
+                            .and_modify(|e| *e += weight)
+                            .or_insert(weight);
                     }
                 }
             }
@@ -161,7 +169,7 @@ pub fn fill_template(
             };
             val += factor * Complex64::new(coeff, 0.);
         }
-        if val.norm() > 0. {
+        if val.norm() > 1e-12 {
             hamiltonian.insert(pauli_term, val);
         };
     }

@@ -6,8 +6,6 @@ from functools import partial
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion.utils import symplectic_unhash
-
 from .evolutionary import lambda_plus_mu
 
 logger = logging.getLogger(__name__)
@@ -82,28 +80,20 @@ def minimise_mi_distance(
     return best
 
 
-def pauli_weighted_norm(
-    hashed_hamiltonian: dict[bytes, float], permutation: list[int]
-) -> list[float]:
+def pauli_weighted_norm(pauli_hamiltonian: dict[str, float]) -> list[float]:
     """The Pauli-weight of a template scaled by the term coefficients.
 
     Args:
-        hashed_hamiltonian (dict[bytes, float]): A filled template hamiltonian with byte-hashed keys.
-        permutation (list[int]): A list of integer mode labels, assigned to operator pairs [0,...,N].
+        pauli_hamiltonian (dict[bytes, float]): A filled template hamiltonian with byte-hashed keys.
 
     Return:
         list[float]: A single value in a list (needed for deap) giving the cost.
     """
     logger.debug("Calculating Pauli-weighted Norm")
-
-    def hashed_term_pauli_weight(hashed_term):
-        return np.sum(
-            np.bitwise_or(
-                *np.hsplit(symplectic_unhash(hashed_term, len(permutation) * 2), 2)
-            )
-        )
+    logger.debug(pauli_hamiltonian)
 
     weighted_terms = [
-        hashed_term_pauli_weight(k) * np.abs(v) for k, v in hashed_hamiltonian.items()
+        (len(k) - k.count("I")) * np.abs(v) for k, v in pauli_hamiltonian.items()
     ]
+    logger.debug(weighted_terms)
     return [np.sum(weighted_terms)]

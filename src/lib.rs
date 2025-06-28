@@ -1,4 +1,6 @@
-use numpy::{Complex64, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{
+    Complex64, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray4,
+};
 use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
@@ -6,7 +8,7 @@ use std::collections::HashMap;
 mod utils;
 use crate::utils::*;
 mod hamiltonians;
-use crate::hamiltonians::molecular;
+use crate::hamiltonians::{fill_template, molecular, IntegralIndex};
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -97,21 +99,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     #[pyfn(m)]
-    #[pyo3(name = "molecular_hamiltonian_template")]
-    fn wrap_molecular_hamiltonian<'py>(
-        py: Python<'py>,
-        ipowers: PyReadonlyArray1<u8>,
-        symplectics: PyReadonlyArray2<bool>,
-    ) -> Bound<'py, PyDict> {
-        let ipowers = ipowers.as_array();
-        let symplectics = symplectics.as_array();
-        let hamiltonian = molecular(ipowers, symplectics);
-        hamiltonian
-            .into_py_dict(py)
-            .expect("Cannot parse Hamiltonian dict.")
-    }
-
-    #[pyfn(m)]
     #[pyo3(name = "symplectic_to_sparse")]
     fn wrap_symplectic_to_sparse<'py>(
         py: Python<'py>,
@@ -129,5 +116,41 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             PyArray1::from_owned_array(py, position_vec),
         )
     }
+
+    #[pyfn(m)]
+    #[pyo3(name = "molecular_hamiltonian_template")]
+    fn wrap_molecular_hamiltonian<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+    ) -> Bound<'py, PyDict> {
+        let ipowers = ipowers.as_array();
+        let symplectics = symplectics.as_array();
+        let hamiltonian = molecular(ipowers, symplectics);
+        hamiltonian
+            .into_py_dict(py)
+            .expect("Cannot parse Hamiltonian Template dict.")
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "fill_template")]
+    fn wrap_fill_template<'py>(
+        py: Python<'py>,
+        one_e_terms: PyReadonlyArray2<f64>,
+        two_e_terms: PyReadonlyArray4<f64>,
+        template: Py<PyDict>,
+        mode_op_map: Py<PyDict>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let mode_op_map = mode_op_map.extract::<HashMap<usize, usize>>(py)?;
+        let template =
+            template.extract::<HashMap<String, HashMap<IntegralIndex, Complex64>>>(py)?;
+        let one_e_terms = one_e_terms.as_array();
+        let two_e_terms = two_e_terms.as_array();
+        let hamiltonian = fill_template(template, mode_op_map, one_e_terms, two_e_terms);
+        Ok(hamiltonian
+            .into_py_dict(py)
+            .expect("Cannot parse Hamiltonian dict."))
+    }
+
     Ok(())
 }

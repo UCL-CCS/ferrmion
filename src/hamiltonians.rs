@@ -1,17 +1,23 @@
-use ndarray::Axis;
+use ndarray::{Axis, Zip};
 // use ndarray::{azip, concatenate, Axis, Zip};
-// use num_complex::{c64, Complex};
 use itertools::izip;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
-use pyo3::IntoPyObject;
+use pyo3::{FromPyObject, IntoPyObject};
 use std::collections::HashMap;
 
 use crate::utils::{
     icount_to_sign, symplectic_product, symplectic_product_map, symplectic_to_pauli,
 };
 
-#[derive(Eq, PartialEq, Hash, IntoPyObject, Debug)]
+fn y_count(symplectic: ArrayView1<bool>) -> usize {
+    let (x_part, z_part) = symplectic.split_at(Axis(0), symplectic.len_of(Axis(0)) / 2);
+    Zip::from(x_part)
+        .and(z_part)
+        .fold(0, |acc, x, z| acc + (x & z) as usize)
+}
+
+#[derive(Eq, PartialEq, Hash, IntoPyObject, FromPyObject, Debug)]
 pub enum IntegralIndex {
     OneE(usize, usize),
     TwoE(usize, usize, usize, usize),
@@ -35,7 +41,10 @@ pub fn molecular(
                 let (im_term_pauli, pauli_string) = symplectic_to_pauli(term);
                 let weight = 0.25
                     * icount_to_sign(
-                        iproducts[[2 * m + l, 2 * n + r]] as usize + im_term_pauli + ((l - r) % 4),
+                        iproducts[[2 * m + l, 2 * n + r]] as usize
+                            + im_term_pauli
+                            + (r + 3 * l)
+                            + 3 * y_count(term),
                     );
                 let components = hamiltonian.entry(pauli_string).or_default();
                 components.insert(IntegralIndex::OneE(m, n), weight);
@@ -46,26 +55,27 @@ pub fn molecular(
             }
             for p in 0..n_modes {
                 for q in 0..n_modes {
-                    if p == q {
-                        for (l1, l2, r1, r2) in izip!(0..1, 0..1, 0..1, 0..1) {
-                            let left = sym_products.slice(s![2 * m + l1, 2 * n + l2, ..]);
-                            let right = sym_products.slice(s![2 * p + r1, 2 * q + r2, ..]);
-                            let product = symplectic_product(left, right);
-                            let (im_term_pauli, pauli_string) =
-                                symplectic_to_pauli(product.1.view());
-                            let weight = 0.0625
-                                * icount_to_sign(
-                                    product.0
-                                        + im_term_pauli
-                                        + 3 * (l1 + l2)
-                                        + (r1 + r2)
-                                        + iproducts[[2 * m + l1, 2 * n + l2]] as usize
-                                        + iproducts[[2 * p + r1, 2 * q + r2]] as usize,
-                                );
+                    if (p == q) | (m == p && n == q) | (m == q && n == p) {
+                        continue;
+                    }
+                    for (l1, l2, r1, r2) in izip!(0..1, 0..1, 0..1, 0..1) {
+                        let left = sym_products.slice(s![2 * m + l1, 2 * n + l2, ..]);
+                        let right = sym_products.slice(s![2 * p + r1, 2 * q + r2, ..]);
+                        let product = symplectic_product(left, right);
+                        let (im_term_pauli, pauli_string) = symplectic_to_pauli(product.1.view());
+                        let weight = 0.0625
+                            * icount_to_sign(
+                                product.0
+                                    + im_term_pauli
+                                    + 3 * (l1 + l2)
+                                    + (r1 + r2)
+                                    + iproducts[[2 * m + l1, 2 * n + l2]] as usize
+                                    + iproducts[[2 * p + r1, 2 * q + r2]] as usize
+                                    + 3 * y_count(product.1.view()),
+                            );
 
-                            let components = hamiltonian.entry(pauli_string).or_default();
-                            components.insert(IntegralIndex::TwoE(m, n, p, q), weight);
-                        }
+                        let components = hamiltonian.entry(pauli_string).or_default();
+                        components.insert(IntegralIndex::TwoE(m, n, p, q), weight);
                     }
                 }
             }
@@ -108,7 +118,7 @@ fn test_molecular() {
 
 #[allow(dead_code)]
 pub fn fill_template(
-    template: HashMap<String, HashMap<String, Complex64>>,
+    template: HashMap<String, HashMap<IntegralIndex, Complex64>>,
     mode_op_map: HashMap<usize, usize>,
     one_e_terms: ArrayView2<f64>,
     two_e_terms: ArrayView4<f64>,
@@ -130,26 +140,30 @@ pub fn fill_template(
     let mut hamiltonian: HashMap<String, Complex64> = HashMap::new();
 
     for (pauli_term, components) in template {
-        hamiltonian.insert(pauli_term, {
-            let mut val = Complex64::new(0., 0.);
-            for (indices, factor) in components {
-                let ni: Vec<usize> = indices
-                    .split(' ')
-                    .map(|c| {
-                        let parsed_index = c.parse::<usize>().unwrap();
-                        let mapped_index: usize = *mode_op_map.get(&parsed_index).unwrap();
-                        mapped_index
-                    })
-                    .collect();
-                let coeff = match ni.len() {
-                    2 => one_e_terms[[ni[0], ni[1]]],
-                    4 => two_e_terms[[ni[0], ni[1], ni[2], ni[3]]],
-                    _ => panic!(),
-                };
-                val += factor * Complex64::new(coeff, 0.);
-            }
-            val
-        });
+        let mut val = Complex64::new(0., 0.);
+        let err_str = "Mode op map does not contain integral index.";
+        for (indices, factor) in components {
+            let coeff = match indices {
+                IntegralIndex::OneE(m, n) => {
+                    one_e_terms[[
+                        *mode_op_map.get(&m).expect(err_str),
+                        *mode_op_map.get(&n).expect(err_str),
+                    ]]
+                }
+                IntegralIndex::TwoE(p, q, r, s) => {
+                    two_e_terms[[
+                        *mode_op_map.get(&p).expect(err_str),
+                        *mode_op_map.get(&q).expect(err_str),
+                        *mode_op_map.get(&r).expect(err_str),
+                        *mode_op_map.get(&s).expect(err_str),
+                    ]]
+                }
+            };
+            val += factor * Complex64::new(coeff, 0.);
+        }
+        if val.norm() > 0. {
+            hamiltonian.insert(pauli_term, val);
+        };
     }
 
     hamiltonian

@@ -1,21 +1,21 @@
 """Base FermionQubitEncoding class."""
+
 import logging
 from abc import ABC, abstractmethod
 
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion.core import hartree_fock_state, symplectic_product, symplectic_product_map
+from ferrmion.core import hartree_fock_state, symplectic_product_map
 from ferrmion.utils import (
     icount_to_sign,
     pauli_to_symplectic,
-    symplectic_hash,
     symplectic_to_pauli,
     symplectic_to_sparse,
-    symplectic_unhash,
 )
 
 logger = logging.getLogger(__name__)
+
 
 class FermionQubitEncoding(ABC):
     """Fermion Encodings for the Electronic Structure Hamiltonian in symplectic form.
@@ -33,7 +33,6 @@ class FermionQubitEncoding(ABC):
         hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
         _symplectic_to_pauli: Convert a symplectic matrix to a Pauli string.
         _pauli_to_symplectic: Convert a Pauli string to a symplectic matrix.
-        _edge_operator_map: Build a map of operators in the full hamiltonian to their constituent majoranas.
         fill_template: Fill a template with Hamiltonian coefficients.
         to_symplectic_hamiltonian: Output the hamiltonian in symplectic form.
         to_qubit_hamiltonian: Create qubit representation Hamiltonian.
@@ -161,18 +160,16 @@ class FermionQubitEncoding(ABC):
         """
         return pauli_to_symplectic(pauli)
 
-    def _edge_operator_map(self):
-        return edge_operator_map(self)
-
     @property
     def symplectic_product_map(self):
         """Calculate the product of symplectic terms and cache them."""
         logger.debug("Building symplectic product map")
         ipowers, symplectics = self._build_symplectic_matrix()
         return symplectic_product_map(ipowers, symplectics)
-        
 
-    def number_operator(self, mode: int) -> list[tuple[str, np.complexfloating]]:
+    def number_operator(
+        self, mode: int
+    ) -> list[tuple[str, NDArray, np.complexfloating]]:
         """Return the number operator of a mode for this encoding.
 
         Args:
@@ -182,7 +179,7 @@ class FermionQubitEncoding(ABC):
 
     def edge_operator(
         self, edge_indices: tuple[int, int]
-    ) -> list[tuple[str, np.complexfloating]]:
+    ) -> list[tuple[str, NDArray, np.complexfloating]]:
         """Return the edge operator of a pair of modes for this encoding.
 
         Args:
@@ -193,7 +190,7 @@ class FermionQubitEncoding(ABC):
 
 def number_operator(
     encoding: FermionQubitEncoding, mode: int
-) -> list[tuple[str, np.complexfloating]]:
+) -> list[tuple[str, NDArray, np.complexfloating]]:
     """Return the number operator for a given encoding and mode.
 
     Args:
@@ -228,9 +225,7 @@ def edge_operator(
     fourth_term = sym_products[2 * m + 1, 2 * n + 1]
 
     terms = [first_term, second_term, third_term, fourth_term]
-    terms: list[tuple[int, str, NDArray]] = [
-        symplectic_to_sparse(t) for t in terms
-    ]
+    terms: list[tuple[int, str, NDArray]] = [symplectic_to_sparse(t) for t in terms]
     factors = (
         0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0]),
         0.25 * icount_to_sign(icount[2 * m, 2 * n + 1] + 1 + terms[1][0]),
@@ -239,5 +234,3 @@ def edge_operator(
     )
 
     return [(t[1], t[2], f) for t, f in zip(terms, factors)]
-
-# %%

@@ -3,7 +3,7 @@
 from ferrmion.optimize.rett import reduced_entanglement_tree
 from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, pauli_weighted_norm
 from ferrmion.encode import TernaryTree
-from ferrmion.hamiltonians import molecular_hamiltonian_template, fill_template, to_qubit_hamiltonian
+from ferrmion.core import molecular_hamiltonian_template, fill_template
 
 import numpy as np
 from pytest import fixture
@@ -56,8 +56,6 @@ def test_pauli_weighted_norm(water_integrals):
     ones, twos = water_integrals
     jw_pauli_ham = molecular_hamiltonian_template(ipowers, symplectics)
     jw_filled_template = fill_template(ones, twos, jw_pauli_ham, TernaryTree(14).JW().default_mode_op_map)
-    print(jw_filled_template)
-    jw_filled_template = to_qubit_hamiltonian(14, jw_filled_template)
     jw_norm = pauli_weighted_norm(jw_filled_template)
 
     assert np.allclose(jw_norm, [np.float64(272.4190655251233)])
@@ -65,6 +63,5 @@ def test_pauli_weighted_norm(water_integrals):
     ipowers, symplectics = TernaryTree(14).ParityEncoding()._build_symplectic_matrix()
     pe_hashed_hamiltonian = molecular_hamiltonian_template(ipowers, symplectics)
     pe_filled_template = fill_template(ones, twos, pe_hashed_hamiltonian, TernaryTree(14).JW().default_mode_op_map)
-    pe_filled_template = to_qubit_hamiltonian(14, pe_filled_template)
     pe_norm = pauli_weighted_norm(pe_filled_template)
     assert np.allclose(pe_norm, [np.float64(354.23056347814577)])

@@ -1,4 +1,4 @@
-use ndarray::{Axis, Zip};
+use ndarray::Axis;
 // use ndarray::{azip, concatenate, Axis, Zip};
 use itertools::iproduct;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
@@ -9,13 +9,6 @@ use std::collections::HashMap;
 use crate::utils::{
     icount_to_sign, symplectic_product, symplectic_product_map, symplectic_to_pauli,
 };
-
-fn y_count(symplectic: ArrayView1<bool>) -> usize {
-    let (x_part, z_part) = symplectic.split_at(Axis(0), symplectic.len_of(Axis(0)) / 2);
-    Zip::from(x_part)
-        .and(z_part)
-        .fold(0, |acc, x, z| acc + (x & z) as usize)
-}
 
 #[derive(Eq, PartialEq, Hash, IntoPyObject, FromPyObject, Debug)]
 pub enum IntegralIndex {
@@ -41,10 +34,7 @@ pub fn molecular(
                 let (im_term_pauli, pauli_string) = symplectic_to_pauli(term);
                 let weight = Complex64::new(0.25, 0.)
                     * icount_to_sign(
-                        iproducts[[2 * m + l, 2 * n + r]] as usize
-                            + im_term_pauli
-                            + (r + 3 * l)
-                            + 3 * y_count(term),
+                        iproducts[[2 * m + l, 2 * n + r]] as usize + im_term_pauli + (r + 3 * l),
                     );
                 let components = hamiltonian.entry(pauli_string).or_default();
                 components
@@ -52,14 +42,12 @@ pub fn molecular(
                     .and_modify(|e| *e += weight)
                     .or_insert(weight);
             }
-            // 2e terms cancel
             if m == n {
                 continue;
             }
             for p in 0..n_modes {
                 for q in 0..n_modes {
-                    if (p == q) {
-                        //| (m == p && n == q) | (m == q && n == p) {
+                    if p == q {
                         continue;
                     }
                     for (l1, l2, r1, r2) in iproduct!(0..2, 0..2, 0..2, 0..2) {
@@ -75,8 +63,7 @@ pub fn molecular(
                                     + 3 * (l1 + l2)
                                     + (r1 + r2)
                                     + iproducts[[2 * m + l1, 2 * n + l2]] as usize
-                                    + iproducts[[2 * p + r1, 2 * q + r2]] as usize
-                                    + 3 * y_count(product_term.view()),
+                                    + iproducts[[2 * p + r1, 2 * q + r2]] as usize,
                             );
 
                         let components = hamiltonian.entry(pauli_string).or_default();

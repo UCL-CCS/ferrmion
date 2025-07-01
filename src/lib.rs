@@ -1,269 +1,24 @@
-use std::collections::HashMap;
-use std::vec;
-
-use ndarray::{concatenate, Axis, Zip};
-use num_complex::c64;
-use numpy::ndarray::{arr2, s, Array1, Array2, ArrayView1, ArrayView2};
-use numpy::{Complex64, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::types::PyDict;
+use numpy::{
+    Complex64, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray4,
+};
+use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
+use std::collections::HashMap;
 
-fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array1<Complex64> {
-    /*
-    Computes the Kronecker product between two complex vectors.
-
-    # Simple example
-    ```rust
-    use ndarray::arr1;
-    use numpy::Complex64;
-    let a = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(0.0, 0.0)]);
-    let b = arr1(&[Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0)]);
-    let result = vector_kron(&a, &b);
-    ```
-    */
-    concatenate![
-        Axis(0),
-        left.mapv(|l| l * right[0]),
-        left.mapv(|l| l * right[1])
-    ]
-}
-
-// super ugly function, should definitely work on writing nice rust
-fn hartree_fock_state(
-    vacuum_state: ArrayView1<f64>,
-    fermionic_hf_state: ArrayView1<bool>,
-    mode_op_map: HashMap<usize, usize>,
-    symplectic_matrix: ArrayView2<bool>,
-) -> (Array1<Complex64>, Array2<bool>) {
-    /*
-    Computes the Hartree-Fock state from the given parameters.
-
-    # Simple example
-    ```rust
-    use ndarray::{arr1, arr2, ArrayView1, ArrayView2};
-    use std::collections::HashMap;
-    let vacuum = arr1(&[0., 0., 0.]);
-    let hf = arr1(&[true, false, true]);
-    let mut map = HashMap::new();
-    map.insert(0, 0);
-    map.insert(1, 1);
-    map.insert(2, 2);
-    let sympl = arr2(&[[true, false, false, false, false, false],
-                      [false, true, false, false, false, false],
-                      [false, false, true, false, false, false]]);
-    let (coeffs, states) = hartree_fock_state(vacuum.view(), hf.view(), map, sympl.view());
-    ```
-
-    # Advanced example (with more modes and symmetry)
-    ```rust
-    // Use a larger symplectic_matrix and a custom mode_op_map
-    ```
-    */
-    let mut current_state =
-        vec![Array1::from(vec![c64(1., 0.), c64(0., 0.)]); vacuum_state.len_of(Axis(0))];
-
-    let mut matrices = HashMap::new();
-    matrices.insert(
-        (false, false),
-        arr2(&[[c64(1., 0.), c64(0., 0.)], [c64(0., 0.), c64(1., 0.)]]),
-    );
-    matrices.insert(
-        (true, false),
-        arr2(&[[c64(0., 0.), c64(1., 0.)], [c64(1., 0.), c64(0., 0.)]]),
-    );
-    matrices.insert(
-        (false, true),
-        arr2(&[[c64(1., 0.), c64(0., 0.)], [c64(0., 0.), c64(1., 0.)]]),
-    );
-    matrices.insert(
-        (true, true),
-        arr2(&[[c64(0., 0.), c64(0., -1.)], [c64(0., 1.), c64(0., 0.)]]),
-    );
-
-    let half_length = symplectic_matrix.len_of(ndarray::Axis(1)) / 2;
-    let (x_block, z_block) = symplectic_matrix.split_at(Axis(1), half_length);
-
-    for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
-        if !occ {
-            continue;
-        }
-        let mode_index = mode_op_map.get(&mode).unwrap();
-
-        let left_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index);
-        let right_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
-        let left_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index);
-        let right_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
-
-        // split the left and righ operators into x and z sections
-        Zip::from(&mut current_state)
-            .and(&left_x)
-            .and(&left_z)
-            .and(&right_x)
-            .and(&right_z)
-            .for_each(|s, &lx, &lz, &rx, &rz| {
-                // Create an operator to act on the state with
-                let left_op = matrices.get(&(lx, lz)).unwrap();
-                let right_op = matrices.get(&(rx, rz)).unwrap();
-                let total_op = left_op - right_op.map(|op| op * c64(0., 1.));
-                *s = total_op.dot(s);
-            });
-    }
-
-    let mut vector_state: Array1<Complex64> = Zip::from(&current_state)
-        .fold(Array1::from_elem(1, c64(1., 0.)), |acc, c| {
-            vector_kron(&acc, c)
-        });
-
-    let mut zero_coeffs = Vec::new();
-    let mut hf_components: Vec<bool> = Vec::new();
-    // According to ndarray docs, when we don't know the final size
-    // of a multidimensional array we want to build iteratively
-    // the best thing to do is create a flat array and then reshape
-    for index in 0..vector_state.len() {
-        let coeff = vector_state[index];
-        if !(coeff == c64(0., 0.)) {
-            let binary = format!("{:0<width$}", format!("{index:b}"), width = (half_length));
-            for val in binary.chars() {
-                println!("{}", val);
-                hf_components.push(val.to_digit(10).unwrap() == 1)
-            }
-        } else {
-            zero_coeffs.push(index);
-        }
-    }
-    for index in zero_coeffs.iter().rev() {
-        vector_state.remove_index(Axis(0), *index);
-    }
-    // let norm = vector_state.mapv(|s| s*s.conj()).sum().sqrt();
-    // println!("{:?}",norm);
-    let coeffs = vector_state.mapv(|c| c / (vector_state[0]));
-
-    let hf_components =
-        Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components).unwrap();
-    (coeffs, hf_components)
-}
-
-#[test]
-fn test_hartree_fock() {
-    let vacuum_state: ArrayView1<f64> = ArrayView1::from(&[0., 0., 0., 0., 0., 0.]);
-    let fermionic_hf_state: ArrayView1<bool> =
-        ArrayView1::from(&[true, true, true, false, false, false]);
-    let mut mode_op_map: HashMap<usize, usize> = HashMap::new();
-    mode_op_map.insert(0, 0);
-    mode_op_map.insert(1, 1);
-    mode_op_map.insert(2, 2);
-    mode_op_map.insert(3, 3);
-    mode_op_map.insert(4, 4);
-    mode_op_map.insert(5, 5);
-    mode_op_map.insert(6, 6);
-    let symplectic_matrix: ArrayView2<bool> = ArrayView2::from(&[
-        [
-            true, false, false, false, false, false, false, false, false, false, false, false,
-        ],
-        [
-            true, false, false, false, false, false, true, false, false, false, false, false,
-        ],
-        [
-            false, true, false, false, false, false, true, false, false, false, false, false,
-        ],
-        [
-            false, true, false, false, false, false, true, true, false, false, false, false,
-        ],
-        [
-            false, false, true, false, false, false, true, true, false, false, false, false,
-        ],
-        [
-            false, false, true, false, false, false, true, true, true, false, false, false,
-        ],
-        [
-            false, false, false, true, false, false, true, true, true, false, false, false,
-        ],
-        [
-            false, false, false, true, false, false, true, true, true, true, false, false,
-        ],
-        [
-            false, false, false, false, true, false, true, true, true, true, false, false,
-        ],
-        [
-            false, false, false, false, true, false, true, true, true, true, true, false,
-        ],
-        [
-            false, false, false, false, false, true, true, true, true, true, true, false,
-        ],
-        [
-            false, false, false, false, false, true, true, true, true, true, true, true,
-        ],
-    ]);
-    let result = hartree_fock_state(
-        vacuum_state,
-        fermionic_hf_state,
-        mode_op_map.clone(),
-        symplectic_matrix,
-    );
-    let c1 = c64(1., 0.);
-    assert!(result.0 == ndarray::arr1(&[c1]));
-    assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
-
-    let result2 = hartree_fock_state(
-        vacuum_state,
-        ArrayView1::from(&[true, true, true, true, false, false]),
-        mode_op_map.clone(),
-        symplectic_matrix,
-    );
-    assert!(result2.0 == ndarray::arr1(&[c1]));
-    assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
-}
-
-fn symplectic_product(left: ArrayView1<bool>, right: ArrayView1<bool>) -> (usize, Array1<bool>) {
-    /*
-    Computes the symplectic product between two boolean vectors.
-
-    # Simple example
-    ```rust
-    use ndarray::arr1;
-    let a = arr1(&[true, false, false, true]);
-    let b = arr1(&[false, true, true, false]);
-    let (ipower, product) = symplectic_product(a.view(), b.view());
-    ```
-    */
-    // bitwise or between two vectors
-    let product = &left ^ &right;
-
-    // bitwise sum of left z and right x
-    let half_length: usize = left.len() / 2;
-
-    let mut zx_count: usize = 0;
-    let left_z = left.slice(s![half_length..]);
-    let right_x = right.slice(s![..half_length]);
-    for index in 0..half_length {
-        if left_z[index] & right_x[index] {
-            zx_count += 1;
-        };
-    }
-
-    let ipower: usize = (2 * zx_count) % 4;
-
-    (ipower, product)
-}
-
-#[test]
-fn test_symplectic_product() {
-    let xxx: Array1<bool> = ndarray::arr1(&[true, true, true, false, false, false]);
-    let zzz: Array1<bool> = ndarray::arr1(&[false, false, false, true, true, true]);
-    let product_result = symplectic_product(xxx.view(), zzz.view());
-    let expected = (0, ndarray::arr1(&[true, true, true, true, true, true]));
-    assert_eq!(product_result, expected);
-}
+mod utils;
+use crate::utils::*;
+mod hamiltonians;
+use crate::hamiltonians::{fill_template, molecular, IntegralIndex};
+mod encoding;
+use crate::encoding::{hartree_fock_state, symplectic_product_map};
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    /*
-    Python module implemented in Rust.
-    */
+#[pyo3(name = "core")]
+fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyfn(m)]
     #[pyo3(name = "symplectic_product")]
-    fn rust_symplectic_product_py<'py>(
+    fn wrap_symplectic_product_py<'py>(
         py: Python<'py>,
         left: PyReadonlyArray1<bool>,
         right: PyReadonlyArray1<bool>,
@@ -289,7 +44,7 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     #[pyfn(m)]
     #[pyo3(name = "hartree_fock_state")]
-    fn rust_hartree_fock_state_py<'py>(
+    fn wrap_hartree_fock_state_py<'py>(
         py: Python<'py>,
         vacuum_state: PyReadonlyArray1<f64>,
         fermionic_hf_state: PyReadonlyArray1<bool>,
@@ -312,18 +67,126 @@ fn ferrmion(m: &Bound<'_, PyModule>) -> PyResult<()> {
         */
         let vacuum_state = vacuum_state.as_array();
         let fermionic_hf_state = fermionic_hf_state.as_array();
-        let rust_mode_op_map: HashMap<usize, usize> = mode_op_map.extract().unwrap();
+        let rust_mode_op_map: HashMap<usize, usize> = match mode_op_map.extract() {
+            Ok(hashmap) => hashmap,
+            Err(_) => panic!("Mode op map cannot be parsed as HashMap."),
+        };
         let symplectic_matrix = symplectic_matrix.as_array();
         let (coeffs, states) = hartree_fock_state(
             vacuum_state,
             fermionic_hf_state,
             rust_mode_op_map,
             symplectic_matrix,
-        );
+        )
+        .unwrap();
         (
             PyArray1::from_owned_array(py, coeffs),
             PyArray2::from_owned_array(py, states),
         )
     }
+
+    #[pyfn(m)]
+    #[pyo3(name = "symplectic_to_pauli")]
+    fn wrap_symplectic_to_pauli<'py>(
+        py: Python<'py>,
+        symplectic: PyReadonlyArray1<bool>,
+    ) -> (Bound<'py, PyInt>, Bound<'py, PyString>) {
+        let symplectic = symplectic.as_array();
+        let (ipower, pauli) = symplectic_to_pauli(symplectic);
+        (PyInt::new(py, ipower), PyString::new(py, &pauli))
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "pauli_to_symplectic")]
+    fn wrap_pauli_to_symplectic(
+        py: Python<'_>,
+        pauli: String,
+    ) -> (Bound<'_, PyInt>, Bound<'_, PyArray1<bool>>) {
+        // let pauli = pauli.extract();
+        let (ipower, symplectic) = pauli_to_symplectic(pauli);
+        (
+            PyInt::new(py, ipower),
+            PyArray1::from_owned_array(py, symplectic),
+        )
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "symplectic_product_map")]
+    fn wrap_symplectic_product_map<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+    ) -> (Bound<'py, PyArray2<u8>>, Bound<'py, PyArray3<bool>>) {
+        let ipowers = ipowers.as_array();
+        let symplectics = symplectics.as_array();
+        let (power_map, product_map) = symplectic_product_map(ipowers, symplectics);
+        (
+            PyArray2::from_owned_array(py, power_map),
+            PyArray3::from_owned_array(py, product_map),
+        )
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "symplectic_to_sparse")]
+    fn wrap_symplectic_to_sparse<'py>(
+        py: Python<'py>,
+        symplectic: PyReadonlyArray1<bool>,
+    ) -> (
+        Bound<'py, PyInt>,
+        Bound<'py, PyString>,
+        Bound<'py, PyArray1<usize>>,
+    ) {
+        let symplectic = symplectic.as_array();
+        let (ipower, pauli_string, position_vec) = symplectic_to_sparse(symplectic);
+        (
+            PyInt::new(py, ipower),
+            PyString::new(py, &pauli_string),
+            PyArray1::from_owned_array(py, position_vec),
+        )
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "molecular_hamiltonian_template")]
+    fn wrap_molecular_hamiltonian<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+    ) -> Bound<'py, PyDict> {
+        let ipowers = ipowers.as_array();
+        let symplectics = symplectics.as_array();
+        let hamiltonian = molecular(ipowers, symplectics);
+        hamiltonian
+            .into_py_dict(py)
+            .expect("Cannot parse Hamiltonian Template dict.")
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "fill_template")]
+    fn wrap_fill_template<'py>(
+        py: Python<'py>,
+        template: Py<PyDict>,
+        constant_energy: f64,
+        one_e_terms: PyReadonlyArray2<f64>,
+        two_e_terms: PyReadonlyArray4<f64>,
+        mode_op_map: Py<PyDict>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        // let constant_energy = constant_energy.extract(py)?;
+        let mode_op_map = mode_op_map.extract::<HashMap<usize, usize>>(py)?;
+        let template =
+            template.extract::<HashMap<String, HashMap<IntegralIndex, Complex64>>>(py)?;
+        let one_e_terms = one_e_terms.as_array();
+        let two_e_terms = two_e_terms.as_array();
+        let hamiltonian = fill_template(
+            template,
+            constant_energy,
+            one_e_terms,
+            two_e_terms,
+            mode_op_map,
+        );
+        Ok(hamiltonian
+            .into_py_dict(py)
+            .expect("Cannot parse Hamiltonian dict."))
+    }
+
     Ok(())
 }

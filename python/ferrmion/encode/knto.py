@@ -30,7 +30,7 @@ class KNTO(FermionQubitEncoding):
         self.n_modes = n_modes
         super().__init__(n_modes=n_modes, n_qubits=n_modes)
 
-    def _build_symplectic_matrix(self) -> tuple[NDArray[np.number], NDArray[bool]]:
+    def _build_symplectic_matrix(self) -> tuple[NDArray[np.number], NDArray[np.bool_]]:
         """Build the symplectic matrix for the k-NTO encoding.
 
         Returns:
@@ -52,7 +52,7 @@ class KNTO(FermionQubitEncoding):
         return self.n_modes
 
 
-def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[bool]]:
+def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool_]]:
     """Build a symplectic matrix of majorana operators for the k-NTO encoding.
 
     Args:

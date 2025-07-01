@@ -20,6 +20,7 @@ dependencies = [
 ]
 
 [tool.maturin]
+module-name = "ferrmion.core"
 python-source = "python/"
 features = ["pyo3/extension-module"]
 

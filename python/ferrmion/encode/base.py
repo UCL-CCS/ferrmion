@@ -6,14 +6,12 @@ from abc import ABC, abstractmethod
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion import hartree_fock_state, symplectic_product
+from ferrmion.core import hartree_fock_state, symplectic_product_map
 from ferrmion.utils import (
     icount_to_sign,
     pauli_to_symplectic,
-    symplectic_hash,
     symplectic_to_pauli,
     symplectic_to_sparse,
-    symplectic_unhash,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,7 +23,6 @@ class FermionQubitEncoding(ABC):
     Attributes:
         one_e_coeffs (NDArray): One electron coefficients.
         two_e_coeffs (NDArray): Two electron coefficients.
-        vacuum_state (NDArray | None): The vacuum state of the encoding.
         modes (set[int]): A set of modes.
         n_qubits (int): The number of qubits.
 
@@ -35,7 +32,6 @@ class FermionQubitEncoding(ABC):
         hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
         _symplectic_to_pauli: Convert a symplectic matrix to a Pauli string.
         _pauli_to_symplectic: Convert a Pauli string to a symplectic matrix.
-        _edge_operator_map: Build a map of operators in the full hamiltonian to their constituent majoranas.
         fill_template: Fill a template with Hamiltonian coefficients.
         to_symplectic_hamiltonian: Output the hamiltonian in symplectic form.
         to_qubit_hamiltonian: Create qubit representation Hamiltonian.
@@ -125,12 +121,12 @@ class FermionQubitEncoding(ABC):
     @abstractmethod
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
     def hartree_fock_state(
-        self, fermionic_hf_state: NDArray[bool], mode_op_map: dict | None = None
+        self, fermionic_hf_state: NDArray[np.bool_], mode_op_map: dict | None = None
     ):
         """Find the Hartree-Fock state of a majorana string encoding.
 
@@ -165,7 +161,7 @@ class FermionQubitEncoding(ABC):
         return symplectic_to_pauli(symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[bool]]:
+    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool_]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:
@@ -173,29 +169,16 @@ class FermionQubitEncoding(ABC):
         """
         return pauli_to_symplectic(pauli)
 
-    def _edge_operator_map(self):
-        return edge_operator_map(self)
-
     @property
     def symplectic_product_map(self):
         """Calculate the product of symplectic terms and cache them."""
         logger.debug("Building symplectic product map")
         ipowers, symplectics = self._build_symplectic_matrix()
-        product_ipowers = np.zeros(symplectics.shape, dtype=np.uint8)
+        return symplectic_product_map(ipowers, symplectics)
 
-        product_map = {}
-        # For each product we need to keep track of the
-        # imaginary factor, so that we can combine this with the
-        # correct prefactor for each fermionic operation
-        for m in range(symplectics.shape[0]):
-            for n in range(symplectics.shape[0]):
-                imaginary, term = symplectic_product(symplectics[m], symplectics[n])
-                product_ipowers[m, n] = (imaginary + ipowers[m] + ipowers[n]) % 4
-                product_map[(m, n)] = symplectic_hash(np.copy(term))
-
-        return product_ipowers, product_map
-
-    def number_operator(self, mode: int) -> list[tuple[str, np.complexfloating]]:
+    def number_operator(
+        self, mode: int
+    ) -> list[tuple[str, NDArray, np.complexfloating]]:
         """Return the number operator of a mode for this encoding.
 
         Args:
@@ -210,7 +193,7 @@ class FermionQubitEncoding(ABC):
 
     def edge_operator(
         self, edge_indices: tuple[int, int]
-    ) -> list[tuple[str, np.complexfloating]]:
+    ) -> list[tuple[str, NDArray, np.complexfloating]]:
         """Return the edge operator of a pair of modes for this encoding.
 
         Args:
@@ -225,7 +208,7 @@ class FermionQubitEncoding(ABC):
 
 def number_operator(
     encoding: FermionQubitEncoding, mode: int
-) -> list[tuple[str, np.complexfloating]]:
+) -> list[tuple[str, NDArray, np.complexfloating]]:
     """Return the number operator for a given encoding and mode.
 
     Args:
@@ -264,15 +247,13 @@ def edge_operator(
     m = encoding.default_mode_op_map[m]
     n = encoding.default_mode_op_map[n]
 
-    first_term = sym_products[(2 * m, 2 * n)]
-    second_term = sym_products[(2 * m, 2 * n + 1)]
-    third_term = sym_products[(2 * m + 1, 2 * n)]
-    fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
+    first_term = sym_products[2 * m, 2 * n]
+    second_term = sym_products[2 * m, 2 * n + 1]
+    third_term = sym_products[2 * m + 1, 2 * n]
+    fourth_term = sym_products[2 * m + 1, 2 * n + 1]
 
     terms = [first_term, second_term, third_term, fourth_term]
-    terms: list[tuple[int, str, NDArray]] = [
-        symplectic_to_sparse(symplectic_unhash(t, 2 * encoding.n_qubits)) for t in terms
-    ]
+    terms: list[tuple[int, str, NDArray]] = [symplectic_to_sparse(t) for t in terms]
     factors = (
         0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0]),
         0.25 * icount_to_sign(icount[2 * m, 2 * n + 1] + 1 + terms[1][0]),
@@ -281,78 +262,3 @@ def edge_operator(
     )
 
     return [(t[1], t[2], f) for t, f in zip(terms, factors)]
-
-
-def edge_operator_map(encoding: FermionQubitEncoding) -> tuple[dict, dict]:
-    """Build a map of operators in the full hamiltonian to their constituent majoranas.
-
-    Args:
-        encoding (FermionQubitEncoding): The encoding to use.
-
-    Returns:
-        tuple[dict, dict]: A tuple of the edge operator map and the weights.
-
-    Example:
-        >>> from ferrmion.encode.base import edge_operator_map, FermionQubitEncoding
-        >>> class DummyEncoding(FermionQubitEncoding):
-        ...     def _build_symplectic_matrix(self):
-        ...         import numpy as np
-        ...         return np.zeros(1), np.zeros((1, 2), dtype=bool)
-        >>> enc = DummyEncoding(2, 2)
-        >>> edge_operator_map(enc)
-    """
-    logger.debug("Building edge operator map")
-    majorana_symplectic = encoding._build_symplectic_matrix()[1]
-
-    icount, sym_products = encoding.symplectic_product_map
-    edge_map = {}
-
-    n_modes = majorana_symplectic.shape[1] // 2
-
-    for m in range(n_modes):
-        for n in range(n_modes):
-            # if self.one_e_coeffs[m,n] == 0:
-            # continue
-
-            # (gamma_2m -i gamma_2m+1)(gamma_2n +i gamma_2n+1)
-            first_term = sym_products[(2 * m, 2 * n)]
-            second_term = sym_products[(2 * m, 2 * n + 1)]
-            third_term = sym_products[(2 * m + 1, 2 * n)]
-            fourth_term = sym_products[(2 * m + 1, 2 * n + 1)]
-
-            factors = (
-                0.25 * icount_to_sign(icount[2 * m, 2 * n]),
-                0.25 * icount_to_sign(icount[2 * m, 2 * n + 1] + 1),
-                0.25 * icount_to_sign(icount[2 * m + 1, 2 * n] + 3),
-                0.25 * icount_to_sign(icount[2 * m + 1, 2 * n + 1]),
-            )
-            terms = [first_term, second_term, third_term, fourth_term]
-
-            if m <= n:
-                edge_map[(m, n)] = {
-                    term: factor for term, factor in zip(terms, factors)
-                }
-            # The other way round will always come second!
-            else:
-                for t, f in zip(terms, factors):
-                    edge_map[(n, m)][t] += f
-                    if edge_map[(n, m)][t] == 0:
-                        edge_map[(n, m)].pop(t)
-
-    logger.debug("Calculating mean weights")
-    logger.debug(f"{edge_map}")
-    weights = np.zeros((n_modes, n_modes))
-    for k, v in edge_map.items():
-        logger.debug(f"{[symplectic_unhash(op, 2*n_modes) for op in v.keys()]}")
-        x_block, z_block = np.hsplit(
-            np.vstack([symplectic_unhash(op, 2 * n_modes) for op in v.keys()]), 2
-        )
-
-        mean_weight = np.mean(
-            np.sum(np.bitwise_or(x_block, z_block), axis=1)
-            * [factor for factor in v.values()]
-        )
-        weights[k[0], k[1]] = mean_weight
-        weights[k[1], k[0]] = mean_weight
-
-    return edge_map, weights

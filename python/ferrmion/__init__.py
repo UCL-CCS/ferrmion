@@ -4,7 +4,7 @@ This file is ignored by pre-commit as the pyo3 integration requires importing
 rust functions before importing functions from the python module.
 """
 
-from .ferrmion import hartree_fock_state, symplectic_product
+from .core import hartree_fock_state, symplectic_product
 from .encode.base import FermionQubitEncoding
 from .encode.knto import KNTO, knto_symplectic_matrix
 from .encode.ternary_tree import TernaryTree

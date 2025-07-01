@@ -253,7 +253,7 @@ class TernaryTree(FermionQubitEncoding):
 
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
         """Build the symplectic matrix for the tree.
 
         Returns:

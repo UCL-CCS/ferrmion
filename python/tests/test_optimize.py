@@ -3,7 +3,7 @@
 from ferrmion.optimize.rett import reduced_entanglement_tree
 from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, pauli_weighted_norm
 from ferrmion.encode import TernaryTree
-from ferrmion.hamiltonians import molecular_hamiltonian_template
+from ferrmion.core import molecular_hamiltonian_template, fill_template
 
 import numpy as np
 from pytest import fixture
@@ -16,15 +16,18 @@ def n2mi():
         [3.57202788e-05, 4.61021178e-06, 5.97013599e-02, 1.53473952e-03, 1.14739409e-03, 1.67868542e-02, 2.03055787e-03, 1.57647091e-02, 2.20614397e-03, 2.26381776e-02],
         [5.64570141e-06, 1.43974455e-04, 1.53473952e-03, 9.22768981e-02, 8.06189477e-03, 8.02634734e-03, 3.59937207e-03, 3.44315829e-02, 3.39878461e-02, 1.58240762e-03],
         [3.39388829e-06, 3.97230035e-06, 1.14739409e-03, 8.06189477e-03, 4.94601967e-01, 1.27072663e-01, 2.87313949e-03, 9.00062433e-02, 2.49380494e-01, 2.23093410e-03],
-        [3.67820340e-06, 4.34316525e-06, 1.67868542e-02, 8.02634734e-03, 1.27072663e-01, 5.27514044e-01, 8.66763070e-03, 2.58110275e-01, 8.95621909e-02, 2.18442824e-02],       [3.71248133e-06, 4.25262029e-06, 2.03055787e-03, 3.59937207e-03,        2.87313949e-03, 8.66763070e-03, 5.41448119e-02, 1.25017005e-02,        8.08334819e-03, 1.85391136e-02],       [8.39012020e-06, 1.40315431e-05, 1.57647091e-02, 3.44315829e-02,        9.00062433e-02, 2.58110275e-01, 1.25017005e-02, 5.62235070e-01,        1.28998497e-01, 2.20469210e-02],       [7.60808045e-06, 1.31042878e-05, 2.20614397e-03, 3.39878461e-02,        2.49380494e-01, 8.95621909e-02, 8.08334819e-03, 1.28998497e-01,        5.30526412e-01, 2.39364166e-03],
+        [3.67820340e-06, 4.34316525e-06, 1.67868542e-02, 8.02634734e-03, 1.27072663e-01, 5.27514044e-01, 8.66763070e-03, 2.58110275e-01, 8.95621909e-02, 2.18442824e-02],
+        [3.71248133e-06, 4.25262029e-06, 2.03055787e-03, 3.59937207e-03, 2.87313949e-03, 8.66763070e-03, 5.41448119e-02, 1.25017005e-02, 8.08334819e-03, 1.85391136e-02],
+        [8.39012020e-06, 1.40315431e-05, 1.57647091e-02, 3.44315829e-02, 9.00062433e-02, 2.58110275e-01, 1.25017005e-02, 5.62235070e-01, 1.28998497e-01, 2.20469210e-02],
+        [7.60808045e-06, 1.31042878e-05, 2.20614397e-03, 3.39878461e-02, 2.49380494e-01, 8.95621909e-02, 8.08334819e-03, 1.28998497e-01, 5.30526412e-01, 2.39364166e-03],
         [4.00424690e-07, 4.73322942e-07, 2.26381776e-02, 1.58240762e-03, 2.23093410e-03, 2.18442824e-02, 1.85391136e-02, 2.20469210e-02, 2.39364166e-03, 9.04878107e-02]
         ])
 
 def test_minimise_mi_distance(n2mi):
-    unpaired = minimise_mi_distance(n2mi, pair_spins=False)
+    unpaired = minimise_mi_distance(n2mi, pair_spins=False, spinless_mi=False)
     assert set(unpaired).symmetric_difference({*range(n2mi.shape[0])}) == set()
 
-    paired = minimise_mi_distance(n2mi, pair_spins=True)
+    paired = minimise_mi_distance(n2mi, pair_spins=True, spinless_mi=False)
     assert np.all((paired[1::2] - paired[0::2]) == 1)
     assert set(paired).symmetric_difference({*range(n2mi.shape[0])}) == set()
 
@@ -45,22 +48,20 @@ def test_distance_squared(n2mi):
 
 def test_rett(n2mi):
     np.random.seed(1017)
-    rett = reduced_entanglement_tree(n2mi)
+    rett = reduced_entanglement_tree(n2mi, squash=True)
     assert rett.branch_operator_map == {'zzzzx': 'ZZZZXIIIII', 'zzzx': 'ZZZXIIIIII', 'zzzzzzx': 'ZZZZZZXIII', 'zzx': 'ZZXIIIIIII', 'zzy': 'ZZYIIIIIII', 'zzzzzzzzx': 'ZZZZZZZZXI', 'zzzzy': 'ZZZZYIIIII', 'zzzzzzzzzy': 'ZZZZZZZZZY', 'y': 'YIIIIIIIII', 'zzzzzzzx': 'ZZZZZZZXII', 'zx': 'ZXIIIIIIII', 'zzzzzzy': 'ZZZZZZYIII', 'zy': 'ZYIIIIIIII', 'zzzy': 'ZZZYIIIIII', 'zzzzzzzzzz': 'ZZZZZZZZZZ', 'zzzzzzzy': 'ZZZZZZZYII', 'zzzzzy': 'ZZZZZYIIII', 'zzzzzzzzzx': 'ZZZZZZZZZX', 'zzzzzx': 'ZZZZZXIIII', 'zzzzzzzzy': 'ZZZZZZZZYI', 'x': 'XIIIIIIIII'}
 
+def test_pauli_weighted_norm(water_integrals):
+    ipowers, symplectics = TernaryTree(14).JW()._build_symplectic_matrix()
+    ones, twos = water_integrals
+    jw_pauli_ham = molecular_hamiltonian_template(ipowers, symplectics)
+    jw_filled_template = fill_template(jw_pauli_ham, 0., ones, twos, TernaryTree(14).JW().default_mode_op_map)
+    jw_norm = pauli_weighted_norm(jw_filled_template)
 
-
-from ferrmion.hamiltonians import fill_template
-
-def test_pauli_weighted_norm(water_tt, water_integrals):
-    ipowers, symplectics = water_tt.JW()._build_symplectic_matrix()
-    jw_hashed_hamiltonian = molecular_hamiltonian_template(ipowers, symplectics)
-    jw_filled_template = fill_template(water_integrals[0], water_integrals[1], jw_hashed_hamiltonian, water_tt.JW().default_mode_op_map)
-    jw_norm = pauli_weighted_norm(jw_filled_template, [*range(water_tt.JW().n_modes)])
     assert np.allclose(jw_norm, [np.float64(272.4190655251233)])
 
-    ipowers, symplectics = water_tt.ParityEncoding()._build_symplectic_matrix()
-    pe_hashed_hamiltonian = molecular_hamiltonian_template(ipowers, symplectics)
-    pe_filled_template = fill_template(water_integrals[0], water_integrals[1], pe_hashed_hamiltonian, water_tt.JW().default_mode_op_map)
-    pe_norm = pauli_weighted_norm(pe_filled_template, [*range(water_tt.ParityEncoding().n_modes)])
+    ipowers, symplectics = TernaryTree(14).ParityEncoding()._build_symplectic_matrix()
+    pe_template = molecular_hamiltonian_template(ipowers, symplectics)
+    pe_filled_template = fill_template(pe_template, 0, ones, twos, TernaryTree(14).JW().default_mode_op_map)
+    pe_norm = pauli_weighted_norm(pe_filled_template)
     assert np.allclose(pe_norm, [np.float64(354.23056347814577)])

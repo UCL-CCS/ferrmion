@@ -6,7 +6,7 @@ from ferrmion.utils import symplectic_hash, symplectic_unhash
 from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator
 from openfermion.transforms import jordan_wigner
-from ferrmion.hamiltonians.molecular import molecular_hamiltonian
+from ferrmion.hamiltonians import molecular_hamiltonian
 
 
 @pytest.fixture

@@ -9,6 +9,8 @@ mod utils;
 use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::{fill_template, molecular, IntegralIndex};
+mod encoding;
+use crate::encoding::{hartree_fock_state, symplectic_product_map};
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -69,7 +71,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     #[pyfn(m)]
-    #[pyo3(name = "puali_to_symplectic")]
+    #[pyo3(name = "pauli_to_symplectic")]
     fn wrap_pauli_to_symplectic(
         py: Python<'_>,
         pauli: String,

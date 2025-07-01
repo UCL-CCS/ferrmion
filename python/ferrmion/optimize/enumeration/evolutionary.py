@@ -79,4 +79,4 @@ def lambda_plus_mu(
         verbose=False,
     )
 
-    return np.array(hof[0]), logbook
+    return np.array(hof[0])

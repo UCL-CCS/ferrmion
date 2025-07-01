@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def symplectic_product_map(
-    ipowers: NDArray[np.uint8], symplectics: NDArray[bool]
+    ipowers: NDArray[np.uint8], symplectics: NDArray[np.bool_]
 ) -> tuple[NDArray[np.uint8], dict[tuple[int, int], bytes]]:
     """Calculate the product of symplectic terms and cache them.
 

@@ -23,7 +23,6 @@ class FermionQubitEncoding(ABC):
     Attributes:
         one_e_coeffs (NDArray): One electron coefficients.
         two_e_coeffs (NDArray): Two electron coefficients.
-        vacuum_state (NDArray | None): The vacuum state of the encoding.
         modes (set[int]): A set of modes.
         n_qubits (int): The number of qubits.
 
@@ -112,12 +111,12 @@ class FermionQubitEncoding(ABC):
     @abstractmethod
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
     def hartree_fock_state(
-        self, fermionic_hf_state: NDArray[bool], mode_op_map: dict | None = None
+        self, fermionic_hf_state: NDArray[np.bool_], mode_op_map: dict | None = None
     ):
         """Find the Hartree-Fock state of a majorana string encoding.
 
@@ -152,7 +151,7 @@ class FermionQubitEncoding(ABC):
         return symplectic_to_pauli(symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[bool]]:
+    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool_]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:

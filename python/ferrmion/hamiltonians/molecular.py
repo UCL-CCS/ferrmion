@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 def molecular_hamiltonian_template(
     ipowers: NDArray[np.uint8],
-    majorana_symplectic: NDArray[bool],
+    majorana_symplectic: NDArray[np.bool_],
 ) -> dict[bytes, dict[tuple[int, int] | tuple[int, int, int, int], np.complexfloating]]:
     """Build a map of operators in the full hamiltonian to their constituent majoranas.
 
     Args:
         ipowers (NDArray[np.uint8]): Powers of i associated to each symplectic operator.
-        majorana_symplectic (NDArray[bool]): Operators in symplectic form.
+        majorana_symplectic (NDArray[np.bool_]): Operators in symplectic form.
 
     Example:
         >>> import numpy as np

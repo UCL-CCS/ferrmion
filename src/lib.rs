@@ -164,17 +164,25 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "fill_template")]
     fn wrap_fill_template<'py>(
         py: Python<'py>,
+        template: Py<PyDict>,
+        constant_energy: f64,
         one_e_terms: PyReadonlyArray2<f64>,
         two_e_terms: PyReadonlyArray4<f64>,
-        template: Py<PyDict>,
         mode_op_map: Py<PyDict>,
     ) -> PyResult<Bound<'py, PyDict>> {
+        // let constant_energy = constant_energy.extract(py)?;
         let mode_op_map = mode_op_map.extract::<HashMap<usize, usize>>(py)?;
         let template =
             template.extract::<HashMap<String, HashMap<IntegralIndex, Complex64>>>(py)?;
         let one_e_terms = one_e_terms.as_array();
         let two_e_terms = two_e_terms.as_array();
-        let hamiltonian = fill_template(template, mode_op_map, one_e_terms, two_e_terms);
+        let hamiltonian = fill_template(
+            template,
+            constant_energy,
+            one_e_terms,
+            two_e_terms,
+            mode_op_map,
+        );
         Ok(hamiltonian
             .into_py_dict(py)
             .expect("Cannot parse Hamiltonian dict."))

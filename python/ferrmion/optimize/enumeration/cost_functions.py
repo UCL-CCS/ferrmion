@@ -38,15 +38,8 @@ def distance_squared(
         >>> distance_squared(mi, [0,1,2])
     """
     n_mode = mutual_information.shape[0]
-    if set(permutation) < set(range(n_mode)):
-        logger.warning(
-            "NOT ALL modes included in permutation, returning infinite cost."
-        )
-        return [np.inf]
-    elif set(permutation) > set(range(n_mode)):
-        logger.warning(
-            "TOO MANY modes included in permutation, returning infinite cost."
-        )
+    if set(permutation) != set(range(n_mode)):
+        logger.warning("Invalid permutation %s, returning infinite cost.", permutation)
         return [np.inf]
     distance_matrix = np.array(
         [[np.abs(i - j) ** 2 for j in range(n_mode)] for i in range(n_mode)]

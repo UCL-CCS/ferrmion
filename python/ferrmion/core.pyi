@@ -26,9 +26,10 @@ def molecular_hamiltonian_template(
     symplectics: npt.NDArray[np.bool_],
 ) -> dict: ...
 def fill_template(
+    template: dict,
+    constant_energy: float,
     one_e_terms: npt.NDArray[np.float64],
     two_e_terms: npt.NDArray[np.float64],
-    template: dict,
     mode_op_map: dict[int, int],
 ) -> dict: ...
 def icount_to_sign(icount: int) -> np.complex64: ...

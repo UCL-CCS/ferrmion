@@ -1,33 +1,26 @@
 """Tests for Hamiltonan Functions."""
 
-from ferrmion.hamiltonians import molecular_hamiltonian_template
-from ferrmion import core
+from ferrmion.hamiltonians import molecular_hamiltonian_template, fill_template, molecular_hamiltonian
 import numpy as np
-from ferrmion.hamiltonians.utils import fill_template, to_qubit_hamiltonian, to_symplectic_hamiltonian
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
 from pytest import fixture
 
 @fixture(scope="module")
-def python_filled_template(water_integrals, water_tt):
+def filled_template(water_integrals, water_tt):
     symplectic_operators = water_tt.JW()._build_symplectic_matrix()
     # func_ham = molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
     func_ham = molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
-    filled_template = fill_template(water_integrals[0], 0.5*water_integrals[1], func_ham, water_tt.default_mode_op_map)
+    filled_template = fill_template(func_ham, 0, water_integrals[0], 0.5*water_integrals[1], water_tt.default_mode_op_map)
     return filled_template
 
-@fixture(scope="module")
-def rust_filled_template(water_integrals, water_tt):
-    symplectic_operators = water_tt.JW()._build_symplectic_matrix()
-    # func_ham = molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
-    func_ham = core.molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
-    filled_template = core.fill_template(water_integrals[0], 0.5*water_integrals[1], func_ham, water_tt.default_mode_op_map)
-    return filled_template
+def test_basic_molecular_hamiltonian(filled_template, water_tt, water_integrals):
+    mh = molecular_hamiltonian(water_tt.JW(), water_integrals[0], water_integrals[1])
+    assert filled_template.keys() == mh.keys()
 
-def test_python_template(python_filled_template, water_eigenvalues):
-    python_filled_template = to_qubit_hamiltonian(14, python_filled_template)
+def test_template(filled_template, water_eigenvalues):
     ofop3 = QubitOperator()
-    for k, v in python_filled_template.items():
+    for k, v in filled_template.items():
         string = " ".join(
             [
                 f"{char.upper()}{pos}" if char != "I" else ""
@@ -38,23 +31,3 @@ def test_python_template(python_filled_template, water_eigenvalues):
     diag3, _ = eigsh(get_sparse_operator(ofop3), k=6, which="SA")
 
     assert np.allclose(sorted(diag3), sorted(water_eigenvalues))
-
-def test_rust_template(rust_filled_template, water_eigenvalues):
-    ofop3 = QubitOperator()
-    for k, v in rust_filled_template.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop3 += QubitOperator(term=string, coefficient=v)
-    diag3, _ = eigsh(get_sparse_operator(ofop3), k=6, which="SA")
-
-    assert np.allclose(sorted(diag3), sorted(water_eigenvalues))
-
-def test_hamiltonian_coefficients_agree(water_tt, python_filled_template):
-    symplectic_ham = to_symplectic_hamiltonian(water_tt.n_qubits, python_filled_template)
-    pauli_ham = to_qubit_hamiltonian(water_tt.n_qubits, python_filled_template)
-
-    assert symplectic_ham[0] == [*pauli_ham.values()]

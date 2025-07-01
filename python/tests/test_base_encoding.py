@@ -2,8 +2,7 @@
 
 import numpy as np
 import pytest
-from ferrmion.slow import slow_hartree_fock_state
-from ferrmion.encode.ternary_tree import TernaryTree
+from ferrmion.encode import TernaryTree
 
 np.random.seed(1710)
 
@@ -55,52 +54,6 @@ def test_hartree_fock_state(sixteen_mode_tt):
         == np.array([[True] * (nq + 1) + [False] * (nq - 1)], dtype=bool)
     )
 
-
-def test_slow_hartree_fock_state(sixteen_mode_tt):
-    jw = sixteen_mode_tt.JW()
-    mode_op_map = jw.default_mode_op_map
-    nq = jw.n_qubits // 2
-
-    assert np.all(
-        slow_hartree_fock_state(jw, [1] * nq + [0] * nq, mode_op_map)[0] == [1]
-    )
-    assert np.all(
-        slow_hartree_fock_state(jw, [1] * nq + [0] * nq, mode_op_map)[1]
-        == np.array([1] * nq + [0] * nq)
-    )
-    assert np.all(
-        slow_hartree_fock_state(jw, [1] * (nq + 1) + [0] * (nq - 1), mode_op_map)[1]
-        == np.array([1] * (nq + 1) + [0] * (nq - 1))
-    )
-
-
-def test_slow_hartree_fock_state_errors(four_mode_tt):
-    with pytest.raises(ValueError) as excinfo:
-        slow_hartree_fock_state(
-            four_mode_tt.JW(), [1] * 3 + [0] * 2, four_mode_tt.JW().default_mode_op_map
-        )[1] == np.array([1, 1, 0, 0])
-    with pytest.raises(ValueError) as excinfo:
-        slow_hartree_fock_state(
-            four_mode_tt.JW(), [1] * 4 + [0] * 2, four_mode_tt.JW().default_mode_op_map
-        )[1] == np.array([1, 1, 0, 0, 0])
-
-    # add some tests here for other encodings, do them by hand to be confident if you like
-
-
-def test_benchmark_hf_state(benchmark, sixteen_mode_tt):
-    result = benchmark(test_hartree_fock_state, sixteen_mode_tt)
-
-
-def test_benchmark_slow_hf_state(benchmark, sixteen_mode_tt):
-    result = benchmark(test_slow_hartree_fock_state, sixteen_mode_tt)
-
-
-def test_four_benchmark_hf_state(benchmark, four_mode_tt):
-    result = benchmark(test_hartree_fock_state, four_mode_tt)
-
-
-def test_four_benchmark_slow_hf_state(benchmark, four_mode_tt):
-    result = benchmark(test_slow_hartree_fock_state, four_mode_tt)
 
 def test_number_operator(four_mode_tt):
     tree = four_mode_tt.JW()

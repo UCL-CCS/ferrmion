@@ -112,9 +112,10 @@ pub fn molecular(
 
 pub fn fill_template(
     template: HashMap<String, HashMap<IntegralIndex, Complex64>>,
-    mode_op_map: HashMap<usize, usize>,
+    constant_energy: f64,
     one_e_terms: ArrayView2<f64>,
     two_e_terms: ArrayView4<f64>,
+    mode_op_map: HashMap<usize, usize>,
 ) -> HashMap<String, Complex64> {
     assert!(one_e_terms
         .shape()
@@ -131,6 +132,10 @@ pub fn fill_template(
     // assert_eq!(HashSet::from(mode_op_map.keys()), HashSet::from(0..one_e_terms.len_of(Axis(0))));
     // assert_eq!(HashSet::from(mode_op_map.values()), (HashSet::from(0..one_e_terms.len_of(Axis(0)))));
     let mut hamiltonian: HashMap<String, Complex64> = HashMap::new();
+    hamiltonian.insert(
+        "I".repeat(mode_op_map.len()).to_string(),
+        Complex64::new(constant_energy, 0.),
+    );
 
     for (pauli_term, components) in template {
         let mut val = Complex64::new(0., 0.);

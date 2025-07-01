@@ -30,11 +30,22 @@ def distance_squared(
         [16,  9,  4,  1,  0,  1],
         [25, 16,  9,  4,  1,  0]
         ])
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.optimize.enumeration.cost_functions import distance_squared
+        >>> mi = np.ones((3,3))
+        >>> distance_squared(mi, [0,1,2])
     """
     n_mode = mutual_information.shape[0]
-    if set(permutation) != set(range(n_mode)):
+    if set(permutation) < set(range(n_mode)):
         logger.warning(
-            "Not all modes included in permutation, returning infinite cost."
+            "NOT ALL modes included in permutation, returning infinite cost."
+        )
+        return [np.inf]
+    elif set(permutation) > set(range(n_mode)):
+        logger.warning(
+            "TOO MANY modes included in permutation, returning infinite cost."
         )
         return [np.inf]
     distance_matrix = np.array(
@@ -50,6 +61,7 @@ def minimise_mi_distance(
     pop_size: int = 500,
     ngen: int = 50,
     pair_spins: bool = False,
+    spinless_mi: bool = True,
 ) -> NDArray:
     """Place modes with high mutual information near eachother.
 
@@ -60,12 +72,20 @@ def minimise_mi_distance(
         pop_size (int): The size of the initial population.
         ngen (int): The number of generations to evolve.
         pair_spins (bool): Pair the alpha and beta spins so that they remain adjacent in the mode ordering.
+        spinless_mi (bool): Whether the given mutual information matrix has seperate spin orbitals.
 
     Returns:
         NDArray: The best mode ordering found.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.optimize.enumeration.cost_functions import minimise_mi_distance
+        >>> mi = 0.5 * np.random.random((3,3))
+        >>> mi = mi + mi.T
+        >>> minimise_mi_distance(mi, pop_size=10, ngen=2)
     """
     logger.debug("Minimising disance between high MI modes.")
-    if pair_spins:
+    if not spinless_mi and pair_spins:
         logger.debug("Pairing spins.")
         squash_rows = mutual_information[::2] + mutual_information[1::2]
         mutual_information = squash_rows[:, ::2] + squash_rows[:, 1::2]
@@ -88,6 +108,12 @@ def pauli_weighted_norm(pauli_hamiltonian: dict[str, float]) -> list[float]:
 
     Return:
         list[float]: A single value in a list (needed for deap) giving the cost.
+
+    Example:
+        >>> from ferrmion.optimize.enumeration.cost_functions import pauli_weighted_norm
+        >>> from ferrmion.utils import symplectic_hash
+        >>> hashed_vec = symplectic_hash(np.array([True, False, False, True]))
+        >>> pauli_weighted_norm({hashed_vec:1}, [0,1,2])
     """
     logger.debug("Calculating Pauli-weighted Norm")
     logger.debug(pauli_hamiltonian)

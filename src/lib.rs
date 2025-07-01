@@ -23,6 +23,18 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         left: PyReadonlyArray1<bool>,
         right: PyReadonlyArray1<bool>,
     ) -> (usize, Bound<'py, PyArray1<bool>>) {
+        /*
+        Computes the symplectic product between two numpy boolean arrays.
+
+        # Simple example
+        ```python
+        import ferrmion
+        import numpy as np
+        a = np.array([True, False, True, False])
+        b = np.array([False, True, False, True])
+        ipower, product = ferrmion.symplectic_product(a, b)
+        ```
+        */
         let left = left.as_array();
         let right = right.as_array();
         let (ipower, product) = symplectic_product(left, right);
@@ -39,6 +51,20 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         mode_op_map: Bound<'py, PyDict>,
         symplectic_matrix: PyReadonlyArray2<bool>,
     ) -> (Bound<'py, PyArray1<Complex64>>, Bound<'py, PyArray2<bool>>) {
+        /*
+        Computes the Hartree-Fock state from Python using numpy arrays.
+
+        # Simple example
+        ```python
+        import ferrmion
+        import numpy as np
+        vacuum = np.zeros(6)
+        hf = np.array([True, True, False, False, False, False])
+        mode_op_map = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
+        symplectic = np.eye(6, 12, dtype=bool)
+        coeffs, states = ferrmion.hartree_fock_state(vacuum, hf, mode_op_map, symplectic)
+        ```
+        */
         let vacuum_state = vacuum_state.as_array();
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let rust_mode_op_map: HashMap<usize, usize> = match mode_op_map.extract() {

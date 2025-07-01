@@ -37,6 +37,16 @@ class FermionQubitEncoding(ABC):
         to_qubit_hamiltonian: Create qubit representation Hamiltonian.
 
     NOTE: A 'Y' pauli operator is mapped to -iXY so a (0+n)**3 term is needed.
+
+    Example:
+        >>> from ferrmion.encode.base import FermionQubitEncoding
+        >>> class DummyEncoding(FermionQubitEncoding):
+        ...     def _build_symplectic_matrix(self):
+        ...         import numpy as np
+        ...         return np.zeros(1), np.zeros((1, 2))
+        >>> enc = DummyEncoding(2, 2)
+        >>> enc.n_modes
+        2
     """
 
     def __init__(
@@ -173,6 +183,11 @@ class FermionQubitEncoding(ABC):
 
         Args:
             mode (int): The mode index to obtain a number operator for.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTee(4)
+            >>> tree.number_operator(0)
         """
         return number_operator(self, mode)
 
@@ -183,6 +198,10 @@ class FermionQubitEncoding(ABC):
 
         Args:
             edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
+
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTee(4)
+            >>> tree.edge_operator(0, 1)
         """
         return edge_operator(self, edge_indices)
 
@@ -195,6 +214,11 @@ def number_operator(
     Args:
         encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
         mode (int): The mode index to obtain a number operator for.
+
+    Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTee(4)
+            >>> tree.number_operator(0)
     """
     return edge_operator(encoding, (mode, mode))
 
@@ -207,6 +231,11 @@ def edge_operator(
     Args:
         encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
         edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
+
+    Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTee(4)
+            >>> tree.edge_operator(0,1)
     """
     logger.debug("Finding edge operator %s", edge_indices)
     if not set(edge_indices).issubset(set(encoding.default_mode_op_map.keys())):

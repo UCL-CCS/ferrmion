@@ -45,6 +45,10 @@ def test_ttnode():
         "z",
     }
 
+def test_ttnode_to_rustworkx(six_mode_tree):
+    graph = six_mode_tree.JKMN().root.to_rustworkx()
+    assert graph.nodes() == ['', 'x', 'y', 'z', 'xx', 'xy']
+    assert np.all([*graph.edge_list()] == [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5)])
 
 # def test_jordan_wigner(six_mode_tree):
 #     jw = six_mode_tree.JW()

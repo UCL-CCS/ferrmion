@@ -1,4 +1,4 @@
-# Optimize
+# Optimizations
 
 ## Enumeration
 

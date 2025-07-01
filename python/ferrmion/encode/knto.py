@@ -35,6 +35,11 @@ class KNTO(FermionQubitEncoding):
 
         Returns:
             NDArray: The symplectic matrix.
+
+        Example:
+            >>> from ferrmion.encode.knto import KNTO
+            >>> knto = KNTO(5)
+            >>> y_count, sympl = knto._build_symplectic_matrix()
         """
         return knto_symplectic_matrix(self.n_modes)
 
@@ -55,6 +60,11 @@ def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool
 
     Returns:
         tuple[NDArray, NDArray]: The y_count of each vector and the symplectic matrix.
+
+    Example:
+        >>> from ferrmion.encode.knto import knto_symplectic_matrix
+        >>> y_count, sympl = knto_symplectic_matrix(5)
+        >>> sympl.shape
     """
     logger.debug(f"Building k-NTO symplectic matrix for {n_modes=}")
     k = n_modes - 1

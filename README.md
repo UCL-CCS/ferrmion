@@ -20,7 +20,7 @@ This codebase contains methods to generate qubit Hamiltonians from fermionic Ham
 - $(\lambda+\mu)$ Evolutionary Algorithm
 
 ### Ternary Trees
-- Reduced Entanglement Ternary Trees
+- [Reduced Entanglement Ternary Trees](https://ferrmion.readthedocs.io/en/latest/notebooks/rett.html)
 
 ## Hamiltonians
 Functions to produce Hamiltonian templates and enumerated encodings are available in `ferrmion.hamiltonians`

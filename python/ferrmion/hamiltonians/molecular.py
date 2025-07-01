@@ -117,12 +117,12 @@ def molecular_hamiltonian_template(
                     prefactor = 0.0625  # 1/16
                     for left_im, left_term in creation_terms:
                         for right_im, right_term in annihiliation_terms:
-                            imaginary, product = symplectic_product(
+                            imaginary, unhashed_product = symplectic_product(
                                 symplectic_unhash(left_term, 2 * n_qubits),
                                 symplectic_unhash(right_term, 2 * n_qubits),
                             )
 
-                            product = symplectic_hash(product)
+                            product: bytes = symplectic_hash(unhashed_product)
 
                             hamiltonian[product] = hamiltonian.get(product, {})
                             # ordered = (1 if m > n else -1) * (1 if k > l else -1)

@@ -9,13 +9,13 @@
 :caption: 'Contents:'
 :maxdepth: 1
 
+examples
 encode
 optimize
 interop
 hamiltonians
 devices
 utils
-slow
 development
 ```
 

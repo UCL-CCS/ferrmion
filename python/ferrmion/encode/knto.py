@@ -94,7 +94,7 @@ def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool
             left[i] = left[i - 1]
 
     # Y = iXZ
-    y_count = np.sum(np.bitwise_and(left, right), axis=1) % 4
+    y_count = np.sum(np.bitwise_and(left, right), axis=1, dtype=np.uint8) % 4
     output = np.hstack((left, right), dtype=bool)
 
     return y_count, output

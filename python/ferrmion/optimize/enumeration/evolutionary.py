@@ -9,7 +9,11 @@ from numpy.typing import NDArray
 
 
 def lambda_plus_mu(
-    n_modes: int, evaluate: partial[list[float]], pop_size: int, ngen: int
+    n_modes: int,
+    evaluate: partial[list[float]],
+    pop_size: int,
+    ngen: int,
+    logbook: bool = False,
 ) -> NDArray:
     """Reorder modes using lambda+mu evolutionary algorithm.
 
@@ -87,4 +91,7 @@ def lambda_plus_mu(
         verbose=False,
     )
 
-    return np.array(hof[0])
+    if logbook:
+        return np.array(hof[0]), logbook
+    else:
+        return np.array(hof[0])

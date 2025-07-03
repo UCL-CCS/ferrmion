@@ -13,7 +13,6 @@ def lambda_plus_mu(
     evaluate: partial[list[float]],
     pop_size: int,
     ngen: int,
-    logbook: bool = False,
 ) -> NDArray:
     """Reorder modes using lambda+mu evolutionary algorithm.
 
@@ -90,8 +89,4 @@ def lambda_plus_mu(
         stats=stats,
         verbose=False,
     )
-
-    if logbook:
-        return np.array(hof[0]), logbook
-    else:
-        return np.array(hof[0])
+    return np.array(hof[0]), logbook

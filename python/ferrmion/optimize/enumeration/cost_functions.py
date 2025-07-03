@@ -85,7 +85,7 @@ def minimise_mi_distance(
 
     evaluate = partial(distance_squared, mutual_information)
     n_modes: int = mutual_information.shape[0]
-    best = lambda_plus_mu(n_modes, evaluate, pop_size, ngen)
+    best, _ = lambda_plus_mu(n_modes, evaluate, pop_size, ngen)
 
     if pair_spins:
         best = np.stack((2 * best, (2 * best) + 1)).T.flatten()

@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python logging setup in `utils.setup_logs`
 - `.pre-commit-config.yaml`
 - Sphinx docs set up in `docs/source/` using autodoc, myst with `.readthedocs.yaml` for hosting.
+    - Example notebook
+        - creating reduced entanglement ternary tree
+        - defining and minimising pauli-weight
 - `optimize` section
     - `lambda_plus_mu` evolutionary algorithm for approximate enumeration optimization.
     - `reduced_entanglement_tree` builder, takin in MI matrix

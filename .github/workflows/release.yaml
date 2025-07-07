@@ -1,0 +1,9 @@
+name: Release CICD
+on:
+  release:
+    types: [published]
+jobs:
+  build:
+    uses: ./.github/workflows/build.yaml
+  publish:
+    uses: ./.github/workflows/publish.yaml

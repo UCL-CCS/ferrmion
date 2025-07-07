@@ -2,6 +2,7 @@
 Functions relating to the FermionQubitEncoding base class.
 */
 use anyhow::Result;
+use log::debug;
 use ndarray::{arr2, Axis, Zip};
 use num_complex::c64;
 use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2};
@@ -21,6 +22,8 @@ pub fn symplectic_product_map(
     ipowers: ArrayView1<u8>,
     symplectics: ArrayView2<bool>,
 ) -> (Array2<u8>, Array3<bool>) {
+    debug!("Calculating symplectic product map");
+
     let n_majoranas = symplectics.nrows();
     assert_eq!(n_majoranas, ipowers.len());
 
@@ -38,6 +41,7 @@ pub fn symplectic_product_map(
 
     // how to do a zip over 2d array ?
 
+    debug!("Found symplectic product map.");
     (product_powers, product_map)
 }
 
@@ -67,6 +71,8 @@ pub fn hartree_fock_state(
     mode_op_map: HashMap<usize, usize>,
     symplectic_matrix: ArrayView2<bool>,
 ) -> Result<(Array1<Complex64>, Array2<bool>)> {
+    debug!("Calculating Hartree-fock state");
+
     let mut current_state =
         vec![Array1::from(vec![c64(1., 0.), c64(0., 0.)]); vacuum_state.len_of(Axis(0))];
 
@@ -132,7 +138,6 @@ pub fn hartree_fock_state(
         if !(coeff == c64(0., 0.)) {
             let binary = format!("{:0<width$}", format!("{index:b}"), width = (half_length));
             for val in binary.chars() {
-                println!("{}", val);
                 hf_components.push(val.to_digit(10).unwrap() == 1)
             }
         } else {
@@ -145,7 +150,12 @@ pub fn hartree_fock_state(
 
     let coeffs = vector_state.mapv(|c| c / (vector_state[0]));
 
-    let hf_components = Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)?;
+    let hf_components: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 2]>> =
+        Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)?;
+    debug!(
+        "Found Hartree-Fock state: coeffs={:?}, hf_components={:#?}",
+        coeffs, hf_components
+    );
     Ok((coeffs, hf_components))
 }
 

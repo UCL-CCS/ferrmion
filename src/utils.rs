@@ -1,3 +1,6 @@
+/*
+Utility functions for core functionality.
+*/
 use ndarray::{concatenate, Axis, Zip};
 use numpy::ndarray::{s, Array1, ArrayView1};
 use numpy::Complex64;

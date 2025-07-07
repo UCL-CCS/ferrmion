@@ -579,6 +579,7 @@ name = "ferrmion"
 source = { editable = "." }
 dependencies = [
     { name = "deap" },
+    { name = "myst-sphinx-gallery" },
     { name = "numpy" },
     { name = "openfermion" },
     { name = "pydantic" },
@@ -605,6 +606,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "deap", specifier = ">=1.4.3" },
+    { name = "myst-sphinx-gallery", specifier = ">=0.3.0" },
     { name = "numpy", specifier = ">=1.24.4" },
     { name = "openfermion", specifier = ">=0.11.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
@@ -1494,6 +1496,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/a5/9626ba4f73555b3735ad86247a8077d4603aa8628537687c839ab08bfe44/myst_parser-4.0.1.tar.gz", hash = "sha256:5cfea715e4f3574138aecbf7d54132296bfd72bb614d31168f48c477a830a7c4", size = 93985, upload-time = "2025-02-12T10:53:03.833Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5f/df/76d0321c3797b54b60fef9ec3bd6f4cfd124b9e422182156a1dd418722cf/myst_parser-4.0.1-py3-none-any.whl", hash = "sha256:9134e88959ec3b5780aedf8a99680ea242869d012e8821db3126d427edc9c95d", size = 84579, upload-time = "2025-02-12T10:53:02.078Z" },
+]
+
+[[package]]
+name = "myst-sphinx-gallery"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "myst-nb" },
+    { name = "pillow" },
+    { name = "sphinx-design" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cc/3a/8136546c8265f998aaf8b6914249e0655c1232aa1d7f22b20b4bbd1ddebe/myst_sphinx_gallery-0.3.0.tar.gz", hash = "sha256:bc22d6ad4e486f8a11233f1a78bb4790220cb62725674acb7c978cf9144f175c", size = 45384, upload-time = "2024-09-06T08:29:38.965Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/41/29933c950e353ec15f8dd65ca3ac08b14939f616dca8ad054b8cf58273d6/myst_sphinx_gallery-0.3.0-py3-none-any.whl", hash = "sha256:6ebac1d4fec8f20ac0c59d75e63db62445b2613a01722c62d1e54bb61a709b3c", size = 37264, upload-time = "2024-09-06T08:29:37.367Z" },
 ]
 
 [[package]]
@@ -2631,6 +2647,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/38/ad/4360e50ed56cb483667b8e6dadf2d3fda62359593faabbe749a27c4eaca6/sphinx-8.2.3.tar.gz", hash = "sha256:398ad29dee7f63a75888314e9424d40f52ce5a6a87ae88e7071e80af296ec348", size = 8321876, upload-time = "2025-03-02T22:31:59.658Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/31/53/136e9eca6e0b9dc0e1962e2c908fbea2e5ac000c2a2fbd9a35797958c48b/sphinx-8.2.3-py3-none-any.whl", hash = "sha256:4405915165f13521d875a8c29c8970800a0141c14cc5416a38feca4ea5d9b9c3", size = 3589741, upload-time = "2025-03-02T22:31:56.836Z" },
+]
+
+[[package]]
+name = "sphinx-design"
+version = "0.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sphinx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2b/69/b34e0cb5336f09c6866d53b4a19d76c227cdec1bbc7ac4de63ca7d58c9c7/sphinx_design-0.6.1.tar.gz", hash = "sha256:b44eea3719386d04d765c1a8257caca2b3e6f8421d7b3a5e742c0fd45f84e632", size = 2193689, upload-time = "2024-08-02T13:48:44.277Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c6/43/65c0acbd8cc6f50195a3a1fc195c404988b15c67090e73c7a41a9f57d6bd/sphinx_design-0.6.1-py3-none-any.whl", hash = "sha256:b11f37db1a802a183d61b159d9a202314d4d2fe29c163437001324fe2f19549c", size = 2215338, upload-time = "2024-08-02T13:48:42.106Z" },
 ]
 
 [[package]]

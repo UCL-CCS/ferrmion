@@ -25,14 +25,23 @@ author = 'Michael Williams de la Bastida'
 extensions = ["sphinx.ext.autodoc",
     # "sphinx.ext.doctest",
     # "sphinx.ext.todo",
-    # "sphinx.ext.mathjax",
+    "sphinx.ext.mathjax",
     # "sphinx.ext.ifconfig",
-    # "sphinx.ext.viewcode",
+    "sphinx.ext.viewcode",
     # "sphinx.ext.githubpages",
     # "sphinx.ext.napoleon",
     "myst_nb",
     "sphinx_rtd_theme",
+    "myst_sphinx_gallery",
     ]
+
+myst_enable_extensions = [
+    "amsmath",
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "html_image",
+]
 
 templates_path = ['_templates']
 exclude_patterns = []

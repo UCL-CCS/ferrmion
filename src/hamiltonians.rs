@@ -1,3 +1,4 @@
+use log::debug;
 use ndarray::Axis;
 // use ndarray::{azip, concatenate, Axis, Zip};
 use itertools::iproduct;
@@ -19,6 +20,12 @@ pub fn molecular(
     ipowers: ArrayView1<u8>,
     symplectics: ArrayView2<bool>,
 ) -> HashMap<String, HashMap<IntegralIndex, Complex64>> {
+    debug!(
+        "Creating molecular hamiltonian template with\n ipowers={:?}, symplectics shape={:?}",
+        ipowers,
+        symplectics.shape()
+    );
+
     assert_eq!(ipowers.len(), symplectics.nrows());
 
     let (iproducts, sym_products) = symplectic_product_map(ipowers, symplectics);
@@ -75,6 +82,7 @@ pub fn molecular(
             }
         }
     }
+    debug!("Hamiltonian template created.");
     hamiltonian
 }
 
@@ -117,6 +125,7 @@ pub fn fill_template(
     two_e_terms: ArrayView4<f64>,
     mode_op_map: HashMap<usize, usize>,
 ) -> HashMap<String, Complex64> {
+    debug!("Filling template with mode-operator map {:#?}", mode_op_map);
     assert!(one_e_terms
         .shape()
         .iter()
@@ -163,6 +172,9 @@ pub fn fill_template(
             hamiltonian.insert(pauli_term, val);
         };
     }
-
+    debug!(
+        "Template filled: hamiltonian.keys()={:?}",
+        hamiltonian.keys()
+    );
     hamiltonian
 }

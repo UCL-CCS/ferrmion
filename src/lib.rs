@@ -1,3 +1,4 @@
+use log::info;
 use numpy::{
     Complex64, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray4,
 };
@@ -16,6 +17,9 @@ use crate::encoding::{hartree_fock_state, symplectic_product_map};
 #[pymodule]
 #[pyo3(name = "core")]
 fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    pyo3_log::init();
+    info!("Initializing Python module 'core'");
+
     #[pyfn(m)]
     #[pyo3(name = "symplectic_product")]
     fn wrap_symplectic_product_py<'py>(

@@ -4,6 +4,7 @@
 :tooltip:
 
 notebooks/growing_trees
+notebooks/molecular_hamiltonian
 notebooks/rett
 notebooks/pauli_weight
 ```

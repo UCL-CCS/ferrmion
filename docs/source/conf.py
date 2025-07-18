@@ -43,6 +43,8 @@ myst_enable_extensions = [
     "html_image",
 ]
 
+nb_scroll_outputs = True
+
 templates_path = ['_templates']
 exclude_patterns = []
 

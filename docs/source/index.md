@@ -5,6 +5,14 @@
 
 # ferrmion
 
+Quantum simulation of fermionic Hamiltonians requires encoding to enforce commutation relations.
+
+While it's common to use one of the most basic encodings, such as Jordan-Wigner or Bravyi-Kitaev, encoded circuits and the quality of results is _strongly_ dependent on which encoding is used.
+
+`ferrmion` provides tools for generating encodings, and functions to _optimize for the specific Hamiltonian and Hardware being used_.
+
+Take a look at the [examples gallery](Examples) to get started.
+
 ```{toctree}
 :caption: 'Contents:'
 :maxdepth: 1
@@ -18,9 +26,3 @@ devices
 utils
 development
 ```
-
-# Indices and tables
-
-- {ref}`genindex`
-- {ref}`modindex`
-- {ref}`search`

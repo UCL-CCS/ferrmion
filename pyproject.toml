@@ -40,6 +40,7 @@ docs = [
     "ffsim>=0.0.56",
     "qiskit>=2.0.2",
     "myst-nb>=1.2.0",
+    "pydata-sphinx-theme>=0.16.1",
 ]
 
 [tool.ruff]

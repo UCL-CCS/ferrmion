@@ -24,6 +24,7 @@ def symplectic_to_sparse(
 def molecular_hamiltonian_template(
     ipowers: npt.NDArray[np.uint8],
     symplectics: npt.NDArray[np.bool_],
+    physicist_notation: bool,
 ) -> dict: ...
 def fill_template(
     template: dict,

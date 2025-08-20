@@ -9,7 +9,9 @@ use std::collections::HashMap;
 mod utils;
 use crate::utils::*;
 mod hamiltonians;
-use crate::hamiltonians::{fill_template, molecular, IntegralIndex};
+use crate::hamiltonians::{
+    fill_template, molecular, IntegralIndex, Notation, QubitHamiltonianTemplate,
+};
 mod encoding;
 use crate::encoding::{hartree_fock_state, symplectic_product_map};
 
@@ -155,10 +157,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
+        physicist_notation: bool,
     ) -> Bound<'py, PyDict> {
         let ipowers = ipowers.as_array();
         let symplectics = symplectics.as_array();
-        let hamiltonian = molecular(ipowers, symplectics);
+        let hamiltonian: QubitHamiltonianTemplate = match physicist_notation {
+            true => molecular(ipowers, symplectics, Notation::Physicist),
+            false => molecular(ipowers, symplectics, Notation::Chemist),
+        };
         hamiltonian
             .into_py_dict(py)
             .expect("Cannot parse Hamiltonian Template dict.")

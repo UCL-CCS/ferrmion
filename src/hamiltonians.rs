@@ -16,10 +16,18 @@ pub enum IntegralIndex {
     TwoE(usize, usize, usize, usize),
 }
 
+pub type QubitHamiltonianTemplate = HashMap<String, HashMap<IntegralIndex, Complex64>>;
+
+pub enum Notation {
+    Physicist,
+    Chemist,
+}
+
 pub fn molecular(
     ipowers: ArrayView1<u8>,
     symplectics: ArrayView2<bool>,
-) -> HashMap<String, HashMap<IntegralIndex, Complex64>> {
+    notation: Notation,
+) -> QubitHamiltonianTemplate {
     debug!(
         "Creating molecular hamiltonian template with\n ipowers={:?}, symplectics shape={:?}",
         ipowers,
@@ -30,11 +38,12 @@ pub fn molecular(
 
     let (iproducts, sym_products) = symplectic_product_map(ipowers, symplectics);
 
-    let mut hamiltonian: HashMap<String, HashMap<IntegralIndex, Complex64>> = HashMap::new();
+    let mut hamiltonian: QubitHamiltonianTemplate = QubitHamiltonianTemplate::new();
     // assume 8-fold symmetry
     let n_modes = symplectics.nrows() / 2;
     for m in 0..n_modes {
         for n in 0..n_modes {
+            // ipowers can be updated to account for +/- operators
             for (l, r) in iproduct!(0..2, 0..2) {
                 let term = sym_products.slice(s![2 * m + l, 2 * n + r, ..]);
                 let (im_term_pauli, pauli_string) = symplectic_to_pauli(term);
@@ -48,26 +57,26 @@ pub fn molecular(
                     .and_modify(|e| *e += weight)
                     .or_insert(weight);
             }
-            if m == n {
-                continue;
-            }
+            //if m == n {
+            // continue;
+            //}
             for p in 0..n_modes {
                 for q in 0..n_modes {
-                    if p == q {
-                        continue;
-                    }
                     for (l1, l2, r1, r2) in iproduct!(0..2, 0..2, 0..2, 0..2) {
                         let left = sym_products.slice(s![2 * m + l1, 2 * n + l2, ..]);
                         let right = sym_products.slice(s![2 * p + r1, 2 * q + r2, ..]);
                         let (iproduct, product_term) = symplectic_product(left, right);
                         let (im_term_pauli, pauli_string) =
                             symplectic_to_pauli(product_term.view());
+                        let term_ipowers = match notation {
+                            Notation::Physicist => 3 * (l1 + l2) + r1 + r2,
+                            Notation::Chemist => 3 * (l1 + r1) + l2 + r2,
+                        };
                         let weight = Complex64::new(0.0625, 0.)
                             * icount_to_sign(
                                 iproduct
                                     + im_term_pauli
-                                    + 3 * (l1 + l2)
-                                    + (r1 + r2)
+                                    + term_ipowers
                                     + iproducts[[2 * m + l1, 2 * n + l2]] as usize
                                     + iproducts[[2 * p + r1, 2 * q + r2]] as usize,
                             );
@@ -86,6 +95,31 @@ pub fn molecular(
     hamiltonian
 }
 
+// pub fn add_one_e_term_to_template(term_signature: &str, ipowers: ArrayView<u8>, symplectics: ArrayView<bool>, hamiltonian_template: &mut QubitHamiltonianTemplate) {
+//     assert!(term_signature.chars().all(|c| matches!(c, '+'|'-')));
+//     assert!(term_signature.len() == 2);
+//     assert!(symplectics.ndim() +1 == term_signature.len());
+//     let (mut i_products, sym_products) = symplectic_product_map(ipowers, symplectics);
+//     if term_signature[0] == "+" {
+//         i_products.slice_mut(s![..;2,..]) + 2;
+//     }
+//     if term_signature[1] == "+" {
+//         i_products.slice_mut(s![..,..;2]) + 2;
+//     }
+// }
+
+// #[allow(dead_code)]
+// pub fn molecular_iter(
+//     ipowers: ArrayView1<u8>,
+//     symplectics: ArrayView2<bool>,
+// ) -> HashMap<String, HashMap<IntegralIndex, Complex64>> {
+//     let (iproducts, sym_products) = symplectic_product_map(ipowers, symplectics);
+//     let mut hamiltonian: QubitHamiltonianTemplate = QubitHamiltonianTemplate::new();
+//     let n_modes = symplectics.len_of(Axis(0)) / 2;
+//     Zip::from(sym_products.exact_chunks((n_modes, n_modes, 1))).for_each(|i| println!("{}", i));
+//     hamiltonian
+// }
+
 // #[test]
 // fn test_molecular() {
 //     let ipowers = ndarray::arr1(&[0, 1, 2, 3]);
@@ -95,31 +129,14 @@ pub fn molecular(
 //         [false, true, true, false],
 //         [false, true, true, true],
 //     ]);
-//     let ham = molecular(ipowers.view(), symplectics.view());
-//     println!("{:#?}", ham);
-//     let mut expected: HashMap<String, HashMap<String, Complex64>> = HashMap::new();
-
-//     expected.insert(String::from("YX"), {
-//         let mut value = HashMap::new();
-//         value.insert(String::from("0,1,0,0"), Complex64::new(0., 0.0625));
-//         value.insert(String::from("1,0"), Complex64::new(0., -0.25));
-//         value.insert(String::from("1,0,0,0"), Complex64::new(0., -0.0625));
-//         value.insert(String::from("0,1"), Complex64::new(0., 0.25));
-//         value.insert(String::from("0,1,1,1"), Complex64::new(0., 0.0625));
-//         value.insert(String::from("1,0,1,1"), Complex64::new(0., -0.0625));
-//         value
-//     });
-//     expected.insert(String::from("II"), {
-//         let mut value = HashMap::new();
-//         value.insert(String::from("0,0"), Complex64::new(0.25, 0.));
-//         value.insert(String::from("1,1"), Complex64::new(0.25, 0.));
-//         value
-//     });
-//     assert!(ham.keys().all(|k| expected.contains_key(k)));
+//     let (iproducts, sym_products) = symplectic_product_map(ipowers.view(), symplectics.view());
+//     let mut hamiltonian: QubitHamiltonianTemplate = QubitHamiltonianTemplate::new();
+//     let n_modes = symplectics.len_of(Axis(0)) / 2;
+//     Zip::from(sym_products.exact_chunks((n_modes, n_modes, 1))).for_each(|i| println!("{}", i));
 // }
 
 pub fn fill_template(
-    template: HashMap<String, HashMap<IntegralIndex, Complex64>>,
+    template: QubitHamiltonianTemplate,
     constant_energy: f64,
     one_e_terms: ArrayView2<f64>,
     two_e_terms: ArrayView4<f64>,

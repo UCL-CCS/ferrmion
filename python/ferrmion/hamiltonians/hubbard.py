@@ -7,10 +7,39 @@ from ferrmion.core import fill_template, molecular_hamiltonian_template
 from ..encode import FermionQubitEncoding
 
 
+def hubbard_hamiltonian_template(encoding: FermionQubitEncoding) -> dict:
+    """Return a Hamiltonian Template for the Hubbard Hamiltonian.
+
+    Args:
+        encoding (FermionQubitEncoding): A valid encoding.
+    """
+    ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
+    return molecular_hamiltonian_template(ipowers, majorana_symplectic, False)
+
+
+def hubbard_coefficients(
+    n_modes: int, onsite_term: float, hopping_term: float = 1.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Coefficients to fill a Hubbard Hamiltonian Template.
+
+    Args:
+        n_modes (int): Number of fermion modes in the system.
+        onsite_term (float): Onsite interaction term.
+        hopping_term (float): Kinetic term.
+    """
+    one_e_coeffs = np.eye(n_modes, k=1) + np.eye(n_modes, k=-1)
+    one_e_coeffs *= hopping_term
+
+    two_e_coeffs = np.zeros((n_modes, n_modes, n_modes, n_modes))
+    idx = np.arange(n_modes)
+    two_e_coeffs[idx, idx, idx, idx] = onsite_term
+    return one_e_coeffs, two_e_coeffs
+
+
 def hubbard_hamiltonian(
     encoding: FermionQubitEncoding,
-    hopping_term: float,
     onsite_term: float,
+    hopping_term: float = 1,
     constant_energy: float = 0,
 ):
     """Return an encoded Hubbard hamiltonain with niave enumeration.
@@ -35,16 +64,12 @@ def hubbard_hamiltonian(
         >>> two_e = np.eye((2,2,2,2))
         >>> molecular_hamiltonian(tree, one_e, two_e, 0.0)
     """
-    ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
-    template = molecular_hamiltonian_template(ipowers, majorana_symplectic, False)
+    template = hubbard_hamiltonian_template(encoding)
 
-    n_modes = majorana_symplectic.shape[0] // 2
-    one_e_coeffs = np.eye(n_modes, k=1) + np.eye(n_modes, k=-1)
-    one_e_coeffs *= hopping_term
-
-    two_e_coeffs = np.zeros((n_modes, n_modes, n_modes, n_modes))
-    idx = np.arange(n_modes)
-    two_e_coeffs[idx, idx, idx, idx] = onsite_term
+    n_modes = encoding.n_modes
+    one_e_coeffs, two_e_coeffs = hubbard_coefficients(
+        n_modes, onsite_term, hopping_term
+    )
 
     qubit_hamiltonian = fill_template(
         template=template,

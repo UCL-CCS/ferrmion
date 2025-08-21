@@ -1,22 +1,25 @@
 """Hubbard Hamiltonian."""
 
 import numpy as np
+import numpy.typing as npt
 
 from ferrmion.core import fill_template, molecular_hamiltonian_template
 
 from ..encode import FermionQubitEncoding
 
 
-def hubbard_hamiltonian_template(encoding: FermionQubitEncoding) -> dict:
+def hubbard_hamiltonian_template(
+    ipowers: npt.NDArray[np.uint8], majorana_symplectic: npt.NDArray[np.bool_]
+) -> dict:
     """Return a Hamiltonian Template for the Hubbard Hamiltonian.
 
     Args:
-        encoding (FermionQubitEncoding): A valid encoding.
+        ipowers (np.ndarray): Imaginary Coefficients.
+        majorana_symplectic (np.ndarray): Symplectic Matrix form of encoding.
 
     Returns:
         dict: A template hamiltonian.
     """
-    ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
     return molecular_hamiltonian_template(ipowers, majorana_symplectic, False)
 
 
@@ -46,7 +49,6 @@ def hubbard_hamiltonian(
     encoding: FermionQubitEncoding,
     onsite_term: float,
     hopping_term: float = 1,
-    constant_energy: float = 0,
 ):
     """Return an encoded Hubbard hamiltonain with niave enumeration.
 
@@ -70,7 +72,8 @@ def hubbard_hamiltonian(
         >>> two_e = np.eye((2,2,2,2))
         >>> molecular_hamiltonian(tree, one_e, two_e, 0.0)
     """
-    template = hubbard_hamiltonian_template(encoding)
+    ipowers, symplectic = encoding._build_symplectic_matrix()
+    template = hubbard_hamiltonian_template(ipowers, symplectic)
 
     n_modes = encoding.n_modes
     one_e_coeffs, two_e_coeffs = hubbard_coefficients(
@@ -79,7 +82,7 @@ def hubbard_hamiltonian(
 
     qubit_hamiltonian = fill_template(
         template=template,
-        constant_energy=constant_energy,
+        constant_energy=0,
         one_e_terms=one_e_coeffs,
         two_e_terms=two_e_coeffs,
         mode_op_map=encoding.default_mode_op_map,

@@ -12,6 +12,9 @@ def hubbard_hamiltonian_template(encoding: FermionQubitEncoding) -> dict:
 
     Args:
         encoding (FermionQubitEncoding): A valid encoding.
+
+    Returns:
+        dict: A template hamiltonian.
     """
     ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
     return molecular_hamiltonian_template(ipowers, majorana_symplectic, False)
@@ -26,6 +29,9 @@ def hubbard_coefficients(
         n_modes (int): Number of fermion modes in the system.
         onsite_term (float): Onsite interaction term.
         hopping_term (float): Kinetic term.
+
+    Returns:
+        tuple: one and two electron coefficients.
     """
     one_e_coeffs = np.eye(n_modes, k=1) + np.eye(n_modes, k=-1)
     one_e_coeffs *= hopping_term

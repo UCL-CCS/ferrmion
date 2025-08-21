@@ -10,7 +10,7 @@ from pytest import fixture
 def filled_template(water_integrals, water_tt):
     symplectic_operators = water_tt.JW()._build_symplectic_matrix()
     # func_ham = molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
-    func_ham = molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1])
+    func_ham = molecular_hamiltonian_template(symplectic_operators[0], symplectic_operators[1], True)
     filled_template = fill_template(func_ham, 0, water_integrals[0], 0.5*water_integrals[1], water_tt.default_mode_op_map)
     return filled_template
 

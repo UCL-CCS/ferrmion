@@ -44,6 +44,7 @@ myst_enable_extensions = [
 ]
 
 nb_scroll_outputs = True
+nb_execution_timeout = 600
 
 templates_path = ['_templates']
 exclude_patterns = []
@@ -54,3 +55,6 @@ exclude_patterns = []
 
 html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']
+html_theme_options = {
+    "github_url":"https://github.com/UCL-CCS/ferrmion",
+}

@@ -4,8 +4,9 @@ import logging
 
 from numpy.typing import NDArray
 
-from ferrmion import FermionQubitEncoding
 from ferrmion.core import fill_template, molecular_hamiltonian_template
+
+from ..encode import FermionQubitEncoding
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ def molecular_hamiltonian(
     one_e_coeffs: NDArray,
     two_e_coeffs: NDArray,
     constant_energy: float = 0,
+    physicist_notation: bool = True,
 ):
     """Return an encoded electronic stucture hamiltonain with niave enumeration.
 
@@ -23,6 +25,7 @@ def molecular_hamiltonian(
         one_e_coeffs (NDArray): One electron hamiltonian coefficients in spinorb format.
         two_e_coeffs (NDArray): Two electron hamiltonian coefficients in spinorb format.
         constant_energy (float): Constant energy offset.
+        physicist_notation (bool): Set to False for Chemist Notation.
 
     Example:
         >>> import numpy as np
@@ -34,7 +37,9 @@ def molecular_hamiltonian(
         >>> molecular_hamiltonian(tree, one_e, two_e, 0.0)
     """
     ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
-    template = molecular_hamiltonian_template(ipowers, majorana_symplectic)
+    template = molecular_hamiltonian_template(
+        ipowers, majorana_symplectic, physicist_notation
+    )
     qubit_hamiltonian = fill_template(
         template=template,
         constant_energy=constant_energy,

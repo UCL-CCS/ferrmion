@@ -54,14 +54,14 @@ def test_rett(n2mi):
 def test_pauli_weighted_norm(water_integrals):
     ipowers, symplectics = TernaryTree(14).JW()._build_symplectic_matrix()
     ones, twos = water_integrals
-    jw_pauli_ham = molecular_hamiltonian_template(ipowers, symplectics)
+    jw_pauli_ham = molecular_hamiltonian_template(ipowers, symplectics, True)
     jw_filled_template = fill_template(jw_pauli_ham, 0., ones, twos, TernaryTree(14).JW().default_mode_op_map)
     jw_norm = pauli_weighted_norm(jw_filled_template)
 
     assert np.allclose(jw_norm, [np.float64(272.4190655251233)])
 
     ipowers, symplectics = TernaryTree(14).ParityEncoding()._build_symplectic_matrix()
-    pe_template = molecular_hamiltonian_template(ipowers, symplectics)
+    pe_template = molecular_hamiltonian_template(ipowers, symplectics, True)
     pe_filled_template = fill_template(pe_template, 0, ones, twos, TernaryTree(14).JW().default_mode_op_map)
     pe_norm = pauli_weighted_norm(pe_filled_template)
     assert np.allclose(pe_norm, [np.float64(354.23056347814577)])

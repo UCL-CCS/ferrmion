@@ -40,7 +40,15 @@ def hubbard_coefficients(
     Returns:
         tuple: one and two electron coefficients.
     """
-    one_e_coeffs = hopping_term * adjacency_matrix
+    # We know which sites are adjacent, we need to restrict to same spin hopping.
+    spin_adjacency_matrix = np.zeros(
+        (2 * adjacency_matrix.shape[0], 2 * adjacency_matrix.shape[1])
+    )
+    spin_adjacency_matrix[::2, ::2] += adjacency_matrix
+    spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
+    spin_adjacency_matrix = 0.5 * (spin_adjacency_matrix + spin_adjacency_matrix.T)
+
+    one_e_coeffs = hopping_term * spin_adjacency_matrix
 
     two_e_coeffs = np.zeros((n_modes, n_modes, n_modes, n_modes))
     idx = np.arange(n_modes)
@@ -123,16 +131,7 @@ def linear_hubbard_hamiltonian(
         adjacency_matrix[0, encoding.n_modes] = 1.0
         adjacency_matrix[encoding.n_modes, 0] = 1.0
 
-    # Now we know which sites are adjacent, we need to restrict to same spin hopping.
-    spin_adjacency_matrix = np.zeros(
-        (2 * adjacency_matrix.shape[0], 2 * adjacency_matrix.shape[1])
-    )
-    spin_adjacency_matrix[::2, ::2] += adjacency_matrix
-    spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
-
-    return hubbard_hamiltonian(
-        encoding, spin_adjacency_matrix, onsite_term, hopping_term
-    )
+    return hubbard_hamiltonian(encoding, adjacency_matrix, onsite_term, hopping_term)
 
 
 def square_hubbard_hamiltonian(
@@ -185,13 +184,4 @@ def square_hubbard_hamiltonian(
     # Hamitian conjugate
     adjacency_matrix += adjacency_matrix.T
 
-    # Now we know which sites are adjacent, we need to restrict to same spin hopping.
-    spin_adjacency_matrix = np.zeros(
-        (2 * adjacency_matrix.shape[0], 2 * adjacency_matrix.shape[1])
-    )
-    spin_adjacency_matrix[::2, ::2] += adjacency_matrix
-    spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
-
-    return hubbard_hamiltonian(
-        encoding, spin_adjacency_matrix, onsite_term, hopping_term
-    )
+    return hubbard_hamiltonian(encoding, adjacency_matrix, onsite_term, hopping_term)

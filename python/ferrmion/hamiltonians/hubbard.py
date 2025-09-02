@@ -46,7 +46,6 @@ def hubbard_coefficients(
     )
     spin_adjacency_matrix[::2, ::2] += adjacency_matrix
     spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
-    spin_adjacency_matrix = 0.5 * (spin_adjacency_matrix + spin_adjacency_matrix.T)
 
     one_e_coeffs = hopping_term * spin_adjacency_matrix
 

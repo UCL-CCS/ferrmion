@@ -48,6 +48,7 @@ def hubbard_coefficients(
     spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
 
     one_e_coeffs = hopping_term * spin_adjacency_matrix
+    one_e_coeffs = one_e_coeffs[:n_modes, :n_modes]
 
     two_e_coeffs = np.zeros((n_modes, n_modes, n_modes, n_modes))
     idx = np.arange(n_modes)

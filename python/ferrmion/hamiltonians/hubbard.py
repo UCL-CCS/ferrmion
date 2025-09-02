@@ -123,7 +123,16 @@ def linear_hubbard_hamiltonian(
         adjacency_matrix[0, encoding.n_modes] = 1.0
         adjacency_matrix[encoding.n_modes, 0] = 1.0
 
-    return hubbard_hamiltonian(encoding, adjacency_matrix, onsite_term, hopping_term)
+    # Now we know which sites are adjacent, we need to restrict to same spin hopping.
+    spin_adjacency_matrix = np.zeros(
+        (2 * adjacency_matrix.shape[0], 2 * adjacency_matrix.shape[1])
+    )
+    spin_adjacency_matrix[::2, ::2] += adjacency_matrix
+    spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
+
+    return hubbard_hamiltonian(
+        encoding, spin_adjacency_matrix, onsite_term, hopping_term
+    )
 
 
 def square_hubbard_hamiltonian(
@@ -149,7 +158,8 @@ def square_hubbard_hamiltonian(
     n_modes = encoding.n_modes
     # find the side length to fit nodes into square
     # we'll build a perfect square first before cutting.
-    side_length = int(np.ceil(np.log2(n_modes)))
+    n_sites = (n_modes + 1) // 2
+    side_length = int(np.ceil(np.log2(n_sites // 2)))
 
     # initially make a chain
     adjacency_matrix = np.eye(side_length**2, k=1)
@@ -164,15 +174,24 @@ def square_hubbard_hamiltonian(
     if periodic:
         # Wrap rows
         for i in range(side_length):
-            adjacency_matrix[i * side_length, i * side_length + side_length - 1] = 1.0
+            adjacency_matrix[i * side_length, i * side_length + side_length - 1] = 1
 
         # Wrap columns
         adjacency_matrix += np.eye(side_length**2, k=side_length * (side_length - 1))
 
     # Remove excess nodes
-    adjacency_matrix = adjacency_matrix[:n_modes, :n_modes]
+    adjacency_matrix = adjacency_matrix[:n_sites, :n_sites]
 
-    # Hermitian conjugate
+    # Hamitian conjugate
     adjacency_matrix += adjacency_matrix.T
 
-    return hubbard_hamiltonian(encoding, adjacency_matrix, onsite_term, hopping_term)
+    # Now we know which sites are adjacent, we need to restrict to same spin hopping.
+    spin_adjacency_matrix = np.zeros(
+        (2 * adjacency_matrix.shape[0], 2 * adjacency_matrix.shape[1])
+    )
+    spin_adjacency_matrix[::2, ::2] += adjacency_matrix
+    spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
+
+    return hubbard_hamiltonian(
+        encoding, spin_adjacency_matrix, onsite_term, hopping_term
+    )

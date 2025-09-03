@@ -28,6 +28,7 @@ def hubbard_coefficients(
     adjacency_matrix: npt.NDArray,
     onsite_term: float,
     hopping_term: float = 1.0,
+    spinless: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Coefficients to fill a Hubbard Hamiltonian Template.
 
@@ -36,16 +37,20 @@ def hubbard_coefficients(
         adjacency_matrix (npt.NDArray): Adjacency matrix of lattice sites.
         onsite_term (float): Onsite interaction term.
         hopping_term (float): Kinetic term.
+        spinless (bool): Set to True to use single spin Hamiltonian.
 
     Returns:
         tuple: one and two electron coefficients.
     """
-    # We know which sites are adjacent, we need to restrict to same spin hopping.
-    spin_adjacency_matrix = np.zeros(
-        (2 * adjacency_matrix.shape[0], 2 * adjacency_matrix.shape[1])
-    )
-    spin_adjacency_matrix[::2, ::2] += adjacency_matrix
-    spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
+    if not spinless:
+        # We know which sites are adjacent, we need to restrict to same spin hopping.
+        spin_adjacency_matrix = np.zeros(
+            (2 * adjacency_matrix.shape[0], 2 * adjacency_matrix.shape[1])
+        )
+        spin_adjacency_matrix[::2, ::2] += adjacency_matrix
+        spin_adjacency_matrix[1::2, 1::2] += adjacency_matrix
+    else:
+        spin_adjacency_matrix = adjacency_matrix
 
     one_e_coeffs = hopping_term * spin_adjacency_matrix
     one_e_coeffs = one_e_coeffs[:n_modes, :n_modes]
@@ -61,6 +66,7 @@ def hubbard_hamiltonian(
     adjacency_matrix: npt.NDArray,
     onsite_term: float,
     hopping_term: float = 1.0,
+    spinless: bool = False,
 ) -> dict[str, float]:
     """Return an encoded Hubbard hamiltonain with niave enumeration.
 
@@ -74,6 +80,7 @@ def hubbard_hamiltonian(
         onsite_term (float): Onsite two-electron term.
         hopping_term (float): Kinetic term coefficient.
         physicist_noation (bool): Set to False for Chemist Notation.
+        spinless (bool): Set to True to use single spin Hamiltonian.
 
     Returns:
         dict[str, float]: A qubit Hamiltonian.
@@ -92,10 +99,7 @@ def hubbard_hamiltonian(
 
     n_modes = encoding.n_modes
     one_e_coeffs, two_e_coeffs = hubbard_coefficients(
-        n_modes,
-        adjacency_matrix,
-        onsite_term,
-        hopping_term,
+        n_modes, adjacency_matrix, onsite_term, hopping_term, spinless=spinless
     )
 
     qubit_hamiltonian = fill_template(
@@ -113,6 +117,7 @@ def linear_hubbard_hamiltonian(
     onsite_term: float,
     hopping_term: float = 1,
     periodic: bool = False,
+    spinless: bool = False,
 ) -> dict[str, float]:
     """Hubbard Hamiltonian for a chain.
 
@@ -121,15 +126,18 @@ def linear_hubbard_hamiltonian(
         hopping_term (float): Kinetic term coefficient.
         onsite_term (float): Onsite two-electron term.
         periodic (bool): Whether to use a periodic lattice.
+        spinless (bool): Set to True to use single spin Hamiltonian.
 
     Returns:
         dict[str, float]: A qubit Hamiltonian.
     """
-    adjacency_matrix = np.eye(encoding.n_modes, k=1) + np.eye(encoding.n_modes, k=-1)
+    n_sites = encoding.n_modes + 1
+    n_sites //= 1 if spinless else 2
+    adjacency_matrix = np.eye(n_sites, k=1) + np.eye(n_sites, k=-1)
 
     if periodic:
-        adjacency_matrix[0, encoding.n_modes] = 1.0
-        adjacency_matrix[encoding.n_modes, 0] = 1.0
+        adjacency_matrix[0, n_sites] = 1.0
+        adjacency_matrix[n_sites, 0] = 1.0
 
     return hubbard_hamiltonian(encoding, adjacency_matrix, onsite_term, hopping_term)
 
@@ -139,6 +147,7 @@ def square_hubbard_hamiltonian(
     onsite_term: float,
     hopping_term: float = 1,
     periodic: bool = False,
+    spinless: bool = False,
 ) -> dict[str, float]:
     """Hubbard Hamiltonian for a square lattice.
 
@@ -150,6 +159,7 @@ def square_hubbard_hamiltonian(
         hopping_term (float): Kinetic term coefficient.
         onsite_term (float): Onsite two-electron term.
         periodic (bool): Whether to use a periodic lattice.
+        spinless (bool): Set to True to use single spin Hamiltonian.
 
     Returns:
         dict[str, float]: A qubit Hamiltonian.
@@ -157,18 +167,20 @@ def square_hubbard_hamiltonian(
     n_modes = encoding.n_modes
     # find the side length to fit nodes into square
     # we'll build a perfect square first before cutting.
-    n_sites = (n_modes + 1) // 2
-    side_length = int(np.ceil(np.log2(n_sites // 2)))
+    n_sites = n_modes + 1
+    n_sites //= 1 if spinless else 2
+    side_length = int(np.ceil(np.log2(n_sites // 2))) + 1
 
     # initially make a chain
-    adjacency_matrix = np.eye(side_length**2, k=1)
+    adjacency_matrix = np.eye(n_sites, k=1)
     adjacency_matrix
+
     # cut chain into rows by removing connections
-    for i in range(1, side_length):
-        adjacency_matrix[i * side_length - 1, i * side_length] = 0
+    for i in range(side_length, n_sites, side_length):
+        adjacency_matrix[i - 1, i] = 0.0
 
     # Add connection to number below.
-    adjacency_matrix += np.eye(side_length**2, k=side_length)
+    adjacency_matrix += np.eye(n_sites, k=side_length)
 
     if periodic:
         # Wrap rows
@@ -176,7 +188,7 @@ def square_hubbard_hamiltonian(
             adjacency_matrix[i * side_length, i * side_length + side_length - 1] = 1
 
         # Wrap columns
-        adjacency_matrix += np.eye(side_length**2, k=side_length * (side_length - 1))
+        adjacency_matrix += np.eye(n_sites, k=side_length * (side_length - 1))
 
     # Remove excess nodes
     adjacency_matrix = adjacency_matrix[:n_sites, :n_sites]

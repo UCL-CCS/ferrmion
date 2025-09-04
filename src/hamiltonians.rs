@@ -1,7 +1,9 @@
 use log::debug;
 use ndarray::Axis;
 // use ndarray::{azip, concatenate, Axis, Zip};
+use ahash::RandomState;
 use itertools::iproduct;
+use num_complex::Complex;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
 use pyo3::{FromPyObject, IntoPyObject};
@@ -12,13 +14,15 @@ use crate::utils::{icount_to_sign, symplectic_product, symplectic_to_pauli};
 
 #[derive(Eq, PartialEq, Hash, IntoPyObject, FromPyObject, Debug)]
 pub enum IntegralIndex {
-    OneE(usize, usize),
+    //TwoE terms are more common, and pyo3 tries from top to bottom
+    //So putting them first in the Enum
     TwoE(usize, usize, usize, usize),
+    OneE(usize, usize),
 }
 
 pub type QubitHamiltonianTemplate = HashMap<String, HashMap<IntegralIndex, Complex64>>;
 
-pub type QubitHamiltonian<'template> = HashMap<&'template String, Complex64>;
+pub type QubitHamiltonian<'template> = HashMap<&'template String, Complex64, RandomState>;
 
 pub enum Notation {
     Physicist,
@@ -157,35 +161,33 @@ pub fn fill_template<'template>(
     assert!(one_e_terms.len_of(Axis(0)) == mode_op_map.len());
     // assert_eq!(HashSet::from(mode_op_map.keys()), HashSet::from(0..one_e_terms.len_of(Axis(0))));
     // assert_eq!(HashSet::from(mode_op_map.values()), (HashSet::from(0..one_e_terms.len_of(Axis(0)))));
-    let mut hamiltonian: QubitHamiltonian<'template> = QubitHamiltonian::new();
+    let s = RandomState::new();
+    let mut hamiltonian: QubitHamiltonian<'template> =
+        QubitHamiltonian::with_capacity_and_hasher(template.keys().len(), s);
     let identity_key: String = "I".repeat(mode_op_map.len()).to_string();
     if let Some(identity_val) = hamiltonian.get_mut(&identity_key) {
         *identity_val += Complex64::new(constant_energy, 0.);
     }
 
     for (pauli_term, components) in template {
-        let mut val = Complex64::new(0., 0.);
-        for (indices, factor) in components {
-            let coeff = match indices {
-                IntegralIndex::OneE(m, n) => {
-                    one_e_terms[[
-                        mode_op_map[[*m]],
-                        mode_op_map[[*n]],
-                        // *mode_op_map.get(&m).expect(err_str),
-                        // *mode_op_map.get(&n).expect(err_str),
-                    ]]
-                }
-                IntegralIndex::TwoE(p, q, r, s) => {
-                    two_e_terms[[
-                        mode_op_map[[*p]],
-                        mode_op_map[[*q]],
-                        mode_op_map[[*r]],
-                        mode_op_map[[*s]],
-                    ]]
-                }
-            };
-            val += factor * Complex64::new(coeff, 0.);
-        }
+        let val = components
+            .iter()
+            .fold(Complex::new(0., 0.), |acc, (indices, factor)| {
+                let coeff = match indices {
+                    IntegralIndex::TwoE(p, q, r, s) => {
+                        two_e_terms[[
+                            mode_op_map[[*p]],
+                            mode_op_map[[*q]],
+                            mode_op_map[[*r]],
+                            mode_op_map[[*s]],
+                        ]]
+                    }
+                    IntegralIndex::OneE(m, n) => {
+                        one_e_terms[[mode_op_map[[*m]], mode_op_map[[*n]]]]
+                    }
+                };
+                acc + factor * Complex64::new(coeff, 0.)
+            });
         if val.norm() > 1e-12 {
             hamiltonian.insert(pauli_term, val);
         };

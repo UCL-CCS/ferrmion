@@ -1,11 +1,13 @@
 use log::info;
 use numpy::{
-    Complex64, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray4,
+    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    PyReadonlyArray4,
 };
 use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 
 mod utils;
+use crate::optimise::template_weight;
 use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::{fill_template, molecular, Notation, QubitHamiltonianTemplate};
@@ -169,7 +171,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "fill_template")]
     fn wrap_fill_template<'py>(
         py: Python<'py>,
-        template: Py<PyDict>,
+        template: &Bound<'py, PyDict>,
         constant_energy: f64,
         one_e_terms: PyReadonlyArray2<f64>,
         two_e_terms: PyReadonlyArray4<f64>,
@@ -177,7 +179,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> PyResult<Bound<'py, PyDict>> {
         // let constant_energy = constant_energy.extract(py)?;
         let mode_op_map = mode_op_map.as_array();
-        let template = template.extract::<QubitHamiltonianTemplate>(py)?;
+        let template = template.extract::<QubitHamiltonianTemplate>()?;
         let one_e_terms = one_e_terms.as_array();
         let two_e_terms = two_e_terms.as_array();
         let hamiltonian = fill_template(
@@ -190,6 +192,31 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Ok(hamiltonian
             .into_py_dict(py)
             .expect("Cannot parse Hamiltonian dict."))
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "template_weight")]
+    fn wrap_template_weight<'py>(
+        py: Python<'py>,
+        template: &Bound<'py, PyDict>,
+        constant_energy: f64,
+        one_e_terms: PyReadonlyArray2<f64>,
+        two_e_terms: PyReadonlyArray4<f64>,
+        mode_op_maps: PyReadonlyArray2<usize>,
+    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        // let constant_energy = constant_energy.extract(py)?;
+        let mode_op_maps = mode_op_maps.as_array();
+        let template = template.extract::<QubitHamiltonianTemplate>()?;
+        let one_e_terms = one_e_terms.as_array();
+        let two_e_terms = two_e_terms.as_array();
+        let weight = template_weight(
+            &template,
+            constant_energy,
+            one_e_terms,
+            two_e_terms,
+            mode_op_maps,
+        );
+        Ok(weight.into_pyarray(py))
     }
     Ok(())
 }

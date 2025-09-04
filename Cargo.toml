@@ -11,13 +11,15 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = "1.0.98"
 itertools = "0.14.0"
-ndarray = "0.16.1"
+ndarray = {version="0.16.1", features=["rayon"]}
 num-complex = "0.4.6"
 numpy = "0.24.0"
 pyo3 = {version = "0.24.0", features = ["num-complex"]}
 pyo3-log = "0.12.4"
 log = "0.4"
 evcxr = "0.18.0"
+rayon = "1.11.0"
+ahash = "0.8.12"
 
 [profile.profiling]
 inherits = "release"

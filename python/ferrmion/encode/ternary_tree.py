@@ -54,7 +54,6 @@ class TernaryTree(FermionQubitEncoding):
         Args:
             n_modes (int): How many fermionic modes in the encoding.
             root_node (TTNode): The root node of the tree.
-            enumeration_scheme (dict[str, tuple[int, int]]): The enumeration scheme.
         """
         self.n_modes = n_modes
         self.n_qubits = n_modes

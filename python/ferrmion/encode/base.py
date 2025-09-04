@@ -65,6 +65,19 @@ class FermionQubitEncoding(ABC):
         self.n_qubits = n_qubits
         self.default_mode_op_map = {i: i for i in range(self.n_modes)}
 
+    def __eq__(self, other: object) -> bool:
+        """Checks if two encodings are exactly equivalent."""
+        if type(other) is not FermionQubitEncoding:
+            return False
+        else:
+            left = self._build_symplectic_matrix()
+            right = other._build_symplectic_matrix()
+
+            if np.all(left[0] == right[0]) and np.all(left[1] == right[1]):
+                return True
+            else:
+                return False
+
     @property
     def default_mode_op_map(self):
         """Create a default mode operator map for the tree."""

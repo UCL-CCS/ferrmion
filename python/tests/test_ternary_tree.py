@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 import scipy as sp
-from ferrmion.encode.ternary_tree import TernaryTree, TTNode
+from ferrmion.encode.ternary_tree import TernaryTree, TTNode, JW, JordanWigner, BK, BravyiKitaev, JKMN, ParityEncoding
 from ferrmion.utils import symplectic_hash, symplectic_unhash
 from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator
@@ -12,6 +12,23 @@ from ferrmion.hamiltonians import molecular_hamiltonian
 @pytest.fixture
 def six_mode_tree():
     return TernaryTree(n_modes=6, root_node=TTNode())
+
+def test_standard_encoding_functions(six_mode_tree):
+    assert JW(6) == JordanWigner(6)
+    assert six_mode_tree.JW() == JW(6)
+    assert six_mode_tree.JordanWigner() == JordanWigner(6)
+    assert BK(6) == BravyiKitaev(6)
+    assert six_mode_tree.BK() == BK(6)
+    assert six_mode_tree.BravyiKitaev() == BravyiKitaev(6)
+    assert six_mode_tree.JKMN() == JKMN(6)
+    assert six_mode_tree.ParityEncoding() == ParityEncoding(6)
+
+    assert JW(6) != BK(6)
+    assert JW(6) != JKMN(6)
+    assert JW(6) != ParityEncoding(6)
+    assert BK(6) != JKMN(6)
+    assert BK(6) != ParityEncoding(6)
+    assert JKMN(6) != ParityEncoding(6)
 
 
 def test_ttnode():

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 import scipy as sp
-from ferrmion.encode.ternary_tree import TernaryTree, TTNode
+from ferrmion.encode.ternary_tree import TernaryTree, TTNode, JW, JordanWigner, BK, BravyiKitaev, JKMN, ParityEncoding
 from ferrmion.utils import symplectic_hash, symplectic_unhash
 from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator
@@ -13,6 +13,36 @@ from ferrmion.hamiltonians import molecular_hamiltonian
 def six_mode_tree():
     return TernaryTree(n_modes=6, root_node=TTNode())
 
+def test_standard_encoding_functions(six_mode_tree):
+    # Test function aliases
+    assert JW(6) == JordanWigner(6)
+    assert BK(6) == BravyiKitaev(6)
+
+    # Test TT function aliases
+    assert six_mode_tree.JW() == JW(6)
+    assert six_mode_tree.JordanWigner() == JordanWigner(6)
+    assert six_mode_tree.BK() == BK(6)
+    assert six_mode_tree.BravyiKitaev() == BravyiKitaev(6)
+    assert six_mode_tree.JKMN() == JKMN(6)
+    assert six_mode_tree.ParityEncoding() == ParityEncoding(6)
+
+    # Test inequality by type
+    assert JW(6) != BK(6)
+    assert JW(6) != JKMN(6)
+    assert JW(6) != ParityEncoding(6)
+    assert BK(6) != JKMN(6)
+    assert BK(6) != ParityEncoding(6)
+    assert JKMN(6) != ParityEncoding(6)
+
+    # Test inequality
+    assert JW(6) != JW(5)
+    assert JW(6) != JW
+    assert JW(6) != "JW(6)"
+
+    jw_different_enumeration = JW(6)
+    jw_different_enumeration.enumeration_scheme["z"] = JW(6).enumeration_scheme["zz"]
+    jw_different_enumeration.enumeration_scheme["zz"] = JW(6).enumeration_scheme["z"]
+    assert JW(6) != jw_different_enumeration
 
 def test_ttnode():
     root = TTNode()

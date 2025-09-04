@@ -67,16 +67,22 @@ class FermionQubitEncoding(ABC):
 
     def __eq__(self, other: object) -> bool:
         """Checks if two encodings are exactly equivalent."""
-        if not isinstance(other, FermionQubitEncoding):
-            return False
-        else:
+        if isinstance(other, FermionQubitEncoding):
+            if self.n_modes != other.n_modes:
+                return False
+
+            if self.n_qubits != other.n_qubits:
+                return False
+
             left = self._build_symplectic_matrix()
             right = other._build_symplectic_matrix()
 
-            if np.all(left[0] == right[0]) and np.all(left[1] == right[1]):
-                return True
-            else:
+            if not np.all(left[0] == right[0]) or not np.all(left[1] == right[1]):
                 return False
+
+            return True
+        else:
+            return False
 
     @property
     def default_mode_op_map(self):

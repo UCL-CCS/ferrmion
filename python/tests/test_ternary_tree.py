@@ -34,7 +34,7 @@ def test_standard_encoding_functions(six_mode_tree):
     assert BK(6) != ParityEncoding(6)
     assert JKMN(6) != ParityEncoding(6)
 
-    # Test inequality by size
+    # Test inequality
     assert JW(6) != JW(5)
     assert JW(6) != JW
     assert JW(6) != "JW(6)"

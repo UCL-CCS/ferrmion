@@ -54,7 +54,6 @@ class TernaryTree(FermionQubitEncoding):
         Args:
             n_modes (int): How many fermionic modes in the encoding.
             root_node (TTNode): The root node of the tree.
-            enumeration_scheme (dict[str, tuple[int, int]]): The enumeration scheme.
         """
         self.n_modes = n_modes
         self.n_qubits = n_modes
@@ -301,18 +300,16 @@ class TernaryTree(FermionQubitEncoding):
             >>> from ferrmion.encode.ternary_tree import TernaryTree
             >>> jw_tree = TernaryTree(3).JordanWigner()
         """
-        logger.debug("Creating Jordan-Wigner encoding tree")
-        new_tree = TernaryTree(
-            n_modes=self.n_modes,
-            root_node=TTNode(),
-        )
-        new_tree.add_node("z" * (self.n_modes - 1))
-        new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
-        return new_tree
+        return JordanWigner(self.n_modes)
 
     def JW(self) -> "TernaryTree":
-        """Alias for Jordan-Wigner encoding."""
-        return self.JordanWigner()
+        """Alias for Jordan-Wigner encoding.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> jw_tree = TernaryTree(3).JW()
+        """
+        return JordanWigner(self.n_modes)
 
     def ParityEncoding(self) -> "TernaryTree":
         """Create a new tree with the parity encoding.
@@ -321,48 +318,31 @@ class TernaryTree(FermionQubitEncoding):
             >>> from ferrmion.encode.ternary_tree import TernaryTree
             >>> parity_tree = TernaryTree(3).ParityEncoding()
         """
-        logger.debug("Creating parity encoding tree")
-        new_tree = TernaryTree(
-            n_modes=self.n_modes,
-            root_node=TTNode(),
-        )
-        new_tree.add_node("x" * (self.n_qubits - 1))
-        new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
-        return new_tree
+        return ParityEncoding(self.n_modes)
 
     def BravyiKitaev(self) -> "TernaryTree":
         """Create a new tree with the Bravyi-Kitaev encoding.
+
+        Args:
+            n_modes (int): The number of fermionic modes.
+
+        Returns:
+            TernaryTree: A ternary tree encoding.
 
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
             >>> bk_tree = TernaryTree(3).BravyiKitaev()
         """
-        logger.debug("Creating Bravyi-Kitaev encoding tree")
-        new_tree = TernaryTree(
-            n_modes=self.n_modes,
-            root_node=TTNode(),
-        )
-        branches = ["x"]
-        # one is used for root, which is defined
-        remaining_qubits = self.n_qubits - 1
-        while remaining_qubits > 0:
-            new_branches = set()
-            for item in branches:
-                if remaining_qubits > 0:
-                    new_tree.add_node(item)
-                    remaining_qubits -= 1
-                else:
-                    break
-
-                new_branches.add(item + "x")
-                new_branches.add(item + "z")
-            branches = sorted(list(new_branches), key=node_sorter)
-        new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
-        return new_tree
+        return BravyiKitaev(self.n_modes)
 
     def BK(self) -> "TernaryTree":
-        """Alias for Bravyi-Kitaev encoding."""
-        return self.BravyiKitaev()
+        """Alias for Bravyi-Kitaev encoding.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> bk_tree = TernaryTree(3).BK()
+        """
+        return BravyiKitaev(self.n_modes)
 
     def JKMN(self) -> "TernaryTree":
         """Create a new tree with the JKMN encoding.
@@ -373,26 +353,159 @@ class TernaryTree(FermionQubitEncoding):
             >>> from ferrmion.encode.ternary_tree import TernaryTree
             >>> min_height_tree = TernaryTree(3).JKMN()
         """
-        logger.debug("Creating JKMN encoding tree.")
-        new_tree = TernaryTree(
-            n_modes=self.n_modes,
-            root_node=TTNode(),
-        )
-        branches = ["x", "y", "z"]
-        # one is used for root which is defined
-        remaining_qubits = self.n_qubits - 1
-        while remaining_qubits > 0:
-            new_branches = set()
-            for item in branches:
-                if remaining_qubits > 0:
-                    new_tree.add_node(item)
-                    remaining_qubits -= 1
-                else:
-                    break
+        return JKMN(self.n_modes)
 
-                new_branches.add(item + "x")
-                new_branches.add(item + "y")
-                new_branches.add(item + "z")
-            branches = sorted(list(new_branches), key=node_sorter)
-        new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
-        return new_tree
+
+def JordanWigner(n_modes: int) -> TernaryTree:
+    """Create a new tree with the Jordan-Wigner encoding.
+
+    Args:
+        n_modes (int): The number of fermionic modes.
+
+    Returns:
+        TernaryTree: A ternary tree encoding.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree import JordanWigner
+        >>> jw_tree = JordanWigner(3)
+    """
+    logger.debug("Creating Jordan-Wigner encoding tree")
+    new_tree = TernaryTree(
+        n_modes=n_modes,
+        root_node=TTNode(),
+    )
+    new_tree.add_node("z" * (n_modes - 1))
+    new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
+    return new_tree
+
+
+def JW(n_modes: int) -> TernaryTree:
+    """Alias for Jordan-Wigner encoding.
+
+    Args:
+        n_modes (int): The number of fermionic modes.
+
+    Returns:
+        TernaryTree: A ternary tree encoding.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree import JW
+        >>> jw_tree = JW(3)
+    """
+    return JordanWigner(n_modes)
+
+
+def ParityEncoding(n_modes: int) -> TernaryTree:
+    """Create a new tree with the parity encoding.
+
+    Args:
+        n_modes (int): The number of fermionic modes.
+
+    Returns:
+        TernaryTree: A ternary tree encoding.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree import ParityEncoding
+        >>> parity_tree = ParityEncoding(3)
+    """
+    logger.debug("Creating parity encoding tree")
+    new_tree = TernaryTree(
+        n_modes=n_modes,
+        root_node=TTNode(),
+    )
+    new_tree.add_node("x" * (n_modes - 1))
+    new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
+    return new_tree
+
+
+def BravyiKitaev(n_modes: int) -> "TernaryTree":
+    """Create a new tree with the Bravyi-Kitaev encoding.
+
+    Args:
+        n_modes (int): The number of fermionic modes.
+
+    Returns:
+        TernaryTree: A ternary tree encoding.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree import BravyiKitaev
+        >>> bk_tree = BravyiKitaev(3)
+    """
+    logger.debug("Creating Bravyi-Kitaev encoding tree")
+    new_tree = TernaryTree(
+        n_modes=n_modes,
+        root_node=TTNode(),
+    )
+    branches = ["x"]
+    # one is used for root, which is defined
+    remaining_qubits = n_modes - 1
+    while remaining_qubits > 0:
+        new_branches = set()
+        for item in branches:
+            if remaining_qubits > 0:
+                new_tree.add_node(item)
+                remaining_qubits -= 1
+            else:
+                break
+
+            new_branches.add(item + "x")
+            new_branches.add(item + "z")
+        branches = sorted(list(new_branches), key=node_sorter)
+    new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
+    return new_tree
+
+
+def BK(n_modes: int) -> TernaryTree:
+    """Alias for Bravyi-Kitaev encoding.
+
+    Args:
+        n_modes (int): The number of fermionic modes.
+
+    Returns:
+        TernaryTree: A ternary tree encoding.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree import BK
+        >>> bk_tree = BK(3)
+    """
+    return BravyiKitaev(n_modes)
+
+
+def JKMN(n_modes: int) -> TernaryTree:
+    """Create a new tree with the JKMN encoding.
+
+    The JKMN encoding gives a ternary tree with the minimum Pauli-weight.
+
+    Args:
+        n_modes (int): The number of fermionic modes.
+
+    Returns:
+        TernaryTree: A ternary tree encoding.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree import JKMN
+        >>> min_height_tree = JKMN(3)
+    """
+    logger.debug("Creating JKMN encoding tree.")
+    new_tree = TernaryTree(
+        n_modes=n_modes,
+        root_node=TTNode(),
+    )
+    branches = ["x", "y", "z"]
+    # one is used for root which is defined
+    remaining_qubits = n_modes - 1
+    while remaining_qubits > 0:
+        new_branches = set()
+        for item in branches:
+            if remaining_qubits > 0:
+                new_tree.add_node(item)
+                remaining_qubits -= 1
+            else:
+                break
+
+            new_branches.add(item + "x")
+            new_branches.add(item + "y")
+            new_branches.add(item + "z")
+        branches = sorted(list(new_branches), key=node_sorter)
+    new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
+    return new_tree

@@ -67,7 +67,7 @@ class FermionQubitEncoding(ABC):
 
     def __eq__(self, other: object) -> bool:
         """Checks if two encodings are exactly equivalent."""
-        if type(other) is not FermionQubitEncoding:
+        if not isinstance(other, FermionQubitEncoding):
             return False
         else:
             left = self._build_symplectic_matrix()

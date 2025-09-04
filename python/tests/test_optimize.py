@@ -52,16 +52,18 @@ def test_rett(n2mi):
     assert rett.branch_operator_map == {'zzzzx': 'ZZZZXIIIII', 'zzzx': 'ZZZXIIIIII', 'zzzzzzx': 'ZZZZZZXIII', 'zzx': 'ZZXIIIIIII', 'zzy': 'ZZYIIIIIII', 'zzzzzzzzx': 'ZZZZZZZZXI', 'zzzzy': 'ZZZZYIIIII', 'zzzzzzzzzy': 'ZZZZZZZZZY', 'y': 'YIIIIIIIII', 'zzzzzzzx': 'ZZZZZZZXII', 'zx': 'ZXIIIIIIII', 'zzzzzzy': 'ZZZZZZYIII', 'zy': 'ZYIIIIIIII', 'zzzy': 'ZZZYIIIIII', 'zzzzzzzzzz': 'ZZZZZZZZZZ', 'zzzzzzzy': 'ZZZZZZZYII', 'zzzzzy': 'ZZZZZYIIII', 'zzzzzzzzzx': 'ZZZZZZZZZX', 'zzzzzx': 'ZZZZZXIIII', 'zzzzzzzzy': 'ZZZZZZZZYI', 'x': 'XIIIIIIIII'}
 
 def test_pauli_weighted_norm(water_integrals):
-    ipowers, symplectics = TernaryTree(14).JW()._build_symplectic_matrix()
+    jw = TernaryTree(14).JW()
+    ipowers, symplectics = jw._build_symplectic_matrix()
     ones, twos = water_integrals
     jw_pauli_ham = molecular_hamiltonian_template(ipowers, symplectics, True)
-    jw_filled_template = fill_template(jw_pauli_ham, 0., ones, twos, TernaryTree(14).JW().default_mode_op_map)
+    jw_filled_template = fill_template(jw_pauli_ham, 0., ones, twos, jw.default_mode_op_map)
     jw_norm = pauli_weighted_norm(jw_filled_template)
 
     assert np.allclose(jw_norm, [np.float64(272.4190655251233)])
 
-    ipowers, symplectics = TernaryTree(14).ParityEncoding()._build_symplectic_matrix()
+    pe = TernaryTree(14).ParityEncoding()
+    ipowers, symplectics = pe._build_symplectic_matrix()
     pe_template = molecular_hamiltonian_template(ipowers, symplectics, True)
-    pe_filled_template = fill_template(pe_template, 0, ones, twos, TernaryTree(14).JW().default_mode_op_map)
+    pe_filled_template = fill_template(pe_template, 0, ones, twos, pe.default_mode_op_map)
     pe_norm = pauli_weighted_norm(pe_filled_template)
     assert np.allclose(pe_norm, [np.float64(354.23056347814577)])

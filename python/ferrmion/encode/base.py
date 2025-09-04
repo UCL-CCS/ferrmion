@@ -63,7 +63,7 @@ class FermionQubitEncoding(ABC):
         """
         self.n_modes = n_modes
         self.n_qubits = n_qubits
-        self.default_mode_op_map = {i: i for i in range(self.n_modes)}
+        self.default_mode_op_map = np.array([*range(self.n_modes)], dtype=np.uint)
 
     def __eq__(self, other: object) -> bool:
         """Checks if two encodings are exactly equivalent."""
@@ -90,25 +90,23 @@ class FermionQubitEncoding(ABC):
         return self._default_mode_op_map
 
     @default_mode_op_map.setter
-    def default_mode_op_map(self, map_dict: dict[int, int]):
+    def default_mode_op_map(self, permutation: list[int]):
         """Set the default mode operator map.
 
         Args:
-            map_dict (dict[int, int]): A dictionary mapping modes to operators.
+            permutation (list[int]): A list containing a permutation of mode indices.
         """
         logger.debug("Setting default mode operator map.")
         error_string = ""
-        if set(map_dict.keys()) != {*range(self.n_modes)}:
+        if set(permutation) != {*range(self.n_modes)}:
             error_string += "Default Mode op map does not cover all modes.\n"
-        if set(map_dict.values()) != {*range(self.n_modes)}:
-            error_string += "Default Mode op map does not cover all operators.\n"
 
         if error_string != "":
             logger.error(error_string)
-            logger.error(map_dict)
+            logger.error(permutation)
             raise ValueError(error_string)
 
-        self._default_mode_op_map = map_dict
+        self._default_mode_op_map = np.array(permutation, dtype=np.uint)
 
     @property
     def vacuum_state(self):
@@ -257,7 +255,7 @@ def edge_operator(
             >>> tree.edge_operator(0,1)
     """
     logger.debug("Finding edge operator %s", edge_indices)
-    if not set(edge_indices).issubset(set(encoding.default_mode_op_map.keys())):
+    if not set(edge_indices).issubset(set(range(encoding.n_modes))):
         logger.error("Edge operator indices invalid %s", edge_indices)
         raise ValueError("Edge operator indices invalid %s", edge_indices)
 

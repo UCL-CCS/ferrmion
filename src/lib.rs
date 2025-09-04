@@ -4,16 +4,14 @@ use numpy::{
 };
 use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
-use std::collections::HashMap;
 
 mod utils;
 use crate::utils::*;
 mod hamiltonians;
-use crate::hamiltonians::{
-    fill_template, molecular, IntegralIndex, Notation, QubitHamiltonianTemplate,
-};
+use crate::hamiltonians::{fill_template, molecular, Notation, QubitHamiltonianTemplate};
 mod encoding;
 use crate::encoding::{hartree_fock_state, symplectic_product_map};
+mod optimise;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -54,7 +52,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         vacuum_state: PyReadonlyArray1<f64>,
         fermionic_hf_state: PyReadonlyArray1<bool>,
-        mode_op_map: Bound<'py, PyDict>,
+        mode_op_map: PyReadonlyArray1<usize>,
         symplectic_matrix: PyReadonlyArray2<bool>,
     ) -> (Bound<'py, PyArray1<Complex64>>, Bound<'py, PyArray2<bool>>) {
         /*
@@ -66,22 +64,19 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         import numpy as np
         vacuum = np.zeros(6)
         hf = np.array([True, True, False, False, False, False])
-        mode_op_map = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
+        mode_op_map = np.array([0,1,2,3,4,5])
         symplectic = np.eye(6, 12, dtype=bool)
         coeffs, states = ferrmion.hartree_fock_state(vacuum, hf, mode_op_map, symplectic)
         ```
         */
         let vacuum_state = vacuum_state.as_array();
         let fermionic_hf_state = fermionic_hf_state.as_array();
-        let rust_mode_op_map: HashMap<usize, usize> = match mode_op_map.extract() {
-            Ok(hashmap) => hashmap,
-            Err(_) => panic!("Mode op map cannot be parsed as HashMap."),
-        };
+        let mode_op_map = mode_op_map.as_array();
         let symplectic_matrix = symplectic_matrix.as_array();
         let (coeffs, states) = hartree_fock_state(
             vacuum_state,
             fermionic_hf_state,
-            rust_mode_op_map,
+            mode_op_map,
             symplectic_matrix,
         )
         .unwrap();
@@ -178,16 +173,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         constant_energy: f64,
         one_e_terms: PyReadonlyArray2<f64>,
         two_e_terms: PyReadonlyArray4<f64>,
-        mode_op_map: Py<PyDict>,
+        mode_op_map: PyReadonlyArray1<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         // let constant_energy = constant_energy.extract(py)?;
-        let mode_op_map = mode_op_map.extract::<HashMap<usize, usize>>(py)?;
-        let template =
-            template.extract::<HashMap<String, HashMap<IntegralIndex, Complex64>>>(py)?;
+        let mode_op_map = mode_op_map.as_array();
+        let template = template.extract::<QubitHamiltonianTemplate>(py)?;
         let one_e_terms = one_e_terms.as_array();
         let two_e_terms = two_e_terms.as_array();
         let hamiltonian = fill_template(
-            template,
+            &template,
             constant_energy,
             one_e_terms,
             two_e_terms,
@@ -197,6 +191,5 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .into_py_dict(py)
             .expect("Cannot parse Hamiltonian dict."))
     }
-
     Ok(())
 }

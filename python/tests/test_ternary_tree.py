@@ -505,6 +505,4 @@ def test_eigenvalues_across_encodings(water_eigenvalues, water_tt, water_integra
 
 
 def test_default_mode_op_map(water_tt):
-    assert water_tt.default_mode_op_map == {
-        i: i for i in range(water_tt.n_qubits)
-    }
+    assert np.all(water_tt.default_mode_op_map == [*range(water_tt.n_qubits)])

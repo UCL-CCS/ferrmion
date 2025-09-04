@@ -31,6 +31,6 @@ def fill_template(
     constant_energy: float,
     one_e_terms: npt.NDArray[np.float64],
     two_e_terms: npt.NDArray[np.float64],
-    mode_op_map: dict[int, int],
+    mode_op_map: list[int],
 ) -> dict: ...
 def icount_to_sign(icount: int) -> np.complex64: ...

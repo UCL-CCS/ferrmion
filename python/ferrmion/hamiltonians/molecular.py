@@ -43,8 +43,8 @@ def molecular_hamiltonian(
     qubit_hamiltonian = fill_template(
         template=template,
         constant_energy=constant_energy,
-        one_e_terms=one_e_coeffs,
-        two_e_terms=two_e_coeffs,
+        one_e_coeffs=one_e_coeffs,
+        two_e_coeffs=two_e_coeffs,
         mode_op_map=encoding.default_mode_op_map,
     )
     return qubit_hamiltonian

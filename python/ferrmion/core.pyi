@@ -26,11 +26,15 @@ def molecular_hamiltonian_template(
     symplectics: npt.NDArray[np.bool_],
     physicist_notation: bool,
 ) -> dict: ...
+def hubbard_hamiltonian_template(
+    ipowers: npt.NDArray[np.uint8],
+    symplectics: npt.NDArray[np.bool_],
+) -> dict: ...
 def fill_template(
     template: dict,
     constant_energy: float,
-    one_e_terms: npt.NDArray[np.float64],
-    two_e_terms: npt.NDArray[np.float64],
+    one_e_coeffs: npt.NDArray[np.float64],
+    two_e_coeffs: npt.NDArray[np.float64],
     mode_op_map: npt.NDArray[np.uint],
 ) -> dict: ...
 def icount_to_sign(icount: int) -> np.complex64: ...

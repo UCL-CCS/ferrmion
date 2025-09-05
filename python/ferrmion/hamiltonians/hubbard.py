@@ -3,24 +3,12 @@
 import numpy as np
 import numpy.typing as npt
 
-from ferrmion.core import fill_template, molecular_hamiltonian_template
+from ferrmion.core import (
+    fill_template,
+    hubbard_hamiltonian_template,
+)
 
 from ..encode import FermionQubitEncoding
-
-
-def hubbard_hamiltonian_template(
-    ipowers: npt.NDArray[np.uint8], majorana_symplectic: npt.NDArray[np.bool_]
-) -> dict:
-    """Return a Hamiltonian Template for the Hubbard Hamiltonian.
-
-    Args:
-        ipowers (np.ndarray): Imaginary Coefficients.
-        majorana_symplectic (np.ndarray): Symplectic Matrix form of encoding.
-
-    Returns:
-        dict: A template hamiltonian.
-    """
-    return molecular_hamiltonian_template(ipowers, majorana_symplectic, False)
 
 
 def hubbard_coefficients(
@@ -105,8 +93,8 @@ def hubbard_hamiltonian(
     qubit_hamiltonian = fill_template(
         template=template,
         constant_energy=0,
-        one_e_terms=one_e_coeffs,
-        two_e_terms=two_e_coeffs,
+        one_e_coeffs=one_e_coeffs,
+        two_e_coeffs=two_e_coeffs,
         mode_op_map=encoding.default_mode_op_map,
     )
     return qubit_hamiltonian

@@ -7,11 +7,11 @@ use argmin::{
     core::{observers::ObserverMode, CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
 };
+use argmin_observer_slog::SlogLogger;
 use ndarray::{s, ArrayView1, ArrayViewMut, Axis, Zip};
 use num_complex::ComplexFloat;
 use numpy::ndarray::{Array1, ArrayView2, ArrayView4};
 use permutation_iterator::Permutor;
-use pyo3::type_object;
 use rand::{distr::Uniform, prelude::*};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::sync::{Arc, Mutex};
@@ -57,21 +57,38 @@ pub fn template_weight(
 //         pass
 // }
 
-struct OptimalEnumeration<'template, 'coeff> {
-    template: &'template QubitHamiltonianTemplate,
+struct OptimalEnumeration<'coeff> {
+    template: QubitHamiltonianTemplate,
     constant_energy: f64,
     one_e_coeffs: ArrayView2<'coeff, f64>,
     two_e_coeffs: ArrayView4<'coeff, f64>,
     rng: Arc<Mutex<Xoshiro256PlusPlus>>,
 }
 
-impl CostFunction for OptimalEnumeration<'_, '_> {
+impl<'coeff> OptimalEnumeration<'coeff> {
+    fn new(
+        template: QubitHamiltonianTemplate,
+        constant_energy: f64,
+        one_e_coeffs: ArrayView2<'coeff, f64>,
+        two_e_coeffs: ArrayView4<'coeff, f64>,
+    ) -> Self {
+        OptimalEnumeration {
+            template,
+            constant_energy,
+            one_e_coeffs,
+            two_e_coeffs,
+            rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(1017))),
+        }
+    }
+}
+
+impl CostFunction for OptimalEnumeration<'_> {
     type Param = Array1<usize>;
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
         let filled_template = fill_template(
-            self.template,
+            &self.template,
             self.constant_energy,
             self.one_e_coeffs,
             self.two_e_coeffs,
@@ -81,7 +98,7 @@ impl CostFunction for OptimalEnumeration<'_, '_> {
     }
 }
 
-impl Anneal for OptimalEnumeration<'_, '_> {
+impl Anneal for OptimalEnumeration<'_> {
     type Param = Array1<usize>;
     type Output = Array1<usize>;
     type Float = f64;
@@ -94,10 +111,70 @@ impl Anneal for OptimalEnumeration<'_, '_> {
         for _ in 0..(temp.floor() as u64 + 1) {
             let pos: usize = rng.sample(distr);
             let left_stay_right: usize = rng.random_range(0..=1);
-            let temp = next_perm[[pos]];
+            let temp = next_perm[[pos]].clone();
             next_perm[[pos]] = next_perm[[pos + 2 * left_stay_right - 1]];
             next_perm[[pos + 2 * left_stay_right - 1]] = temp;
         }
         Ok(next_perm)
     }
+}
+
+pub fn anneal_enumerations<'coeff>(
+    template: QubitHamiltonianTemplate,
+    constant_energy: f64,
+    one_e_coeffs: ArrayView2<'coeff, f64>,
+    two_e_coeffs: ArrayView4<'coeff, f64>,
+    temp: f64,
+) -> Result<(f64, Array1<usize>), Error> {
+    let operator = OptimalEnumeration::new(template, constant_energy, one_e_coeffs, two_e_coeffs);
+
+    // Define initial parameter vector
+    let n_modes = one_e_coeffs.len_of(Axis(0));
+    let init_param = Array1::from_iter(0..n_modes);
+
+    // Set up simulated annealing solver
+    // An alternative random number generator (RNG) can be provided to `new_with_rng`:
+    // SimulatedAnnealing::new_with_rng(temp, Xoshiro256PlusPlus::from_entropy())?
+    let solver = SimulatedAnnealing::new(temp)?
+        // Optional: Define temperature function (defaults to `SATempFunc::TemperatureFast`)
+        .with_temp_func(SATempFunc::Boltzmann)
+        /////////////////////////
+        // Stopping criteria   //
+        /////////////////////////
+        // Optional: stop if there was no new best solution after 1000 iterations
+        .with_stall_best(1000)
+        // Optional: stop if there was no accepted solution after 1000 iterations
+        .with_stall_accepted(1000)
+        /////////////////////////
+        // Reannealing         //
+        /////////////////////////
+        // Optional: Reanneal after 1000 iterations (resets temperature to initial temperature)
+        .with_reannealing_fixed(1000)
+        // Optional: Reanneal after no accepted solution has been found for `iter` iterations
+        .with_reannealing_accepted(500)
+        // Optional: Start reannealing after no new best solution has been found for 800 iterations
+        .with_reannealing_best(800);
+
+    /////////////////////////
+    // Run solver          //
+    /////////////////////////
+    let res = Executor::new(operator, solver)
+        .configure(|state| {
+            state
+                .param(init_param)
+                // Optional: Set maximum number of iterations (defaults to `std::u64::MAX`)
+                .max_iters(10_000)
+                // Optional: Set target cost function value (defaults to `std::f64::NEG_INFINITY`)
+                .target_cost(0.0)
+        })
+        // Optional: Attach a observer
+        .add_observer(SlogLogger::term(), ObserverMode::Always)
+        .run()?;
+
+    let final_state = res.state();
+    let best_permutation = final_state
+        .best_param
+        .clone()
+        .expect("No best param in final anneling state.");
+    Ok((final_state.best_cost, best_permutation))
 }

@@ -112,8 +112,9 @@ impl Anneal for OptimalEnumeration<'_> {
             let pos: usize = rng.sample(distr);
             let left_stay_right: usize = rng.random_range(0..=1);
             let temp = next_perm[[pos]].clone();
-            next_perm[[pos]] = next_perm[[pos + 2 * left_stay_right - 1]];
-            next_perm[[pos + 2 * left_stay_right - 1]] = temp;
+            let pos2 = (pos + 2 * left_stay_right - 1) % next_perm.len();
+            next_perm[[pos]] = next_perm[[pos2]];
+            next_perm[[pos2]] = temp;
         }
         Ok(next_perm)
     }

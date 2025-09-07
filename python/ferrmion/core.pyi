@@ -30,6 +30,13 @@ def hubbard_hamiltonian_template(
     ipowers: npt.NDArray[np.uint8],
     symplectics: npt.NDArray[np.bool_],
 ) -> dict: ...
+def template_weight_distribution(
+    template: dict,
+    constant_energy: float,
+    one_e_coeffs: npt.NDArray[np.float64],
+    two_e_coeffs: npt.NDArray[np.float64],
+    n_permutations: int,
+) -> dict: ...
 def fill_template(
     template: dict,
     constant_energy: float,

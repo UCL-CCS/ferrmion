@@ -3,7 +3,6 @@ use ndarray::Axis;
 // use ndarray::{azip, concatenate, Axis, Zip};
 use ahash::RandomState;
 use itertools::iproduct;
-use num_complex::Complex;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
 use pyo3::{FromPyObject, IntoPyObject};
@@ -243,7 +242,7 @@ pub fn fill_template<'template>(
     for (pauli_term, components) in template {
         let val = components
             .iter()
-            .fold(Complex::new(0., 0.), |acc, (indices, factor)| {
+            .fold(Complex64::new(0., 0.), |acc, (indices, factor)| {
                 let coeff = match indices {
                     IntegralIndex::TwoE(p, q, r, s) => {
                         two_e_coeffs[[

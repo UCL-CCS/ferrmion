@@ -206,7 +206,7 @@ fn test_hartree_fock() {
     let result = hartree_fock_state(
         vacuum_state,
         fermionic_hf_state,
-        mode_op_map.clone(),
+        mode_op_map,
         symplectic_matrix,
     )
     .unwrap();

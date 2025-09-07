@@ -211,7 +211,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     #[pyfn(m)]
-    #[pyo3(name = "template_weight")]
+    #[pyo3(name = "template_weight_distribution")]
     fn wrap_template_weight<'py>(
         py: Python<'py>,
         template: &Bound<'py, PyDict>,
@@ -240,14 +240,20 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         template: &Bound<'py, PyDict>,
         one_e_coeffs: PyReadonlyArray2<f64>,
         two_e_coeffs: PyReadonlyArray4<f64>,
-        temp: f64,
+        temperature: f64,
         initial_guess: PyReadonlyArray1<usize>,
     ) -> PyResult<(f64, Bound<'py, PyArray1<usize>>)> {
         let one_e_coeffs = one_e_coeffs.as_array();
         let two_e_coeffs = two_e_coeffs.as_array();
         let template = template.extract::<QubitHamiltonianTemplate>()?;
         let initial_guess = initial_guess.as_array();
-        let result = anneal_enumerations(template, one_e_coeffs, two_e_coeffs, temp, initial_guess);
+        let result = anneal_enumerations(
+            template,
+            one_e_coeffs,
+            two_e_coeffs,
+            temperature,
+            initial_guess,
+        );
         let (cost, permutation) = result.expect("Annealing output error.");
         Ok((cost, permutation.into_pyarray(py)))
     }

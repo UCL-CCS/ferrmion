@@ -41,7 +41,7 @@ def anneal_enumerations(
     template: dict,
     one_e_coeffs: npt.NDArray[np.float64],
     two_e_coeffs: npt.NDArray[np.float64],
-    temp: float,
+    temperature: float,
     initial_guess: npt.NDArray[np.uint],
 ) -> dict: ...
 def icount_to_sign(icount: int) -> np.complex64: ...

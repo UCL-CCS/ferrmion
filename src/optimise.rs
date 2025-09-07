@@ -4,10 +4,9 @@ Functions relating to encoding optimisation.
 
 use crate::hamiltonians::*;
 use argmin::{
-    core::{observers::ObserverMode, CostFunction, Error, Executor},
+    core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
 };
-use argmin_observer_slog::SlogLogger;
 use ndarray::{ArrayView1, Axis};
 use num_complex::ComplexFloat;
 use numpy::ndarray::{Array1, ArrayView2, ArrayView4};
@@ -131,7 +130,7 @@ pub fn anneal_enumerations<'coeff>(
     template: QubitHamiltonianTemplate,
     one_e_coeffs: ArrayView2<'coeff, f64>,
     two_e_coeffs: ArrayView4<'coeff, f64>,
-    temp: f64,
+    temperature: f64,
     initial_guess: ArrayView1<usize>,
 ) -> Result<(f64, Array1<usize>), Error> {
     let operator = OptimalEnumeration::new(template, one_e_coeffs, two_e_coeffs);
@@ -141,7 +140,7 @@ pub fn anneal_enumerations<'coeff>(
     // Set up simulated annealing solver
     // An alternative random number generator (RNG) can be provided to `new_with_rng`:
     // SimulatedAnnealing::new_with_rng(temp, Xoshiro256PlusPlus::from_entropy())?
-    let solver = SimulatedAnnealing::new(temp)?
+    let solver = SimulatedAnnealing::new(temperature)?
         // Optional: Define temperature function (defaults to `SATempFunc::TemperatureFast`)
         .with_temp_func(SATempFunc::Boltzmann)
         /////////////////////////
@@ -174,7 +173,7 @@ pub fn anneal_enumerations<'coeff>(
                 .target_cost(0.0)
         })
         // Optional: Attach a observer
-        .add_observer(SlogLogger::term(), ObserverMode::NewBest)
+        // .add_observer(SlogLogger::term(), ObserverMode::Never)
         .run()?;
 
     let final_state = res.state();

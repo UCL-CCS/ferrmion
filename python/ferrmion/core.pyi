@@ -39,7 +39,6 @@ def fill_template(
 ) -> dict: ...
 def anneal_enumerations(
     template: dict,
-    constant_energy: float,
     one_e_coeffs: npt.NDArray[np.float64],
     two_e_coeffs: npt.NDArray[np.float64],
     temp: float,

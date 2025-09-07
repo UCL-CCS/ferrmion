@@ -1,18 +1,16 @@
 use log::info;
 use numpy::{
-    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray, PyReadonlyArray1,
-    PyReadonlyArray2, PyReadonlyArray4,
+    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    PyReadonlyArray4,
 };
-use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString, PyTuple};
+use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 
 mod utils;
 use crate::optimise::template_weight;
 use crate::utils::*;
 mod hamiltonians;
-use crate::hamiltonians::{
-    fill_template, hubbard, molecular, Notation, QubitHamiltonian, QubitHamiltonianTemplate,
-};
+use crate::hamiltonians::{fill_template, hubbard, molecular, Notation, QubitHamiltonianTemplate};
 mod encoding;
 use crate::encoding::{hartree_fock_state, symplectic_product_map};
 mod optimise;
@@ -240,7 +238,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_anneal_enumerations<'py>(
         py: Python<'py>,
         template: &Bound<'py, PyDict>,
-        constant_energy: f64,
         one_e_coeffs: PyReadonlyArray2<f64>,
         two_e_coeffs: PyReadonlyArray4<f64>,
         temp: f64,
@@ -250,14 +247,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let two_e_coeffs = two_e_coeffs.as_array();
         let template = template.extract::<QubitHamiltonianTemplate>()?;
         let initial_guess = initial_guess.as_array();
-        let result = anneal_enumerations(
-            template,
-            constant_energy,
-            one_e_coeffs,
-            two_e_coeffs,
-            temp,
-            initial_guess,
-        );
+        let result = anneal_enumerations(template, one_e_coeffs, two_e_coeffs, temp, initial_guess);
         let (cost, permutation) = result.expect("Annealing output error.");
         Ok((cost, permutation.into_pyarray(py)))
     }

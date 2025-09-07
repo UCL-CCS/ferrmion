@@ -8,7 +8,7 @@ use argmin::{
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
 };
 use argmin_observer_slog::SlogLogger;
-use ndarray::{s, ArrayView1, ArrayViewMut, Axis, Zip};
+use ndarray::{ArrayView1, Axis};
 use num_complex::ComplexFloat;
 use numpy::ndarray::{Array1, ArrayView2, ArrayView4};
 use permutation_iterator::Permutor;
@@ -59,7 +59,6 @@ pub fn template_weight(
 
 struct OptimalEnumeration<'coeff> {
     template: QubitHamiltonianTemplate,
-    constant_energy: f64,
     one_e_coeffs: ArrayView2<'coeff, f64>,
     two_e_coeffs: ArrayView4<'coeff, f64>,
     rng: Arc<Mutex<Xoshiro256PlusPlus>>,
@@ -68,13 +67,11 @@ struct OptimalEnumeration<'coeff> {
 impl<'coeff> OptimalEnumeration<'coeff> {
     fn new(
         template: QubitHamiltonianTemplate,
-        constant_energy: f64,
         one_e_coeffs: ArrayView2<'coeff, f64>,
         two_e_coeffs: ArrayView4<'coeff, f64>,
     ) -> Self {
         OptimalEnumeration {
             template,
-            constant_energy,
             one_e_coeffs,
             two_e_coeffs,
             rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(1017))),
@@ -89,7 +86,7 @@ impl CostFunction for OptimalEnumeration<'_> {
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
         let filled_template = fill_template(
             &self.template,
-            self.constant_energy,
+            0.,
             self.one_e_coeffs,
             self.two_e_coeffs,
             param.view(),
@@ -112,18 +109,17 @@ impl Anneal for OptimalEnumeration<'_> {
 
         for _ in 0..temp_int {
             let pos: usize = rng.sample(distr);
-            let pos2: usize;
             let move_distance = rng.random_range(0..temp_int) as usize % n_modes;
             // let swap_with: usize = (rng.random_range(0..=2*temp) - temp) % next_perm.len();
             // let left_stay_right: usize = rng.random_range(0..=1);
             // let pos2 = (pos + 2 * left_stay_right - 1) % next_perm.len();
             // let pos2 = (pos + 2 * left_stay_right - 1) % next_perm.len();
-            if rng.random_bool(0.5) {
-                pos2 = (pos + move_distance) % n_modes;
+            let pos2: usize = if rng.random_bool(0.5) {
+                (pos + move_distance) % n_modes
             } else {
-                pos2 = (pos + n_modes - move_distance) % n_modes;
-            }
-            let swap_val = next_perm[[pos]].clone();
+                (pos + n_modes - move_distance) % n_modes
+            };
+            let swap_val = next_perm[[pos]];
             next_perm[[pos]] = next_perm[[pos2]];
             next_perm[[pos2]] = swap_val;
         }
@@ -133,13 +129,12 @@ impl Anneal for OptimalEnumeration<'_> {
 
 pub fn anneal_enumerations<'coeff>(
     template: QubitHamiltonianTemplate,
-    constant_energy: f64,
     one_e_coeffs: ArrayView2<'coeff, f64>,
     two_e_coeffs: ArrayView4<'coeff, f64>,
     temp: f64,
     initial_guess: ArrayView1<usize>,
 ) -> Result<(f64, Array1<usize>), Error> {
-    let operator = OptimalEnumeration::new(template, constant_energy, one_e_coeffs, two_e_coeffs);
+    let operator = OptimalEnumeration::new(template, one_e_coeffs, two_e_coeffs);
 
     // Define initial parameter vector
 

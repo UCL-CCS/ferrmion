@@ -109,10 +109,6 @@ impl Anneal for OptimalEnumeration<'_> {
         for _ in 0..temp_int {
             let pos: usize = rng.sample(distr);
             let move_distance = rng.random_range(0..temp_int) as usize % n_modes;
-            // let swap_with: usize = (rng.random_range(0..=2*temp) - temp) % next_perm.len();
-            // let left_stay_right: usize = rng.random_range(0..=1);
-            // let pos2 = (pos + 2 * left_stay_right - 1) % next_perm.len();
-            // let pos2 = (pos + 2 * left_stay_right - 1) % next_perm.len();
             let pos2: usize = if rng.random_bool(0.5) {
                 (pos + move_distance) % n_modes
             } else {

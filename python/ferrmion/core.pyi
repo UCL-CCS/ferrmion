@@ -37,4 +37,12 @@ def fill_template(
     two_e_coeffs: npt.NDArray[np.float64],
     mode_op_map: npt.NDArray[np.uint],
 ) -> dict: ...
+def anneal_enumerations(
+    template: dict,
+    constant_energy: float,
+    one_e_coeffs: npt.NDArray[np.float64],
+    two_e_coeffs: npt.NDArray[np.float64],
+    temp: float,
+    initial_guess: npt.NDArray[np.uint],
+) -> dict: ...
 def icount_to_sign(icount: int) -> np.complex64: ...

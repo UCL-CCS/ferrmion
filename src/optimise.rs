@@ -105,16 +105,27 @@ impl Anneal for OptimalEnumeration<'_> {
 
     fn anneal(&self, param: &Array1<usize>, temp: f64) -> Result<Array1<usize>, Error> {
         let mut next_perm = param.clone();
+        let n_modes = next_perm.len();
         let mut rng = self.rng.lock().unwrap();
-        let distr = Uniform::try_from(0..param.len()).unwrap();
+        let distr = Uniform::try_from(0..n_modes).unwrap();
+        let temp_int = temp.floor() as u64 + 1;
 
-        for _ in 0..(temp.floor() as u64 + 1) {
+        for _ in 0..temp_int {
             let pos: usize = rng.sample(distr);
-            let left_stay_right: usize = rng.random_range(0..=1);
-            let temp = next_perm[[pos]].clone();
-            let pos2 = (pos + 2 * left_stay_right - 1) % next_perm.len();
+            let pos2: usize;
+            let move_distance = rng.random_range(0..temp_int) as usize % n_modes;
+            // let swap_with: usize = (rng.random_range(0..=2*temp) - temp) % next_perm.len();
+            // let left_stay_right: usize = rng.random_range(0..=1);
+            // let pos2 = (pos + 2 * left_stay_right - 1) % next_perm.len();
+            // let pos2 = (pos + 2 * left_stay_right - 1) % next_perm.len();
+            if rng.random_bool(0.5) {
+                pos2 = (pos + move_distance) % n_modes;
+            } else {
+                pos2 = (pos + n_modes - move_distance) % n_modes;
+            }
+            let swap_val = next_perm[[pos]].clone();
             next_perm[[pos]] = next_perm[[pos2]];
-            next_perm[[pos2]] = temp;
+            next_perm[[pos2]] = swap_val;
         }
         Ok(next_perm)
     }
@@ -126,12 +137,11 @@ pub fn anneal_enumerations<'coeff>(
     one_e_coeffs: ArrayView2<'coeff, f64>,
     two_e_coeffs: ArrayView4<'coeff, f64>,
     temp: f64,
+    initial_guess: ArrayView1<usize>,
 ) -> Result<(f64, Array1<usize>), Error> {
     let operator = OptimalEnumeration::new(template, constant_energy, one_e_coeffs, two_e_coeffs);
 
     // Define initial parameter vector
-    let n_modes = one_e_coeffs.len_of(Axis(0));
-    let init_param = Array1::from_iter(0..n_modes);
 
     // Set up simulated annealing solver
     // An alternative random number generator (RNG) can be provided to `new_with_rng`:
@@ -143,18 +153,18 @@ pub fn anneal_enumerations<'coeff>(
         // Stopping criteria   //
         /////////////////////////
         // Optional: stop if there was no new best solution after 1000 iterations
-        .with_stall_best(1000)
-        // Optional: stop if there was no accepted solution after 1000 iterations
-        .with_stall_accepted(1000)
-        /////////////////////////
-        // Reannealing         //
-        /////////////////////////
-        // Optional: Reanneal after 1000 iterations (resets temperature to initial temperature)
-        .with_reannealing_fixed(1000)
-        // Optional: Reanneal after no accepted solution has been found for `iter` iterations
-        .with_reannealing_accepted(500)
-        // Optional: Start reannealing after no new best solution has been found for 800 iterations
-        .with_reannealing_best(800);
+        .with_stall_best(1000);
+    // Optional: stop if there was no accepted solution after 1000 iterations
+    // .with_stall_accepted(1000);
+    /////////////////////////
+    // Reannealing         //
+    /////////////////////////
+    // Optional: Reanneal after 1000 iterations (resets temperature to initial temperature)
+    // .with_reannealing_fixed(1000)
+    // Optional: Reanneal after no accepted solution has been found for `iter` iterations
+    // .with_reannealing_accepted(500)
+    // Optional: Start reannealing after no new best solution has been found for 800 iterations
+    // .with_reannealing_best(800);
 
     /////////////////////////
     // Run solver          //
@@ -162,14 +172,14 @@ pub fn anneal_enumerations<'coeff>(
     let res = Executor::new(operator, solver)
         .configure(|state| {
             state
-                .param(init_param)
+                .param(initial_guess.to_owned())
                 // Optional: Set maximum number of iterations (defaults to `std::u64::MAX`)
                 .max_iters(10_000)
                 // Optional: Set target cost function value (defaults to `std::f64::NEG_INFINITY`)
                 .target_cost(0.0)
         })
         // Optional: Attach a observer
-        .add_observer(SlogLogger::term(), ObserverMode::Always)
+        .add_observer(SlogLogger::term(), ObserverMode::NewBest)
         .run()?;
 
     let final_state = res.state();

@@ -11,6 +11,93 @@ from ferrmion.core import (
 from ..encode import FermionQubitEncoding
 
 
+def linear_adjacency_matrix(length: int, periodic: bool) -> npt.NDArray[np.bool]:
+    """Creates an adjacency matrix for a linear Hubbard Hamiltonian.
+
+    Args:
+        length (int): The number of sites.
+        periodic (bool): If true, periodic boundary conditions are used.
+
+    Returns:
+        np.ndarray[np.bool]: Adjacency matrix for lattice sites.
+    """
+    return square_adjacency_matrix((length, 1), periodic=periodic)
+
+
+def square_adjacency_matrix(
+    shape: tuple[int, int], periodic: bool
+) -> npt.NDArray[np.bool]:
+    """Creates an adjacency matrix for a 2D square lattice Hubbard Hamiltonian.
+
+    Args:
+        shape (tuple[int, int]): The number of sites.
+        periodic (bool): If true, periodic boundary conditions are used.
+
+    Returns:
+        np.ndarray[np.bool]: Adjacency matrix for lattice sites.
+    """
+    # find the side length to fit nodes into square
+    # we'll build a perfect square first before cutting.
+    nx, ny = shape
+    n_sites = nx * ny
+
+    # initially make a chain
+    adjacency_matrix = np.eye(n_sites, k=1)
+
+    # cut chain into rows by removing connections
+    for i in range(nx, n_sites, nx):
+        adjacency_matrix[i - 1, i] = 0.0
+
+    # Add connection to number below.
+    adjacency_matrix += np.eye(n_sites, k=nx)
+
+    if periodic:
+        # Wrap rows
+        for i in range(ny):
+            adjacency_matrix[i * nx, (i + 1) * nx - 1] = 1
+
+        # Wrap columns
+        adjacency_matrix += np.eye(n_sites, k=nx * (ny - 1))
+
+    # Hamitian conjugate
+    adjacency_matrix += adjacency_matrix.T
+    return adjacency_matrix
+
+
+def cube_adjacency_matrix(
+    shape: tuple[int, int, int], periodic: bool
+) -> npt.NDArray[np.bool]:
+    """Creates an adjacency matrix for a 3D square lattice Hubbard Hamiltonian.
+
+    Args:
+        shape (tuple[int, int, int]): The number of sites.
+        periodic (bool): If true, periodic boundary conditions are used.
+
+    Returns:
+        np.ndarray[np.bool]: Adjacency matrix for lattice sites.
+    """
+    nx, ny, nz = shape
+    n_sites = nx * ny * nz
+
+    adjacency_matrix = np.zeros((n_sites, n_sites))
+    # Add each of the layers of a square matrix
+    for i in range(0, n_sites, nx * ny):
+        adjacency_matrix[i : i + nx * ny, i : i + nx * ny] = np.triu(
+            square_adjacency_matrix((nx, ny), periodic=periodic)
+        )
+
+    # Add connection in D3
+    adjacency_matrix += np.eye(n_sites, k=nx * ny)
+
+    # Wrap D3
+    if periodic:
+        adjacency_matrix += np.eye(n_sites, k=nx * ny * (nz - 1))
+
+    adjacency_matrix += adjacency_matrix.T
+
+    return adjacency_matrix
+
+
 def hubbard_coefficients(
     n_modes: int,
     adjacency_matrix: npt.NDArray,
@@ -98,90 +185,3 @@ def hubbard_hamiltonian(
         mode_op_map=encoding.default_mode_op_map,
     )
     return qubit_hamiltonian
-
-
-def linear_hubbard_hamiltonian(
-    encoding: FermionQubitEncoding,
-    onsite_term: float,
-    hopping_term: float = 1,
-    periodic: bool = False,
-    spinless: bool = False,
-) -> dict[str, float]:
-    """Hubbard Hamiltonian for a chain.
-
-    Args:
-        encoding (FermionQubitEncoding): The encoding to use.
-        hopping_term (float): Kinetic term coefficient.
-        onsite_term (float): Onsite two-electron term.
-        periodic (bool): Whether to use a periodic lattice.
-        spinless (bool): Set to True to use single spin Hamiltonian.
-
-    Returns:
-        dict[str, float]: A qubit Hamiltonian.
-    """
-    n_sites = encoding.n_modes + 1
-    n_sites //= 1 if spinless else 2
-    adjacency_matrix = np.eye(n_sites, k=1) + np.eye(n_sites, k=-1)
-
-    if periodic:
-        adjacency_matrix[0, n_sites] = 1.0
-        adjacency_matrix[n_sites, 0] = 1.0
-
-    return hubbard_hamiltonian(encoding, adjacency_matrix, onsite_term, hopping_term)
-
-
-def square_hubbard_hamiltonian(
-    encoding: FermionQubitEncoding,
-    onsite_term: float,
-    hopping_term: float = 1,
-    periodic: bool = False,
-    spinless: bool = False,
-) -> dict[str, float]:
-    """Hubbard Hamiltonian for a square lattice.
-
-    Note that if he number of modes is not a square number,
-    modes wil be missing from the lower right portion of the lattice.
-
-    Args:
-        encoding (FermionQubitEncoding): The encoding to use.
-        hopping_term (float): Kinetic term coefficient.
-        onsite_term (float): Onsite two-electron term.
-        periodic (bool): Whether to use a periodic lattice.
-        spinless (bool): Set to True to use single spin Hamiltonian.
-
-    Returns:
-        dict[str, float]: A qubit Hamiltonian.
-    """
-    n_modes = encoding.n_modes
-    # find the side length to fit nodes into square
-    # we'll build a perfect square first before cutting.
-    n_sites = n_modes + 1
-    n_sites //= 1 if spinless else 2
-    side_length = int(np.ceil(np.log2(n_sites // 2))) + 1
-
-    # initially make a chain
-    adjacency_matrix = np.eye(n_sites, k=1)
-    adjacency_matrix
-
-    # cut chain into rows by removing connections
-    for i in range(side_length, n_sites, side_length):
-        adjacency_matrix[i - 1, i] = 0.0
-
-    # Add connection to number below.
-    adjacency_matrix += np.eye(n_sites, k=side_length)
-
-    if periodic:
-        # Wrap rows
-        for i in range(side_length):
-            adjacency_matrix[i * side_length, i * side_length + side_length - 1] = 1
-
-        # Wrap columns
-        adjacency_matrix += np.eye(n_sites, k=side_length * (side_length - 1))
-
-    # Remove excess nodes
-    adjacency_matrix = adjacency_matrix[:n_sites, :n_sites]
-
-    # Hamitian conjugate
-    adjacency_matrix += adjacency_matrix.T
-
-    return hubbard_hamiltonian(encoding, adjacency_matrix, onsite_term, hopping_term)

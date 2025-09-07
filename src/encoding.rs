@@ -68,7 +68,7 @@ fn test_symplectic_product_map() {
 pub fn hartree_fock_state(
     vacuum_state: ArrayView1<f64>,
     fermionic_hf_state: ArrayView1<bool>,
-    mode_op_map: HashMap<usize, usize>,
+    mode_op_map: ArrayView1<usize>,
     symplectic_matrix: ArrayView2<bool>,
 ) -> Result<(Array1<Complex64>, Array2<bool>)> {
     debug!("Calculating Hartree-fock state");
@@ -101,7 +101,7 @@ pub fn hartree_fock_state(
         if !occ {
             continue;
         }
-        let mode_index = mode_op_map.get(&mode).unwrap();
+        let mode_index = mode_op_map[[mode]];
 
         let left_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index);
         let right_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
@@ -164,14 +164,7 @@ fn test_hartree_fock() {
     let vacuum_state: ArrayView1<f64> = ArrayView1::from(&[0., 0., 0., 0., 0., 0.]);
     let fermionic_hf_state: ArrayView1<bool> =
         ArrayView1::from(&[true, true, true, false, false, false]);
-    let mut mode_op_map: HashMap<usize, usize> = HashMap::new();
-    mode_op_map.insert(0, 0);
-    mode_op_map.insert(1, 1);
-    mode_op_map.insert(2, 2);
-    mode_op_map.insert(3, 3);
-    mode_op_map.insert(4, 4);
-    mode_op_map.insert(5, 5);
-    mode_op_map.insert(6, 6);
+    let mode_op_map: ArrayView1<usize> = ArrayView1::from(&[0, 1, 2, 3, 4, 5, 6]);
     let symplectic_matrix: ArrayView2<bool> = ArrayView2::from(&[
         [
             true, false, false, false, false, false, false, false, false, false, false, false,
@@ -213,7 +206,7 @@ fn test_hartree_fock() {
     let result = hartree_fock_state(
         vacuum_state,
         fermionic_hf_state,
-        mode_op_map.clone(),
+        mode_op_map,
         symplectic_matrix,
     )
     .unwrap();

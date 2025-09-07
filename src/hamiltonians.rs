@@ -17,7 +17,7 @@ pub enum IntegralIndex {
 }
 
 pub type QubitHamiltonianTemplate = HashMap<String, HashMap<IntegralIndex, Complex64>>;
-
+pub type QubitHamiltonian<'template> = HashMap<&'template String, Complex64>;
 pub enum Notation {
     Physicist,
     Chemist,
@@ -135,13 +135,13 @@ pub fn molecular(
 //     Zip::from(sym_products.exact_chunks((n_modes, n_modes, 1))).for_each(|i| println!("{}", i));
 // }
 
-pub fn fill_template(
-    template: QubitHamiltonianTemplate,
+pub fn fill_template<'template>(
+    template: &'template QubitHamiltonianTemplate,
     constant_energy: f64,
     one_e_terms: ArrayView2<f64>,
     two_e_terms: ArrayView4<f64>,
-    mode_op_map: HashMap<usize, usize>,
-) -> HashMap<String, Complex64> {
+    mode_op_map: ArrayView1<usize>,
+) -> QubitHamiltonian<'template> {
     debug!("Filling template with mode-operator map {:#?}", mode_op_map);
     assert!(one_e_terms
         .shape()
@@ -151,44 +151,39 @@ pub fn fill_template(
         .shape()
         .iter()
         .all(|&s| s == one_e_terms.len_of(Axis(0))));
-    assert!((0..one_e_terms.len_of(Axis(0))).all(|v| { mode_op_map.contains_key(&v) }));
-    assert!(mode_op_map
-        .values()
-        .all(|v| { mode_op_map.contains_key(v) }));
+    assert!(one_e_terms.len_of(Axis(0)) == mode_op_map.len());
     // assert_eq!(HashSet::from(mode_op_map.keys()), HashSet::from(0..one_e_terms.len_of(Axis(0))));
     // assert_eq!(HashSet::from(mode_op_map.values()), (HashSet::from(0..one_e_terms.len_of(Axis(0)))));
-    let mut hamiltonian: HashMap<String, Complex64> = HashMap::new();
-    hamiltonian.insert(
-        "I".repeat(mode_op_map.len()).to_string(),
-        Complex64::new(constant_energy, 0.),
-    );
+    let mut hamiltonian: QubitHamiltonian<'template> = QubitHamiltonian::new();
+    let identity_key: String = "I".repeat(mode_op_map.len()).to_string();
+    if let Some(identity_val) = hamiltonian.get_mut(&identity_key) {
+        *identity_val += Complex64::new(constant_energy, 0.);
+    }
 
     for (pauli_term, components) in template {
-        let mut val = Complex64::new(0., 0.);
-        let err_str = "Mode op map does not contain integral index.";
-        for (indices, factor) in components {
-            let coeff = match indices {
-                IntegralIndex::OneE(m, n) => {
-                    one_e_terms[[
-                        *mode_op_map.get(&m).expect(err_str),
-                        *mode_op_map.get(&n).expect(err_str),
-                    ]]
-                }
-                IntegralIndex::TwoE(p, q, r, s) => {
-                    two_e_terms[[
-                        *mode_op_map.get(&p).expect(err_str),
-                        *mode_op_map.get(&q).expect(err_str),
-                        *mode_op_map.get(&r).expect(err_str),
-                        *mode_op_map.get(&s).expect(err_str),
-                    ]]
-                }
-            };
-            val += factor * Complex64::new(coeff, 0.);
-        }
+        let val = components
+            .iter()
+            .fold(Complex64::new(0., 0.), |acc, (indices, factor)| {
+                let coeff = match indices {
+                    IntegralIndex::TwoE(p, q, r, s) => {
+                        two_e_terms[[
+                            mode_op_map[[*p]],
+                            mode_op_map[[*q]],
+                            mode_op_map[[*r]],
+                            mode_op_map[[*s]],
+                        ]]
+                    }
+                    IntegralIndex::OneE(m, n) => {
+                        one_e_terms[[mode_op_map[[*m]], mode_op_map[[*n]]]]
+                    }
+                };
+                acc + factor * Complex64::new(coeff, 0.)
+            });
         if val.norm() > 1e-12 {
             hamiltonian.insert(pauli_term, val);
         };
     }
+
     debug!(
         "Template filled: hamiltonian.keys()={:?}",
         hamiltonian.keys()

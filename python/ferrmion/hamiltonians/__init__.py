@@ -8,8 +8,6 @@ from ferrmion.core import (
 
 from .hubbard import (
     hubbard_hamiltonian,
-    linear_hubbard_hamiltonian,
-    square_hubbard_hamiltonian,
 )
 from .molecular import molecular_hamiltonian
 

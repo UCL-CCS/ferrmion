@@ -9,7 +9,7 @@ def symplectic_product(
 def hartree_fock_state(
     vacuum_state: npt.NDArray[np.float64],
     fermionic_hf_state: npt.NDArray[np.bool_],
-    mode_op_map: dict[int, int],
+    mode_op_map: list[int],
     symplectic_matrix: npt.NDArray[np.bool_],
 ) -> tuple[npt.NDArray[np.complex128], npt.NDArray[np.bool_]]: ...
 def symplectic_to_pauli(symplectic: npt.NDArray[np.bool_]) -> tuple[int, str]: ...

@@ -234,11 +234,11 @@ pub fn fill_template<'template>(
     let s = RandomState::new();
     let mut hamiltonian: QubitHamiltonian<'template> =
         QubitHamiltonian::with_capacity_and_hasher(template.keys().len(), s);
-    let identity_key: String = "I".repeat(mode_op_map.len()).to_string();
-    if let Some(identity_val) = hamiltonian.get_mut(&identity_key) {
-        *identity_val += Complex64::new(constant_energy, 0.);
-    }
-
+    if let Some((identity_key, _)) =
+        template.get_key_value(&"I".repeat(mode_op_map.len()).to_string())
+    {
+        hamiltonian.insert(identity_key, Complex64::new(constant_energy, 0.));
+    };
     for (pauli_term, components) in template {
         let val = components
             .iter()

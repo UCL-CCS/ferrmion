@@ -11,7 +11,7 @@ from ferrmion.core import (
 from ..encode import FermionQubitEncoding
 
 
-def linear_adjacency_matrix(length: int, periodic: bool) -> npt.NDArray[np.bool]:
+def linear_adjacency_matrix(length: int, periodic: bool) -> npt.NDArray[np.bool_]:
     """Creates an adjacency matrix for a linear Hubbard Hamiltonian.
 
     Args:
@@ -19,14 +19,14 @@ def linear_adjacency_matrix(length: int, periodic: bool) -> npt.NDArray[np.bool]
         periodic (bool): If true, periodic boundary conditions are used.
 
     Returns:
-        np.ndarray[np.bool]: Adjacency matrix for lattice sites.
+        np.ndarray[np.bool_]: Adjacency matrix for lattice sites.
     """
     return square_adjacency_matrix((length, 1), periodic=periodic)
 
 
 def square_adjacency_matrix(
     shape: tuple[int, int], periodic: bool
-) -> npt.NDArray[np.bool]:
+) -> npt.NDArray[np.bool_]:
     """Creates an adjacency matrix for a 2D square lattice Hubbard Hamiltonian.
 
     Args:
@@ -34,7 +34,7 @@ def square_adjacency_matrix(
         periodic (bool): If true, periodic boundary conditions are used.
 
     Returns:
-        np.ndarray[np.bool]: Adjacency matrix for lattice sites.
+        np.ndarray[np.bool_]: Adjacency matrix for lattice sites.
     """
     # find the side length to fit nodes into square
     # we'll build a perfect square first before cutting.
@@ -66,7 +66,7 @@ def square_adjacency_matrix(
 
 def cube_adjacency_matrix(
     shape: tuple[int, int, int], periodic: bool
-) -> npt.NDArray[np.bool]:
+) -> npt.NDArray[np.bool_]:
     """Creates an adjacency matrix for a 3D square lattice Hubbard Hamiltonian.
 
     Args:
@@ -74,7 +74,7 @@ def cube_adjacency_matrix(
         periodic (bool): If true, periodic boundary conditions are used.
 
     Returns:
-        np.ndarray[np.bool]: Adjacency matrix for lattice sites.
+        np.ndarray[np.bool_]: Adjacency matrix for lattice sites.
     """
     nx, ny, nz = shape
     n_sites = nx * ny * nz

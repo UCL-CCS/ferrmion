@@ -604,8 +604,6 @@ dependencies = [
     { name = "numpy" },
     { name = "openfermion" },
     { name = "pydantic" },
-    { name = "qiskit" },
-    { name = "qiskit-nature" },
     { name = "rustworkx" },
 ]
 
@@ -636,8 +634,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.24.4" },
     { name = "openfermion", specifier = ">=0.11.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
-    { name = "qiskit", specifier = ">=2.0.2" },
-    { name = "qiskit-nature", specifier = ">=0.7.2" },
     { name = "rustworkx", specifier = ">=0.16.0" },
 ]
 
@@ -2417,40 +2413,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/93/cb/80ee7d6d704f837b791fbbe952434d113739c000e3ec445e7055e3bd844c/qiskit-2.0.2-cp39-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:e2422c375cd1cbe2ff8f5b59361479a50c1df1b99ff6a29738bf744a41039dc1", size = 6493706, upload-time = "2025-05-27T22:14:39.562Z" },
     { url = "https://files.pythonhosted.org/packages/cb/7c/f04c4c6ab93b359fb6ddd9090b8ababa43caa4f4aba4e0a45bd9d85f0680/qiskit-2.0.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6e7a52120623788768234fdc47f9c48cb0523f0cb66bb5408c1bc39048007f15", size = 6505135, upload-time = "2025-05-27T20:41:21.782Z" },
     { url = "https://files.pythonhosted.org/packages/c5/6b/af910210ba1642281990d078f1281784173068c59a81e7fce9982cf98ddf/qiskit-2.0.2-cp39-abi3-win_amd64.whl", hash = "sha256:1764e40a4cf570ad30384c5c530a65c7765062c8e1ac50122b47d863ae8f5376", size = 6243174, upload-time = "2025-05-27T20:41:23.514Z" },
-]
-
-[[package]]
-name = "qiskit-algorithms"
-version = "0.4.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "qiskit" },
-    { name = "scipy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e5/86/d0f8ccae25281d49ebb0e2b59076c2d815389c16a4f7a379936f21065e94/qiskit_algorithms-0.4.0.tar.gz", hash = "sha256:b945e807c9b94ba2e0d2e02898b1f1e1a33efd3b4a6dc5a45bb787c6832d4093", size = 259556, upload-time = "2025-08-29T18:32:24.076Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/23/ab868be0ea11e0054ac4962d27f80cc064e007f8e34b7b61808a25227cca/qiskit_algorithms-0.4.0-py3-none-any.whl", hash = "sha256:c8bfc119e270c7cd7d6013e62193914381bd71fd4cdc847c07b50c749fd0114d", size = 327840, upload-time = "2025-08-29T18:32:22.659Z" },
-]
-
-[[package]]
-name = "qiskit-nature"
-version = "0.7.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "h5py" },
-    { name = "numpy" },
-    { name = "psutil" },
-    { name = "qiskit" },
-    { name = "qiskit-algorithms" },
-    { name = "rustworkx" },
-    { name = "scipy" },
-    { name = "setuptools" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/89/36/d8dfb1b241a5c3ec5a8868bc4d7311af23dc741c81d0d8b93a6fb63c0366/qiskit-nature-0.7.2.tar.gz", hash = "sha256:621b9bb88c0fa4c705948af86e3ef7d36bb8e7aa11b95801264527de58fcd694", size = 2185596, upload-time = "2024-02-23T10:20:50.39Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/16/2bf5c270457dbda2123604108f007f4b7087fa5a3913e60f5a4f75b76d92/qiskit_nature-0.7.2-py3-none-any.whl", hash = "sha256:9bc8900626b9a6f9c5dbe44589c53932408a661d61ad9003b8feadb30979cc05", size = 2156071, upload-time = "2024-02-23T10:20:44.884Z" },
 ]
 
 [[package]]

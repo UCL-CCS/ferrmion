@@ -17,6 +17,8 @@ dependencies = [
     "numpy>=1.24.4",
     "openfermion>=0.11.0",
     "pydantic>=2.10.6",
+    "qiskit>=2.0.2",
+    "qiskit-nature>=0.7.2",
     "rustworkx>=0.16.0",
 ]
 

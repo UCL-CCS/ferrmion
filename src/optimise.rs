@@ -15,12 +15,23 @@ use rand::{distr::Uniform, prelude::*};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::sync::{Arc, Mutex};
 
+/// Returns the mean Pauli-weight of Hamiltonian terms.
+/// scaled by the coefficient of the term.
 pub fn pauli_coefficient_weight(hamiltonian: QubitHamiltonian) -> f64 {
     let weight = hamiltonian.iter().fold(0., |acc, (key, val)| {
         let n_identity = key.chars().filter(|c| c == &'I').count();
         acc + (key.len() - n_identity) as f64 * val.abs()
     });
-    weight
+    weight / hamiltonian.len() as f64
+}
+
+/// Returns the mean Pauli-weight of Hamiltonian terms.
+pub fn pauli_weight(hamiltonian: QubitHamiltonian) -> f64 {
+    let weight = hamiltonian.iter().fold(0., |acc, (key, val)| {
+        let n_identity = key.chars().filter(|c| c == &'I').count();
+        acc + (key.len() - n_identity) as f64
+    });
+    weight / hamiltonian.len() as f64
 }
 
 pub fn template_weight(

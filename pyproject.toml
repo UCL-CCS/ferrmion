@@ -14,6 +14,7 @@ dynamic = ["version"]
 dependencies = [
     "deap>=1.4.3",
     "myst-sphinx-gallery>=0.3.0",
+    "nbed",
     "numpy>=1.24.4",
     "openfermion>=0.11.0",
     "pydantic>=2.10.6",
@@ -52,6 +53,9 @@ indent-width = 4
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.uv.sources]
+nbed = { path = "../Nbed" }
 
 [tool.ruff.lint]
 select = [

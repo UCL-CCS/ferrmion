@@ -9,7 +9,7 @@ def symplectic_product(
 def hartree_fock_state(
     vacuum_state: npt.NDArray[np.float64],
     fermionic_hf_state: npt.NDArray[np.bool_],
-    mode_op_map: dict[int, int],
+    mode_op_map: list[int],
     symplectic_matrix: npt.NDArray[np.bool_],
 ) -> tuple[npt.NDArray[np.complex128], npt.NDArray[np.bool_]]: ...
 def symplectic_to_pauli(symplectic: npt.NDArray[np.bool_]) -> tuple[int, str]: ...
@@ -26,11 +26,29 @@ def molecular_hamiltonian_template(
     symplectics: npt.NDArray[np.bool_],
     physicist_notation: bool,
 ) -> dict: ...
+def hubbard_hamiltonian_template(
+    ipowers: npt.NDArray[np.uint8],
+    symplectics: npt.NDArray[np.bool_],
+) -> dict: ...
+def template_weight_distribution(
+    template: dict,
+    constant_energy: float,
+    one_e_coeffs: npt.NDArray[np.float64],
+    two_e_coeffs: npt.NDArray[np.float64],
+    n_permutations: int,
+) -> dict: ...
 def fill_template(
     template: dict,
     constant_energy: float,
-    one_e_terms: npt.NDArray[np.float64],
-    two_e_terms: npt.NDArray[np.float64],
-    mode_op_map: dict[int, int],
+    one_e_coeffs: npt.NDArray[np.float64],
+    two_e_coeffs: npt.NDArray[np.float64],
+    mode_op_map: npt.NDArray[np.uint],
+) -> dict: ...
+def anneal_enumerations(
+    template: dict,
+    one_e_coeffs: npt.NDArray[np.float64],
+    two_e_coeffs: npt.NDArray[np.float64],
+    temperature: float,
+    initial_guess: npt.NDArray[np.uint],
 ) -> dict: ...
 def icount_to_sign(icount: int) -> np.complex64: ...

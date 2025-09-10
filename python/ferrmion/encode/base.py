@@ -143,7 +143,9 @@ class FermionQubitEncoding(ABC):
         pass
 
     def hartree_fock_state(
-        self, fermionic_hf_state: NDArray[np.bool_], mode_op_map: dict | None = None
+        self,
+        fermionic_hf_state: NDArray[np.bool_],
+        mode_op_map: list[int] | None = None,
     ):
         """Find the Hartree-Fock state of a majorana string encoding.
 
@@ -261,8 +263,8 @@ def edge_operator(
 
     icount, sym_products = encoding.symplectic_product_map
     m, n = edge_indices
-    m = encoding.default_mode_op_map[m]
-    n = encoding.default_mode_op_map[n]
+    m = int(encoding.default_mode_op_map[m])
+    n = int(encoding.default_mode_op_map[n])
 
     first_term = sym_products[2 * m, 2 * n]
     second_term = sym_products[2 * m, 2 * n + 1]

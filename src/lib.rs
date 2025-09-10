@@ -1,19 +1,20 @@
 use log::info;
 use numpy::{
-    Complex64, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray4,
+    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    PyReadonlyArray4,
 };
 use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
-use std::collections::HashMap;
 
 mod utils;
+use crate::optimise::template_weight;
 use crate::utils::*;
 mod hamiltonians;
-use crate::hamiltonians::{
-    fill_template, molecular, IntegralIndex, Notation, QubitHamiltonianTemplate,
-};
+use crate::hamiltonians::{fill_template, hubbard, molecular, Notation, QubitHamiltonianTemplate};
 mod encoding;
 use crate::encoding::{hartree_fock_state, symplectic_product_map};
+mod optimise;
+use crate::optimise::anneal_enumerations;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -66,7 +67,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         import numpy as np
         vacuum = np.zeros(6)
         hf = np.array([True, True, False, False, False, False])
-        mode_op_map = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
+        mode_op_map = np.array([0,1,2,3,4,5])
         symplectic = np.eye(6, 12, dtype=bool)
         coeffs, states = ferrmion.hartree_fock_state(vacuum, hf, mode_op_map, symplectic)
         ```
@@ -168,26 +169,40 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     #[pyfn(m)]
+    #[pyo3(name = "hubbard_hamiltonian_template")]
+    fn wrap_hubbard_hamiltonian<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+    ) -> Bound<'py, PyDict> {
+        let ipowers = ipowers.as_array();
+        let symplectics = symplectics.as_array();
+        let hamiltonian = hubbard(ipowers, symplectics);
+        hamiltonian
+            .into_py_dict(py)
+            .expect("Cannot parse Hamiltonian Template dict.")
+    }
+
+    #[pyfn(m)]
     #[pyo3(name = "fill_template")]
     fn wrap_fill_template<'py>(
         py: Python<'py>,
-        template: Py<PyDict>,
+        template: &Bound<'py, PyDict>,
         constant_energy: f64,
-        one_e_terms: PyReadonlyArray2<f64>,
-        two_e_terms: PyReadonlyArray4<f64>,
+        one_e_coeffs: PyReadonlyArray2<f64>,
+        two_e_coeffs: PyReadonlyArray4<f64>,
         mode_op_map: PyReadonlyArray1<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         // let constant_energy = constant_energy.extract(py)?;
         let mode_op_map = mode_op_map.as_array();
-        let template =
-            template.extract::<HashMap<String, HashMap<IntegralIndex, Complex64>>>(py)?;
-        let one_e_terms = one_e_terms.as_array();
-        let two_e_terms = two_e_terms.as_array();
+        let template = template.extract::<QubitHamiltonianTemplate>()?;
+        let one_e_coeffs = one_e_coeffs.as_array();
+        let two_e_coeffs = two_e_coeffs.as_array();
         let hamiltonian = fill_template(
             &template,
             constant_energy,
-            one_e_terms,
-            two_e_terms,
+            one_e_coeffs,
+            two_e_coeffs,
             mode_op_map,
         );
         Ok(hamiltonian
@@ -195,5 +210,52 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .expect("Cannot parse Hamiltonian dict."))
     }
 
+    #[pyfn(m)]
+    #[pyo3(name = "template_weight_distribution")]
+    fn wrap_template_weight<'py>(
+        py: Python<'py>,
+        template: &Bound<'py, PyDict>,
+        constant_energy: f64,
+        one_e_coeffs: PyReadonlyArray2<f64>,
+        two_e_coeffs: PyReadonlyArray4<f64>,
+        n_permutations: usize,
+    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        // let constant_energy = constant_energy.extract(py)?;
+        let template = template.extract::<QubitHamiltonianTemplate>()?;
+        let one_e_coeffs = one_e_coeffs.as_array();
+        let two_e_coeffs = two_e_coeffs.as_array();
+        let weight = template_weight(
+            &template,
+            constant_energy,
+            one_e_coeffs,
+            two_e_coeffs,
+            n_permutations,
+        );
+        Ok(weight.into_pyarray(py))
+    }
+    #[pyfn(m)]
+    #[pyo3(name = "anneal_enumerations")]
+    fn wrap_anneal_enumerations<'py>(
+        py: Python<'py>,
+        template: &Bound<'py, PyDict>,
+        one_e_coeffs: PyReadonlyArray2<f64>,
+        two_e_coeffs: PyReadonlyArray4<f64>,
+        temperature: f64,
+        initial_guess: PyReadonlyArray1<usize>,
+    ) -> PyResult<(f64, Bound<'py, PyArray1<usize>>)> {
+        let one_e_coeffs = one_e_coeffs.as_array();
+        let two_e_coeffs = two_e_coeffs.as_array();
+        let template = template.extract::<QubitHamiltonianTemplate>()?;
+        let initial_guess = initial_guess.as_array();
+        let result = anneal_enumerations(
+            template,
+            one_e_coeffs,
+            two_e_coeffs,
+            temperature,
+            initial_guess,
+        );
+        let (cost, permutation) = result.expect("Annealing output error.");
+        Ok((cost, permutation.into_pyarray(py)))
+    }
     Ok(())
 }

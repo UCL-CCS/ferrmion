@@ -1,11 +1,14 @@
 # Examples
 (Examples)=
+
 ## Encodings
 ```{base-gallery}
 :caption: Encoding Examples
 :tooltip:
 
 notebooks/growing_trees
+notebooks/rett
+notebooks/huffman
 ```
 
 ## Hamiltonians
@@ -16,12 +19,11 @@ notebooks/growing_trees
 notebooks/molecular_hamiltonian
 notebooks/hubbard_hamiltonian
 ```
-
+s
 ## Optimization
 ```{base-gallery}
 :caption: Optimization Examples
 :tooltip:
 
-notebooks/rett
 notebooks/pauli_weight
 ```

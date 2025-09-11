@@ -1,6 +1,7 @@
 """Tests for functions in the optimize submodule."""
 
 from ferrmion.optimize.rett import reduced_entanglement_tree
+from ferrmion.optimize.huffman import huffman_ternary_tree
 from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, pauli_weighted_norm
 from ferrmion.encode import TernaryTree
 from ferrmion.core import molecular_hamiltonian_template, fill_template
@@ -50,6 +51,38 @@ def test_rett(n2mi):
     np.random.seed(1017)
     rett = reduced_entanglement_tree(n2mi, squash=True)
     assert rett.branch_operator_map == {'zzzzx': 'ZZZZXIIIII', 'zzzx': 'ZZZXIIIIII', 'zzzzzzx': 'ZZZZZZXIII', 'zzx': 'ZZXIIIIIII', 'zzy': 'ZZYIIIIIII', 'zzzzzzzzx': 'ZZZZZZZZXI', 'zzzzy': 'ZZZZYIIIII', 'zzzzzzzzzy': 'ZZZZZZZZZY', 'y': 'YIIIIIIIII', 'zzzzzzzx': 'ZZZZZZZXII', 'zx': 'ZXIIIIIIII', 'zzzzzzy': 'ZZZZZZYIII', 'zy': 'ZYIIIIIIII', 'zzzy': 'ZZZYIIIIII', 'zzzzzzzzzz': 'ZZZZZZZZZZ', 'zzzzzzzy': 'ZZZZZZZYII', 'zzzzzy': 'ZZZZZYIIII', 'zzzzzzzzzx': 'ZZZZZZZZZX', 'zzzzzx': 'ZZZZZXIIII', 'zzzzzzzzy': 'ZZZZZZZZYI', 'x': 'XIIIIIIIII'}
+
+def test_huffman(water_integrals):
+    ones, twos = water_integrals
+    tree = huffman_ternary_tree(ones, twos)
+    tree_dict = {'x': {'x': {'x': {}, 'y': {}, 'z': {}},
+                       'y': {'x': {}, 'y': {}, 'z': {}},
+                       'z': {'x': {}, 'y': {}, 'z': {}}},
+                       'y': {'x': {'x': {}, 'y': {}, 'z': {}},
+                             'y': {'x': {},
+                                   'y': {'x': {}, 'y': {}, 'z': {}},
+                                   'z': {'x': {}, 'y': {}, 'z': {}}},
+                                   'z': {'x': {'x': {}, 'y': {}, 'z': {}},
+                                         'y': {'x': {}, 'y': {}, 'z': {}},
+                                         'z': {'x': {}, 'y': {}, 'z': {}}}},
+                                         'z': {}}
+    assert tree.as_dict() == tree_dict
+    assert tree.string_pairs == {
+        '': ('xzz', 'yzzz'),
+        'x': ('xxz', 'xyz'),
+        'y': ('yyzz', 'yxz'),
+        'xx': ('xxx', 'xxy'),
+        'xy': ('xyy', 'xyx'),
+        'xz': ('xzx', 'xzy'),
+        'yx': ('yxy', 'yxx'),
+        'yy': ('yyx', 'yyyz'),
+        'yz': ('yzyz', 'yzxz'),
+        'yyy': ('yyyy', 'yyyx'),
+        'yyz': ('yyzx', 'yyzy'),
+        'yzx': ('yzxy', 'yzxx'),
+        'yzy': ('yzyx', 'yzyy'),
+        'yzz': ('yzzy', 'yzzx')
+        }
 
 def test_pauli_weighted_norm(water_integrals):
     jw = TernaryTree(14).JW()

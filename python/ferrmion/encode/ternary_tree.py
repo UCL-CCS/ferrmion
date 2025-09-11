@@ -192,7 +192,6 @@ class TernaryTree(FermionQubitEncoding):
 
         nodes = self.root.child_strings
         node_indices = {node: i for i, node in enumerate(nodes)}
-
         branch_operator_map = {}
         for branch in branches:
             branch_operator_map[branch] = ["I"] * self.n_qubits

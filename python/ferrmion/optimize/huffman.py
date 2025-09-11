@@ -138,8 +138,6 @@ def huffman_ternary_tree(ones, twos):
     Huffman-Code-based Ternary Tree Transformation. Chinese Physics Letters.
 
     http://iopscience.iop.org/article/10.1088/0256-307X/42/10/100001
-
-
     """
     n_modes = ones.shape[0]
 

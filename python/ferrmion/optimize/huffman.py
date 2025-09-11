@@ -11,18 +11,20 @@ from ferrmion.utils import find_pauli_weight, pauli_to_symplectic, symplectic_pr
 def _majarana_op_frequency(
     ones: npt.NDArray[float], twos: npt.NDArray[float]
 ) -> npt.NDArray[float]:
-    majorana_freq = np.zeros(ones.shape[0])
-    for i in range(ones.shape[0]):
-        for j in range(ones.shape[1]):
+    n_modes = ones.shape[0]
+    majorana_freq = np.zeros(n_modes)
+
+    for i in range(n_modes):
+        for j in range(n_modes):
             val = np.abs(ones[i, j])
             positions = {i, j}
             for p in positions:
                 majorana_freq[p] += val
 
-    for i in range(ones.shape[0]):
-        for j in range(ones.shape[1]):
-            for k in range(ones.shape[1]):
-                for l in range(ones.shape[1]):
+    for i in range(n_modes):
+        for j in range(n_modes):
+            for k in range(n_modes):
+                for l in range(n_modes):
                     val = np.abs(twos[i, j, k, l])
                     positions = {i, j, k, l}
                     for p in positions:
@@ -30,16 +32,17 @@ def _majarana_op_frequency(
     return majorana_freq.repeat(2)
 
 
-def _build_huffman_tree(majorana_frequencies: npt.NDArray[float]) -> TernaryTree:
+def _build_huffman_tree(
+    n_modes: int, majorana_frequencies: npt.NDArray[float]
+) -> TernaryTree:
     nodes = {i: None for i in range(len(majorana_frequencies))}
     weights = {i: j for i, j in enumerate(majorana_frequencies)}
     n_ops = len(majorana_frequencies)
     for i in range(n_ops // 2):
         parent_index = 2 * n_ops - 1 - i
         mins = sorted(weights.items(), key=lambda kv: (kv[1], kv[0]))[:3]
-        print(mins)
 
-        parent = nodes.get(parent_index, TTNode(parent=None, qubit_label=i))
+        parent: TTNode = nodes.get(parent_index, TTNode(parent=None, qubit_label=i))
 
         match len(mins):
             case 0:
@@ -59,27 +62,49 @@ def _build_huffman_tree(majorana_frequencies: npt.NDArray[float]) -> TernaryTree
             new_weight += weight
             weights.pop(index)
             nodes.pop(index)
-        print(new_weight)
-
-        print(parent_index, parent.child_strings)
 
         nodes[parent_index] = parent
         weights[parent_index] = new_weight
 
+    assert len(nodes) == 1
     root_node = [*nodes.values()][0]
-    huffman_tree = TernaryTree(
-        n_modes=len(majorana_frequencies) // 2, root_node=root_node
-    )
+    huffman_tree = TernaryTree(n_modes=n_modes, root_node=root_node)
+    huffman_tree.string_pairs
 
-    # Needed because of a bug to do with node labels.
-    relabeled_tree = TernaryTree(14)
+    relabeled_tree = TernaryTree(huffman_tree.n_modes)
     for child in huffman_tree.root.child_strings:
         relabeled_tree.add_node(child)
+
+    huffman_tree = relabeled_tree
 
     return relabeled_tree
 
 
-def _huffman_mode_op_map(huffman_tree):
+def _two_e_frequency(ones, twos) -> npt.NDArray[float]:
+    n_modes = ones.shape[0]
+    two_e_freq = np.zeros(ones.shape)
+    for j in range(n_modes):
+        for i in range(n_modes):
+            for l in range(n_modes):
+                for k in range(n_modes):
+                    val = np.abs(twos[i, j, k, l])
+                    two_e_freq[i, j] += val
+                    two_e_freq[k, l] += val
+    two_e_freq = np.kron(two_e_freq, np.array([[1, 1], [1, 1]]))
+    two_e_freq = np.triu(two_e_freq, k=1)
+    return two_e_freq
+
+
+def _mode_priority(two_e_freq):
+    vaccum_frequencies = np.diag(two_e_freq, k=1)
+    sorted_pairs = [
+        (i, i + 1) for i in np.argsort(vaccum_frequencies)[::-1] if i % 2 == 0
+    ]
+    sorted_modes = [i[0] // 2 for i in sorted_pairs]
+    return sorted_modes
+
+
+def _operator_pair_priority(huffman_tree):
     weights = {}
     for index, pair in enumerate(huffman_tree.string_pairs.values()):
         left, right = pair
@@ -103,11 +128,34 @@ def _huffman_mode_op_map(huffman_tree):
         )
 
         operator_order = [index for index, _ in operator_order]
+    return operator_order
 
 
 def huffman_ternary_tree(ones, twos):
+    """Creates a Huffman-code Ternary Tree.
+
+    Li, Q. S., Liu, H. Y., Wang, Q., Wu, Y. C., & Guo, G. P. (2025).
+    Huffman-Code-based Ternary Tree Transformation. Chinese Physics Letters.
+
+    http://iopscience.iop.org/article/10.1088/0256-307X/42/10/100001
+
+
+    """
+    n_modes = ones.shape[0]
+
     majorana_frequencies = _majarana_op_frequency(ones, twos)
-    huffman_ternary_tree = _build_huffman_tree(majorana_frequencies)
-    mode_op_map = _huffman_mode_op_map(huffman_ternary_tree)
+
+    huffman_ternary_tree = _build_huffman_tree(n_modes, majorana_frequencies)
+    two_e_frequencies = _two_e_frequency(ones, twos)
+    sorted_modes = _mode_priority(two_e_frequencies)
+    sorted_operators = _operator_pair_priority(huffman_ternary_tree)
+
+    mode_op_map = [0] * len(sorted_modes)
+    for operator_index, mode_index in enumerate(sorted_modes):
+        mode_op_map[mode_index] = sorted_operators[operator_index]
+
+    huffman_ternary_tree.enumeration_scheme = (
+        huffman_ternary_tree.default_enumeration_scheme()
+    )
     huffman_ternary_tree.default_mode_op_map = mode_op_map
     return huffman_ternary_tree

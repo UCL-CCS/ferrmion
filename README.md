@@ -22,6 +22,7 @@ This codebase contains methods to generate qubit Hamiltonians from fermionic Ham
 
 ### Ternary Trees
 - [Reduced Entanglement Ternary Trees](https://ferrmion.readthedocs.io/en/latest/notebooks/rett.html)
+- [Huffman-code Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/huffman.html)
 
 ## Hamiltonians
 Functions to produce Hamiltonian templates and enumerated encodings are available in `ferrmion.hamiltonians`

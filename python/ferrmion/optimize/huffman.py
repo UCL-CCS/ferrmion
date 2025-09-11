@@ -131,20 +131,31 @@ def _operator_pair_priority(huffman_tree):
     return operator_order
 
 
-def huffman_ternary_tree(ones, twos):
+def huffman_ternary_tree(
+    one_e_coeffs: npt.NDArray[float], two_e_coeffs: npt.NDArray[float]
+) -> TernaryTree:
     """Creates a Huffman-code Ternary Tree.
 
     Li, Q. S., Liu, H. Y., Wang, Q., Wu, Y. C., & Guo, G. P. (2025).
     Huffman-Code-based Ternary Tree Transformation. Chinese Physics Letters.
 
     http://iopscience.iop.org/article/10.1088/0256-307X/42/10/100001
-    """
-    n_modes = ones.shape[0]
 
-    majorana_frequencies = _majarana_op_frequency(ones, twos)
+    Note: Only vaccum-preserving Huffman-trees are currently supported.
+
+    Args:
+        one_e_coeffs (np.ndarray): One electron coefficients.
+        two_e_coeffs (np.ndarray): Two electron coefficients.
+
+    Return:
+        TernaryTree: A Huffman-code ternary tree.
+    """
+    n_modes = one_e_coeffs.shape[0]
+
+    majorana_frequencies = _majarana_op_frequency(one_e_coeffs, two_e_coeffs)
 
     huffman_ternary_tree = _build_huffman_tree(n_modes, majorana_frequencies)
-    two_e_frequencies = _two_e_frequency(ones, twos)
+    two_e_frequencies = _two_e_frequency(one_e_coeffs, two_e_coeffs)
     sorted_modes = _mode_priority(two_e_frequencies)
     sorted_operators = _operator_pair_priority(huffman_ternary_tree)
 

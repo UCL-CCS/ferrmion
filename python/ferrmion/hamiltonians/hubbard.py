@@ -61,7 +61,7 @@ def square_adjacency_matrix(
 
     # Hamitian conjugate
     adjacency_matrix += adjacency_matrix.T
-    return adjacency_matrix
+    return np.array(adjacency_matrix, dtype=np.bool_)
 
 
 def cube_adjacency_matrix(
@@ -95,7 +95,7 @@ def cube_adjacency_matrix(
 
     adjacency_matrix += adjacency_matrix.T
 
-    return adjacency_matrix
+    return np.array(adjacency_matrix, dtype=np.bool_)
 
 
 def hubbard_coefficients(

@@ -17,17 +17,20 @@ This codebase contains methods to generate qubit Hamiltonians from fermionic Ham
 ## Optimizations
 
 ### Enumeration Scheme
-- $(\lambda+\mu)$ [Evolutionary Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html)
+- $(\lambda+\mu)$ [Evolutionary Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#evolutionary-optimisation)
+- [Simulated Annealing](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#simulated-annealing)
 
 ### Ternary Trees
 - [Reduced Entanglement Ternary Trees](https://ferrmion.readthedocs.io/en/latest/notebooks/rett.html)
+- [Huffman-code Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/huffman.html)
 
 ## Hamiltonians
 Functions to produce Hamiltonian templates and enumerated encodings are available in `ferrmion.hamiltonians`
 
 - Molecular Hamiltonian (Born-Oppenheimer Approximation)
+- Hubbard Hamiltonian (3D Square lattice)
 
 ## Development
 For information on development, check out the project [documentation](https://ferrmion.readthedocs.io/en/latest/development.html).
 
-If you find an error in the code or documentation, please raise an issue on the [GitHub Repo](https://github.com/UCL-CCS/ferrmion)
+If you find an error in the code or documentation, please raise an issue on the [GitHub Repo](https://github.com/UCL-CCS/ferrmion).

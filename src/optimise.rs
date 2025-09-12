@@ -25,9 +25,10 @@ pub fn pauli_coefficient_weight(hamiltonian: QubitHamiltonian) -> f64 {
     weight / hamiltonian.len() as f64
 }
 
+#[allow(dead_code)]
 /// Returns the mean Pauli-weight of Hamiltonian terms.
 pub fn pauli_weight(hamiltonian: QubitHamiltonian) -> f64 {
-    let weight = hamiltonian.iter().fold(0., |acc, (key, val)| {
+    let weight = hamiltonian.keys().fold(0., |acc, key| {
         let n_identity = key.chars().filter(|c| c == &'I').count();
         acc + (key.len() - n_identity) as f64
     });

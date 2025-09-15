@@ -230,17 +230,11 @@ class TernaryTree(FermionQubitEncoding):
 
             x_string = node_string + "x"
             y_string = node_string + "y"
-            if x_string in node_set:
-                while True:
-                    x_string += "z"
-                    if x_string not in node_set:
-                        break
+            while x_string in node_set:
+                x_string += "z"
 
-            if y_string in node_set:
-                while True:
-                    y_string += "z"
-                    if y_string not in node_set:
-                        break
+            while y_string in node_set:
+                y_string += "z"
 
             if x_string.count("y") % 2 == 0:
                 pairs[node.label] = x_string, y_string

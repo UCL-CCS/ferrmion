@@ -155,6 +155,10 @@ def huffman_ternary_tree(
     majorana_frequencies = _majarana_op_frequency(one_e_coeffs, two_e_coeffs)
 
     huffman_ternary_tree = _build_huffman_tree(n_modes, majorana_frequencies)
+    huffman_ternary_tree.enumeration_scheme = (
+        huffman_ternary_tree.default_enumeration_scheme()
+    )
+
     two_e_frequencies = _two_e_frequency(one_e_coeffs, two_e_coeffs)
     sorted_modes = _mode_priority(two_e_frequencies)
     sorted_operators = _operator_pair_priority(huffman_ternary_tree)
@@ -163,8 +167,8 @@ def huffman_ternary_tree(
     for operator_index, mode_index in enumerate(sorted_modes):
         mode_op_map[mode_index] = sorted_operators[operator_index]
 
-    huffman_ternary_tree.enumeration_scheme = (
-        huffman_ternary_tree.default_enumeration_scheme()
-    )
-    huffman_ternary_tree.default_mode_op_map = mode_op_map
+    huffman_ternary_tree.enumeration_scheme = {
+        node: (mode_op_map[val[0]], val[1])
+        for node, val in huffman_ternary_tree.default_enumeration_scheme().items()
+    }
     return huffman_ternary_tree

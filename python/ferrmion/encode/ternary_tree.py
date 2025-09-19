@@ -128,7 +128,6 @@ class TernaryTree(FermionQubitEncoding):
             logger.error(error_string)
             raise ValueError(error_string)
 
-        self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
     def default_enumeration_scheme(self) -> dict[str, tuple[int, int]]:

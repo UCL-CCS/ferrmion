@@ -245,7 +245,7 @@ def number_operator(
 def edge_operator(
     encoding: FermionQubitEncoding, edge_indices: tuple[int, int]
 ) -> list[tuple[str, NDArray, np.complexfloating]]:
-    """Return the number operator for a given encoding and pair of modes.
+    """Return the edge operator for a given encoding and pair of modes.
 
     Args:
         encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
@@ -256,13 +256,38 @@ def edge_operator(
             >>> tree = TernaryTee(4)
             >>> tree.edge_operator(0,1)
     """
-    logger.debug("Finding edge operator %s", edge_indices)
-    if not set(edge_indices).issubset(set(range(encoding.n_modes))):
-        logger.error("Edge operator indices invalid %s", edge_indices)
-        raise ValueError("Edge operator indices invalid %s", edge_indices)
+    return _double_fermionic_operator(
+        encoding=encoding, mode_indices=edge_indices, signature="+-"
+    )
+
+
+def _double_fermionic_operator(
+    encoding: FermionQubitEncoding, mode_indices: tuple[int, int], signature: str
+) -> list[tuple[str, NDArray, np.complexfloating]]:
+    match signature:
+        case "++":
+            signature_iterm = [0, 3, 3, 2]
+        case "+-":
+            signature_iterm = [0, 1, 3, 0]
+        case "-+":
+            signature_iterm = [0, 3, 1, 0]
+        case "--":
+            signature_iterm = [0, 1, 1, 2]
+        case _:
+            logger.error(
+                "Operator signature can only contain + or -, %s not valid", signature
+            )
+            raise ValueError(
+                "Operator signature can only contain + or -, %s not valid", signature
+            )
+
+    logger.debug("Finding edge operator %s", mode_indices)
+    if not set(mode_indices).issubset(set(range(encoding.n_modes))):
+        logger.error("Edge operator indices invalid %s", mode_indices)
+        raise ValueError("Edge operator indices invalid %s", mode_indices)
 
     icount, sym_products = encoding.symplectic_product_map
-    m, n = edge_indices
+    m, n = mode_indices
     m = int(encoding.default_mode_op_map[m])
     n = int(encoding.default_mode_op_map[n])
 
@@ -274,10 +299,15 @@ def edge_operator(
     terms = [first_term, second_term, third_term, fourth_term]
     terms: list[tuple[int, str, NDArray]] = [symplectic_to_sparse(t) for t in terms]
     factors = (
-        0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0]),
-        0.25 * icount_to_sign(icount[2 * m, 2 * n + 1] + 1 + terms[1][0]),
-        0.25 * icount_to_sign(icount[2 * m + 1, 2 * n] + 3 + terms[2][0]),
-        0.25 * icount_to_sign(icount[2 * m + 1, 2 * n + 1] + terms[3][0]),
+        0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0] + signature_iterm[0]),
+        0.25
+        * icount_to_sign(icount[2 * m, 2 * n + 1] + terms[1][0] + signature_iterm[1]),
+        0.25
+        * icount_to_sign(
+            icount[2 * m + 1, 2 * n + 1] + terms[3][0] + signature_iterm[2]
+        ),
+        0.25
+        * icount_to_sign(icount[2 * m + 1, 2 * n] + terms[2][0] + signature_iterm[3]),
     )
 
     return [(t[1], t[2], f) for t, f in zip(terms, factors)]

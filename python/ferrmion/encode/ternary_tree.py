@@ -60,6 +60,7 @@ class TernaryTree(FermionQubitEncoding):
         self.root = root_node
         self.root.label = ""
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
+        self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
@@ -85,7 +86,17 @@ class TernaryTree(FermionQubitEncoding):
 
     @property
     def enumeration_scheme(self) -> dict[str, tuple[int, int]]:
-        """Get the enumeration scheme."""
+        """Get the enumeration scheme for the tree.
+
+        Note:
+            The tuple is organised as (modes, qubits).
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(3).JW()
+            >>> tree.enumeration_scheme
+            {"": (0,0), "z": (1,1), "zz": (2,2)}
+        """
         return self._enumeration_scheme
 
     @enumeration_scheme.setter
@@ -115,6 +126,7 @@ class TernaryTree(FermionQubitEncoding):
             logger.error(error_string)
             raise ValueError(error_string)
 
+        self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
     def default_enumeration_scheme(self) -> dict[str, tuple[int, int]]:
@@ -190,8 +202,9 @@ class TernaryTree(FermionQubitEncoding):
 
         branches = self.root.branch_strings
 
-        nodes = self.root.child_strings
-        node_indices = {node: i for i, node in enumerate(nodes)}
+        node_indices = {
+            node: qubit for node, (_, qubit) in self.enumeration_scheme.items()
+        }
         branch_operator_map = {}
         for branch in branches:
             branch_operator_map[branch] = ["I"] * self.n_qubits

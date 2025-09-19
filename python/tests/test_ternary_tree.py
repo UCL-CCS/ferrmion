@@ -75,6 +75,56 @@ def test_ttnode():
         "z",
     }
 
+def test_enumeration_scheme(six_mode_tree):
+    assert six_mode_tree.default_enumeration_scheme() == {'':(0,0)}
+    jkmn = six_mode_tree.JKMN()
+    assert jkmn.default_enumeration_scheme() == {'': (0, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 5)}
+
+    # Not enough qubit labels
+    with pytest.raises(ValueError) as exc:
+        jkmn.enumeration_scheme = {'': (0, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 4)}
+    assert "Invalid qubit labels" in str(exc.value)
+
+    # Not enough mode labels
+    with pytest.raises(ValueError) as exc:
+        jkmn.enumeration_scheme = {'': (0, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (5, 4), 'xy': (5, 5)}
+    assert "Invalid mode labels" in str(exc.value)
+
+    # Qubit label not in range
+    with pytest.raises(ValueError) as exc:
+        jkmn.enumeration_scheme = {'': (0, 6), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 5)}
+    assert "Invalid qubit labels" in str(exc.value)
+
+    # Mode label not in range
+    with pytest.raises(ValueError) as exc:
+        jkmn.enumeration_scheme = {'': (6, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 5)}
+    assert "Invalid mode labels" in str(exc.value)
+
+    jkmn.enumeration_scheme = {'': (3, 1), 'x': (2, 5), 'y': (0, 3), 'z': (1, 4), 'xx': (4, 2), 'xy': (5, 0)}
+    assert np.all(jkmn._build_symplectic_matrix()[1] == np.array([[False,  True, False,  True, False, False, False,  True, False,
+         True, False, False],
+       [False,  True, False,  True, False, False, False,  True, False,
+        False, False, False],
+       [False, False, False, False,  True, False, False,  True, False,
+        False, False, False],
+       [False, False, False, False,  True, False, False,  True, False,
+        False,  True, False],
+       [False,  True, False, False, False,  True, False, False,  True,
+        False, False, False],
+       [False,  True, False, False, False,  True,  True, False, False,
+        False, False,  True],
+       [False,  True, False, False, False, False, False, False, False,
+        False, False,  True],
+       [False,  True, False, False, False, False, False,  True, False,
+         True, False, False],
+       [False,  True,  True, False, False,  True, False, False, False,
+        False, False, False],
+       [False,  True,  True, False, False,  True, False, False,  True,
+        False, False, False],
+       [ True,  True, False, False, False,  True,  True, False, False,
+        False, False,  True],
+       [ True,  True, False, False, False,  True, False, False, False,
+        False, False,  True]]))
 def test_ttnode_to_rustworkx(six_mode_tree):
     graph = six_mode_tree.JKMN().root.to_rustworkx()
     assert graph.nodes() == ['', 'x', 'y', 'z', 'xx', 'xy']

@@ -60,6 +60,7 @@ class TernaryTree(FermionQubitEncoding):
         self.root = root_node
         self.root.label = ""
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
+        self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
@@ -85,7 +86,17 @@ class TernaryTree(FermionQubitEncoding):
 
     @property
     def enumeration_scheme(self) -> dict[str, tuple[int, int]]:
-        """Get the enumeration scheme."""
+        """Get the enumeration scheme for the tree.
+
+        Note:
+            The tuple is organised as (modes, qubits).
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(3).JW()
+            >>> tree.enumeration_scheme
+            {"": (0,0), "z": (1,1), "zz": (2,2)}
+        """
         return self._enumeration_scheme
 
     @enumeration_scheme.setter
@@ -106,10 +117,12 @@ class TernaryTree(FermionQubitEncoding):
             logger.debug(f"{m=}{q=}")
             modes.add(m)
             qubits.add(q)
-        if len(modes) != self.n_qubits:
-            error_string += f"Not enough modes {len(modes)} in enumeration scheme.\n"
-        if len(qubits) != self.n_qubits:
-            error_string += f"Not enough qubits {len(qubits)} in enumeration scheme.\n"
+        expected_modes = set(range(self.n_modes))
+        expected_qubits = set(range(self.n_qubits))
+        if set(modes).symmetric_difference(expected_modes):
+            error_string += f"Invalid mode labels {set(modes)} in enumeration scheme ({expected_modes=}).\n"
+        if set(qubits).symmetric_difference(expected_qubits):
+            error_string += f"Invalid qubit labels {set(qubits)} in enumeration scheme ({expected_qubits=}).\n"
 
         if error_string != "":
             logger.error(error_string)
@@ -190,8 +203,9 @@ class TernaryTree(FermionQubitEncoding):
 
         branches = self.root.branch_strings
 
-        nodes = self.root.child_strings
-        node_indices = {node: i for i, node in enumerate(nodes)}
+        node_indices = {
+            node: qubit for node, (_, qubit) in self.enumeration_scheme.items()
+        }
         branch_operator_map = {}
         for branch in branches:
             branch_operator_map[branch] = ["I"] * self.n_qubits

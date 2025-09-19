@@ -16,6 +16,10 @@ def symplectic_matshow(symplectics, title: str | None = None):
     plt.matshow(symplectics, cmap=cmap, alpha=0.8)
     handles = [plt.Line2D([0], [0], color=color, lw=4) for color in colors]
     labels = ["I", "X", "Z", "Y"]
-    plt.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1.15), ncol=4)
+    plt.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1.1), ncol=4)
     if title is not None:
         plt.title(title)
+    plt.xlabel("Qubit")
+    plt.tick_params(labeltop=False, labelbottom=True)
+    plt.ylabel(r"Majorana $\gamma$")
+    plt.yticks(range(symplectics.shape[0]))

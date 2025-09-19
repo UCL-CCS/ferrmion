@@ -117,10 +117,12 @@ class TernaryTree(FermionQubitEncoding):
             logger.debug(f"{m=}{q=}")
             modes.add(m)
             qubits.add(q)
-        if len(modes) != self.n_qubits:
-            error_string += f"Not enough modes {len(modes)} in enumeration scheme.\n"
-        if len(qubits) != self.n_qubits:
-            error_string += f"Not enough qubits {len(qubits)} in enumeration scheme.\n"
+        expected_modes = set(range(self.n_modes))
+        expected_qubits = set(range(self.n_qubits))
+        if set(modes).symmetric_difference(expected_modes):
+            error_string += f"Invalid mode labels {set(modes)} in enumeration scheme ({expected_modes=}).\n"
+        if set(qubits).symmetric_difference(expected_qubits):
+            error_string += f"Invalid qubit labels {set(qubits)} in enumeration scheme ({expected_qubits=}).\n"
 
         if error_string != "":
             logger.error(error_string)

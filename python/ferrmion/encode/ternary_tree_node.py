@@ -88,7 +88,10 @@ class TTNode:
         return sorted(child_strings(self, prefix=""), key=node_sorter)
 
     def add_child(
-        self, which_child: str, qubit_label: int | str | None = None
+        self,
+        which_child: str,
+        child_node: Optional["TTNode"] = None,
+        qubit_label: int | str | None = None,
     ) -> "TTNode":
         """Add a child node to the current node.
 
@@ -97,14 +100,19 @@ class TTNode:
             qubit_label (int | str): The qubit label.
 
         Returns:
-            TTNode: self with the child added.
+            TTNode: The added child node
 
         Example:
             >>> from ferrmion.encode.ternary_tree_node import TTNode
             >>> node = TTNode()
             >>> node.add_child('x')
         """
-        return add_child(self, which_child, qubit_label)
+        return add_child(
+            self,
+            which_child=which_child,
+            child_node=child_node,
+            qubit_label=qubit_label,
+        )
 
     def to_rustworkx(self) -> rx.PyDiGraph:
         """Create a rustworkx graph from this node and its children.
@@ -117,16 +125,22 @@ class TTNode:
         return to_rustworkx(self)
 
 
-def add_child(parent, which_child: str, qubit_label: int | str | None = None) -> TTNode:
+def add_child(
+    parent,
+    which_child: str,
+    child_node: TTNode | None = None,
+    qubit_label: int | str | None = None,
+) -> TTNode:
     """Add a child node to a parent node.
 
     Args:
         parent (TTNode): The parent node.
         which_child (str): The child node to add.
         qubit_label (int | str): The qubit label.
+        child_node (TTNode | None): A node to assign as child.
 
     Returns:
-        TTNode: The parent node with the child added.
+        TTNode: The added child node.
 
     Example:
         >>> from ferrmion.encode.ternary_tree_node import TTNode, add_child
@@ -134,9 +148,13 @@ def add_child(parent, which_child: str, qubit_label: int | str | None = None) ->
         >>> add_child(node, 'x')
     """
     logger.debug("Adding child %s to parent %s", which_child, parent)
-    if getattr(parent, which_child, None) is not None:
-        logger.warning("Already has child node at %s", which_child)
+    if (child := getattr(parent, which_child, None)) is not None:
+        logger.warning(f"Already has child node {child.label} at {which_child}")
         pass
+    elif isinstance(child_node, TTNode):
+        if qubit_label is not None:
+            child_node.label = qubit_label
+        setattr(parent, which_child, child_node)
     else:
         setattr(parent, which_child, TTNode(parent=parent, qubit_label=qubit_label))
     return getattr(parent, which_child)

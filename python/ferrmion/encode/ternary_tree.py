@@ -175,7 +175,7 @@ class TernaryTree(FermionQubitEncoding):
             if isinstance(getattr(node, char), TTNode):
                 node = getattr(node, char)
             else:
-                node = node.add_child(char, node.label + char)
+                node = node.add_child(char, qubit_label=f"{node.label}{char}")
         return self
 
     @property

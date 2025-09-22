@@ -46,9 +46,9 @@ def test_standard_encoding_functions(six_mode_tree):
 
 def test_ttnode():
     root = TTNode()
-    child = root.add_child("x", 0)
-    child = child.add_child("y", 1)
-    child = child.add_child("z", 2)
+    child = root.add_child("x", qubit_label=0)
+    child = child.add_child("y", qubit_label=1)
+    child = child.add_child("z", qubit_label=2)
     assert child.parent.parent.parent == root
     assert child.parent.parent == root.x
     assert child.parent == root.x.y

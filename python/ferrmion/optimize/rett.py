@@ -104,7 +104,7 @@ def reduced_entanglement_tree(
     remaining_modes = new_tree.n_qubits - (4 * len(branches))
     new_tree.add_node("z" * (remaining_modes + len(branches) - 1))
 
-    for node_path in new_tree.root.child_strings:
+    for node_path in new_tree.root_node.child_strings:
         if enumeration_scheme.get(node_path, None) is None:
             mode = unused_modes.pop()
             enumeration_scheme[node_path] = (mode, mode)

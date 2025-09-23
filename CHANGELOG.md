@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Bonsai Algorithm ternary trees `encode.optimize.bonsai`
 - `hubbard_hamiltonian` and `hubbard_hamiltonian_template` in `.hamiltonians.hubbard`
 - `FermionQubitEncoding` base class in `base`
     - `hartree_fock_state`

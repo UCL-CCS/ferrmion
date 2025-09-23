@@ -21,6 +21,7 @@ This codebase contains methods to generate qubit Hamiltonians from fermionic Ham
 - [Simulated Annealing](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#simulated-annealing)
 
 ### Ternary Trees
+- [Bonsai Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/bonsai.html)
 - [Reduced Entanglement Ternary Trees](https://ferrmion.readthedocs.io/en/latest/notebooks/rett.html)
 - [Huffman-code Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/huffman.html)
 

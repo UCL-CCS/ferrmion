@@ -22,7 +22,7 @@ class TTNode:
         as_dict(): Convert the node to a dictionary.
         branch_strings(): Get the branch strings for the node.
         child_strings(): Get the child strings for the node.
-        add_child(which_child, qubit_label): Add a child node to the current node.
+        add_child(which_child, root_path): Add a child node to the current node.
 
     Simple Example:
         >>> from ferrmion.encode.ternary_tree_node import TTNode
@@ -32,19 +32,24 @@ class TTNode:
     """
 
     def __init__(
-        self, parent: Optional["TTNode"] = None, qubit_label: int | str | None = None
+        self,
+        parent: Optional["TTNode"] = None,
+        root_path: str | None = None,
+        qubit_label: int | str | None = None,
     ):
         """Initialise a ternary tree node.
 
         Args:
             parent (TTNode | None): The parent node.
-            qubit_label (int | str): The qubit label.
+            root_path (str | None): The path from root to this node.
+            qubit_label (int | str | None): The qubit label.
         """
         logger.debug(
-            f"Creating TTNode with parent {parent} and qubit label {qubit_label}"
+            f"Creating TTNode with parent {parent} and qubit label {root_path}"
         )
         self.parent = parent
-        self.label = qubit_label
+        self.root_path = root_path
+        self.qubit_label = qubit_label
         self.x = None
         self.y = None
         self.z = None
@@ -87,16 +92,31 @@ class TTNode:
         """
         return sorted(child_strings(self, prefix=""), key=node_sorter)
 
+    @property
+    def child_qubit_labels(self) -> dict[str, str | int | None]:
+        """Return a dict of sorted child nodes and their qubit label.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree_node import TTNode
+            >>> node = TTNode()
+            >>> node.add_child('x', qubit_label=5)
+            >>> node.child_qubit_labels
+        """
+        return child_qubit_labels(self)
+
     def add_child(
         self,
         which_child: str,
         child_node: Optional["TTNode"] = None,
+        root_path: str | None = None,
         qubit_label: int | str | None = None,
     ) -> "TTNode":
         """Add a child node to the current node.
 
         Args:
             which_child (str): The child node to add.
+            child_node (TTNode|None): A node object to set as the child.
+            root_path (str): Path from root node.
             qubit_label (int | str): The qubit label.
 
         Returns:
@@ -111,6 +131,7 @@ class TTNode:
             self,
             which_child=which_child,
             child_node=child_node,
+            root_path=root_path,
             qubit_label=qubit_label,
         )
 
@@ -120,7 +141,7 @@ class TTNode:
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
             >>> tree = TernaryTree(10).BK()
-            >>> rx_graph = tree.root.to_rustworkx()
+            >>> rx_graph = tree.root_node.to_rustworkx()
         """
         return to_rustworkx(self)
 
@@ -129,6 +150,7 @@ def add_child(
     parent,
     which_child: str,
     child_node: TTNode | None = None,
+    root_path: str | None = None,
     qubit_label: int | str | None = None,
 ) -> TTNode:
     """Add a child node to a parent node.
@@ -136,6 +158,7 @@ def add_child(
     Args:
         parent (TTNode): The parent node.
         which_child (str): The child node to add.
+        root_path (str): Path from the root node.
         qubit_label (int | str): The qubit label.
         child_node (TTNode | None): A node to assign as child.
 
@@ -149,14 +172,19 @@ def add_child(
     """
     logger.debug("Adding child %s to parent %s", which_child, parent)
     if (child := getattr(parent, which_child, None)) is not None:
-        logger.warning(f"Already has child node {child.label} at {which_child}")
+        logger.warning(f"Already has child node {child.root_path} at {which_child}")
         pass
     elif isinstance(child_node, TTNode):
-        if qubit_label is not None:
-            child_node.label = qubit_label
+        if root_path is not None:
+            child_node.root_path = root_path
+            child_node.qubit_label = qubit_label
         setattr(parent, which_child, child_node)
     else:
-        setattr(parent, which_child, TTNode(parent=parent, qubit_label=qubit_label))
+        setattr(
+            parent,
+            which_child,
+            TTNode(parent=parent, root_path=root_path, qubit_label=qubit_label),
+        )
     return getattr(parent, which_child)
 
 
@@ -209,6 +237,31 @@ def child_strings(node: TTNode, prefix: str = "") -> list[str]:
             strings = strings.union(child_strings(node=child, prefix=f"{prefix+pauli}"))
     logger.debug("Sorting nodes.")
     return strings
+
+
+def child_qubit_labels(node: TTNode) -> dict[str, int | str | None]:
+    """Return a dict of sorted child nodes and their qubit label.
+
+    Example:
+        >>> from ferrmion.encode.ternary_tree_node import TTNode
+        >>> node = TTNode()
+        >>> node.add_child('x', qubit_label=5)
+        >>> node.child_qubit_labels
+    """
+    label_dict: dict[str, int | str | None] = {}
+    for child_string in node.child_strings:
+        if child_string == "":
+            label_dict[""] = node.qubit_label
+            continue
+
+        child: TTNode = node
+        for char in child_string:
+            # we are using pre-checked strings
+            # so we don't need a default
+            child = getattr(child, char)
+        label_dict[child_string] = child.qubit_label
+
+    return label_dict
 
 
 def branch_strings(node: TTNode, prefix: str = "") -> set[str]:

@@ -42,7 +42,7 @@ def _build_huffman_tree(
         parent_index = 2 * n_ops - 1 - i
         mins = sorted(weights.items(), key=lambda kv: (kv[1], kv[0]))[:3]
 
-        parent: TTNode = nodes.get(parent_index, TTNode(parent=None, qubit_label=i))
+        parent: TTNode = nodes.get(parent_index, TTNode(parent=None, root_path=i))
 
         match len(mins):
             case 0:
@@ -72,7 +72,7 @@ def _build_huffman_tree(
     huffman_tree.string_pairs
 
     relabeled_tree = TernaryTree(huffman_tree.n_modes)
-    for child in huffman_tree.root.child_strings:
+    for child in huffman_tree.root_node.child_strings:
         relabeled_tree.add_node(child)
 
     huffman_tree = relabeled_tree

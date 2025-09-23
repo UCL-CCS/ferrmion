@@ -104,6 +104,18 @@ class TTNode:
         """
         return child_qubit_labels(self)
 
+    def prefix_root_path(self, prefix: str) -> None:
+        """Prefix the root path of a node and all its children.
+
+        Args:
+            prefix (str): String to prefix to root paths.
+        """
+        self.root_path = f"{prefix}{self.root_path}"
+        for child in ["x", "y", "z"]:
+            child_node = getattr(self, child, None)
+            if child_node is not None:
+                child_node.prefix_root_path(prefix)
+
     def add_child(
         self,
         which_child: str,
@@ -171,12 +183,16 @@ def add_child(
         >>> add_child(node, 'x')
     """
     logger.debug("Adding child %s to parent %s", which_child, parent)
+    if root_path is None:
+        root_path = which_child
+
     if (child := getattr(parent, which_child, None)) is not None:
         logger.warning(f"Already has child node {child.root_path} at {which_child}")
         pass
     elif isinstance(child_node, TTNode):
         if root_path is not None:
-            child_node.root_path = root_path
+            child_node.prefix_root_path(parent.root_path + root_path)
+        if qubit_label is not None:
             child_node.qubit_label = qubit_label
         setattr(parent, which_child, child_node)
     else:

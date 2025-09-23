@@ -42,20 +42,14 @@ def _build_huffman_tree(
         parent_index = 2 * n_ops - 1 - i
         mins = sorted(weights.items(), key=lambda kv: (kv[1], kv[0]))[:3]
 
-        parent: TTNode = nodes.get(parent_index, TTNode(parent=None, root_path=i))
+        parent = nodes.get(
+            parent_index, TTNode(parent=None, root_path="", qubit_label=i)
+        )
 
-        match len(mins):
-            case 0:
-                break
-            case 1:
-                parent.x = nodes[mins[0][0]]
-            case 2:
-                parent.x = nodes[mins[0][0]]
-                parent.y = nodes[mins[1][0]]
-            case 3:
-                parent.x = nodes[mins[0][0]]
-                parent.y = nodes[mins[1][0]]
-                parent.z = nodes[mins[2][0]]
+        for min, child_string in zip(mins, ["x", "y", "z"][: len(mins)]):
+            possible_child = nodes[min[0]]
+            if isinstance(possible_child, TTNode):
+                parent.add_child(which_child=child_string, child_node=possible_child)
 
         new_weight = 0
         for index, weight in mins:

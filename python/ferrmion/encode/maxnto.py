@@ -5,12 +5,14 @@ import logging
 import numpy as np
 from numpy.typing import NDArray
 
+from ferrmion.utils import xy_swap
+
 from .base import FermionQubitEncoding
 
 logger = logging.getLogger(__name__)
 
 
-class KNTO(FermionQubitEncoding):
+class MaxNTO(FermionQubitEncoding):
     """k-NTO encoding for fermionic operators.
 
     Attributes:
@@ -37,11 +39,11 @@ class KNTO(FermionQubitEncoding):
             NDArray: The symplectic matrix.
 
         Example:
-            >>> from ferrmion.encode.knto import KNTO
-            >>> knto = KNTO(5)
-            >>> y_count, sympl = knto._build_symplectic_matrix()
+            >>> from ferrmion.encode.maxnto import MaxNTO
+            >>> MaxNTO = MaxNTO(5)
+            >>> y_count, sympl = MaxNTO._build_symplectic_matrix()
         """
-        return knto_symplectic_matrix(self.n_modes)
+        return maxnto_symplectic_matrix(self.n_modes)
 
     def _valid_qubit_number(self) -> int:
         """Check if the number of qubits is valid for the k-NTO encoding.
@@ -52,7 +54,7 @@ class KNTO(FermionQubitEncoding):
         return self.n_modes
 
 
-def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool_]]:
+def maxnto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool_]]:
     """Build a symplectic matrix of majorana operators for the k-NTO encoding.
 
     Args:
@@ -62,8 +64,8 @@ def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool
         tuple[NDArray, NDArray]: The y_count of each vector and the symplectic matrix.
 
     Example:
-        >>> from ferrmion.encode.knto import knto_symplectic_matrix
-        >>> y_count, sympl = knto_symplectic_matrix(5)
+        >>> from ferrmion.encode.maxnto import maxnto_symplectic_matrix
+        >>> y_count, sympl = maxnto_symplectic_matrix(5)
         >>> sympl.shape
     """
     logger.debug(f"Building k-NTO symplectic matrix for {n_modes=}")
@@ -71,30 +73,36 @@ def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool
     if k % 2 != 1:
         raise ValueError("Only works for Odd k")
 
-    # Choice of right and left is arbitary but at least for TNs
-    # having the simple block on the left was better.
-    right = np.ones(((k + 1) * 2, k + 1), dtype=bool)
+    # Choice of x_block and z_block is arbitary but at least for TNs
+    # having the simple block on the z_block was better.
+    x_block = np.zeros((n_modes, n_modes))
+    x_block += np.triu(np.ones(n_modes), k=1)
+    x_block += np.tril(np.ones(n_modes), k=-1)
 
-    right[::2, :] = right[::2, :] - np.eye(k + 1)
-    right[1::2, :] = right[1::2, :] - np.eye(k + 1)
-
-    left = np.zeros(((k + 1) * 2, k + 1), dtype=bool)
-
-    for i in range(k + 1):
-        if i % 2 == 1:
-            left[2 * i, i] = 1
-            left[2 * i + 1, i] = 1
-
-    for i in range(1, (k + 1) * 2):
-        if i % 2 == 1:
-            left[i, np.ma.where(right[i] == 1)[0]] = np.logical_not(
-                left[i - 1, np.ma.where(right[i] == 1)[0]]
-            )
-        else:
-            left[i] = left[i - 1]
+    z_block = np.tril(np.ones(n_modes), k=-1)
+    for i in range(0, z_block.shape[0], 2):
+        z_block[i, i] = True
 
     # Y = iXZ
-    y_count = np.sum(np.bitwise_and(left, right), axis=1, dtype=np.uint8) % 4
-    output = np.hstack((left, right), dtype=bool)
+    x_block = np.array(x_block, dtype=bool)
+    z_block = np.array(z_block, dtype=bool)
+    z_block[1::2] = z_block.T[1::2, :]
+    odd_majoranas = np.empty((n_modes, n_modes), dtype=np.uint8)
+    even_majoranas = np.empty(x_block.shape, dtype=np.uint8)
+    odd_majoranas = np.hstack((x_block, z_block), dtype=np.uint8)
+    even_majoranas = np.hstack((x_block, z_block), dtype=np.uint8)
+    even_majoranas = xy_swap(even_majoranas)
 
+    output = np.empty((2 * n_modes, 2 * n_modes), dtype=bool)
+    output[::2, :] = odd_majoranas
+    output[1::2, :] = even_majoranas
+    output = np.array(output, dtype=bool)
+    y_count = (
+        np.sum(
+            np.bitwise_and(output[:, :n_modes], output[:, :n_modes]),
+            axis=1,
+            dtype=np.uint8,
+        )
+        % 4
+    )
     return y_count, output

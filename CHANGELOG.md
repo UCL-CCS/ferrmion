@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FermionQubitEncoding` base class in `base`
     - `hartree_fock_state`
 - `TernaryTree` class in `ternary_tree`
-- `KNTO` class in `knto`
+- `MaxNTO` class in `MaxNTO`
 - basic unit tests in test
 - Python logging setup in `utils.setup_logs`
 - `.pre-commit-config.yaml`

@@ -22,8 +22,8 @@ def water_tt(water_integrals) -> TernaryTree:
     return TernaryTree.from_hamiltonian_coefficients(water_integrals)
 
 # @fixture(scope="module")
-# def water_knto(water_integrals) -> KNTO:
-#     return KNTO(*water_integrals)
+# def water_MaxNTO(water_integrals) -> MaxNTO:
+#     return MaxNTO(*water_integrals)
 
 @fixture(scope="module")
 def water_eigenvalues(water_integrals) -> list[float]:

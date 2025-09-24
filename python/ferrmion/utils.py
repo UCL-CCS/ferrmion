@@ -349,6 +349,7 @@ def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.uint]]:
         >>> isinstance(satisfied, bool)
         True
     """
+    symplectic = np.array(symplectic, dtype=np.uint8)
     logger.debug(f"Checking trivial overlap\n{symplectic=}")
     x_length = int(len(symplectic[0]) / 2)
 

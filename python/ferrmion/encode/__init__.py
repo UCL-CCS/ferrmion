@@ -1,7 +1,7 @@
 """Init for encodings."""
 
 from .base import FermionQubitEncoding
-from .knto import KNTO
+from .MaxNTO import MaxNTO
 from .ternary_tree import (
     BK,
     JKMN,
@@ -15,7 +15,7 @@ from .ternary_tree import (
 __all__ = [
     "FermionQubitEncoding",
     "TernaryTree",
-    "KNTO",
+    "MaxNTO",
     "JordanWigner",
     "JW",
     "BravyiKitaev",

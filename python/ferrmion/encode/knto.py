@@ -12,7 +12,7 @@ from .base import FermionQubitEncoding
 logger = logging.getLogger(__name__)
 
 
-class KNTO(FermionQubitEncoding):
+class MaxNTO(FermionQubitEncoding):
     """k-NTO encoding for fermionic operators.
 
     Attributes:
@@ -39,11 +39,11 @@ class KNTO(FermionQubitEncoding):
             NDArray: The symplectic matrix.
 
         Example:
-            >>> from ferrmion.encode.knto import KNTO
-            >>> knto = KNTO(5)
-            >>> y_count, sympl = knto._build_symplectic_matrix()
+            >>> from ferrmion.encode.MaxNTO import MaxNTO
+            >>> MaxNTO = MaxNTO(5)
+            >>> y_count, sympl = MaxNTO._build_symplectic_matrix()
         """
-        return knto_symplectic_matrix(self.n_modes)
+        return MaxNTO_symplectic_matrix(self.n_modes)
 
     def _valid_qubit_number(self) -> int:
         """Check if the number of qubits is valid for the k-NTO encoding.
@@ -54,7 +54,7 @@ class KNTO(FermionQubitEncoding):
         return self.n_modes
 
 
-def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool_]]:
+def MaxNTO_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool_]]:
     """Build a symplectic matrix of majorana operators for the k-NTO encoding.
 
     Args:
@@ -64,8 +64,8 @@ def knto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool
         tuple[NDArray, NDArray]: The y_count of each vector and the symplectic matrix.
 
     Example:
-        >>> from ferrmion.encode.knto import knto_symplectic_matrix
-        >>> y_count, sympl = knto_symplectic_matrix(5)
+        >>> from ferrmion.encode.MaxNTO import MaxNTO_symplectic_matrix
+        >>> y_count, sympl = MaxNTO_symplectic_matrix(5)
         >>> sympl.shape
     """
     logger.debug(f"Building k-NTO symplectic matrix for {n_modes=}")

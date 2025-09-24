@@ -34,8 +34,10 @@ def draw_tt(graph: rx.PyDiGraph | TTNode | TernaryTree, enumeration_scheme=None)
     def x_pos(label) -> float:
         same_len = np.array([l for l in graph.nodes() if len(l) == len(label)])
         this_pos = np.where(same_len == label)[0][0]
-
         pos = (this_pos + 1) / (len(same_len) + 1) - 0.5
+        if len(same_len) <= 1:
+            pos = len(label)
+
         return pos
 
     def format_label(label):

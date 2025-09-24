@@ -13,12 +13,19 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "deap>=1.4.3",
+    "iqm-client==25.4.0",
     "myst-sphinx-gallery>=0.3.0",
-    "nbed",
-    "numpy>=1.24.4",
-    "openfermion>=0.11.0",
     "pydantic>=2.10.6",
     "rustworkx>=0.16.0",
+    "iqm-client[qiskit]>=25.3",
+    "jupyterlab>=4.4.3",
+    "openfermionpyscf>=0.5",
+    "pylatexenc>=2.10",
+    "numpy<3",
+    "ipywidgets>=8.1.7",
+    "jupyter>=1.1.1",
+    "ipykernel>=6.29.5",
+    "openfermion>=1.7.1",
 ]
 
 [tool.maturin]
@@ -41,8 +48,6 @@ docs = [
     "myst-parser>=4.0.1",
     "sphinx>=7.1.2",
     "sphinx-rtd-theme>=3.0.2",
-    "ffsim>=0.0.56",
-    "qiskit>=2.0.2",
     "myst-nb>=1.2.0",
     "pydata-sphinx-theme>=0.16.1",
 ]
@@ -54,9 +59,6 @@ indent-width = 4
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.uv.sources]
-nbed = { path = "../Nbed" }
 
 [tool.ruff.lint]
 select = [

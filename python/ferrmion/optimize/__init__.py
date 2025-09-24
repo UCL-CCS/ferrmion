@@ -1,5 +1,6 @@
 """Init Optimize Submodule."""
 
+from ..core import anneal_enumerations
 from .enumeration.cost_functions import (
     distance_squared,
     minimise_mi_distance,
@@ -12,4 +13,5 @@ __all__ = [
     "minimise_mi_distance",
     "distance_squared",
     "pauli_weighted_norm",
+    "anneal_enumerations",
 ]

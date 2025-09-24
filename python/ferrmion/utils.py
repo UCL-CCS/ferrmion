@@ -223,6 +223,7 @@ def xz_swap(symplectic) -> NDArray[np.bool_]:
 
     """
     logger.debug(f"Swapping X and Z in symplectic matrix\n{symplectic=}")
+    symplectic = np.array(symplectic, dtype=np.uint8)
     x_block, z_block = np.hsplit(symplectic, 2)
     is_z = np.where(np.logical_and(z_block, np.logical_not(x_block)))
     is_x = np.where(np.logical_and(x_block, np.logical_not(z_block)))
@@ -254,6 +255,7 @@ def xy_swap(symplectic) -> NDArray[np.uint8]:
 
     """
     logger.debug(f"Swapping X and Y in symplectic matrix\n{symplectic=}")
+    symplectic = np.array(symplectic, dtype=np.uint8)
     x_block, z_block = np.hsplit(symplectic, 2)
     is_y = np.where(x_block + z_block == 2)
     is_x = np.where(x_block - z_block == 1)
@@ -284,6 +286,7 @@ def yz_swap(symplectic) -> NDArray[np.uint8]:
         >>> swapped = yz_swap(arr)
 
     """
+    symplectic = np.array(symplectic, dtype=np.uint8)
     x_block, z_block = np.hsplit(symplectic, 2)
     is_y = np.where(x_block + z_block == 2)
     is_z = np.where(z_block - x_block == 1)

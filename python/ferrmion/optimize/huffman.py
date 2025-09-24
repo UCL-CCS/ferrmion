@@ -65,13 +65,7 @@ def _build_huffman_tree(
     huffman_tree = TernaryTree(n_modes=n_modes, root_node=root_node)
     huffman_tree.string_pairs
 
-    relabeled_tree = TernaryTree(huffman_tree.n_modes)
-    for child in huffman_tree.root_node.child_strings:
-        relabeled_tree.add_node(child)
-
-    huffman_tree = relabeled_tree
-
-    return relabeled_tree
+    return huffman_tree
 
 
 def _two_e_frequency(ones, twos) -> npt.NDArray[float]:
@@ -161,8 +155,8 @@ def huffman_ternary_tree(
     for operator_index, mode_index in enumerate(sorted_modes):
         mode_op_map[mode_index] = sorted_operators[operator_index]
 
-    huffman_ternary_tree.enumeration_scheme = {
-        node: (mode_op_map[val[0]], val[1])
-        for node, val in huffman_ternary_tree.default_enumeration_scheme().items()
-    }
+    huffman_ternary_tree.default_mode_op_map = mode_op_map
+    huffman_ternary_tree.enumeration_scheme = (
+        huffman_ternary_tree.default_enumeration_scheme()
+    )
     return huffman_ternary_tree

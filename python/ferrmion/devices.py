@@ -41,7 +41,7 @@ class Toplogy:
             qubits (set[Qubit]): A set of qubits.
         """
         self.qubits = qubits
-        self.connections = {q.label: {} for q in qubits}
+        self.connections = {q.root_path: {} for q in qubits}
 
     def add_connection(self, control: Qubit, target: Qubit, error: float):
         """Add a connection between two qubits.
@@ -52,4 +52,4 @@ class Toplogy:
             error (float): The error rate of the connection.
         """
         # check if the control is in the set, then check if a value is set for the target error
-        self.connections[control.label][target.label] = error
+        self.connections[control.root_path][target.root_path] = error

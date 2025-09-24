@@ -39,7 +39,7 @@ class MaxNTO(FermionQubitEncoding):
             NDArray: The symplectic matrix.
 
         Example:
-            >>> from ferrmion.encode.MaxNTO import MaxNTO
+            >>> from ferrmion.encode.maxnto import MaxNTO
             >>> MaxNTO = MaxNTO(5)
             >>> y_count, sympl = MaxNTO._build_symplectic_matrix()
         """
@@ -64,7 +64,7 @@ def MaxNTO_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bo
         tuple[NDArray, NDArray]: The y_count of each vector and the symplectic matrix.
 
     Example:
-        >>> from ferrmion.encode.MaxNTO import MaxNTO_symplectic_matrix
+        >>> from ferrmion.encode.maxnto import MaxNTO_symplectic_matrix
         >>> y_count, sympl = MaxNTO_symplectic_matrix(5)
         >>> sympl.shape
     """

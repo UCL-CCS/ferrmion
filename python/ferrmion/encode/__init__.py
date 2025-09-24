@@ -1,7 +1,7 @@
 """Init for encodings."""
 
 from .base import FermionQubitEncoding
-from .MaxNTO import MaxNTO
+from .maxnto import MaxNTO
 from .ternary_tree import (
     BK,
     JKMN,

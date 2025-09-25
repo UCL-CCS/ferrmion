@@ -97,9 +97,10 @@ def maxnto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bo
     output[::2, :] = odd_majoranas
     output[1::2, :] = even_majoranas
     output = np.array(output, dtype=bool)
+    y_count = np.zeros(output.shape[0], dtype=np.uint8)
     y_count = (
         np.sum(
-            np.bitwise_and(output[:, :n_modes], output[:, :n_modes]),
+            np.bitwise_and(output[:, :n_modes], output[:, n_modes:]),
             axis=1,
             dtype=np.uint8,
         )

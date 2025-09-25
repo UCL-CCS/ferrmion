@@ -10,8 +10,7 @@ def test_max_nto(water_integrals):
     valid, nto = check_trivial_overlap(symplectics)
 
     assert valid
-    assert np.all(ipowers == np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-       1, 1, 1, 1, 1, 1], dtype=np.uint8))
+    assert np.all(ipowers == np.array([0,1,0,1,2,3,2,3,0,1,0,1,2,3,2,3,0,1,0,1,2,3,2,3,0,1,0,1], dtype=np.uint8))
     assert np.all(symplectics == np.array([[False,  True,  True,  True,  True,  True,  True,  True,  True,
          True,  True,  True,  True,  True,  True, False, False, False,
         False, False, False, False, False, False, False, False, False,

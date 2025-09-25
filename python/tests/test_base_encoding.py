@@ -2,7 +2,8 @@
 
 import numpy as np
 import pytest
-from ferrmion.encode import TernaryTree
+from ferrmion.encode import TernaryTree, MaxNTO
+from ferrmion.encode.base import _double_fermionic_operator
 
 np.random.seed(1710)
 
@@ -101,3 +102,23 @@ def test_edge_operator(four_mode_tt):
     with pytest.raises(ValueError) as excinfo:
         tree.number_operator((-1, 0))
     assert "indices invalid" in str(excinfo.value)
+
+def test_double_fermionic_operator(four_mode_tt):
+    jw_expected = [('', np.array([], dtype=np.int64), 0.25), ('Z', np.array([0]), -0.25), ('Z', np.array([0]), -0.25), ('', np.array([], dtype=np.int64), 0.25)]
+    jw_num_zero = _double_fermionic_operator(four_mode_tt.JW(), (0,0),"+-")
+    assert jw_num_zero[0][0] == jw_num_zero[3][0] == jw_expected[0][0]
+    assert type(jw_num_zero[0][1]) == type(jw_num_zero[3][1]) == type(jw_expected[0][1])
+    assert len(jw_num_zero[0][1]) == len(jw_num_zero[3][1]) == len(jw_expected[0][1])
+    assert jw_num_zero[0][2] == jw_num_zero[3][2] == jw_expected[0][2]
+    assert np.all(jw_num_zero[1] == jw_expected[1])
+    assert np.all(jw_num_zero[2] == jw_expected[2])
+
+    bk_expected = [('', np.array([], dtype=np.int64), 0.25), ('ZZZ', np.array([0,1,3]), -0.25), ('ZZZ', np.array([0,1,3]), -0.25), ('', np.array([], dtype=np.int64), 0.25)]
+    bk_num_zero = _double_fermionic_operator(four_mode_tt.BK(), (0,0),"+-")
+    assert np.all(l==r for l,r in zip(bk_num_zero[1], bk_expected[1]))
+    assert np.all(l==r for l,r in zip(bk_num_zero[2], bk_expected[2]))
+
+    maxnto_expected = [('', np.array([], dtype=np.int64), 0.25), ('ZZZ', np.array([1,2,3]), 0.25), ('ZZZ', np.array([1,2,3]), 0.25), ('', np.array([], dtype=np.int64), 0.25)]
+    maxnot_num_zero = _double_fermionic_operator(MaxNTO(4), (0,0), "+-")
+    assert np.all(l==r for l,r in zip(maxnot_num_zero[1],maxnto_expected[1]))
+    assert np.all(l==r for l,r in zip(maxnot_num_zero[2],maxnto_expected[2]))

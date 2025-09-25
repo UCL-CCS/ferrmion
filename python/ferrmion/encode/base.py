@@ -303,11 +303,11 @@ def _double_fermionic_operator(
         0.25
         * icount_to_sign(icount[2 * m, 2 * n + 1] + terms[1][0] + signature_iterm[1]),
         0.25
-        * icount_to_sign(
-            icount[2 * m + 1, 2 * n + 1] + terms[3][0] + signature_iterm[2]
-        ),
+        * icount_to_sign(icount[2 * m + 1, 2 * n] + terms[2][0] + signature_iterm[2]),
         0.25
-        * icount_to_sign(icount[2 * m + 1, 2 * n] + terms[2][0] + signature_iterm[3]),
+        * icount_to_sign(
+            icount[2 * m + 1, 2 * n + 1] + terms[3][0] + signature_iterm[3]
+        ),
     )
 
     return [(t[1], t[2], f) for t, f in zip(terms, factors)]

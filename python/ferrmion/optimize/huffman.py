@@ -60,7 +60,6 @@ def _build_huffman_tree(
         nodes[parent_index] = parent
         weights[parent_index] = new_weight
 
-    assert len(nodes) == 1
     root_node = [*nodes.values()][0]
     huffman_tree = TernaryTree(n_modes=n_modes, root_node=root_node)
     huffman_tree.string_pairs
@@ -100,8 +99,8 @@ def _operator_pair_priority(huffman_tree):
         right = huffman_tree.branch_operator_map[right]
 
         weights[index] = {}
-        _, left = pauli_to_symplectic(left)
-        _, right = pauli_to_symplectic(right)
+        _, left = pauli_to_symplectic(0, left)
+        _, right = pauli_to_symplectic(0, right)
         pair_weight = find_pauli_weight(np.array([left])) + find_pauli_weight(
             np.array([right])
         )

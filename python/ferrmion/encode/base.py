@@ -2,6 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
+from itertools import product
 
 import numpy as np
 from numpy.typing import NDArray
@@ -171,22 +172,24 @@ class FermionQubitEncoding(ABC):
         )
 
     @staticmethod
-    def _symplectic_to_pauli(symplectic: NDArray) -> tuple[int, str]:
+    def _symplectic_to_pauli(ipower: int, symplectic: NDArray) -> tuple[int, str]:
         """Convert a symplectic matrix to a Pauli string.
 
         Args:
+            ipower (NDArray[np.uint]): power of i coefficient
             symplectic (NDArray): A symplectic vector.
         """
-        return symplectic_to_pauli(symplectic)
+        return symplectic_to_pauli(ipower, symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool_]]:
+    def _pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[np.bool_]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:
+            ipower (NDArray[np.uint]): power of i coefficient
             pauli (str): A Pauli-string.
         """
-        return pauli_to_symplectic(pauli)
+        return pauli_to_symplectic(ipower, pauli)
 
     @property
     def symplectic_product_map(self):
@@ -290,24 +293,17 @@ def _double_fermionic_operator(
     m, n = mode_indices
     m = int(encoding.default_mode_op_map[m])
     n = int(encoding.default_mode_op_map[n])
-
-    first_term = sym_products[2 * m, 2 * n]
-    second_term = sym_products[2 * m, 2 * n + 1]
-    third_term = sym_products[2 * m + 1, 2 * n]
-    fourth_term = sym_products[2 * m + 1, 2 * n + 1]
-
-    terms = [first_term, second_term, third_term, fourth_term]
-    terms: list[tuple[int, str, NDArray]] = [symplectic_to_sparse(t) for t in terms]
+    terms: list[tuple[int, str, NDArray]] = [
+        symplectic_to_sparse(
+            icount[2 * m + l, 2 * n + r], sym_products[2 * m + l, 2 * n + r]
+        )
+        for l, r in product([0, 1], [0, 1])
+    ]
     factors = (
-        0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0] + signature_iterm[0]),
-        0.25
-        * icount_to_sign(icount[2 * m, 2 * n + 1] + terms[1][0] + signature_iterm[1]),
-        0.25
-        * icount_to_sign(icount[2 * m + 1, 2 * n] + terms[2][0] + signature_iterm[2]),
-        0.25
-        * icount_to_sign(
-            icount[2 * m + 1, 2 * n + 1] + terms[3][0] + signature_iterm[3]
-        ),
+        0.25 * icount_to_sign(terms[0][0] + signature_iterm[0]),
+        0.25 * icount_to_sign(terms[1][0] + signature_iterm[1]),
+        0.25 * icount_to_sign(terms[2][0] + signature_iterm[2]),
+        0.25 * icount_to_sign(terms[3][0] + signature_iterm[3]),
     )
 
     return [(t[1], t[2], f) for t, f in zip(terms, factors)]

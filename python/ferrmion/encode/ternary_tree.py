@@ -305,7 +305,7 @@ class TernaryTree(FermionQubitEncoding):
                 operator = pauli_string_map[operator]
                 operator = np.array(list(operator), dtype=str)
                 # If the string is X or Y then assign 1
-                term_ipower, symplectic_term = self._pauli_to_symplectic(operator)
+                term_ipower, symplectic_term = self._pauli_to_symplectic(0, operator)
                 fermion_mode = self.enumeration_scheme[node][0]
                 ipowers[2 * fermion_mode + offset] = term_ipower
                 symplectic[2 * fermion_mode + offset] = symplectic_term

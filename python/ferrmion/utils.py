@@ -80,10 +80,11 @@ def symplectic_unhash(symp: bytes, length: int) -> NDArray[np.bool_]:
     return np.array(unpacked[:length], dtype=bool)
 
 
-def symplectic_to_pauli(symplectic: NDArray[np.bool_]) -> tuple[int, str]:
+def symplectic_to_pauli(ipower: int, symplectic: NDArray[np.bool_]) -> tuple[int, str]:
     """Convert a symplectic vector into a Pauli String.
 
     Args:
+        ipower (NDArray[np.uint]): power of i coefficient
         symplectic (NDArray[np.uint8]) : symplectic vector [X terms, Y terms]
 
     Returns:
@@ -119,16 +120,19 @@ def symplectic_to_pauli(symplectic: NDArray[np.bool_]) -> tuple[int, str]:
 
     pauli_string = "".join(pauli_list)
     y_count = pauli_string.count("Y")
-    ipower = (3 * y_count) % 4
+    ipower += 3 * y_count
+    ipower %= 4
     return ipower, pauli_string
 
 
 def symplectic_to_sparse(
+    ipower: int,
     symplectic: NDArray[np.bool_],
 ) -> tuple[int, str, NDArray[int]]:
     """Convert a symplectic vector into a Pauli String (sparse form).
 
     Args:
+        ipower (NDArray[np.uint]): power of i coefficient
         symplectic (NDArray[np.uint8]) : symplectic vector [X terms, Y terms]
 
     Returns:
@@ -167,14 +171,16 @@ def symplectic_to_sparse(
     pauli_string = "".join(pauli_list)
     indices = np.where(total != 0)[0]
     y_count = pauli_string.count("Y")
-    ipower = (3 * y_count) % 4
+    ipower += 3 * y_count
+    ipower %= 4
     return ipower, pauli_string, indices
 
 
-def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool_]]:
+def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[np.bool_]]:
     """Convert a Pauli operator to symplectic form.
 
     Args:
+        ipower (NDArray[np.uint]): power of i coefficient
         pauli (str): The Pauli operator string.
 
     Returns:
@@ -200,10 +206,12 @@ def pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool_]]:
     }
     # each y is turned into a iY=XZ
     y_count = np.count_nonzero(pauli_array == "Y") % 4
+    ipower += y_count
+    ipower %= 4
     # logger.debug(f{y_count=})
     x_array = np.array([x_map[term] for term in pauli], dtype=bool)
     z_array = np.array([z_map[term] for term in pauli], dtype=bool)
-    return y_count, np.hstack((x_array, z_array), dtype=bool)
+    return ipower, np.hstack((x_array, z_array), dtype=bool)
 
 
 def xz_swap(symplectic) -> NDArray[np.bool_]:

@@ -100,8 +100,8 @@ def _operator_pair_priority(huffman_tree):
         right = huffman_tree.branch_operator_map[right]
 
         weights[index] = {}
-        _, left = pauli_to_symplectic(left)
-        _, right = pauli_to_symplectic(right)
+        _, left = pauli_to_symplectic(0, left)
+        _, right = pauli_to_symplectic(0, right)
         pair_weight = find_pauli_weight(np.array([left])) + find_pauli_weight(
             np.array([right])
         )

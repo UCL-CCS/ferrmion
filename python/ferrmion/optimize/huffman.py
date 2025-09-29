@@ -60,7 +60,6 @@ def _build_huffman_tree(
         nodes[parent_index] = parent
         weights[parent_index] = new_weight
 
-    assert len(nodes) == 1
     root_node = [*nodes.values()][0]
     huffman_tree = TernaryTree(n_modes=n_modes, root_node=root_node)
     huffman_tree.string_pairs

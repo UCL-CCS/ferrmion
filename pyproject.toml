@@ -5,17 +5,17 @@ build-backend = "maturin"
 [project]
 name = "ferrmion"
 requires-python = ">=3.11"
+version = "0.1.0"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
 dependencies = [
     "deap>=1.4.3",
     "pydantic>=2.10.6",
     "rustworkx>=0.16.0",
-    "numpy<3",
+    "numpy>=2",
 ]
 
 [tool.maturin]

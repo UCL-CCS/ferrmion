@@ -166,6 +166,6 @@ jobs:
       - name: Download all workflow run artifacts
         uses: actions/download-artifact@v5
         with:
-        - path: dist/
+          path: dist/
       - name: Publish
         run: uv publish

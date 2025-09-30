@@ -139,13 +139,13 @@ class FermionQubitEncoding(ABC):
     @abstractmethod
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
     def hartree_fock_state(
         self,
-        fermionic_hf_state: NDArray[np.bool_],
+        fermionic_hf_state: NDArray[bool],
         mode_op_map: list[int] | None = None,
     ):
         """Find the Hartree-Fock state of a majorana string encoding.
@@ -182,7 +182,7 @@ class FermionQubitEncoding(ABC):
         return symplectic_to_pauli(ipower, symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[np.bool_]]:
+    def _pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[bool]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:
@@ -259,14 +259,30 @@ def edge_operator(
             >>> tree = TernaryTee(4)
             >>> tree.edge_operator(0,1)
     """
-    return _double_fermionic_operator(
+    return double_fermionic_operator(
         encoding=encoding, mode_indices=edge_indices, signature="+-"
     )
 
 
-def _double_fermionic_operator(
+def double_fermionic_operator(
     encoding: FermionQubitEncoding, mode_indices: tuple[int, int], signature: str
 ) -> list[tuple[str, NDArray, np.complexfloating]]:
+    """Returns the sparse pauli form of a double fermionic operator.
+
+    Args:
+        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
+        mode_indices (tuple[int, int]): The mode indices to obtain a number operator for.
+        signature (str): The fermionic operator signature, one of "++", "+-", "-+", "--".
+
+    Returns:
+        list[tuple[str, NDArray, np.complexfloating]]: A list of tuples each containing a Pauli string, its qubit indices and a complex coefficient.
+
+    Example:
+        >>> from ferrmion import TernaryTree
+        >>> tree = TernaryTree(4)
+        >>> tree.double_fermionic_operator((0,1), "+-")
+        [('ZZ', array([0, 1]), 0.25+0j), ('YX', array([0, 1]), 0.25j), ('XY', array([0, 1]), -0.25j), ('II', array([0, 1]), 0.25+0j)]
+    """
     match signature:
         case "++":
             signature_iterm = [0, 3, 3, 2]

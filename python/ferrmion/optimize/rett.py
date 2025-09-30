@@ -11,7 +11,7 @@ from ..encode.ternary_tree_node import TTNode
 logger = logging.getLogger(__name__)
 
 
-def reduced_entanglement_tree(
+def reduced_entanglement_ternary_tree(
     mutual_information: NDArray,
     cutoff: float = 0.5,
     max_branches: int | None = None,

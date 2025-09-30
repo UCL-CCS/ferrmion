@@ -1,6 +1,6 @@
 """Tests for functions in the optimize submodule."""
 
-from ferrmion.optimize.rett import reduced_entanglement_tree
+from ferrmion.optimize.rett import reduced_entanglement_ternary_tree
 from ferrmion.optimize.huffman import huffman_ternary_tree
 from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, pauli_weighted_norm
 from ferrmion.optimize.bonsai import bonsai_algorithm
@@ -51,7 +51,7 @@ def test_distance_squared(n2mi):
 
 def test_rett(n2mi):
     np.random.seed(1017)
-    rett = reduced_entanglement_tree(n2mi, squash=True)
+    rett = reduced_entanglement_ternary_tree(n2mi, squash=True)
     assert rett.branch_operator_map == {'zzzzx': 'ZZZZXIIIII', 'zzzx': 'ZZZXIIIIII', 'zzzzzzx': 'ZZZZZZXIII', 'zzx': 'ZZXIIIIIII', 'zzy': 'ZZYIIIIIII', 'zzzzzzzzx': 'ZZZZZZZZXI', 'zzzzy': 'ZZZZYIIIII', 'zzzzzzzzzy': 'ZZZZZZZZZY', 'y': 'YIIIIIIIII', 'zzzzzzzx': 'ZZZZZZZXII', 'zx': 'ZXIIIIIIII', 'zzzzzzy': 'ZZZZZZYIII', 'zy': 'ZYIIIIIIII', 'zzzy': 'ZZZYIIIIII', 'zzzzzzzzzz': 'ZZZZZZZZZZ', 'zzzzzzzy': 'ZZZZZZZYII', 'zzzzzy': 'ZZZZZYIIII', 'zzzzzzzzzx': 'ZZZZZZZZZX', 'zzzzzx': 'ZZZZZXIIII', 'zzzzzzzzy': 'ZZZZZZZZYI', 'x': 'XIIIIIIIII'}
 
 def test_huffman(water_integrals):

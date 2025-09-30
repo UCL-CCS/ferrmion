@@ -13,19 +13,9 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "deap>=1.4.3",
-    "iqm-client==25.4.0",
-    "myst-sphinx-gallery>=0.3.0",
     "pydantic>=2.10.6",
     "rustworkx>=0.16.0",
-    "iqm-client[qiskit]>=25.3",
-    "jupyterlab>=4.4.3",
-    "openfermionpyscf>=0.5",
-    "pylatexenc>=2.10",
     "numpy<3",
-    "ipywidgets>=8.1.7",
-    "jupyter>=1.1.1",
-    "ipykernel>=6.29.5",
-    "openfermion>=1.7.1",
 ]
 
 [tool.maturin]
@@ -35,6 +25,8 @@ features = ["pyo3/extension-module"]
 
 [dependency-groups]
 dev = [
+    "jupyter>=1.1.1",
+    "ipywidgets>=8.1.7",
     "ipykernel>=6.30.1",
     "jupyter>=1.1.1",
     "pre-commit>=3.5.0",
@@ -45,6 +37,8 @@ dev = [
     "ruff>=0.12.11",
 ]
 docs = [
+    "pylatexenc>=2.10",
+    "myst-sphinx-gallery>=0.3.0",
     "myst-parser>=4.0.1",
     "sphinx>=7.1.2",
     "sphinx-rtd-theme>=3.0.2",

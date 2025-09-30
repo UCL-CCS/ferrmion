@@ -1,3 +1,5 @@
+![example event parameter](https://github.com/github/docs/actions/workflows/main.yml/badge.svg?event=push)
+
 # ferrmion
 
 This codebase contains methods to generate qubit Hamiltonians from fermionic Hamiltonians.

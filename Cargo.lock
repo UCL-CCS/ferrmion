@@ -212,6 +212,7 @@ dependencies = [
  "itertools",
  "log",
  "ndarray",
+ "num-complex",
  "numpy",
  "permutation_iterator",
  "pyo3",

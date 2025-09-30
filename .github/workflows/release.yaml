@@ -165,6 +165,7 @@ jobs:
         run: uv python install 3.13
       - name: Download all workflow run artifacts
         uses: actions/download-artifact@v5
-        path: dist/
+        with:
+        - path: dist/
       - name: Publish
         run: uv publish

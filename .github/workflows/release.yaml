@@ -168,4 +168,4 @@ jobs:
         with:
           path: dist/
       - name: Publish
-        run: uv publish
+        run: uv publish dist/* --no-cache

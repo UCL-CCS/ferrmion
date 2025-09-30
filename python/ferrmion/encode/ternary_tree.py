@@ -61,6 +61,7 @@ class TernaryTree(FermionQubitEncoding):
         self.root_node = root_node
         self.root_node.root_path = ""
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
+        self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
@@ -128,6 +129,7 @@ class TernaryTree(FermionQubitEncoding):
             logger.error(error_string)
             raise ValueError(error_string)
 
+        self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
     def default_enumeration_scheme(self) -> dict[str, tuple[int, int]]:
@@ -253,17 +255,11 @@ class TernaryTree(FermionQubitEncoding):
 
             x_string = node_string + "x"
             y_string = node_string + "y"
-            if x_string in node_set:
-                while True:
-                    x_string += "z"
-                    if x_string not in node_set:
-                        break
+            while x_string in node_set:
+                x_string += "z"
 
-            if y_string in node_set:
-                while True:
-                    y_string += "z"
-                    if y_string not in node_set:
-                        break
+            while y_string in node_set:
+                y_string += "z"
 
             if x_string.count("y") % 2 == 0:
                 pairs[node.root_path] = x_string, y_string
@@ -274,7 +270,7 @@ class TernaryTree(FermionQubitEncoding):
 
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build the symplectic matrix for the tree.
 
         Returns:

@@ -5,19 +5,17 @@ build-backend = "maturin"
 [project]
 name = "ferrmion"
 requires-python = ">=3.11"
+version = "0.1.0"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
 dependencies = [
     "deap>=1.4.3",
-    "myst-sphinx-gallery>=0.3.0",
-    "numpy>=1.24.4",
-    "openfermion>=0.11.0",
     "pydantic>=2.10.6",
     "rustworkx>=0.16.0",
+    "numpy>=2",
 ]
 
 [tool.maturin]
@@ -27,21 +25,25 @@ features = ["pyo3/extension-module"]
 
 [dependency-groups]
 dev = [
-    "ipykernel>=6.30.1",
     "jupyter>=1.1.1",
+    "ipywidgets>=8.1.7",
+    "ipykernel>=6.30.1",
     "pre-commit>=3.5.0",
+    "ruff>=0.12.11",
+]
+test = [
     "pytest>=8.3.5",
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.1.1",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.12.11",
+    "openfermion>=1.7.1",
 ]
 docs = [
+    "pylatexenc>=2.10",
+    "myst-sphinx-gallery>=0.3.0",
     "myst-parser>=4.0.1",
     "sphinx>=7.1.2",
     "sphinx-rtd-theme>=3.0.2",
-    "ffsim>=0.0.56",
-    "qiskit>=2.0.2",
     "myst-nb>=1.2.0",
     "pydata-sphinx-theme>=0.16.1",
 ]
@@ -58,7 +60,7 @@ convention = "google"
 select = [
     "E4", "E7", "E9",
     "F",
-    "D", #pydocstyle (lets add this when we actually write docstrings)
+    "D", #pydocstyle
     "I", #isort
 ]
 ignore = ["E741"]

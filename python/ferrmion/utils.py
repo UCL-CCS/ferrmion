@@ -33,11 +33,11 @@ def icount_to_sign(icount: int) -> np.complex64:
     return vals[icount % 4]
 
 
-def symplectic_hash(symp: NDArray[np.bool_]) -> bytes:
+def symplectic_hash(symp: NDArray[bool]) -> bytes:
     """Convert a symplectic vector into a hashable form.
 
     Args:
-        symp (NDArray[np.bool_]): The symplectic vector.
+        symp (NDArray[bool]): The symplectic vector.
 
     Returns:
         bytes: The hashed form of the symplectic vector.
@@ -53,7 +53,7 @@ def symplectic_hash(symp: NDArray[np.bool_]) -> bytes:
     return np.packbits(symp).tobytes()
 
 
-def symplectic_unhash(symp: bytes, length: int) -> NDArray[np.bool_]:
+def symplectic_unhash(symp: bytes, length: int) -> NDArray[bool]:
     """Convert a hashed symplectic vector back to its original form.
 
     Args:
@@ -80,7 +80,7 @@ def symplectic_unhash(symp: bytes, length: int) -> NDArray[np.bool_]:
     return np.array(unpacked[:length], dtype=bool)
 
 
-def symplectic_to_pauli(ipower: int, symplectic: NDArray[np.bool_]) -> tuple[int, str]:
+def symplectic_to_pauli(ipower: int, symplectic: NDArray[bool]) -> tuple[int, str]:
     """Convert a symplectic vector into a Pauli String.
 
     Args:
@@ -127,7 +127,7 @@ def symplectic_to_pauli(ipower: int, symplectic: NDArray[np.bool_]) -> tuple[int
 
 def symplectic_to_sparse(
     ipower: int,
-    symplectic: NDArray[np.bool_],
+    symplectic: NDArray[bool],
 ) -> tuple[int, str, NDArray[int]]:
     """Convert a symplectic vector into a Pauli String (sparse form).
 
@@ -176,7 +176,7 @@ def symplectic_to_sparse(
     return ipower, pauli_string, indices
 
 
-def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[np.bool_]]:
+def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[bool]]:
     """Convert a Pauli operator to symplectic form.
 
     Args:
@@ -214,7 +214,7 @@ def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[np.bool_]
     return ipower, np.hstack((x_array, z_array), dtype=bool)
 
 
-def xz_swap(symplectic) -> NDArray[np.bool_]:
+def xz_swap(symplectic) -> NDArray[bool]:
     """Swap X and Z Pauli operators in a symplectic matrix.
 
     Args:
@@ -432,7 +432,7 @@ def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
     return np.vstack((first_term, second_term, third_term, fourth_term))
 
 
-def find_pauli_weight(symplectic_hamiltonian: NDArray[np.bool_]) -> np.floating:
+def find_pauli_weight(symplectic_hamiltonian: NDArray[bool]) -> np.floating:
     """Find the average Pauli weight of a symplectic hamiltonian.
 
     Args:

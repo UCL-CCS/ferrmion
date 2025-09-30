@@ -32,7 +32,7 @@ class MaxNTO(FermionQubitEncoding):
         self.n_modes = n_modes
         super().__init__(n_modes=n_modes, n_qubits=n_modes)
 
-    def _build_symplectic_matrix(self) -> tuple[NDArray[np.number], NDArray[np.bool_]]:
+    def _build_symplectic_matrix(self) -> tuple[NDArray[np.number], NDArray[bool]]:
         """Build the symplectic matrix for the k-NTO encoding.
 
         Returns:
@@ -54,7 +54,7 @@ class MaxNTO(FermionQubitEncoding):
         return self.n_modes
 
 
-def maxnto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[np.bool_]]:
+def maxnto_symplectic_matrix(n_modes) -> tuple[NDArray[np.number], NDArray[bool]]:
     """Build a symplectic matrix of majorana operators for the k-NTO encoding.
 
     Args:

@@ -1,5 +1,6 @@
 [![Master CICD](https://github.com/UCL-CCS/ferrmion/actions/workflows/push_to_master.yaml/badge.svg)](https://github.com/UCL-CCS/ferrmion/actions/workflows/push_to_master.yaml)
 [![Documentation Status](https://readthedocs.org/projects/ferrmion/badge/?version=latest)](https://ferrmion.readthedocs.io/en/latest/?badge=latest)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17236185.svg)](https://doi.org/10.5281/zenodo.17236185)
 
 # ferrmion
 

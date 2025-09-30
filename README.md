@@ -1,4 +1,5 @@
-![example event parameter](https://github.com/github/docs/actions/workflows/main.yml/badge.svg?event=push)
+[![Master CICD](https://github.com/UCL-CCS/ferrmion/actions/workflows/push_to_master.yaml/badge.svg)](https://github.com/UCL-CCS/ferrmion/actions/workflows/push_to_master.yaml)
+[![Documentation Status](https://readthedocs.org/projects/ferrmion/badge/?version=latest)](https://ferrmion.readthedocs.io/en/latest/?badge=latest)
 
 # ferrmion
 

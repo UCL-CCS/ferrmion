@@ -169,4 +169,4 @@ jobs:
           path: dist/
           merge-multiple: true
       - name: Publish
-        run: uv publish
+        run: uv publish dist/* --no-cache

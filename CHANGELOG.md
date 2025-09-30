@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.1]
+## [0.1.0]
 
 ### Added
 - Majorana-String Encodings in `encode.base`
@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         Parity Encoding
         Bravyi-Kitaev
         JKMN
-    - `encode.maxnot` MaxNTO Encoding
+    - `encode.maxnto` MaxNTO Encoding
 - Ternary Tree Optimizations
     - Bonsai Algorithm ternary trees `encode.optimize.bonsai`
     - Huffman encoded ternary tree `encode.optimize.huffman`
@@ -31,10 +31,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Python logging setup in `utils.setup_logs`
     - `.pre-commit-config.yaml`
 - Sphinx docs set up in `docs/source/` using autodoc, myst with `.readthedocs.yaml` for hosting.
-    - Example notebook
-        - creating reduced entanglement ternary tree
-        - defining and minimising pauli-weight
+    - Example notebooks for
+        - General and standad Ternary Trees
+        - Reduced entanglement ternary tree
+        - Huffman encoded ternary tree
+        - Bonsai Algorithm
+        - Defining and minimising pauli-weight
+        - Encoding the Molecular Hamiltonian
+        - Encoding the Hubbard Hamiltonian
 - Rust functions in submodule `core`
+    - `encoding`
+    - `hamiltonians`
+    - `lib`
+    - `optimize`
+    - `utils`
 
 ### Removed
 

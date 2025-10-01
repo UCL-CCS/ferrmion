@@ -55,11 +55,13 @@ class TernaryTree(FermionQubitEncoding):
             n_modes (int): How many fermionic modes in the encoding.
             root_node (TTNode): The root node of the tree.
         """
+        self._enumeration_scheme = {}
         self.n_modes = n_modes
         self.n_qubits = n_modes
-        self.root = root_node
-        self.root.label = ""
+        self.root_node = root_node
+        self.root_node.root_path = ""
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
+        self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
@@ -85,7 +87,17 @@ class TernaryTree(FermionQubitEncoding):
 
     @property
     def enumeration_scheme(self) -> dict[str, tuple[int, int]]:
-        """Get the enumeration scheme."""
+        """Get the enumeration scheme for the tree.
+
+        Note:
+            The tuple is organised as (modes, qubits).
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(3).JW()
+            >>> tree.enumeration_scheme
+            {"": (0,0), "z": (1,1), "zz": (2,2)}
+        """
         return self._enumeration_scheme
 
     @enumeration_scheme.setter
@@ -97,8 +109,8 @@ class TernaryTree(FermionQubitEncoding):
         """
         logger.debug("Setting enumeration scheme.")
         error_string = ""
-        if set(self.root.child_strings) != set(enumeration_dict.keys()):
-            error_string += f"Enumeration scheme {enumeration_dict} must contain all nodes {self.root.child_strings}.\n"
+        if set(self.root_node.child_strings) != set(enumeration_dict.keys()):
+            error_string += f"Enumeration scheme {enumeration_dict} must contain all nodes {self.root_node.child_strings}.\n"
 
         modes = set()
         qubits = set()
@@ -106,15 +118,18 @@ class TernaryTree(FermionQubitEncoding):
             logger.debug(f"{m=}{q=}")
             modes.add(m)
             qubits.add(q)
-        if len(modes) != self.n_qubits:
-            error_string += f"Not enough modes {len(modes)} in enumeration scheme.\n"
-        if len(qubits) != self.n_qubits:
-            error_string += f"Not enough qubits {len(qubits)} in enumeration scheme.\n"
+        expected_modes = set(range(self.n_modes))
+        expected_qubits = set(range(self.n_qubits))
+        if set(modes).symmetric_difference(expected_modes):
+            error_string += f"Invalid mode labels {set(modes)} in enumeration scheme ({expected_modes=}).\n"
+        if set(qubits).symmetric_difference(expected_qubits):
+            error_string += f"Invalid qubit labels {set(qubits)} in enumeration scheme ({expected_qubits=}).\n"
 
         if error_string != "":
             logger.error(error_string)
             raise ValueError(error_string)
 
+        self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
     def default_enumeration_scheme(self) -> dict[str, tuple[int, int]]:
@@ -130,12 +145,21 @@ class TernaryTree(FermionQubitEncoding):
             {"": (0,0), "z": (1,1), "zz": (2,2)}
         """
         logger.debug("Setting default enumeration scheme")
-        logger.debug("Child strings %s", self.root.child_strings)
-        return {child: (i, i) for i, child in enumerate(self.root.child_strings)}
+        logger.debug("Child strings %s", self.root_node.child_strings)
+        enumeration_scheme = {}
+        child_labels = self.root_node.child_qubit_labels
+        spare_labels: set[int] = set(range(len(child_labels))).difference(
+            child_labels.values()
+        )
+        for child, label in child_labels.items():
+            if label is None:
+                label = spare_labels.pop()
+            enumeration_scheme[child] = (int(label), int(label))
+        return enumeration_scheme
 
     def as_dict(self):
         """Return the tree structure as a dictionary."""
-        return self.root.as_dict()
+        return self.root_node.as_dict()
 
     def add_node(self, node_string: str) -> "TernaryTree":
         """Add a node to the tree.
@@ -157,12 +181,12 @@ class TernaryTree(FermionQubitEncoding):
         if not valid_string:
             raise ValueError("Branch string can only contain x,y,z")
 
-        node = self.root
+        node = self.root_node
         for char in node_string:
             if isinstance(getattr(node, char), TTNode):
                 node = getattr(node, char)
             else:
-                node = node.add_child(char, node.label + char)
+                node = node.add_child(char, root_path=f"{node.root_path}{char}")
         return self
 
     @property
@@ -188,17 +212,17 @@ class TernaryTree(FermionQubitEncoding):
         """
         logger.debug("Building branch operator map for TernaryTree.")
 
-        branches = self.root.branch_strings
+        branches = self.root_node.branch_strings
 
-        nodes = self.root.child_strings
-        node_indices = {node: i for i, node in enumerate(nodes)}
-
+        node_indices = {
+            node: qubit for node, (_, qubit) in self.enumeration_scheme.items()
+        }
         branch_operator_map = {}
         for branch in branches:
             branch_operator_map[branch] = ["I"] * self.n_qubits
-            node = self.root
+            node = self.root_node
             for char in branch:
-                node_index = node_indices[node.label]
+                node_index = node_indices[node.root_path]
                 branch_operator_map[branch][node_index] = char.upper()
                 node = getattr(node, char, None)
             branch_operator_map[branch] = "".join(branch_operator_map[branch])
@@ -221,38 +245,32 @@ class TernaryTree(FermionQubitEncoding):
             {'': ('xzz', 'y'), 'x': ('xx', 'xy'), 'xz': ('xzx', 'xzy')}
         """
         logger.debug("Building string pairs for TernaryTree.")
-        node_set = self.root.child_strings
+        node_set = self.root_node.child_strings
 
         pairs = {}
         for node_string in node_set:
-            node = self.root
+            node = self.root_node
             for char in node_string:
                 node = getattr(node, char)
 
             x_string = node_string + "x"
             y_string = node_string + "y"
-            if x_string in node_set:
-                while True:
-                    x_string += "z"
-                    if x_string not in node_set:
-                        break
+            while x_string in node_set:
+                x_string += "z"
 
-            if y_string in node_set:
-                while True:
-                    y_string += "z"
-                    if y_string not in node_set:
-                        break
+            while y_string in node_set:
+                y_string += "z"
 
             if x_string.count("y") % 2 == 0:
-                pairs[node.label] = x_string, y_string
+                pairs[node.root_path] = x_string, y_string
             elif y_string.count("y") % 2 == 0:
-                pairs[node.label] = y_string, x_string
+                pairs[node.root_path] = y_string, x_string
 
         return pairs
 
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build the symplectic matrix for the tree.
 
         Returns:
@@ -287,7 +305,7 @@ class TernaryTree(FermionQubitEncoding):
                 operator = pauli_string_map[operator]
                 operator = np.array(list(operator), dtype=str)
                 # If the string is X or Y then assign 1
-                term_ipower, symplectic_term = self._pauli_to_symplectic(operator)
+                term_ipower, symplectic_term = self._pauli_to_symplectic(0, operator)
                 fermion_mode = self.enumeration_scheme[node][0]
                 ipowers[2 * fermion_mode + offset] = term_ipower
                 symplectic[2 * fermion_mode + offset] = symplectic_term

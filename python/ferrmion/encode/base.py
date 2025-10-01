@@ -2,6 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
+from itertools import product
 
 import numpy as np
 from numpy.typing import NDArray
@@ -138,13 +139,13 @@ class FermionQubitEncoding(ABC):
     @abstractmethod
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
     def hartree_fock_state(
         self,
-        fermionic_hf_state: NDArray[np.bool_],
+        fermionic_hf_state: NDArray[bool],
         mode_op_map: list[int] | None = None,
     ):
         """Find the Hartree-Fock state of a majorana string encoding.
@@ -171,22 +172,24 @@ class FermionQubitEncoding(ABC):
         )
 
     @staticmethod
-    def _symplectic_to_pauli(symplectic: NDArray) -> tuple[int, str]:
+    def _symplectic_to_pauli(ipower: int, symplectic: NDArray) -> tuple[int, str]:
         """Convert a symplectic matrix to a Pauli string.
 
         Args:
+            ipower (NDArray[np.uint]): power of i coefficient
             symplectic (NDArray): A symplectic vector.
         """
-        return symplectic_to_pauli(symplectic)
+        return symplectic_to_pauli(ipower, symplectic)
 
     @staticmethod
-    def _pauli_to_symplectic(pauli: str) -> tuple[int, NDArray[np.bool_]]:
+    def _pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[bool]]:
         """Convert a Pauli string to a symplectic matrix.
 
         Args:
+            ipower (NDArray[np.uint]): power of i coefficient
             pauli (str): A Pauli-string.
         """
-        return pauli_to_symplectic(pauli)
+        return pauli_to_symplectic(ipower, pauli)
 
     @property
     def symplectic_product_map(self):
@@ -245,7 +248,7 @@ def number_operator(
 def edge_operator(
     encoding: FermionQubitEncoding, edge_indices: tuple[int, int]
 ) -> list[tuple[str, NDArray, np.complexfloating]]:
-    """Return the number operator for a given encoding and pair of modes.
+    """Return the edge operator for a given encoding and pair of modes.
 
     Args:
         encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
@@ -256,28 +259,67 @@ def edge_operator(
             >>> tree = TernaryTee(4)
             >>> tree.edge_operator(0,1)
     """
-    logger.debug("Finding edge operator %s", edge_indices)
-    if not set(edge_indices).issubset(set(range(encoding.n_modes))):
-        logger.error("Edge operator indices invalid %s", edge_indices)
-        raise ValueError("Edge operator indices invalid %s", edge_indices)
+    return double_fermionic_operator(
+        encoding=encoding, mode_indices=edge_indices, signature="+-"
+    )
+
+
+def double_fermionic_operator(
+    encoding: FermionQubitEncoding, mode_indices: tuple[int, int], signature: str
+) -> list[tuple[str, NDArray, np.complexfloating]]:
+    """Returns the sparse pauli form of a double fermionic operator.
+
+    Args:
+        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
+        mode_indices (tuple[int, int]): The mode indices to obtain a number operator for.
+        signature (str): The fermionic operator signature, one of "++", "+-", "-+", "--".
+
+    Returns:
+        list[tuple[str, NDArray, np.complexfloating]]: A list of tuples each containing a Pauli string, its qubit indices and a complex coefficient.
+
+    Example:
+        >>> from ferrmion import TernaryTree
+        >>> tree = TernaryTree(4)
+        >>> tree.double_fermionic_operator((0,1), "+-")
+        [('ZZ', array([0, 1]), 0.25+0j), ('YX', array([0, 1]), 0.25j), ('XY', array([0, 1]), -0.25j), ('II', array([0, 1]), 0.25+0j)]
+    """
+    match signature:
+        case "++":
+            signature_iterm = [0, 3, 3, 2]
+        case "+-":
+            signature_iterm = [0, 1, 3, 0]
+        case "-+":
+            signature_iterm = [0, 3, 1, 0]
+        case "--":
+            signature_iterm = [0, 1, 1, 2]
+        case _:
+            logger.error(
+                "Operator signature can only contain + or -, %s not valid", signature
+            )
+            raise ValueError(
+                "Operator signature can only contain + or -, %s not valid", signature
+            )
+
+    logger.debug("Finding edge operator %s", mode_indices)
+    if not set(mode_indices).issubset(set(range(encoding.n_modes))):
+        logger.error("Edge operator indices invalid %s", mode_indices)
+        raise ValueError("Edge operator indices invalid %s", mode_indices)
 
     icount, sym_products = encoding.symplectic_product_map
-    m, n = edge_indices
+    m, n = mode_indices
     m = int(encoding.default_mode_op_map[m])
     n = int(encoding.default_mode_op_map[n])
-
-    first_term = sym_products[2 * m, 2 * n]
-    second_term = sym_products[2 * m, 2 * n + 1]
-    third_term = sym_products[2 * m + 1, 2 * n]
-    fourth_term = sym_products[2 * m + 1, 2 * n + 1]
-
-    terms = [first_term, second_term, third_term, fourth_term]
-    terms: list[tuple[int, str, NDArray]] = [symplectic_to_sparse(t) for t in terms]
+    terms: list[tuple[int, str, NDArray]] = [
+        symplectic_to_sparse(
+            icount[2 * m + l, 2 * n + r], sym_products[2 * m + l, 2 * n + r]
+        )
+        for l, r in product([0, 1], [0, 1])
+    ]
     factors = (
-        0.25 * icount_to_sign(icount[2 * m, 2 * n] + terms[0][0]),
-        0.25 * icount_to_sign(icount[2 * m, 2 * n + 1] + 1 + terms[1][0]),
-        0.25 * icount_to_sign(icount[2 * m + 1, 2 * n] + 3 + terms[2][0]),
-        0.25 * icount_to_sign(icount[2 * m + 1, 2 * n + 1] + terms[3][0]),
+        0.25 * icount_to_sign(terms[0][0] + signature_iterm[0]),
+        0.25 * icount_to_sign(terms[1][0] + signature_iterm[1]),
+        0.25 * icount_to_sign(terms[2][0] + signature_iterm[2]),
+        0.25 * icount_to_sign(terms[3][0] + signature_iterm[3]),
     )
 
     return [(t[1], t[2], f) for t, f in zip(terms, factors)]

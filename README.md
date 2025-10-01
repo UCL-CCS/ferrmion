@@ -1,3 +1,7 @@
+[![Release CICD](https://github.com/UCL-CCS/ferrmion/actions/workflows/release.yaml/badge.svg)](https://github.com/UCL-CCS/ferrmion/actions/workflows/release.yaml)
+[![Documentation Status](https://readthedocs.org/projects/ferrmion/badge/?version=latest)](https://ferrmion.readthedocs.io/en/latest/?badge=latest)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17236185.svg)](https://doi.org/10.5281/zenodo.17236185)
+
 # ferrmion
 
 This codebase contains methods to generate qubit Hamiltonians from fermionic Hamiltonians.
@@ -17,17 +21,21 @@ This codebase contains methods to generate qubit Hamiltonians from fermionic Ham
 ## Optimizations
 
 ### Enumeration Scheme
-- $(\lambda+\mu)$ [Evolutionary Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html)
+- $(\lambda+\mu)$ [Evolutionary Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#evolutionary-optimisation)
+- [Simulated Annealing](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#simulated-annealing)
 
 ### Ternary Trees
+- [Bonsai Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/bonsai.html)
 - [Reduced Entanglement Ternary Trees](https://ferrmion.readthedocs.io/en/latest/notebooks/rett.html)
+- [Huffman-code Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/huffman.html)
 
 ## Hamiltonians
 Functions to produce Hamiltonian templates and enumerated encodings are available in `ferrmion.hamiltonians`
 
 - Molecular Hamiltonian (Born-Oppenheimer Approximation)
+- Hubbard Hamiltonian (3D Square lattice)
 
 ## Development
 For information on development, check out the project [documentation](https://ferrmion.readthedocs.io/en/latest/development.html).
 
-If you find an error in the code or documentation, please raise an issue on the [GitHub Repo](https://github.com/UCL-CCS/ferrmion)
+If you find an error in the code or documentation, please raise an issue on the [GitHub Repo](https://github.com/UCL-CCS/ferrmion).

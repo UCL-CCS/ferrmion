@@ -181,7 +181,7 @@ def z_descendant(ancestor: TTNode) -> TTNode:
 def z_ancestor(descendant: TTNode) -> TTNode:
     """Find the further z-ancestor of a node."""
     node: TTNode = descendant
-    for char in reversed(descendant.root_path):
+    for char in descendant.root_path[::-1]:
         if char != "z":
             break
         node: TTNode = node.parent

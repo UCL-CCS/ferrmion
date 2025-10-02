@@ -44,7 +44,15 @@ def test_standard_encoding_functions(six_mode_tree):
     jw_different_enumeration.enumeration_scheme["zz"] = JW(6).enumeration_scheme["z"]
     assert JW(6) != jw_different_enumeration
 
-def test_ttnode():
+def test_ttnode_branch_majorana_map():
+    root = TTNode()
+    child = TTNode()
+    child.branch_majorana_map = {k:ind for ind,k in enumerate(sorted(child.branch_strings))}
+    assert child.branch_majorana_map == {"x":0, "y":1,"z":2}
+    root.add_child(which_child="x",child_node=child, root_path=None, qubit_label=None)
+    assert root.branch_majorana_map == {"y":None, "z":None,"xx":0,"xy":1,"xz":2}
+
+def test_ttnode_add_child():
     root = TTNode()
     child = root.add_child("x", root_path=0)
     child = child.add_child("y", root_path=1)

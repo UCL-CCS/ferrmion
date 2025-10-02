@@ -34,7 +34,7 @@ class TTNode:
     def __init__(
         self,
         parent: Optional["TTNode"] = None,
-        root_path: str | None = None,
+        root_path: str = "",
         qubit_label: int | str | None = None,
     ):
         """Initialise a ternary tree node.
@@ -53,6 +53,7 @@ class TTNode:
         self.x = None
         self.y = None
         self.z = None
+        self.branch_majorana_map = {branch: None for branch in self.branch_strings}
 
     # def __str__(self) -> str:
     # return f"{self.as_dict()}"
@@ -190,17 +191,21 @@ def add_child(
         logger.warning(f"Already has child node {child.root_path} at {which_child}")
         pass
     elif isinstance(child_node, TTNode):
+        logger.debug("Assigning node as child.")
         if root_path is not None:
             child_node.prefix_root_path(parent.root_path + root_path)
         if qubit_label is not None:
             child_node.qubit_label = qubit_label
-        setattr(parent, which_child, child_node)
     else:
-        setattr(
-            parent,
-            which_child,
+        child_node = (
             TTNode(parent=parent, root_path=root_path, qubit_label=qubit_label),
         )
+
+    logger.debug("Updating Branch-Majorana maps")
+    setattr(parent, which_child, child_node)
+    parent.branch_majorana_map.pop(which_child)
+    for child_branch, index in child_node.branch_majorana_map.items():
+        parent.branch_majorana_map[which_child + child_branch] = index
     return getattr(parent, which_child)
 
 

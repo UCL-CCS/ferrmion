@@ -105,6 +105,16 @@ class TTNode:
         """
         return child_qubit_labels(self)
 
+    @property
+    def z_descendant(self) -> "TTNode":
+        """Find the furthest z-descendant of a node."""
+        return z_descendant(self)
+
+    @property
+    def z_ancestor(self) -> "TTNode":
+        """Find the furthest z-ancestor of a node."""
+        return z_ancestor(self)
+
     def prefix_root_path(self, prefix: str) -> None:
         """Prefix the root path of a node and all its children.
 
@@ -158,6 +168,22 @@ class TTNode:
             >>> rx_graph = tree.root_node.to_rustworkx()
         """
         return to_rustworkx(self)
+
+
+def z_descendant(ancestor: TTNode) -> TTNode:
+    """Find the furthest z-descendant of a node."""
+    node = ancestor
+    while node.z is not None:
+        node = node.z
+    return node
+
+
+def z_ancestor(descendant: TTNode) -> TTNode:
+    """Find the further z-ancestor of a node."""
+    node: TTNode = descendant
+    if node.root_path[-1] == "z":
+        node: TTNode = node.parent
+    return node
 
 
 def add_child(

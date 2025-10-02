@@ -181,7 +181,9 @@ def z_descendant(ancestor: TTNode) -> TTNode:
 def z_ancestor(descendant: TTNode) -> TTNode:
     """Find the further z-ancestor of a node."""
     node: TTNode = descendant
-    if node.root_path[-1] == "z":
+    for char in reversed(descendant.root_path):
+        if char != "z":
+            break
         node: TTNode = node.parent
     return node
 
@@ -211,27 +213,36 @@ def add_child(
         >>> add_child(node, 'x')
     """
     logger.debug("Adding child %s to parent %s", which_child, parent)
-    if root_path is None:
-        root_path = which_child
+    match root_path:
+        case None:
+            root_path = which_child
+        case str():
+            root_path += which_child
+        case _:
+            root_path = str(root_path) + which_child
 
     if (child := getattr(parent, which_child, None)) is not None:
         logger.warning(f"Already has child node {child.root_path} at {which_child}")
-        pass
-    elif isinstance(child_node, TTNode):
-        logger.debug("Assigning node as child.")
-        if root_path is not None:
-            child_node.prefix_root_path(parent.root_path + root_path)
-        if qubit_label is not None:
-            logger.debug("Replacing child qubit label.")
-            child_node.qubit_label = qubit_label
-    else:
-        child_node = TTNode(parent=parent, root_path=root_path, qubit_label=qubit_label)
+        return child
+
+    if child_node is None:
+        logger.debug("Creating child node.")
+        child_node = TTNode()
+
+    child_node.prefix_root_path(parent.root_path + root_path)
+
+    if qubit_label is not None:
+        logger.debug("Replacing child qubit label.")
+        child_node.qubit_label = qubit_label
+
+    setattr(parent, which_child, child_node)
+    child_node.parent = parent
 
     logger.debug("Updating Branch-Majorana maps")
-    setattr(parent, which_child, child_node)
     parent.branch_majorana_indices.pop(which_child)
     for child_branch, index in child_node.branch_majorana_indices.items():
         parent.branch_majorana_indices[which_child + child_branch] = index
+
     return getattr(parent, which_child)
 
 

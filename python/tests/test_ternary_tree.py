@@ -44,6 +44,21 @@ def test_standard_encoding_functions(six_mode_tree):
     jw_different_enumeration.enumeration_scheme["zz"] = JW(6).enumeration_scheme["z"]
     assert JW(6) != jw_different_enumeration
 
+def test_ttnode_z_relatives():
+    root = TTNode()
+    child = root.add_child("z")
+    assert child.root_path == "z"
+    grandchild = child.add_child("z")
+    assert grandchild.root_path == "zz"
+
+    # descendant
+    assert root.z_descendant is grandchild
+    assert child.z_descendant is grandchild
+
+    # ancestor
+    assert child.z_ancestor is root
+    assert grandchild.z_ancestor is root
+
 def test_ttnode_branch_majorana_indices():
     root = TTNode()
     child = TTNode()

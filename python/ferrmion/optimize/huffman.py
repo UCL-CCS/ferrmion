@@ -95,8 +95,8 @@ def _operator_pair_priority(huffman_tree):
     weights = {}
     for index, pair in enumerate(huffman_tree.string_pairs.values()):
         left, right = pair
-        left = huffman_tree.branch_operator_map[left]
-        right = huffman_tree.branch_operator_map[right]
+        left = huffman_tree.branch_pauli_map[left]
+        right = huffman_tree.branch_pauli_map[right]
 
         weights[index] = {}
         _, left = pauli_to_symplectic(0, left)

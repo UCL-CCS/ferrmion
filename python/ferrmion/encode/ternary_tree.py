@@ -24,7 +24,7 @@ class TernaryTree(FermionQubitEncoding):
         default_enumeration_scheme(): Create a default enumeration scheme for the tree.
         as_dict(): Return the tree structure as a dictionary.
         add_node(node_string: str): Add a node to the tree.
-        branch_operator_map(): Create a map from each branch string to a Pauli string.
+        branch_pauli_map(): Create a map from each branch string to a Pauli string.
         string_pairs(): Return the pair of branch strings which correspond to each node.
         _build_symplectic_matrix(): Build the symplectic matrix for the tree.
 
@@ -186,11 +186,13 @@ class TernaryTree(FermionQubitEncoding):
             if isinstance(getattr(node, char), TTNode):
                 node = getattr(node, char)
             else:
-                node = node.add_child(char, root_path=f"{node.root_path}{char}")
+                node = node.add_child(
+                    which_child=char, root_path=f"{node.root_path}{char}"
+                )
         return self
 
     @property
-    def branch_operator_map(self) -> dict[str, str]:
+    def branch_pauli_map(self) -> dict[str, str]:
         """Create a map from each branch string to a Pauli string.
 
         Returns:
@@ -201,7 +203,7 @@ class TernaryTree(FermionQubitEncoding):
             >>> tree = TernaryTree(3)
             >>> tree.add_node('x')
             >>> tree.add_node('xz')
-            >>> tree.branch_operator_map
+            >>> tree.branch_pauli_map
             {'xx': 'XXI',
             'xzx': 'XZX',
             'y': 'YII',
@@ -217,17 +219,17 @@ class TernaryTree(FermionQubitEncoding):
         node_indices = {
             node: qubit for node, (_, qubit) in self.enumeration_scheme.items()
         }
-        branch_operator_map = {}
+        branch_pauli_map = {}
         for branch in branches:
-            branch_operator_map[branch] = ["I"] * self.n_qubits
+            branch_pauli_map[branch] = ["I"] * self.n_qubits
             node = self.root_node
             for char in branch:
                 node_index = node_indices[node.root_path]
-                branch_operator_map[branch][node_index] = char.upper()
+                branch_pauli_map[branch][node_index] = char.upper()
                 node = getattr(node, char, None)
-            branch_operator_map[branch] = "".join(branch_operator_map[branch])
+            branch_pauli_map[branch] = "".join(branch_pauli_map[branch])
 
-        return branch_operator_map
+        return branch_pauli_map
 
     @property
     def string_pairs(self) -> dict[str | int, tuple[str, str]]:
@@ -296,7 +298,7 @@ class TernaryTree(FermionQubitEncoding):
             logger.error("No enumeration scheme provided, using default.")
             self.enumeration_scheme = self.default_enumeration_scheme()
 
-        pauli_string_map = self.branch_operator_map
+        pauli_string_map = self.branch_pauli_map
 
         symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)

@@ -53,7 +53,7 @@ class TTNode:
         self.x = None
         self.y = None
         self.z = None
-        self.branch_majorana_map = {branch: None for branch in self.branch_strings}
+        self.branch_majorana_indices = {branch: None for branch in self.branch_strings}
 
     # def __str__(self) -> str:
     # return f"{self.as_dict()}"
@@ -111,6 +111,7 @@ class TTNode:
         Args:
             prefix (str): String to prefix to root paths.
         """
+        logger.debug("Prefixing node root path with %s.", prefix)
         self.root_path = f"{prefix}{self.root_path}"
         for child in ["x", "y", "z"]:
             child_node = getattr(self, child, None)
@@ -195,17 +196,16 @@ def add_child(
         if root_path is not None:
             child_node.prefix_root_path(parent.root_path + root_path)
         if qubit_label is not None:
+            logger.debug("Replacing child qubit label.")
             child_node.qubit_label = qubit_label
     else:
-        child_node = (
-            TTNode(parent=parent, root_path=root_path, qubit_label=qubit_label),
-        )
+        child_node = TTNode(parent=parent, root_path=root_path, qubit_label=qubit_label)
 
     logger.debug("Updating Branch-Majorana maps")
     setattr(parent, which_child, child_node)
-    parent.branch_majorana_map.pop(which_child)
-    for child_branch, index in child_node.branch_majorana_map.items():
-        parent.branch_majorana_map[which_child + child_branch] = index
+    parent.branch_majorana_indices.pop(which_child)
+    for child_branch, index in child_node.branch_majorana_indices.items():
+        parent.branch_majorana_indices[which_child + child_branch] = index
     return getattr(parent, which_child)
 
 

@@ -44,24 +44,24 @@ def test_standard_encoding_functions(six_mode_tree):
     jw_different_enumeration.enumeration_scheme["zz"] = JW(6).enumeration_scheme["z"]
     assert JW(6) != jw_different_enumeration
 
-def test_ttnode_branch_majorana_map():
+def test_ttnode_branch_majorana_indices():
     root = TTNode()
     child = TTNode()
-    child.branch_majorana_map = {k:ind for ind,k in enumerate(sorted(child.branch_strings))}
-    assert child.branch_majorana_map == {"x":0, "y":1,"z":2}
+    child.branch_majorana_indices = {k:ind for ind,k in enumerate(sorted(child.branch_strings))}
+    assert child.branch_majorana_indices == {"x":0, "y":1,"z":2}
     root.add_child(which_child="x",child_node=child, root_path=None, qubit_label=None)
-    assert root.branch_majorana_map == {"y":None, "z":None,"xx":0,"xy":1,"xz":2}
+    assert root.branch_majorana_indices == {"y":None, "z":None,"xx":0,"xy":1,"xz":2}
 
 def test_ttnode_add_child():
     root = TTNode()
-    child = root.add_child("x", root_path=0)
-    child = child.add_child("y", root_path=1)
-    child = child.add_child("z", root_path=2)
+    child = root.add_child("x")
+    child = child.add_child("y")
+    child = child.add_child("z")
     assert child.parent.parent.parent == root
     assert child.parent.parent == root.x
     assert child.parent == root.x.y
-    assert root.root_path is None
-    assert root.x.root_path == 0
+    assert root.root_path == ""
+    assert root.x.root_path == "x"
     assert root.as_dict() == {
         "x": {
             "x": {},
@@ -160,7 +160,7 @@ def test_ttnode_to_rustworkx(six_mode_tree):
 #         'zz': ('zzx', 'zzy'),
 #         'zzz': ('zzzx', 'zzzy')
 #     }
-#     assert jw.branch_operator_map == {
+#     assert jw.branch_pauli_map == {
 #         "zx": "ZXII",
 #         "zzx": "ZZXI",
 #         "zzy": "ZZYI",
@@ -289,7 +289,7 @@ def test_bravyi_kitaev(six_mode_tree):
         "xxz": ("xxzx", "xxzy"),
     }
 
-    assert tt.branch_operator_map == {
+    assert tt.branch_pauli_map == {
         "xxzy": "XXZIIY",
         "xxzx": "XXZIIX",
         "xxzz": "XXZIIZ",
@@ -468,7 +468,7 @@ def tests_bonsai_paper_tree():
         "yzz": ("yzzy", "yzzx"),
     }
 
-    assert tt.branch_operator_map == {
+    assert tt.branch_pauli_map == {
         "xyz": "XYIIIZIIIII",
         "zzy": "ZIIZIIIIIYI",
         "yyx": "YIYIIIIXIII",

@@ -4,6 +4,7 @@ from ferrmion.optimize.rett import reduced_entanglement_ternary_tree
 from ferrmion.optimize.huffman import huffman_ternary_tree
 from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, pauli_weighted_norm
 from ferrmion.optimize.bonsai import bonsai_algorithm
+from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree
 from ferrmion.encode import TernaryTree
 from ferrmion.core import molecular_hamiltonian_template, fill_template
 import rustworkx as rx
@@ -247,3 +248,11 @@ def test_bonsai():
     'xzxzxzz': 35,
     'yzxzxzz': 36,
     'zzzzxzz': 34}
+
+def test_hatt():
+    majorana_ham = {(0,1):0.5j, (2,3):-0.5j, (4,5):-0.5j, (2,3,4,5):0.5}
+    n_modes = 3
+    hatt=hamiltonian_adaptive_ternary_tree(majorana_ham, n_modes)
+    assert hatt.as_dict() == {'x': {'x': {}, 'y': {}, 'z': {}}, 'y': {}, 'z': {'x': {}, 'y': {}, 'z': {}}}
+    assert hatt.enumeration_scheme == {'': (2, 2), 'x': (1, 1), 'z': (0, 0)}
+    assert hatt.root_node.branch_majorana_indices == {'y': 5, 'xx': 2, 'xy': 3, 'xz': 4, 'zx': 0, 'zy': 1, 'zz': 6}

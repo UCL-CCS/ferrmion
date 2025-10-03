@@ -4,6 +4,7 @@ import datetime
 import json
 import logging
 import logging.config
+from itertools import product
 
 import numpy as np
 from numpy.typing import NDArray
@@ -476,6 +477,101 @@ def save_pauli_ham(
     with open(f"{filename}.json", "w") as f:
         f.write(json.dumps(pauli_hamiltonian))
     logger.debug(f"Saved Pauli Hamiltonian to {filename}")
+
+
+def signature_char_to_ipowers(char: str) -> list:
+    """Convert a signature character to a list of imaginary factors.
+
+    Args:
+        char(str): One of + or -
+
+    Returns:
+        list: A length-2 list of imaginary factors.
+    """
+    match char:
+        case "+":
+            result = [1, -1j]
+        case "-":
+            result = [1, 1j]
+        case "_":
+            raise ValueError("Signature must contain only + and -.")
+    return result
+
+
+def hamiltonian_term_to_majorana(
+    majorana_ham: dict[tuple[int, ...], float],
+    coeffs: np.typing.NDArray[float],
+    signature: str,
+) -> dict[tuple[int, ...], float]:
+    """Add a fermionic Hamiltonian term to a sparse majorana Hamiltonian.
+
+    Args:
+        majorana_ham (dict): The majorana Hamiltonian to update.
+        coeffs (np.ndarray): The coefficients of the fermionic term.
+        signature (str): The signature of the fermionic term.
+
+    Returns:
+        dict: The updated majorana Hamiltonian.
+
+    """
+    assert len(signature) == coeffs.ndim
+    non_zero = np.where(coeffs != 0)
+    non_zero_ones = [(*indices, coeffs[indices]) for indices in zip(*non_zero)]
+    normalisation = 0.5 ** len(signature)
+
+    ipowers = np.array([signature_char_to_ipowers(c) for c in signature])
+    for *inds, coeff in non_zero_ones:
+        # we need two majoranas for each fermionic operator
+        # 0 -> left, 1 -> right
+        left_right_indices = [[0, 1]] * len(signature)
+        for left_right in product(*left_right_indices):
+            majorana_ind = tuple([int(2 * i + lr) for i, lr in zip(inds, left_right)])
+
+            term_ipowers = np.prod([ipow[lr] for ipow, lr in zip(ipowers, left_right)])
+            majorana_ham[majorana_ind] = majorana_ham.get(majorana_ind, 0)
+            majorana_ham[majorana_ind] += normalisation * coeff * term_ipowers
+
+    return majorana_ham
+
+
+def fermionic_to_sparse_majorana(
+    hamiltonian_terms: list[tuple[np.ndarray, str]],
+) -> dict[tuple[int], np.complex64]:
+    """Convert a list of fermionic Hamiltonian terms to a sparse majorana Hamiltonian.
+
+    Args:
+        hamiltonian_terms (list): A list of tuples, each containing a numpy array of coefficients and a signature string.
+
+    Returns:
+        dict: A sparse majorana Hamiltonian, with majorana indices as keys and coefficients as values.
+
+    Example:
+        >>> from openfermionpyscf import *
+        >>> from openfermion import spinorb_from_spatial
+
+        >>> mol="H2O"
+        >>> geometry = geometry_from_pubchem(mol)
+        >>> basis = "sto-3g"
+        >>> multiplicity = 1
+        >>> charge = 0
+
+        >>> molecule = MolecularData(geometry, basis, multiplicity, charge)
+        >>> molecule = run_pyscf(molecule,run_scf=True,run_fci=False) # NOTE: running FCI is expensive! Don't try on large systems
+        >>> ones = molecule.one_body_integrals
+        >>> twos = molecule.two_body_integrals
+
+        >>> ones,twos = spinorb_from_spatial(ones, twos)
+        >>> twos = 0.5*twos
+
+        >>> # For the molecular Hamiltonian in physicist notation
+        >>> majorana_ham = fermionic_to_sparse_majorana([(ones, "+-"), (twos,"++--")])
+    """
+    total_ham: dict = {}
+    for coeffs, signature in hamiltonian_terms:
+        total_ham.update(
+            hamiltonian_term_to_majorana(total_ham, coeffs=coeffs, signature=signature)
+        )
+    return total_ham
 
 
 def setup_logs() -> None:

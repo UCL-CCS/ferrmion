@@ -240,7 +240,10 @@ def add_child(
 
     logger.debug("Updating Branch-Majorana maps")
     parent.branch_majorana_indices.pop(which_child)
-    for child_branch, index in child_node.branch_majorana_indices.items():
+    child_branch_indices = child_node.branch_majorana_indices.items()
+    logger.debug(f"{child_branch_indices=}")
+    for child_branch, index in child_branch_indices:
+        logger.debug(f"{which_child+child_branch=}, {index=}")
         parent.branch_majorana_indices[which_child + child_branch] = index
 
     return getattr(parent, which_child)

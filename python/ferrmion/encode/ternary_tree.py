@@ -302,15 +302,17 @@ class TernaryTree(FermionQubitEncoding):
 
         symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
-        for node, operators in self.string_pairs.items():
-            for offset, operator in enumerate(operators):
-                operator = pauli_string_map[operator]
-                operator = np.array(list(operator), dtype=str)
-                # If the string is X or Y then assign 1
-                term_ipower, symplectic_term = self._pauli_to_symplectic(0, operator)
-                fermion_mode = self.enumeration_scheme[node][0]
-                ipowers[2 * fermion_mode + offset] = term_ipower
-                symplectic[2 * fermion_mode + offset] = symplectic_term
+        for operator, majorana_index in self.root_node.branch_majorana_indices.items():
+            if "x" not in operator and "y" not in operator:
+                continue
+
+            operator = pauli_string_map[operator]
+            operator = np.array(list(operator), dtype=str)
+            # If the string is X or Y then assign 1
+            term_ipower, symplectic_term = self._pauli_to_symplectic(0, operator)
+
+            ipowers[majorana_index] = term_ipower
+            symplectic[majorana_index] = symplectic_term
         return ipowers, symplectic
 
     def JordanWigner(self) -> "TernaryTree":
@@ -374,6 +376,51 @@ class TernaryTree(FermionQubitEncoding):
             >>> min_height_tree = TernaryTree(3).JKMN()
         """
         return JKMN(self.n_modes)
+
+
+def string_pairing_algorithm(tree: TernaryTree):
+    """String-pairing algoritm.
+
+    This is produce a map to replace the branch_majorana_indices
+    of the root node.
+
+    Args:
+        tree (TernaryTree): A Ternary-tree encoding.
+
+    Returns:
+        dict[str, int]: A map from branches to majorana mdoe indices.
+    """
+    logger.debug("Running the string-pairing algorithm.")
+    node_set = tree.root_node.child_strings
+
+    branch_majorana_map = {}
+    for node_string in node_set:
+        # We want to set the majorana indices according to the
+        # fermionic ones so that f_i -> (m_2i, m_2i+1)
+        fermion_mode = tree.enumeration_scheme[node_string][0]
+
+        x_string = node_string + "x"
+        y_string = node_string + "y"
+        while x_string in node_set:
+            x_string += "z"
+
+        while y_string in node_set:
+            y_string += "z"
+
+        if x_string.count("y") % 2 == 0:
+            branch_majorana_map[x_string] = 2 * fermion_mode
+            branch_majorana_map[y_string] = 2 * fermion_mode + 1
+        elif y_string.count("y") % 2 == 0:
+            branch_majorana_map[y_string] = 2 * fermion_mode
+            branch_majorana_map[x_string] = 2 * fermion_mode + 1
+
+    # We'll place the all-z string after all the required majorana modes
+    all_z = "z"
+    while all_z in node_set:
+        all_z += "z"
+    branch_majorana_map[all_z] = 2 * len(node_set) + 1
+
+    return branch_majorana_map
 
 
 def JordanWigner(n_modes: int) -> TernaryTree:

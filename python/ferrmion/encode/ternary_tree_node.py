@@ -240,10 +240,7 @@ def add_child(
 
     logger.debug("Updating Branch-Majorana maps")
     parent.branch_majorana_indices.pop(which_child)
-    child_branch_indices = child_node.branch_majorana_indices.items()
-    logger.debug(f"{child_branch_indices=}")
-    for child_branch, index in child_branch_indices:
-        logger.debug(f"{which_child+child_branch=}, {index=}")
+    for child_branch, index in child_node.branch_majorana_indices.items():
         parent.branch_majorana_indices[which_child + child_branch] = index
 
     return getattr(parent, which_child)
@@ -376,6 +373,51 @@ def node_sorter(label: str) -> int:
         return 0
     pauli_dict = {"x": "1", "y": "2", "z": "3"}
     return int("".join([pauli_dict[item] for item in label.lower()]))
+
+
+def string_pairing_algorithm(root: TTNode):
+    """String-pairing algoritm.
+
+    This is produce a map to replace the branch_majorana_indices
+    of the root node.
+
+    Args:
+        root (TTNode): The root Ternary-tree node.
+
+    Returns:
+        dict[str, int]: A map from branches to majorana mdoe indices.
+    """
+    logger.debug("Running the string-pairing algorithm.")
+    node_set = root.child_strings
+
+    branch_majorana_map = {}
+    for index, node_string in enumerate(node_set):
+        node = root
+        for char in node_string:
+            node = getattr(node, char)
+
+        x_string = node_string + "x"
+        y_string = node_string + "y"
+        while x_string in node_set:
+            x_string += "z"
+
+        while y_string in node_set:
+            y_string += "z"
+
+        if x_string.count("y") % 2 == 0:
+            branch_majorana_map[x_string] = 2 * index
+            branch_majorana_map[y_string] = 2 * index + 1
+        elif y_string.count("y") % 2 == 0:
+            branch_majorana_map[y_string] = 2 * index
+            branch_majorana_map[x_string] = 2 * index + 1
+
+    # We'll place the all-z string after all the required majorana modes
+    all_z = "z"
+    while all_z in node_set:
+        all_z += "z"
+    branch_majorana_map[all_z] = 2 * len(node_set) + 1
+
+    return branch_majorana_map
 
 
 def to_rustworkx(root: TTNode) -> rx.PyDiGraph:

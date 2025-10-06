@@ -78,6 +78,11 @@ class TTNode:
         return as_dict(self)
 
     @property
+    def z_ancestor(self) -> "TTNode":
+        """Find the farthest child node on the all-z branch."""
+        return z_ancestor(descendant=self)
+
+    @property
     def z_descendant(self) -> "TTNode":
         """Find the farthest child node on the all-z branch."""
         return z_descendant(ancestor=self)

@@ -479,7 +479,7 @@ def save_pauli_ham(
     logger.debug(f"Saved Pauli Hamiltonian to {filename}")
 
 
-def signature_char_to_ipowers(char: str) -> list:
+def _signature_char_to_ipowers(char: str) -> list:
     """Convert a signature character to a list of imaginary factors.
 
     Args:
@@ -498,7 +498,7 @@ def signature_char_to_ipowers(char: str) -> list:
     return result
 
 
-def hamiltonian_term_to_majorana(
+def _hamiltonian_term_to_majorana(
     majorana_ham: dict[tuple[int, ...], float],
     coeffs: np.typing.NDArray[float],
     signature: str,
@@ -519,7 +519,7 @@ def hamiltonian_term_to_majorana(
     non_zero_ones = [(*indices, coeffs[indices]) for indices in zip(*non_zero)]
     normalisation = 0.5 ** len(signature)
 
-    ipowers = np.array([signature_char_to_ipowers(c) for c in signature])
+    ipowers = np.array([_signature_char_to_ipowers(c) for c in signature])
     for *inds, coeff in non_zero_ones:
         # we need two majoranas for each fermionic operator
         # 0 -> left, 1 -> right
@@ -569,7 +569,7 @@ def fermionic_to_sparse_majorana(
     total_ham: dict = {}
     for coeffs, signature in hamiltonian_terms:
         total_ham.update(
-            hamiltonian_term_to_majorana(total_ham, coeffs=coeffs, signature=signature)
+            _hamiltonian_term_to_majorana(total_ham, coeffs=coeffs, signature=signature)
         )
     return total_ham
 

@@ -42,9 +42,7 @@ def _build_huffman_tree(
         parent_index = 2 * n_ops - 1 - i
         mins = sorted(weights.items(), key=lambda kv: (kv[1], kv[0]))[:3]
 
-        parent = nodes.get(
-            parent_index, TTNode(parent=None, root_path="", qubit_label=i)
-        )
+        parent = nodes.get(parent_index, TTNode(parent=None, qubit_label=i))
 
         for min, child_string in zip(mins, ["x", "y", "z"][: len(mins)]):
             possible_child = nodes[min[0]]

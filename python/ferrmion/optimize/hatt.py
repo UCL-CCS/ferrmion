@@ -135,7 +135,7 @@ def hamiltonian_adaptive_ternary_tree(
             if isinstance(nodes.get(i, None), TTNode):
                 parent.add_child(which_child=char, child_node=nodes.get(i))
             else:
-                parent.branch_majorana_indices[char] = i
+                parent.leaf_majorana_indices[char] = i
 
         z_index = selection[2]
         z_desc = descendant_map[z_index]

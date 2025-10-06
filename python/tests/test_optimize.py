@@ -255,4 +255,4 @@ def test_hatt():
     hatt=hamiltonian_adaptive_ternary_tree(majorana_ham, n_modes)
     assert hatt.as_dict() == {'x': {'x': {}, 'y': {}, 'z': {}}, 'y': {}, 'z': {'x': {}, 'y': {}, 'z': {}}}
     assert hatt.enumeration_scheme == {'': (2, 2), 'x': (1, 1), 'z': (0, 0)}
-    assert hatt.root_node.branch_majorana_indices == {'y': 5, 'xx': 2, 'xy': 3, 'xz': 4, 'zx': 0, 'zy': 1, 'zz': 6}
+    assert hatt.root_node.branch_majorana_map == {'y': 5, 'xx': 2, 'xy': 3, 'xz': 4, 'zx': 0, 'zy': 1, 'zz': 6}

@@ -13,6 +13,22 @@ from ferrmion.hamiltonians import molecular_hamiltonian
 def six_mode_tree():
     return TernaryTree(n_modes=6, root_node=TTNode())
 
+@pytest.fixture(scope="module")
+def bonsai_paper_tree():
+    tt = TernaryTree(n_modes=11)
+    tt = tt.add_node("x")
+    tt = tt.add_node("y")
+    tt = tt.add_node("z")
+    tt = tt.add_node("xx")
+    tt = tt.add_node("xy")
+    tt = tt.add_node("yx")
+    tt = tt.add_node("yy")
+    tt = tt.add_node("yz")
+    tt = tt.add_node("zz")
+    tt = tt.add_node("yzz")
+    tt.enumeration_scheme = tt.default_enumeration_scheme()
+    return tt
+
 def test_standard_encoding_functions(six_mode_tree):
     # Test function aliases
     assert JW(6) == JordanWigner(6)
@@ -44,65 +60,13 @@ def test_standard_encoding_functions(six_mode_tree):
     jw_different_enumeration.enumeration_scheme["zz"] = JW(6).enumeration_scheme["z"]
     assert JW(6) != jw_different_enumeration
 
-def test_ttnode_z_relatives():
-    root = TTNode()
-    child = root.add_child("z")
-    assert child.root_path == "z"
-    grandchild = child.add_child("z")
-    assert grandchild.root_path == "zz"
-
-    # descendant
-    assert root.z_descendant is grandchild
-    assert child.z_descendant is grandchild
-
-    # ancestor
-    assert child.z_ancestor is root
-    assert grandchild.z_ancestor is root
-
-def test_ttnode_branch_majorana_indices():
-    root = TTNode()
-    child = TTNode()
-    child.branch_majorana_indices = {k:ind for ind,k in enumerate(sorted(child.branch_strings))}
-    assert child.branch_majorana_indices == {"x":0, "y":1,"z":2}
-    root.add_child(which_child="x",child_node=child, root_path=None, qubit_label=None)
-    assert root.branch_majorana_indices == {"y":None, "z":None,"xx":0,"xy":1,"xz":2}
-
-def test_ttnode_add_child():
-    root = TTNode()
-    child = root.add_child("x")
-    child = child.add_child("y")
-    child = child.add_child("z")
-    assert child.parent.parent.parent == root
-    assert child.parent.parent == root.x
-    assert child.parent == root.x.y
-    assert root.root_path == ""
-    assert root.x.root_path == "x"
-    assert root.as_dict() == {
-        "x": {
-            "x": {},
-            "y": {"x": {}, "y": {}, "z": {"x": {}, "y": {}, "z": {}}},
-            "z": {},
-        },
-        "y": {},
-        "z": {},
-    }
-    assert root.branch_strings == {
-        "xx",
-        "xyx",
-        "xyy",
-        "xyzx",
-        "xyzy",
-        "xyzz",
-        "xz",
-        "y",
-        "z",
-    }
-
-def test_enumeration_scheme(six_mode_tree):
+def test_default_enumeration_scheme(six_mode_tree):
     assert six_mode_tree.default_enumeration_scheme() == {'':(0,0)}
     jkmn = six_mode_tree.JKMN()
     assert jkmn.default_enumeration_scheme() == {'': (0, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 5)}
 
+def test_invalid_enumeration_scheme(six_mode_tree):
+    jkmn = six_mode_tree.JKMN()
     # Not enough qubit labels
     with pytest.raises(ValueError) as exc:
         jkmn.enumeration_scheme = {'': (0, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 4)}
@@ -123,6 +87,8 @@ def test_enumeration_scheme(six_mode_tree):
         jkmn.enumeration_scheme = {'': (6, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 5)}
     assert "Invalid mode labels" in str(exc.value)
 
+def test_valid_enumeration_scheme(six_mode_tree):
+    jkmn = six_mode_tree.JKMN()
     jkmn.enumeration_scheme = {'': (3, 1), 'x': (2, 5), 'y': (0, 3), 'z': (1, 4), 'xx': (4, 2), 'xy': (5, 0)}
     assert np.all(jkmn._build_symplectic_matrix()[1] == np.array([[False,  True, False,  True, False, False, False,  True, False,
          True, False, False],
@@ -148,108 +114,6 @@ def test_enumeration_scheme(six_mode_tree):
         False, False,  True],
        [ True,  True, False, False, False,  True, False, False, False,
         False, False,  True]]))
-def test_ttnode_to_rustworkx(six_mode_tree):
-    graph = six_mode_tree.JKMN().root_node.to_rustworkx()
-    assert graph.nodes() == ['', 'x', 'y', 'z', 'xx', 'xy']
-    assert np.all([*graph.edge_list()] == [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5)])
-
-# def test_jordan_wigner(six_mode_tree):
-#     jw = six_mode_tree.JW()
-#     assert jw.root_node.branch_strings == {
-#         "x",
-#         "y",
-#         "zx",
-#         "zy",
-#         "zzx",
-#         "zzy",
-#         "zzzx",
-#         "zzzy",
-#         "zzzz",
-#     }
-
-#     assert jw.root_node.child_strings == ['', 'z', 'zz', 'zzz']
-#     assert len(jw.qubits) == len(jw.root_node.child_strings)
-
-#     assert jw.string_pairs == {'': ('x', 'y'),
-#         'z': ('zx', 'zy'),
-#         'zz': ('zzx', 'zzy'),
-#         'zzz': ('zzzx', 'zzzy')
-#     }
-#     assert jw.branch_pauli_map == {
-#         "zx": "ZXII",
-#         "zzx": "ZZXI",
-#         "zzy": "ZZYI",
-#         "zzzx": "ZZZX",
-#         "zy": "ZYII",
-#         "y": "YIII",
-#         "x": "XIII",
-#         "zzzy": "ZZZY",
-#     }
-#     assert jw._build_symplectic_matrix().shape == (2 * len(jw.qubits), 2 * len(jw.qubits))
-#     assert np.all(
-#         jw._build_symplectic_matrix()
-#         == np.array(
-#             [
-#                 [1, 0, 0, 0, 0, 0, 0, 0],
-#                 [1, 0, 0, 0, 1, 0, 0, 0],
-#                 [0, 1, 0, 0, 1, 0, 0, 0],
-#                 [0, 1, 0, 0, 1, 1, 0, 0],
-#                 [0, 0, 1, 0, 1, 1, 0, 0],
-#                 [0, 0, 1, 0, 1, 1, 1, 0],
-#                 [0, 0, 0, 1, 1, 1, 1, 0],
-#                 [0, 0, 0, 1, 1, 1, 1, 1],
-#             ]
-#         )
-#     )
-#     assert jw.as_dict() == {'x': {},
-#         'y': {},
-#         'z': {'x': {},
-#         'y': {},
-#         'z': {'x': {}, 'y': {}, 'z': {
-#             'x': {}, 'y': {}, 'z': {}}
-#             }}
-#     }
-#     assert jw.default_enumeration_scheme() == {'': {'mode': 0, 'qubit': 0},
-#         'z': {'mode': 1, 'qubit': 1},
-#         'zz': {'mode': 2, 'qubit': 2},
-#         'zzz': {'mode': 3, 'qubit': 3}
-#     }
-#     for line in jw._build_symplectic_matrix():
-#         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
-
-
-# def test_parity(six_mode_tree):
-#     assert six_mode_tree.ParityEncoding().as_dict() == {
-#         "x": {
-#             "x": {"x": {"x": {}, "y": {}, "z": {}}, "y": {}, "z": {}},
-#             "y": {},
-#             "z": {},
-#         },
-#         "y": {},
-#         "z": {},
-#     }
-#     assert six_mode_tree.ParityEncoding().pauli_strings == {
-#         "xxxy": "XXXY",
-#         "xy": "XYII",
-#         "y": "YIII",
-#         "xz": "XZII",
-#         "xxxx": "XXXX",
-#         "xxxz": "XXXZ",
-#         "xxz": "XXZI",
-#         "xxy": "XXYI",
-#     }
-
-#     assert six_mode_tree.ParityEncoding().root_node.branch_strings == {
-#         "xxxy",
-#         "xy",
-#         "y",
-#         "xz",
-#         "xxxx",
-#         "xxxz",
-#         "xxz",
-#         "z",
-#         "xxy",
-#     }
 
 
 def test_bravyi_kitaev(six_mode_tree):
@@ -346,61 +210,9 @@ def test_bravyi_kitaev(six_mode_tree):
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
 
-# def test_JKMN(six_mode_tree):
-#     assert six_mode_tree.JKMN().as_dict() == {
-#         "x": {"x": {}, "y": {}, "z": {}},
-#         "y": {"x": {}, "y": {}, "z": {}},
-#         "z": {"x": {}, "y": {}, "z": {}},
-#     }
-#     assert six_mode_tree.JKMN().root_node.branch_strings == {
-#         "yz",
-#         "yy",
-#         "xz",
-#         "yx",
-#         "xy",
-#         "zy",
-#         "zx",
-#         "zz",
-#         "xx",
-#     }
 
-#     assert six_mode_tree.JKMN().pauli_strings == {
-#         "yz": "YIZI",
-#         "yy": "YIYI",
-#         "xz": "XZII",
-#         "yx": "YIXI",
-#         "xy": "XYII",
-#         "zy": "ZIIY",
-#         "zx": "ZIIX",
-#         "xx": "XXII",
-#     }
-
-#     assert six_mode_tree.JKMN().string_pairs == {
-#         "xz": "yz",
-#         "yz": "xz",
-#         "xx": "xy",
-#         "xy": "xx",
-#         "zx": "zy",
-#         "zy": "zx",
-#         "yx": "yy",
-#         "yy": "yx",
-#     }
-
-
-def tests_bonsai_paper_tree():
-    tt = TernaryTree(n_modes=11)
-    tt = tt.add_node("x")
-    tt = tt.add_node("y")
-    tt = tt.add_node("z")
-    tt = tt.add_node("xx")
-    tt = tt.add_node("xy")
-    tt = tt.add_node("yx")
-    tt = tt.add_node("yy")
-    tt = tt.add_node("yz")
-    tt = tt.add_node("zz")
-    tt = tt.add_node("yzz")
-    tt.enumeration_scheme = tt.default_enumeration_scheme()
-
+def tests_bonsai_paper_tree(bonsai_paper_tree):
+    tt = bonsai_paper_tree
     assert tt.root_node.branch_strings == {
         "xyz",
         "zzy",

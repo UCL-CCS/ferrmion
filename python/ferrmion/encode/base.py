@@ -300,7 +300,7 @@ def double_fermionic_operator(
                 "Operator signature can only contain + or -, %s not valid", signature
             )
 
-    logger.debug("Finding edge operator %s", mode_indices)
+    logger.debug("Finding double fermionic operator %s, %s", signature, mode_indices)
     if not set(mode_indices).issubset(set(range(encoding.n_modes))):
         logger.error("Edge operator indices invalid %s", mode_indices)
         raise ValueError("Edge operator indices invalid %s", mode_indices)
@@ -322,4 +322,6 @@ def double_fermionic_operator(
         0.25 * icount_to_sign(terms[3][0] + signature_iterm[3]),
     )
 
-    return [(t[1], t[2], f) for t, f in zip(terms, factors)]
+    sparse_op = [(t[1], t[2], f) for t, f in zip(terms, factors)]
+    logger.debug(f"Found operator {sparse_op}")
+    return sparse_op

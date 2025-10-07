@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0]
+### Added
+- `hamiltonian_adaptive_ternary_tree` in `optimize.hatt`, with explainer notebook in Examples.
+- `TTNode.branch_majorana_map` returns dict from branch strings to indices of majporana operators.
+
+#### Utils
+- `fermionic_to_sparse_majorana` converts hamiltonian formatt for use in `hatt`
+
+#### TTNode
+- `z_descendant` and `z_ancestor` functions to find farthest relative on the all-z branch
+
+### Removed
+- ruff removed from dependencies
+
+### Changed
+#### TTNode
+- `__str__` function showing value of `root_path`
+_ `prefix_root_path` renamed `update_root_path` as not every change is prefixed
+- `leaf_majorana_indices` attribute added
+- `add_child` will replace an existing child with warning output rather than raise exception
+- `add_child` will remove `TTNode.leaf_majorana_indices` item to attach a child
+
+#### TernaryTree
+- `.branch_operator_map` renamed `.branch_pauli_map`
+- `string_pairing_algorithm` seperaed out, returning map from branches to majorana operator indices (see `TTNode.branch_majorana_map`)
+- `_build_symplectic_matrix` uses majorana operator indices from `branch_majorana_map` rather than enumeration scheme to define operator ordering.
+
+## [0.1.1]
+### Changed
+- Updates to release pipeline to support mac and windows.
+
 ## [0.1.0]
 
 ### Added

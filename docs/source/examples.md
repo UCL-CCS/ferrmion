@@ -10,6 +10,7 @@ notebooks/growing_trees
 notebooks/rett
 notebooks/huffman
 notebooks/bonsai
+notebooks/hatt
 ```
 
 ## Hamiltonians

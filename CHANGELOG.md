@@ -5,16 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0]
 ### Added
 - `hamiltonian_adaptive_ternary_tree` in `optimize.hatt`, with explainer notebook in Examples.
 - `TTNode.branch_majorana_map` returns dict from branch strings to indices of majporana operators.
 
 #### Utils
-- `fermionic_to_sparse_majorana`
+- `fermionic_to_sparse_majorana` converts hamiltonian formatt for use in `hatt`
 
 #### TTNode
-- `z_descendant` and `z_ancestor` functions to find farthest relative on the all-z branch, properties added to class object
+- `z_descendant` and `z_ancestor` functions to find farthest relative on the all-z branch
 
 ### Removed
 - ruff removed from dependencies

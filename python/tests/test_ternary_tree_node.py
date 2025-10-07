@@ -28,15 +28,11 @@ def test_ttnode_z_relatives():
     assert grandchild.root_path == "zz"
 
     # descendant
-    assert root.z_descendant is grandchild
     assert z_descendant(root) is grandchild
-    assert child.z_descendant is grandchild
     assert z_descendant(child) is grandchild
 
     # ancestor
-    assert child.z_ancestor is root
     assert z_ancestor(child) is root
-    assert grandchild.z_ancestor is root
     assert z_ancestor(grandchild) is root
 
 def test_ttnode_add_child():

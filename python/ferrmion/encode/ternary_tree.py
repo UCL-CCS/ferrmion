@@ -312,10 +312,8 @@ class TernaryTree(FermionQubitEncoding):
         ] or self.root_node.branch_strings.symmetric_difference(
             branch_majorana_map.keys()
         ):
-            logger.warning(
-                "Branches do not have majorana indices assigned for all modes."
-            )
-            logger.warning(
+            logger.info("Branches do not have majorana indices assigned for all modes.")
+            logger.info(
                 "Using string-pairing algorithm to assign majorana indices to branches."
             )
             branch_majorana_map = string_pairing_algorithm(self)

@@ -286,12 +286,12 @@ def as_dict(node: TTNode) -> dict[str, dict]:
         >>> as_dict(node)
     """
     logger.debug("Converting node to dict %s", node)
-    children = {"x": node.x, "y": node.y, "z": node.z}
+    children: dict[str, TTNode] = {"x": node.x, "y": node.y, "z": node.z}
     for key, val in children.items():
         if val is not None:
             children[key] = as_dict(children[key])
         else:
-            children[key] = {}
+            children[key] = node.leaf_majorana_indices[key]
     return children
 
 

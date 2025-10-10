@@ -63,12 +63,12 @@ def test_ttnode_as_dict():
     child = child.add_child("z")
     assert root.as_dict() == {
         "x": {
-            "x": {},
-            "y": {"x": {}, "y": {}, "z": {"x": {}, "y": {}, "z": {}}},
-            "z": {},
+            "x": None,
+            "y": {"x": None, "y": None, "z": {"x": None, "y": None, "z": None}},
+            "z": None,
         },
-        "y": {},
-        "z": {},
+        "y": None,
+        "z": None,
     }
 
 

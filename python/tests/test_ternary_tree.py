@@ -139,15 +139,15 @@ def test_bravyi_kitaev(six_mode_tree):
     assert tt.as_dict() == {
         "x": {
             "x": {
-                "x": {"x": {}, "y": {}, "z": {}},
-                "y": {},
-                "z": {"x": {}, "y": {}, "z": {}},
+                "x": {"x": None, "y": None, "z": None},
+                "y": None,
+                "z": {"x": None, "y": None, "z": None},
             },
-            "y": {},
-            "z": {"x": {}, "y": {}, "z": {}},
+            "y": None,
+            "z": {"x": None, "y": None, "z": None},
         },
-        "y": {},
-        "z": {},
+        "y": None,
+        "z": None,
     }
 
     assert tt.default_enumeration_scheme() == {
@@ -255,16 +255,16 @@ def tests_bonsai_paper_tree(bonsai_paper_tree):
 
     assert tt.as_dict() == {
         "x": {
-            "x": {"x": {}, "y": {}, "z": {}},
-            "y": {"x": {}, "y": {}, "z": {}},
-            "z": {},
+            "x": {"x": None, "y": None, "z": None},
+            "y": {"x": None, "y": None, "z": None},
+            "z": None,
         },
         "y": {
-            "x": {"x": {}, "y": {}, "z": {}},
-            "y": {"x": {}, "y": {}, "z": {}},
-            "z": {"x": {}, "y": {}, "z": {"x": {}, "y": {}, "z": {}}},
+            "x": {"x": None, "y": None, "z": None},
+            "y": {"x": None, "y": None, "z": None},
+            "z": {"x": None, "y": None, "z": {"x": None, "y": None, "z": None}},
         },
-        "z": {"x": {}, "y": {}, "z": {"x": {}, "y": {}, "z": {}}},
+        "z": {"x": None, "y": None, "z": {"x": None, "y": None, "z": None}},
     }
 
     assert tt.default_enumeration_scheme() == {

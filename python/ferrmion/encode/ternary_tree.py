@@ -24,7 +24,7 @@ class TernaryTree(FermionQubitEncoding):
         default_enumeration_scheme(): Create a default enumeration scheme for the tree.
         as_dict(): Return the tree structure as a dictionary.
         add_node(node_string: str): Add a node to the tree.
-        branch_operator_map(): Create a map from each branch string to a Pauli string.
+        branch_pauli_map(): Create a map from each branch string to a Pauli string.
         string_pairs(): Return the pair of branch strings which correspond to each node.
         _build_symplectic_matrix(): Build the symplectic matrix for the tree.
 
@@ -55,11 +55,16 @@ class TernaryTree(FermionQubitEncoding):
             n_modes (int): How many fermionic modes in the encoding.
             root_node (TTNode): The root node of the tree.
         """
-        self._enumeration_scheme = {}
         self.n_modes = n_modes
         self.n_qubits = n_modes
         self.root_node = root_node
-        self.root_node.root_path = ""
+
+        if None not in root_node.child_qubit_labels.values():
+            self.enumeration_scheme: dict[str, tuple[int, int]] = {
+                node: (index, index)
+                for node, index in root_node.child_qubit_labels.items()
+            }
+
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
         self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
@@ -186,11 +191,13 @@ class TernaryTree(FermionQubitEncoding):
             if isinstance(getattr(node, char), TTNode):
                 node = getattr(node, char)
             else:
-                node = node.add_child(char, root_path=f"{node.root_path}{char}")
+                node = node.add_child(
+                    which_child=char,
+                )
         return self
 
     @property
-    def branch_operator_map(self) -> dict[str, str]:
+    def branch_pauli_map(self) -> dict[str, str]:
         """Create a map from each branch string to a Pauli string.
 
         Returns:
@@ -201,7 +208,7 @@ class TernaryTree(FermionQubitEncoding):
             >>> tree = TernaryTree(3)
             >>> tree.add_node('x')
             >>> tree.add_node('xz')
-            >>> tree.branch_operator_map
+            >>> tree.branch_pauli_map
             {'xx': 'XXI',
             'xzx': 'XZX',
             'y': 'YII',
@@ -214,20 +221,22 @@ class TernaryTree(FermionQubitEncoding):
 
         branches = self.root_node.branch_strings
 
-        node_indices = {
+        qubit_index = {
             node: qubit for node, (_, qubit) in self.enumeration_scheme.items()
         }
-        branch_operator_map = {}
+        branch_pauli_map = {}
         for branch in branches:
-            branch_operator_map[branch] = ["I"] * self.n_qubits
+            branch_pauli_map[branch] = ["I"] * self.n_qubits
             node = self.root_node
             for char in branch:
-                node_index = node_indices[node.root_path]
-                branch_operator_map[branch][node_index] = char.upper()
+                node_index = qubit_index[node.root_path]
+                branch_pauli_map[branch][node_index] = char.upper()
                 node = getattr(node, char, None)
-            branch_operator_map[branch] = "".join(branch_operator_map[branch])
 
-        return branch_operator_map
+            branch_pauli_map[branch] = "".join(branch_pauli_map[branch])
+        logger.debug("Branch pauli map complete")
+        logger.debug(branch_pauli_map)
+        return branch_pauli_map
 
     @property
     def string_pairs(self) -> dict[str | int, tuple[str, str]]:
@@ -270,7 +279,7 @@ class TernaryTree(FermionQubitEncoding):
 
     def _build_symplectic_matrix(
         self,
-    ) -> tuple[NDArray[np.uint8], NDArray[np.bool_]]:
+    ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build the symplectic matrix for the tree.
 
         Returns:
@@ -292,23 +301,39 @@ class TernaryTree(FermionQubitEncoding):
                     [ True, False,  True, False,  True,  True]]))
         """
         logger.debug("Building symplectic matrix for TernaryTree.")
-        if self.enumeration_scheme is None:
-            logger.error("No enumeration scheme provided, using default.")
+        if self.enumeration_scheme is None or self.enumeration_scheme == {}:
+            logger.warning("No enumeration scheme provided, using default.")
             self.enumeration_scheme = self.default_enumeration_scheme()
+        logger.debug(f"{self.enumeration_scheme=}")
 
-        pauli_string_map = self.branch_operator_map
+        branch_majorana_map = self.root_node.branch_majorana_map
+        logger.debug(f"{branch_majorana_map=}")
+        if None in [
+            *branch_majorana_map.values()
+        ] or self.root_node.branch_strings.symmetric_difference(
+            branch_majorana_map.keys()
+        ):
+            logger.info("Branches do not have majorana indices assigned for all modes.")
+            logger.info(
+                "Using string-pairing algorithm to assign majorana indices to branches."
+            )
+            branch_majorana_map = string_pairing_algorithm(self)
+
+        pauli_string_map = self.branch_pauli_map
 
         symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
-        for node, operators in self.string_pairs.items():
-            for offset, operator in enumerate(operators):
-                operator = pauli_string_map[operator]
-                operator = np.array(list(operator), dtype=str)
-                # If the string is X or Y then assign 1
-                term_ipower, symplectic_term = self._pauli_to_symplectic(0, operator)
-                fermion_mode = self.enumeration_scheme[node][0]
-                ipowers[2 * fermion_mode + offset] = term_ipower
-                symplectic[2 * fermion_mode + offset] = symplectic_term
+        for operator, majorana_index in branch_majorana_map.items():
+            if "x" not in operator and "y" not in operator:
+                continue
+
+            operator = pauli_string_map[operator]
+            operator = np.array(list(operator), dtype=str)
+            # If the string is X or Y then assign 1
+            term_ipower, symplectic_term = self._pauli_to_symplectic(0, operator)
+
+            ipowers[majorana_index] = term_ipower
+            symplectic[majorana_index] = symplectic_term
         return ipowers, symplectic
 
     def JordanWigner(self) -> "TernaryTree":
@@ -372,6 +397,53 @@ class TernaryTree(FermionQubitEncoding):
             >>> min_height_tree = TernaryTree(3).JKMN()
         """
         return JKMN(self.n_modes)
+
+
+def string_pairing_algorithm(tree: TernaryTree):
+    """String-pairing algoritm.
+
+    This is used to produce a map from branches to majorana-indices
+    of the root node.
+
+    Args:
+        tree (TernaryTree): A Ternary-tree encoding.
+
+    Returns:
+        dict[str, int]: A map from branches to majorana mdoe indices.
+    """
+    logger.debug("Running the string-pairing algorithm.")
+    node_set = tree.root_node.child_strings
+
+    branch_majorana_map = {}
+    for node_string in node_set:
+        # We want to set the majorana indices according to the
+        # fermionic ones so that f_i -> (m_2i, m_2i+1)
+        fermion_mode = tree.enumeration_scheme[node_string][0]
+
+        x_string = node_string + "x"
+        y_string = node_string + "y"
+        while x_string in node_set:
+            x_string += "z"
+
+        while y_string in node_set:
+            y_string += "z"
+
+        if x_string.count("y") % 2 == 0:
+            branch_majorana_map[x_string] = 2 * fermion_mode
+            branch_majorana_map[y_string] = 2 * fermion_mode + 1
+        elif y_string.count("y") % 2 == 0:
+            branch_majorana_map[y_string] = 2 * fermion_mode
+            branch_majorana_map[x_string] = 2 * fermion_mode + 1
+
+    # We'll place the all-z string after all the required majorana modes
+    all_z = "z"
+    while all_z in node_set:
+        all_z += "z"
+    branch_majorana_map[all_z] = 2 * len(node_set) + 1
+
+    logger.debug("String-paring algoithm complete.")
+    logger.debug(f"{branch_majorana_map=}")
+    return branch_majorana_map
 
 
 def JordanWigner(n_modes: int) -> TernaryTree:

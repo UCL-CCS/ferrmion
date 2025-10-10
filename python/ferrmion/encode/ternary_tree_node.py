@@ -31,10 +31,13 @@ class TTNode:
         >>> node.as_dict()
     """
 
+    def __str__(self):
+        """String representation of node."""
+        return f"TTNode (root path:{self.root_path})"
+
     def __init__(
         self,
         parent: Optional["TTNode"] = None,
-        root_path: str | None = None,
         qubit_label: int | str | None = None,
     ):
         """Initialise a ternary tree node.
@@ -45,14 +48,20 @@ class TTNode:
             qubit_label (int | str | None): The qubit label.
         """
         logger.debug(
-            f"Creating TTNode with parent {parent} and qubit label {root_path}"
+            f"Creating TTNode with parent {parent} and qubit label {qubit_label}"
         )
-        self.parent = parent
-        self.root_path = root_path
+        self.root_path = ""
         self.qubit_label = qubit_label
-        self.x = None
-        self.y = None
-        self.z = None
+        self.parent: TTNode | None = parent
+        self.x: TTNode | None = None
+        self.y: TTNode | None = None
+        self.z: TTNode | None = None
+        self.z_ancestor: TTNode = self
+        self.leaf_majorana_indices: dict[str, int | None] = {
+            "x": None,
+            "y": None,
+            "z": None,
+        }
 
     # def __str__(self) -> str:
     # return f"{self.as_dict()}"
@@ -78,7 +87,22 @@ class TTNode:
             >>> node.add_child('x')
             >>> node.branch_strings
         """
-        return branch_strings(self, prefix="")
+        return set(branch_majorana_map(self).keys())
+
+    @property
+    def branch_majorana_map(self) -> dict[str, int]:
+        """Create a map from branch strings to majorana indices.
+
+        Returns:
+            dict[str,int]: A map from branch strings to majorana operator indices.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree_node import TTNode, branch_strings
+            >>> node = TTNode()
+            >>> node.add_child('x')
+            >>> branch_majorana_map(node)
+        """
+        return branch_majorana_map(root_node=self)
 
     @property
     def child_strings(self) -> list[str]:
@@ -93,7 +117,7 @@ class TTNode:
         return sorted(child_strings(self, prefix=""), key=node_sorter)
 
     @property
-    def child_qubit_labels(self) -> dict[str, str | int | None]:
+    def child_qubit_labels(self) -> dict[str, int | None]:
         """Return a dict of sorted child nodes and their qubit label.
 
         Example:
@@ -104,17 +128,13 @@ class TTNode:
         """
         return child_qubit_labels(self)
 
-    def prefix_root_path(self, prefix: str) -> None:
+    def update_root_path(self, prefix: str) -> None:
         """Prefix the root path of a node and all its children.
 
         Args:
             prefix (str): String to prefix to root paths.
         """
-        self.root_path = f"{prefix}{self.root_path}"
-        for child in ["x", "y", "z"]:
-            child_node = getattr(self, child, None)
-            if child_node is not None:
-                child_node.prefix_root_path(prefix)
+        return update_root_path(root=self, prefix=prefix)
 
     def add_child(
         self,
@@ -143,7 +163,6 @@ class TTNode:
             self,
             which_child=which_child,
             child_node=child_node,
-            root_path=root_path,
             qubit_label=qubit_label,
         )
 
@@ -158,11 +177,43 @@ class TTNode:
         return to_rustworkx(self)
 
 
+def update_root_path(root: TTNode, prefix: str) -> None:
+    """Prefix the root path of a node and all its children.
+
+    Args:
+        root (TTNode): Root ternary tree node.
+        prefix (str): String to prefix to root paths.
+    """
+    logger.debug("Prefixing node root path with %s.", prefix)
+    root.root_path = prefix
+    for child in ["x", "y", "z"]:
+        child_node = getattr(root, child, None)
+        if child_node is not None:
+            child_node.update_root_path(prefix + child)
+
+
+def z_descendant(ancestor: TTNode) -> TTNode:
+    """Find the furthest z-descendant of a node."""
+    node = ancestor
+    while isinstance(node.z, TTNode):
+        node = node.z
+    return node
+
+
+def z_ancestor(descendant: TTNode) -> TTNode:
+    """Find the further z-ancestor of a node."""
+    node: TTNode = descendant
+    for char in descendant.root_path[::-1]:
+        if char != "z":
+            break
+        node: TTNode = node.parent
+    return node
+
+
 def add_child(
     parent,
     which_child: str,
     child_node: TTNode | None = None,
-    root_path: str | None = None,
     qubit_label: int | str | None = None,
 ) -> TTNode:
     """Add a child node to a parent node.
@@ -183,24 +234,39 @@ def add_child(
         >>> add_child(node, 'x')
     """
     logger.debug("Adding child %s to parent %s", which_child, parent)
-    if root_path is None:
-        root_path = which_child
 
-    if (child := getattr(parent, which_child, None)) is not None:
-        logger.warning(f"Already has child node {child.root_path} at {which_child}")
-        pass
-    elif isinstance(child_node, TTNode):
-        if root_path is not None:
-            child_node.prefix_root_path(parent.root_path + root_path)
-        if qubit_label is not None:
-            child_node.qubit_label = qubit_label
-        setattr(parent, which_child, child_node)
-    else:
-        setattr(
-            parent,
-            which_child,
-            TTNode(parent=parent, root_path=root_path, qubit_label=qubit_label),
+    if (existing_child := getattr(parent, which_child, None)) is not None:
+        logger.warning(
+            f"Already has child node {existing_child.root_path} at {which_child}"
         )
+        return existing_child
+
+    if child_node is None:
+        logger.debug("Creating child node.")
+        child_node = TTNode()
+    elif isinstance(child_node, TTNode) and isinstance(child_node.parent, TTNode):
+        logger.warning("Removing child node from current parent.")
+        current_position = child_node.root_path[-1]
+        setattr(child_node.parent, current_position, None)
+
+    logger.debug("Setting node relationships.")
+    try:
+        parent.leaf_majorana_indices.pop(which_child)
+    except KeyError:
+        logger.debug("No leaf index to remove.")
+
+    setattr(parent, which_child, child_node)
+    child_node.parent = parent
+
+    child_node.update_root_path(parent.root_path + which_child)
+
+    if qubit_label is not None:
+        logger.debug("Replacing child qubit label.")
+        child_node.qubit_label = qubit_label
+
+    if which_child == "z":
+        child_node.z_ancestor = parent.z_ancestor
+
     return getattr(parent, which_child)
 
 
@@ -229,7 +295,7 @@ def as_dict(node: TTNode) -> dict[str, dict]:
     return children
 
 
-def child_strings(node: TTNode, prefix: str = "") -> list[str]:
+def child_strings(node: TTNode, prefix: str = "") -> set[str]:
     """Create a list of all child strings for a node.
 
     Args:
@@ -255,7 +321,7 @@ def child_strings(node: TTNode, prefix: str = "") -> list[str]:
     return strings
 
 
-def child_qubit_labels(node: TTNode) -> dict[str, int | str | None]:
+def child_qubit_labels(node: TTNode) -> dict[str, int | None]:
     """Return a dict of sorted child nodes and their qubit label.
 
     Example:
@@ -280,33 +346,36 @@ def child_qubit_labels(node: TTNode) -> dict[str, int | str | None]:
     return label_dict
 
 
-def branch_strings(node: TTNode, prefix: str = "") -> set[str]:
-    """Create a set of all branch strings for a node.
+def branch_majorana_map(root_node: TTNode) -> dict[str, int]:
+    """Create a map from branch strings to majorana indices.
 
     Args:
-        node (TTNode): The node to convert to a set of strings.
-        prefix (str): The prefix for the string.
+        root_node (TTNode): The node to convert to a set of strings.
 
     Returns:
-        set[str]: A set of all branch strings for the node.
+        dict[str,int]: A map from branch strings to majorana operator indices.
 
     Example:
         >>> from ferrmion.encode.ternary_tree_node import TTNode, branch_strings
         >>> node = TTNode()
         >>> node.add_child('x')
-        >>> branch_strings(node)
+        >>> branch_majorana_map(node)
     """
-    logger.debug("Creating branch strings for node %s", node)
-    strings = set()
-    for pauli in ["x", "y", "z"]:
-        child = getattr(node, pauli, None)
-        if child is None:
-            strings.add(f"{prefix+pauli}")
-        else:
-            strings = strings.union(
-                branch_strings(node=child, prefix=f"{prefix+pauli}")
-            )
-    return strings
+    logger.debug("Creating branch strings for node %s", root_node)
+    branch_majorana_map = {}
+    child_strings = root_node.child_strings
+    # possible_leaves = set(*[child+char for char in ["x","y","z"] for child in child_strings])
+    # leaves = possible_leaves.difference(child_strings)
+    for child in child_strings:
+        node = root_node
+        for char in child:
+            node = getattr(node, char)
+
+        for char in ["x", "y", "z"]:
+            if getattr(node, char, None) is None:
+                branch_majorana_map[child + char] = node.leaf_majorana_indices[char]
+
+    return branch_majorana_map
 
 
 def node_sorter(label: str) -> int:

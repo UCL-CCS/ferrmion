@@ -20,9 +20,9 @@ Take a look at the [examples gallery](Examples) to get started.
 examples
 encode
 optimize
-interop
 hamiltonians
-devices
 utils
+devices
+interop
 development
 ```

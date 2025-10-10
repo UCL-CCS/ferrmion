@@ -4,6 +4,7 @@ import datetime
 import json
 import logging
 import logging.config
+from itertools import product
 
 import numpy as np
 from numpy.typing import NDArray
@@ -33,11 +34,11 @@ def icount_to_sign(icount: int) -> np.complex64:
     return vals[icount % 4]
 
 
-def symplectic_hash(symp: NDArray[np.bool_]) -> bytes:
+def symplectic_hash(symp: NDArray[bool]) -> bytes:
     """Convert a symplectic vector into a hashable form.
 
     Args:
-        symp (NDArray[np.bool_]): The symplectic vector.
+        symp (NDArray[bool]): The symplectic vector.
 
     Returns:
         bytes: The hashed form of the symplectic vector.
@@ -53,7 +54,7 @@ def symplectic_hash(symp: NDArray[np.bool_]) -> bytes:
     return np.packbits(symp).tobytes()
 
 
-def symplectic_unhash(symp: bytes, length: int) -> NDArray[np.bool_]:
+def symplectic_unhash(symp: bytes, length: int) -> NDArray[bool]:
     """Convert a hashed symplectic vector back to its original form.
 
     Args:
@@ -80,7 +81,7 @@ def symplectic_unhash(symp: bytes, length: int) -> NDArray[np.bool_]:
     return np.array(unpacked[:length], dtype=bool)
 
 
-def symplectic_to_pauli(ipower: int, symplectic: NDArray[np.bool_]) -> tuple[int, str]:
+def symplectic_to_pauli(ipower: int, symplectic: NDArray[bool]) -> tuple[int, str]:
     """Convert a symplectic vector into a Pauli String.
 
     Args:
@@ -127,7 +128,7 @@ def symplectic_to_pauli(ipower: int, symplectic: NDArray[np.bool_]) -> tuple[int
 
 def symplectic_to_sparse(
     ipower: int,
-    symplectic: NDArray[np.bool_],
+    symplectic: NDArray[bool],
 ) -> tuple[int, str, NDArray[int]]:
     """Convert a symplectic vector into a Pauli String (sparse form).
 
@@ -176,7 +177,7 @@ def symplectic_to_sparse(
     return ipower, pauli_string, indices
 
 
-def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[np.bool_]]:
+def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[bool]]:
     """Convert a Pauli operator to symplectic form.
 
     Args:
@@ -214,7 +215,7 @@ def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[np.bool_]
     return ipower, np.hstack((x_array, z_array), dtype=bool)
 
 
-def xz_swap(symplectic) -> NDArray[np.bool_]:
+def xz_swap(symplectic) -> NDArray[bool]:
     """Swap X and Z Pauli operators in a symplectic matrix.
 
     Args:
@@ -432,7 +433,7 @@ def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
     return np.vstack((first_term, second_term, third_term, fourth_term))
 
 
-def find_pauli_weight(symplectic_hamiltonian: NDArray[np.bool_]) -> np.floating:
+def find_pauli_weight(symplectic_hamiltonian: NDArray[bool]) -> np.floating:
     """Find the average Pauli weight of a symplectic hamiltonian.
 
     Args:
@@ -476,6 +477,101 @@ def save_pauli_ham(
     with open(f"{filename}.json", "w") as f:
         f.write(json.dumps(pauli_hamiltonian))
     logger.debug(f"Saved Pauli Hamiltonian to {filename}")
+
+
+def _signature_char_to_ipowers(char: str) -> list:
+    """Convert a signature character to a list of imaginary factors.
+
+    Args:
+        char(str): One of + or -
+
+    Returns:
+        list: A length-2 list of imaginary factors.
+    """
+    match char:
+        case "+":
+            result = [1, -1j]
+        case "-":
+            result = [1, 1j]
+        case "_":
+            raise ValueError("Signature must contain only + and -.")
+    return result
+
+
+def _hamiltonian_term_to_majorana(
+    majorana_ham: dict[tuple[int, ...], float],
+    coeffs: np.typing.NDArray[float],
+    signature: str,
+) -> dict[tuple[int, ...], float]:
+    """Add a fermionic Hamiltonian term to a sparse majorana Hamiltonian.
+
+    Args:
+        majorana_ham (dict): The majorana Hamiltonian to update.
+        coeffs (np.ndarray): The coefficients of the fermionic term.
+        signature (str): The signature of the fermionic term.
+
+    Returns:
+        dict: The updated majorana Hamiltonian.
+
+    """
+    assert len(signature) == coeffs.ndim
+    non_zero = np.where(coeffs != 0)
+    non_zero_ones = [(*indices, coeffs[indices]) for indices in zip(*non_zero)]
+    normalisation = 0.5 ** len(signature)
+
+    ipowers = np.array([_signature_char_to_ipowers(c) for c in signature])
+    for *inds, coeff in non_zero_ones:
+        # we need two majoranas for each fermionic operator
+        # 0 -> left, 1 -> right
+        left_right_indices = [[0, 1]] * len(signature)
+        for left_right in product(*left_right_indices):
+            majorana_ind = tuple([int(2 * i + lr) for i, lr in zip(inds, left_right)])
+
+            term_ipowers = np.prod([ipow[lr] for ipow, lr in zip(ipowers, left_right)])
+            majorana_ham[majorana_ind] = majorana_ham.get(majorana_ind, 0)
+            majorana_ham[majorana_ind] += normalisation * coeff * term_ipowers
+
+    return majorana_ham
+
+
+def fermionic_to_sparse_majorana(
+    hamiltonian_terms: list[tuple[np.ndarray, str]],
+) -> dict[tuple[int], np.complex64]:
+    """Convert a list of fermionic Hamiltonian terms to a sparse majorana Hamiltonian.
+
+    Args:
+        hamiltonian_terms (list): A list of tuples, each containing a numpy array of coefficients and a signature string.
+
+    Returns:
+        dict: A sparse majorana Hamiltonian, with majorana indices as keys and coefficients as values.
+
+    Example:
+        >>> from openfermionpyscf import *
+        >>> from openfermion import spinorb_from_spatial
+
+        >>> mol="H2O"
+        >>> geometry = geometry_from_pubchem(mol)
+        >>> basis = "sto-3g"
+        >>> multiplicity = 1
+        >>> charge = 0
+
+        >>> molecule = MolecularData(geometry, basis, multiplicity, charge)
+        >>> molecule = run_pyscf(molecule,run_scf=True,run_fci=False) # NOTE: running FCI is expensive! Don't try on large systems
+        >>> ones = molecule.one_body_integrals
+        >>> twos = molecule.two_body_integrals
+
+        >>> ones,twos = spinorb_from_spatial(ones, twos)
+        >>> twos = 0.5*twos
+
+        >>> # For the molecular Hamiltonian in physicist notation
+        >>> majorana_ham = fermionic_to_sparse_majorana([(ones, "+-"), (twos,"++--")])
+    """
+    total_ham: dict = {}
+    for coeffs, signature in hamiltonian_terms:
+        total_ham.update(
+            _hamiltonian_term_to_majorana(total_ham, coeffs=coeffs, signature=signature)
+        )
+    return total_ham
 
 
 def setup_logs() -> None:

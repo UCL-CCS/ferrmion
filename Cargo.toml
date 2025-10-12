@@ -23,6 +23,7 @@ rand_xoshiro = "0.7.0"
 argmin = "0.10.0"
 argmin-observer-slog = "0.1.0"
 num-complex = "0.4.6"
+petgraph = "0.8.3"
 
 [dev-dependencies]
 

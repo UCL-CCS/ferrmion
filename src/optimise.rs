@@ -3,6 +3,8 @@ Functions relating to encoding optimisation.
 */
 
 use crate::hamiltonians::*;
+use crate::types::*;
+
 use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},

@@ -10,11 +10,13 @@ mod utils;
 use crate::optimise::template_weight;
 use crate::utils::*;
 mod hamiltonians;
-use crate::hamiltonians::{fill_template, hubbard, molecular, Notation, QubitHamiltonianTemplate};
+use crate::hamiltonians::{fill_template, hubbard, molecular};
 mod encoding;
-use crate::encoding::{hartree_fock_state, symplectic_product_map};
+use crate::encoding::{hartree_fock_state, MajoranaEncoding};
 mod optimise;
 use crate::optimise::anneal_enumerations;
+mod types;
+use crate::types::*;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -121,9 +123,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
     ) -> (Bound<'py, PyArray2<u8>>, Bound<'py, PyArray3<bool>>) {
-        let ipowers = ipowers.as_array();
-        let symplectics = symplectics.as_array();
-        let (power_map, product_map) = symplectic_product_map(ipowers, symplectics);
+        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
+
+        let (power_map, product_map) = encoding.symplectic_product_map();
         (
             PyArray2::from_owned_array(py, power_map),
             PyArray3::from_owned_array(py, product_map),
@@ -157,11 +159,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         symplectics: PyReadonlyArray2<bool>,
         physicist_notation: bool,
     ) -> Bound<'py, PyDict> {
-        let ipowers = ipowers.as_array();
-        let symplectics = symplectics.as_array();
+        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
         let hamiltonian: QubitHamiltonianTemplate = match physicist_notation {
-            true => molecular(ipowers, symplectics, Notation::Physicist),
-            false => molecular(ipowers, symplectics, Notation::Chemist),
+            true => molecular(encoding, Notation::Physicist),
+            false => molecular(encoding, Notation::Chemist),
         };
         hamiltonian
             .into_py_dict(py)
@@ -175,9 +176,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
     ) -> Bound<'py, PyDict> {
-        let ipowers = ipowers.as_array();
-        let symplectics = symplectics.as_array();
-        let hamiltonian = hubbard(ipowers, symplectics);
+        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
+
+        let hamiltonian = hubbard(encoding);
         hamiltonian
             .into_py_dict(py)
             .expect("Cannot parse Hamiltonian Template dict.")

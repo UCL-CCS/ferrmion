@@ -5,51 +5,29 @@ use ahash::RandomState;
 use itertools::iproduct;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
-use pyo3::{FromPyObject, IntoPyObject};
 use std::collections::HashMap;
 
-use crate::encoding::symplectic_product_map;
+use crate::encoding::MajoranaEncoding;
+use crate::types::*;
 use crate::utils::{icount_to_sign, symplectic_product, symplectic_to_pauli};
 
-#[derive(Eq, PartialEq, Hash, IntoPyObject, FromPyObject, Debug)]
-pub enum IntegralIndex {
-    //TwoE terms are more common, and pyo3 tries from top to bottom
-    //So putting them first in the Enum
-    TwoE(usize, usize, usize, usize),
-    OneE(usize, usize),
-}
-
-pub type QubitHamiltonianTemplate =
-    HashMap<String, HashMap<IntegralIndex, Complex64, RandomState>, RandomState>;
-
-pub type QubitHamiltonian<'template> = HashMap<&'template String, Complex64, RandomState>;
-
-pub enum Notation {
-    Physicist,
-    Chemist,
-}
-
-pub fn molecular(
-    ipowers: ArrayView1<u8>,
-    symplectics: ArrayView2<bool>,
-    notation: Notation,
-) -> QubitHamiltonianTemplate {
+pub fn molecular(encoding: MajoranaEncoding, notation: Notation) -> QubitHamiltonianTemplate {
     debug!(
         "Creating molecular hamiltonian template with\n ipowers={:?}, symplectics shape={:?}",
-        ipowers,
-        symplectics.shape()
+        encoding.ipowers,
+        encoding.symplectics.shape()
     );
 
-    assert_eq!(ipowers.len(), symplectics.nrows());
+    assert_eq!(encoding.ipowers.len(), encoding.symplectics.nrows());
 
-    let (iproducts, sym_products) = symplectic_product_map(ipowers, symplectics);
+    let (iproducts, sym_products) = encoding.symplectic_product_map();
 
     let mut hamiltonian: QubitHamiltonianTemplate =
         QubitHamiltonianTemplate::with_hasher(RandomState::new());
     // assume 8-fold symmetry
-    let n_modes = symplectics.nrows() / 2;
+    let n_modes = encoding.n_modes;
     hamiltonian.insert(
-        "I".repeat(n_modes).to_string(),
+        "I".repeat(encoding.n_qubits).to_string(),
         HashMap::with_hasher(RandomState::new()),
     );
     for m in 0..n_modes {
@@ -106,21 +84,19 @@ pub fn molecular(
     hamiltonian
 }
 
-pub fn hubbard(ipowers: ArrayView1<u8>, symplectics: ArrayView2<bool>) -> QubitHamiltonianTemplate {
+pub fn hubbard(encoding: MajoranaEncoding) -> QubitHamiltonianTemplate {
     debug!(
         "Creating molecular hamiltonian template with\n ipowers={:?}, symplectics shape={:?}",
-        ipowers,
-        symplectics.shape()
+        encoding.ipowers,
+        encoding.symplectics.shape()
     );
 
-    assert_eq!(ipowers.len(), symplectics.nrows());
-
-    let (iproducts, sym_products) = symplectic_product_map(ipowers, symplectics);
+    let (iproducts, sym_products) = encoding.symplectic_product_map();
 
     let s = RandomState::new();
     let mut hamiltonian: QubitHamiltonianTemplate = QubitHamiltonianTemplate::with_hasher(s);
     // assume 8-fold symmetry
-    let n_modes = symplectics.nrows() / 2;
+    let n_modes = encoding.n_modes;
     hamiltonian.insert(
         "I".repeat(n_modes).to_string(),
         HashMap::with_hasher(RandomState::new()),

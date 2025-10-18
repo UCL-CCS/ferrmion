@@ -6,17 +6,17 @@ use numpy::{
 use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 
+mod types;
 mod utils;
 use crate::optimise::template_weight;
 use crate::utils::*;
 mod hamiltonians;
-use crate::hamiltonians::{fill_template, hubbard, molecular};
+use crate::hamiltonians::{fill_template, hubbard, molecular, Notation, QubitHamiltonianTemplate};
 mod encoding;
 use crate::encoding::{hartree_fock_state, MajoranaEncoding};
 mod optimise;
 use crate::optimise::anneal_enumerations;
-mod types;
-use crate::types::*;
+mod ternarytree;
 
 /// A Python module implemented in Rust.
 #[pymodule]

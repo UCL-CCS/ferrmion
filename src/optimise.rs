@@ -2,8 +2,7 @@
 Functions relating to encoding optimisation.
 */
 
-use crate::hamiltonians::*;
-use crate::types::*;
+use crate::hamiltonians::{fill_template, QubitHamiltonian, QubitHamiltonianTemplate};
 
 use argmin::{
     core::{CostFunction, Error, Executor},

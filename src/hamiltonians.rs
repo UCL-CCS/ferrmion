@@ -5,11 +5,29 @@ use ahash::RandomState;
 use itertools::iproduct;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
+use pyo3::{FromPyObject, IntoPyObject};
 use std::collections::HashMap;
 
 use crate::encoding::MajoranaEncoding;
-use crate::types::*;
 use crate::utils::{icount_to_sign, symplectic_product, symplectic_to_pauli};
+
+pub type QubitHamiltonianTemplate =
+    HashMap<String, HashMap<IntegralIndex, Complex64, RandomState>, RandomState>;
+
+pub type QubitHamiltonian<'template> = HashMap<&'template String, Complex64, RandomState>;
+
+pub enum Notation {
+    Physicist,
+    Chemist,
+}
+
+#[derive(Eq, PartialEq, Hash, IntoPyObject, FromPyObject, Debug)]
+pub enum IntegralIndex {
+    //TwoE terms are more common, and pyo3 tries from top to bottom
+    //So putting them first in the Enum
+    TwoE(usize, usize, usize, usize),
+    OneE(usize, usize),
+}
 
 pub fn molecular(encoding: MajoranaEncoding, notation: Notation) -> QubitHamiltonianTemplate {
     debug!(

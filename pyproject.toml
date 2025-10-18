@@ -28,6 +28,7 @@ dev = [
     "ipywidgets>=8.1.7",
     "ipykernel>=6.30.1",
     "pre-commit>=3.5.0",
+    "nb-clean>=4.0.1",
 ]
 test = [
     "pytest>=8.3.5",

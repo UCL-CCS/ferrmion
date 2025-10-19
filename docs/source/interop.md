@@ -23,9 +23,25 @@ edge_0_2 = encoding.edge_operator((0,2))
 create_0_create_1 = double_fermionic_operator(encoding, (0,1), "++")
 ```
 
-## Qiskit
+## Qiskit-Nature
 
-Operators defined in `ferrmion` can be used in qiskit by creating a `SparsePauliOp`
+Optional dependencies for qiskit can be installed with
+```{shell}
+pip install ferrmion[qiskit]
+```
+
+Once you've done this, any `FermionQubitEncoding` can be converted to a `QubitMapper` (see `qiskit_nature.second_q.mappers`).
+
+```{eval-rst}
+.. automodule:: ferrmion.interop.qiskit
+   :members:
+   :undoc-members:
+   :show-inheritance:
+```
+
+### Qiskit
+
+Operators defined in `ferrmion` can be used in the core qiskit package by creating a `SparsePauliOp`
 
 ```python
 from qiskit.circuit.library import SparsePauliOp

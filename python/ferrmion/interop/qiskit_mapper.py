@@ -8,7 +8,7 @@ from qiskit_nature.second_q.mappers.fermionic_mapper import FermionicMapper
 from qiskit_nature.second_q.operators import FermionicOp
 
 from ferrmion import FermionQubitEncoding
-from ferrmion.utils import icount_to_sign, symplectic_product, symplectic_to_sparse
+from ferrmion.utils import symplectic_product, symplectic_to_sparse
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +96,14 @@ class QiskitAdapter(FermionicMapper):
                     iprod, left = symplectic_product(left, right)
                     ipower += iprod
                     logger.debug(f"{m_index=}, {ipower=}, {left=}")
-                sparse = symplectic_to_sparse(ipower, left)
+                sparse = symplectic_to_sparse(left, ipower)
                 logger.debug(f"{sparse=}")
-                coeff = term_coeff * 0.5 ** len(comb) * icount_to_sign(sparse[0])
-                sparse_list.append((sparse[1], list(sparse[2]), coeff))
+
+                coeff = term_coeff
+                coeff *= 0.5 ** len(comb)
+                coeff *= sparse[2]
+
+                sparse_list.append((sparse[0], list(sparse[1]), coeff))
                 logger.debug(f"{sparse_list=}")
             term_ops.append(
                 SparsePauliOp.from_sparse_list(

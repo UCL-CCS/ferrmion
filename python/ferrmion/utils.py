@@ -157,8 +157,6 @@ def symplectic_to_sparse(
     """
     xhalf, zhalf = np.hsplit(symplectic, 2)
     total = xhalf + 2 * zhalf
-    # To match qiskits ordering
-    total = total[::-1]
 
     def to_pauli(x):
         match x:

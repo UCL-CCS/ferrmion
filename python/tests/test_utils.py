@@ -37,6 +37,6 @@ def test_symplectic_pauli_conversion() -> None:
 def test_symplectic_sparse_conversion() -> None:
     symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=bool)
 
-    assert symplectic_to_sparse(symplectic,1)[0] == "YXZ"
+    assert symplectic_to_sparse(symplectic,1)[0] == "ZXY"
     assert symplectic_to_sparse(symplectic,1)[2] == 1.
-    assert np.array_equal(symplectic_to_sparse(symplectic, 1)[1], [0,1,2])
+    assert np.array_equal(symplectic_to_sparse(symplectic, 1)[1], [1,2,3])

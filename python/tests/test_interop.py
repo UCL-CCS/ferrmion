@@ -4,6 +4,8 @@ from ferrmion.encode import JordanWigner, BravyiKitaev
 import pytest
 
 try:
+    import qiskit
+    import qiskit_nature
     from qiskit_nature.second_q.mappers import JordanWignerMapper, BravyiKitaevMapper
     from qiskit_nature.second_q.operators import FermionicOp
     from qiskit.quantum_info import SparsePauliOp
@@ -28,4 +30,4 @@ def test_qiskit_adapter_jw():
     mapper = JordanWignerMapper()
     inbuilt = mapper.map(fop)
     assert inbuilt == expected
-    assert expected == QiskitAdapter(JordanWigner(2)).map(fop)
+    assert expected.equiv(QiskitAdapter(JordanWigner(2)).map(fop))

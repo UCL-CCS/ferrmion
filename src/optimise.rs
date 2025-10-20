@@ -2,7 +2,8 @@
 Functions relating to encoding optimisation.
 */
 
-use crate::hamiltonians::*;
+use crate::hamiltonians::{fill_template, QubitHamiltonian, QubitHamiltonianTemplate};
+
 use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},

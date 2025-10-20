@@ -66,6 +66,7 @@ class TernaryTree(FermionQubitEncoding):
             }
 
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
+        self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod

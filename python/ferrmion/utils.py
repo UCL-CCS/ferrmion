@@ -81,15 +81,18 @@ def symplectic_unhash(symp: bytes, length: int) -> NDArray[bool]:
     return np.array(unpacked[:length], dtype=bool)
 
 
-def symplectic_to_pauli(ipower: int, symplectic: NDArray[bool]) -> tuple[int, str]:
+def symplectic_to_pauli(
+    symplectic: NDArray[bool],
+    ipower: int = 0,
+) -> tuple[str, int]:
     """Convert a symplectic vector into a Pauli String.
 
     Args:
-        ipower (NDArray[np.uint]): power of i coefficient
         symplectic (NDArray[np.uint8]) : symplectic vector [X terms, Y terms]
+        ipower (NDArray[np.uint]): power of i coefficient
 
     Returns:
-        tuple[int, str]: The imaginary cofactor and Pauli string.
+        tuple[str, int]: The Pauli string and imaginary cofactor.
 
     NOTE: symplectic XZ does represent XZ and not Y
         So Y=-iXZ needs an imaginary cofactor
@@ -98,7 +101,7 @@ def symplectic_to_pauli(ipower: int, symplectic: NDArray[bool]) -> tuple[int, st
         >>> import numpy as np
         >>> from ferrmion.utils import symplectic_to_pauli
         >>> arr = np.array([1, 0, 0, 1], dtype=bool)
-        >>> ipower, pauli = symplectic_to_pauli(arr)
+        >>> pauli, ipower = symplectic_to_pauli(arr)
         >>> isinstance(pauli, str)
         True
     """
@@ -123,21 +126,21 @@ def symplectic_to_pauli(ipower: int, symplectic: NDArray[bool]) -> tuple[int, st
     y_count = pauli_string.count("Y")
     ipower += 3 * y_count
     ipower %= 4
-    return ipower, pauli_string
+    return pauli_string, ipower
 
 
 def symplectic_to_sparse(
-    ipower: int,
     symplectic: NDArray[bool],
-) -> tuple[int, str, NDArray[int]]:
+    ipower: int = 0,
+) -> tuple[str, NDArray[int], np.complex64]:
     """Convert a symplectic vector into a Pauli String (sparse form).
 
     Args:
-        ipower (NDArray[np.uint]): power of i coefficient
         symplectic (NDArray[np.uint8]) : symplectic vector [X terms, Y terms]
+        ipower (NDArray[np.uint]): power of i coefficient
 
     Returns:
-        tuple[int, str, NDArray[int]]: The imaginary cofactor, Pauli string, and indices of non-identity terms.
+        tuple[str, NDArray[int]]: The Pauli string, indices of non-identity terms and imaginary coefficient.
 
     NOTE: symplectic XZ does represent XZ and not Y
         So Y=-iXZ needs an imaginary cofactor
@@ -146,7 +149,7 @@ def symplectic_to_sparse(
         >>> import numpy as np
         >>> from ferrmion.utils import symplectic_to_sparse
         >>> arr = np.array([1, 0, 0, 1], dtype=bool)
-        >>> ipower, pauli, idx = symplectic_to_sparse(arr)
+        >>> pauli, idx, coeff = symplectic_to_sparse(arr)
         >>> isinstance(pauli, str)
         True
         >>> isinstance(idx, np.ndarray)
@@ -174,22 +177,25 @@ def symplectic_to_sparse(
     y_count = pauli_string.count("Y")
     ipower += 3 * y_count
     ipower %= 4
-    return ipower, pauli_string, indices
+    return pauli_string, indices, icount_to_sign(ipower)
 
 
-def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[bool]]:
+def pauli_to_symplectic(
+    pauli: str,
+    ipower: int = 0,
+) -> tuple[NDArray[bool], int]:
     """Convert a Pauli operator to symplectic form.
 
     Args:
-        ipower (NDArray[np.uint]): power of i coefficient
         pauli (str): The Pauli operator string.
+        ipower (NDArray[np.uint]): power of i coefficient
 
     Returns:
         tuple[int, NDArray[np.uint8, np.uint8]]: The imaginary cofactor and symplectic matrix.
 
     Example:
         >>> from ferrmion.utils import pauli_to_symplectic
-        >>> ipower, symp = pauli_to_symplectic('XIZY')
+        >>> symp, ipower = pauli_to_symplectic('XIZY')
 
     """
     pauli_array = np.array(list(pauli))
@@ -212,7 +218,7 @@ def pauli_to_symplectic(ipower: int, pauli: str) -> tuple[int, NDArray[bool]]:
     # logger.debug(f{y_count=})
     x_array = np.array([x_map[term] for term in pauli], dtype=bool)
     z_array = np.array([z_map[term] for term in pauli], dtype=bool)
-    return ipower, np.hstack((x_array, z_array), dtype=bool)
+    return np.hstack((x_array, z_array), dtype=bool), ipower
 
 
 def xz_swap(symplectic) -> NDArray[bool]:

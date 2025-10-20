@@ -57,7 +57,7 @@ pub fn molecular(
             // ipowers can be updated to account for +/- operators
             for (l, r) in iproduct!(0..2, 0..2) {
                 let term = sym_products.slice(s![2 * m + l, 2 * n + r, ..]);
-                let (im_term_pauli, pauli_string) = symplectic_to_pauli(term);
+                let (pauli_string, im_term_pauli) = symplectic_to_pauli(term, 0);
                 let weight = Complex64::new(0.25, 0.)
                     * icount_to_sign(
                         iproducts[[2 * m + l, 2 * n + r]] as usize + im_term_pauli + (r + 3 * l),
@@ -77,8 +77,8 @@ pub fn molecular(
                         let left = sym_products.slice(s![2 * m + l1, 2 * n + l2, ..]);
                         let right = sym_products.slice(s![2 * p + r1, 2 * q + r2, ..]);
                         let (iproduct, product_term) = symplectic_product(left, right);
-                        let (im_term_pauli, pauli_string) =
-                            symplectic_to_pauli(product_term.view());
+                        let (pauli_string, im_term_pauli) =
+                            symplectic_to_pauli(product_term.view(), 0);
                         let term_ipowers = match notation {
                             Notation::Physicist => 3 * (l1 + l2) + r1 + r2,
                             Notation::Chemist => 3 * (l1 + r1) + l2 + r2,
@@ -130,7 +130,7 @@ pub fn hubbard(ipowers: ArrayView1<u8>, symplectics: ArrayView2<bool>) -> QubitH
             // ipowers can be updated to account for +/- operators
             for (l, r) in iproduct!(0..2, 0..2) {
                 let term = sym_products.slice(s![2 * m + l, 2 * n + r, ..]);
-                let (im_term_pauli, pauli_string) = symplectic_to_pauli(term);
+                let (pauli_string, im_term_pauli) = symplectic_to_pauli(term, 0);
                 let weight = Complex64::new(0.25, 0.)
                     * icount_to_sign(
                         iproducts[[2 * m + l, 2 * n + r]] as usize + im_term_pauli + (r + 3 * l),
@@ -148,7 +148,7 @@ pub fn hubbard(ipowers: ArrayView1<u8>, symplectics: ArrayView2<bool>) -> QubitH
                     let left = sym_products.slice(s![2 * m + l1, 2 * n + l2, ..]);
                     let right = sym_products.slice(s![2 * p + r1, 2 * q + r2, ..]);
                     let (iproduct, product_term) = symplectic_product(left, right);
-                    let (im_term_pauli, pauli_string) = symplectic_to_pauli(product_term.view());
+                    let (pauli_string, im_term_pauli) = symplectic_to_pauli(product_term.view(), 0);
                     let term_ipowers = 3 * (l1 + r1) + l2 + r2;
                     let weight = Complex64::new(0.0625, 0.)
                         * icount_to_sign(

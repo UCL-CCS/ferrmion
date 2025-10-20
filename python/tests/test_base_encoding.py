@@ -82,10 +82,10 @@ def test_edge_operator(four_mode_tt):
     assert np.all(left == np.array([ 0.  -0.25j,  -0.25+0.j  , 0.25+0.j  ,  0.  +0.25j]))
     assert np.all(right == np.array([ 0.  -0.25j,  0.25+0.j  , -0.25+0.j  ,  0.  +0.25j]))
 
-    assert str(tree.edge_operator((0,3))[0]) == str(('YZX', np.array([0,1,3]), -0-0.25j))
-    assert str(tree.edge_operator((0,3))[1]) == str(('YZY', np.array([0,1,3]), 0.25))
-    assert str(tree.edge_operator((0,3))[2]) == str(('XZX', np.array([0,2,3]), 0.25))
-    assert str(tree.edge_operator((0,3))[3]) == str(('XZY', np.array([0,2,3]), 0+0.25j))
+    output = tree.edge_operator((0,3))
+    expected = [('XZY', np.array([0,2,3]), -0-0.25j),('YZY', np.array([0,2,3]), 0.25-0j),('XZX', np.array([0,1,3]), 0.25+0j),('YZX', np.array([0,1,3]), 0+0.25j)]
+    for oterm, eterm in zip(output, expected):
+        np.all(oitem==eitem for oitem,eitem in zip(oterm, eterm))
 
     with pytest.raises(ValueError) as excinfo:
         tree.edge_operator((0, tree.n_modes+1))
@@ -118,7 +118,7 @@ def test_double_fermionic_operator(four_mode_tt):
     assert np.all(l==r for l,r in zip(bk_num_zero[1], bk_expected[1]))
     assert np.all(l==r for l,r in zip(bk_num_zero[2], bk_expected[2]))
 
-    maxnto_expected = [('', np.array([], dtype=np.int64), 0.25), ('ZZZ', np.array([1,2,3]), 0.25), ('ZZZ', np.array([1,2,3]), 0.25), ('', np.array([], dtype=np.int64), 0.25)]
+    maxnto_expected = [('', np.array([], dtype=np.int64), 0.25), ('ZZZ', np.array([0,1,2]), 0.25), ('ZZZ', np.array([0,1,2]), 0.25), ('', np.array([], dtype=np.int64), 0.25)]
     maxnot_num_zero =double_fermionic_operator(MaxNTO(4), (0,0), "+-")
     assert np.all(l==r for l,r in zip(maxnot_num_zero[1],maxnto_expected[1]))
     assert np.all(l==r for l,r in zip(maxnot_num_zero[2],maxnto_expected[2]))

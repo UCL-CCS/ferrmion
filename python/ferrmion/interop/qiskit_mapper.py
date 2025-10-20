@@ -1,26 +1,11 @@
 """Defines the interface to Qiskit-Nature."""
 
 import logging
-
-logger = logging.getLogger(__name__)
-
-try:
-    import qiskit_nature
-    from qiskit.quantum_info import SparsePauliOp
-    from qiskit_nature.second_q.mappers.fermionic_mapper import FermionicMapper
-    from qiskit_nature.second_q.operators import FermionicOp
-
-    import python.ferrmion.interop.qiskit_mapper as qiskit_mapper
-except ImportError:
-    logger.error(
-        "Could not install qiskit, 'pip install ferrmion[qiskit]' should be used."
-    )
-    qiskit = None
-    qiskit_nature = None
-
-
-import logging
 from itertools import product
+
+from qiskit.quantum_info import SparsePauliOp
+from qiskit_nature.second_q.mappers.fermionic_mapper import FermionicMapper
+from qiskit_nature.second_q.operators import FermionicOp
 
 from ferrmion import FermionQubitEncoding
 from ferrmion.utils import icount_to_sign, symplectic_product, symplectic_to_sparse
@@ -58,17 +43,26 @@ class QiskitAdapter(FermionicMapper):
 
     """
 
-    def __init__(self, encoding: FermionQubitEncoding):
+    def __init__(self, encoding: FermionQubitEncoding) -> None:
+        """Initialise QiskitAdapter.
+
+        Args:
+            encoding (FermionQubitEncoding): A valid ferrmion encoding.
+        """
         self.encoding = encoding
         super().__init__()
 
     def _map_single(
         self, second_q_op: FermionicOp, *, register_length: int | None = None
     ) -> SparsePauliOp:
-        """Function required to adapt ferrmion encodings to qiskit_nature
+        """Function required to adapt ferrmion encodings to qiskit_nature.
 
         Allows the use of a ferrmion.FermionQubitEncoding to encode
         qiskit_nature.
+
+        Args:
+            second_q_op (qiskit.FermionicOp): A fermionic Operator.
+            register_length (int): Number of qubits to use for operator (typically equals the number of modes of encoding).
         """
         if register_length is None:
             register_length = second_q_op.register_length

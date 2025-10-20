@@ -26,14 +26,14 @@ create_0_create_1 = double_fermionic_operator(encoding, (0,1), "++")
 ## Qiskit-Nature
 
 Optional dependencies for qiskit can be installed with
-```{shell}
+```
 pip install ferrmion[qiskit]
 ```
 
 Once you've done this, any `FermionQubitEncoding` can be converted to a `QubitMapper` (see `qiskit_nature.second_q.mappers`).
 
 ```{eval-rst}
-.. automodule:: ferrmion.interop.qiskit
+.. automodule:: ferrmion.interop.qiskit_mapper
    :members:
    :undoc-members:
    :show-inheritance:

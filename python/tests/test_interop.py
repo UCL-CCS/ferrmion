@@ -29,8 +29,3 @@ def test_qiskit_adapter_jw():
     inbuilt = mapper.map(fop)
     assert inbuilt == expected
     assert expected == QiskitAdapter(JordanWigner(2)).map(fop)
-
-
-
-
-

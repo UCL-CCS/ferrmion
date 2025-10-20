@@ -92,7 +92,9 @@ def hamiltonian_adaptive_ternary_tree(
         for comb in combinations(unassigned, 2):
             small_y = None
             small_x = None
-            z_index, x_index = comb
+            # This way x index will be higher term - more often node.
+            # z_index, x_index= comb
+            x_index, z_index = comb
             small_x = descendant_map[x_index]
 
             # discard this combination
@@ -125,8 +127,9 @@ def hamiltonian_adaptive_ternary_tree(
             if weight < min:
                 min = weight
                 selection = comb
-            if weight == 0:
-                break
+            # would be better to break on zero
+            # if weight == 0:
+            #     break
 
         total_weight += min
         # Now find the Y pair of the x-node

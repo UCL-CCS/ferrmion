@@ -3,7 +3,7 @@ use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArray4,
 };
-use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
+use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 
 mod types;
@@ -96,10 +96,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_symplectic_to_pauli<'py>(
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
-    ) -> (Bound<'py, PyInt>, Bound<'py, PyString>) {
+        ipower: usize,
+    ) -> (Bound<'py, PyString>, Bound<'py, PyInt>) {
         let symplectic = symplectic.as_array();
-        let (ipower, pauli) = symplectic_to_pauli(symplectic);
-        (PyInt::new(py, ipower), PyString::new(py, &pauli))
+        let (pauli, ipower) = symplectic_to_pauli(symplectic, ipower);
+        (PyString::new(py, &pauli), PyInt::new(py, ipower))
     }
 
     #[pyfn(m)]
@@ -107,12 +108,13 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_pauli_to_symplectic(
         py: Python<'_>,
         pauli: String,
-    ) -> (Bound<'_, PyInt>, Bound<'_, PyArray1<bool>>) {
+        ipower: usize,
+    ) -> (Bound<'_, PyArray1<bool>>, Bound<'_, PyInt>) {
         // let pauli = pauli.extract();
-        let (ipower, symplectic) = pauli_to_symplectic(pauli);
+        let (symplectic, ipower) = pauli_to_symplectic(pauli, ipower);
         (
-            PyInt::new(py, ipower),
             PyArray1::from_owned_array(py, symplectic),
+            PyInt::new(py, ipower),
         )
     }
 
@@ -137,17 +139,18 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_symplectic_to_sparse<'py>(
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
+        ipower: usize,
     ) -> (
-        Bound<'py, PyInt>,
         Bound<'py, PyString>,
         Bound<'py, PyArray1<usize>>,
+        Bound<'py, PyComplex>,
     ) {
         let symplectic = symplectic.as_array();
-        let (ipower, pauli_string, position_vec) = symplectic_to_sparse(symplectic);
+        let (pauli_string, position_vec, coeff) = symplectic_to_sparse(symplectic, ipower);
         (
-            PyInt::new(py, ipower),
             PyString::new(py, &pauli_string),
             PyArray1::from_owned_array(py, position_vec),
+            PyComplex::from_complex_bound(py, coeff),
         )
     }
 

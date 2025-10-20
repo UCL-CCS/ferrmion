@@ -23,9 +23,9 @@ pub fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array
     ]
 }
 
-pub fn symplectic_to_pauli(symplectic: ArrayView1<bool>) -> (usize, String) {
+pub fn symplectic_to_pauli(symplectic: ArrayView1<bool>, ipower: usize) -> (String, usize) {
     let block_width = symplectic.len_of(Axis(0)) / 2;
-    let mut ipower: usize = 0;
+    let mut ipower: usize = ipower;
     let (x_block, z_block) = symplectic.split_at(Axis(0), block_width);
     let mut pauli_string = String::new();
     Zip::from(x_block)
@@ -39,7 +39,7 @@ pub fn symplectic_to_pauli(symplectic: ArrayView1<bool>) -> (usize, String) {
             (&false, &true) => pauli_string.push('Z'),
             (&false, &false) => pauli_string.push('I'),
         });
-    ((3 * ipower) % 4, pauli_string)
+    (pauli_string, (3 * ipower) % 4)
 }
 
 #[test]
@@ -48,13 +48,16 @@ fn test_symplectic_to_pauli() {
     let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
         ndarray::arr1(&[true, true, false, false, true, false, true, false]);
     assert_eq!(
-        symplectic_to_pauli(symplectic.view()),
-        (3, String::from("YXZI"))
+        symplectic_to_pauli(symplectic.view(), 0),
+        (String::from("YXZI"), 3)
     );
 }
 
-pub fn symplectic_to_sparse(symplectic: ArrayView1<bool>) -> (u8, String, Array1<usize>) {
-    let ipower: usize = 0;
+pub fn symplectic_to_sparse(
+    symplectic: ArrayView1<bool>,
+    ipower: usize,
+) -> (String, Array1<usize>, Complex64) {
+    let mut ipower: usize = ipower;
     let (x_block, z_block) = symplectic.split_at(Axis(0), symplectic.len_of(Axis(0)) / 2);
     let mut pauli_string = String::new();
     let mut indices: Vec<usize> = Vec::new();
@@ -71,12 +74,17 @@ pub fn symplectic_to_sparse(symplectic: ArrayView1<bool>) -> (u8, String, Array1
             _ => {
                 pauli_string.push(pauli);
                 indices.push(index);
+                ipower += 3
             }
         };
         index += 1;
     });
     let ipower = ipower % 4;
-    (ipower as u8, pauli_string, ndarray::arr1(&indices))
+    (
+        pauli_string,
+        ndarray::arr1(&indices),
+        icount_to_sign(ipower),
+    )
 }
 
 #[test]
@@ -84,8 +92,12 @@ fn test_symplectic_to_sparse() {
     let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
         ndarray::arr1(&[true, true, false, false, true, false, true, false]);
     assert_eq!(
-        symplectic_to_sparse(symplectic.view()),
-        (0, "YXZ".to_string(), ndarray::arr1(&[0, 1, 2]))
+        symplectic_to_sparse(symplectic.view(), 0),
+        (
+            "YXZ".to_string(),
+            ndarray::arr1(&[0, 1, 2]),
+            Complex64::new(0., 1.)
+        )
     );
 }
 
@@ -103,11 +115,11 @@ fn test_valid_pauli_string() {
     assert!(!_valid_pauli_string("XYZA"));
 }
 
-pub fn pauli_to_symplectic(pauli: String) -> (usize, Array1<bool>) {
+pub fn pauli_to_symplectic(pauli: String, ipower: usize) -> (Array1<bool>, usize) {
     let string_len = pauli.len();
     assert!(_valid_pauli_string(&pauli));
 
-    let mut ipower: usize = 0;
+    let mut ipower: usize = ipower;
     let mut x_block: Array1<bool> = Array1::from_elem(string_len, false);
     let mut z_block: Array1<bool> = Array1::from_elem(string_len, false);
     Zip::from(&Array1::from_iter(pauli.chars()))
@@ -126,19 +138,19 @@ pub fn pauli_to_symplectic(pauli: String) -> (usize, Array1<bool>) {
                 *z = false;
             }
         });
-    (ipower % 4, concatenate![Axis(0), x_block, z_block])
+    (concatenate![Axis(0), x_block, z_block], ipower % 4)
 }
 
 #[test]
 fn test_pauli_to_symplectic() {
     let valid_string = String::from("IXZY");
     let valid_symplectic = ndarray::arr1(&[false, true, false, true, false, false, true, true]);
-    assert_eq!(pauli_to_symplectic(valid_string), (1, valid_symplectic));
+    assert_eq!(pauli_to_symplectic(valid_string, 0), (valid_symplectic, 1));
 
     let all_y = String::from("YYY");
     assert_eq!(
-        pauli_to_symplectic(all_y),
-        (3, ndarray::arr1(&[true, true, true, true, true, true]))
+        pauli_to_symplectic(all_y, 0),
+        (ndarray::arr1(&[true, true, true, true, true, true]), 3)
     )
 }
 

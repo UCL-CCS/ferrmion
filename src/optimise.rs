@@ -23,17 +23,16 @@ pub fn pauli_coefficient_weight(hamiltonian: QubitHamiltonian) -> f64 {
         let n_identity = key.chars().filter(|c| c == &'I').count();
         acc + (key.len() - n_identity) as f64 * val.abs()
     });
-    weight / hamiltonian.len() as f64
+    weight
 }
 
-#[allow(dead_code)]
 /// Returns the mean Pauli-weight of Hamiltonian terms.
 pub fn pauli_weight(hamiltonian: QubitHamiltonian) -> f64 {
     let weight = hamiltonian.keys().fold(0., |acc, key| {
         let n_identity = key.chars().filter(|c| c == &'I').count();
         acc + (key.len() - n_identity) as f64
     });
-    weight / hamiltonian.len() as f64
+    weight
 }
 
 pub fn template_weight(
@@ -73,6 +72,7 @@ struct OptimalEnumeration<'coeff> {
     template: QubitHamiltonianTemplate,
     one_e_coeffs: ArrayView2<'coeff, f64>,
     two_e_coeffs: ArrayView4<'coeff, f64>,
+    cost_function: fn(QubitHamiltonian) -> f64,
     rng: Arc<Mutex<Xoshiro256PlusPlus>>,
 }
 
@@ -81,11 +81,13 @@ impl<'coeff> OptimalEnumeration<'coeff> {
         template: QubitHamiltonianTemplate,
         one_e_coeffs: ArrayView2<'coeff, f64>,
         two_e_coeffs: ArrayView4<'coeff, f64>,
+        cost_function: fn(QubitHamiltonian) -> f64,
     ) -> Self {
         OptimalEnumeration {
             template,
             one_e_coeffs,
             two_e_coeffs,
+            cost_function,
             rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(1017))),
         }
     }
@@ -103,7 +105,7 @@ impl CostFunction for OptimalEnumeration<'_> {
             self.two_e_coeffs,
             param.view(),
         );
-        Ok(pauli_coefficient_weight(filled_template))
+        Ok((self.cost_function)(filled_template))
     }
 }
 
@@ -141,8 +143,13 @@ pub fn anneal_enumerations<'coeff>(
     two_e_coeffs: ArrayView4<'coeff, f64>,
     temperature: f64,
     initial_guess: ArrayView1<usize>,
+    coefficient_weighted: bool,
 ) -> Result<(f64, Array1<usize>), Error> {
-    let operator = OptimalEnumeration::new(template, one_e_coeffs, two_e_coeffs);
+    let cost_function: fn(QubitHamiltonian) -> f64 = match coefficient_weighted {
+        true => pauli_coefficient_weight,
+        false => pauli_weight,
+    };
+    let operator = OptimalEnumeration::new(template, one_e_coeffs, two_e_coeffs, cost_function);
 
     // Define initial parameter vector
 

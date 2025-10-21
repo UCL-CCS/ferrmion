@@ -51,5 +51,6 @@ def anneal_enumerations(
     two_e_coeffs: npt.NDArray[np.float64],
     temperature: float,
     initial_guess: npt.NDArray[np.uint],
+    coefficient_weighted: bool,
 ) -> dict: ...
 def icount_to_sign(icount: int) -> np.complex64: ...

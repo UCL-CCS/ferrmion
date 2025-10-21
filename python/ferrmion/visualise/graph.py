@@ -1,11 +1,10 @@
 """Graph visualisation tools."""
 
-import numpy as np
 import rustworkx as rx
 from rustworkx.visualization import mpl_draw
 
 from ferrmion.encode import TernaryTree
-from ferrmion.encode.ternary_tree_node import TTNode
+from ferrmion.encode.ternary_tree_node import TTNode, node_sorter
 
 
 def draw_tt(
@@ -37,13 +36,13 @@ def draw_tt(
         return -3 * len(label)
 
     def x_pos(label) -> float:
-        same_len = np.array([l for l in graph.nodes() if len(l) == len(label)])
-        this_pos = np.where(same_len == label)[0][0]
-        pos = (this_pos + 1) / (len(same_len) + 1) - 0.5
-        if linear_tree and len(same_len) <= 1:
-            pos = len(label)
-
-        return pos
+        pos = sum(
+            [
+                (float(val) - 2) / (3**i)
+                for i, val in enumerate(list(str(node_sorter(label))))
+            ]
+        )
+        return pos * len(label)
 
     def format_label(label):
         return rf"$f_{{{enumeration_scheme[label][0]}}}q_{{{enumeration_scheme[label][1]}}}$"

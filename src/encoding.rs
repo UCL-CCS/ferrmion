@@ -15,34 +15,59 @@ use crate::utils::{symplectic_product, vector_kron};
 //     let (icount, symplectic_products) =
 // }
 
+pub struct MajoranaEncoding<'e> {
+    pub ipowers: ArrayView1<'e, u8>,
+    pub symplectics: ArrayView2<'e, bool>,
+    pub n_modes: usize,
+    pub n_qubits: usize,
+}
+
+#[allow(dead_code)]
+pub enum Encoding {
+    MajoranaEncoding,
+}
+
 // This caches symplectic products so that we don't have to calculate them
 // four times for each pair of fermionic operators
 // it does require memory scaling On^3 so if that becomes an issue we can be more clever.
-pub fn symplectic_product_map(
-    ipowers: ArrayView1<u8>,
-    symplectics: ArrayView2<bool>,
-) -> (Array2<u8>, Array3<bool>) {
-    debug!("Calculating symplectic product map");
+impl<'e> MajoranaEncoding<'e> {
+    pub fn new(ipowers: ArrayView1<'e, u8>, symplectics: ArrayView2<'e, bool>) -> Self {
+        let n_modes = ipowers.len() / 2;
+        Self {
+            ipowers,
+            symplectics,
+            n_modes,
+            n_qubits: n_modes,
+        }
+    }
 
-    let n_majoranas = symplectics.nrows();
-    assert_eq!(n_majoranas, ipowers.len());
+    pub fn symplectic_product_map(
+        &self,
+        // ipowers: ArrayView1<u8>,
+        // symplectics: ArrayView2<bool>,
+    ) -> (Array2<u8>, Array3<bool>) {
+        debug!("Calculating symplectic product map");
 
-    let mut product_powers: Array2<u8> = Array2::zeros((n_majoranas, n_majoranas));
-    let mut product_map: Array3<bool> =
-        Array3::from_elem((n_majoranas, n_majoranas, symplectics.ncols()), false);
-    azip!((index (l, r), pow in &mut product_powers) {
-        let left = symplectics.slice(s![l,..]);
-        let right = symplectics.slice(s![r,..]);
-        let (imaginary, term) = symplectic_product(left, right);
+        let n_majoranas = self.symplectics.nrows();
+        assert_eq!(n_majoranas, self.ipowers.len());
 
-        *pow += &((imaginary as u8 + ipowers[[l]] + ipowers[[r]]) % 4);
-        product_map.slice_mut(s![l,r,..]).assign(&term);
-    });
+        let mut product_powers: Array2<u8> = Array2::zeros((n_majoranas, n_majoranas));
+        let mut product_map: Array3<bool> =
+            Array3::from_elem((n_majoranas, n_majoranas, self.symplectics.ncols()), false);
+        azip!((index (l, r), pow in &mut product_powers) {
+            let left = self.symplectics.slice(s![l,..]);
+            let right = self.symplectics.slice(s![r,..]);
+            let (imaginary, term) = symplectic_product(left, right);
 
-    // how to do a zip over 2d array ?
+            *pow += &((imaginary as u8 + self.ipowers[[l]] + self.ipowers[[r]]) % 4);
+            product_map.slice_mut(s![l,r,..]).assign(&term);
+        });
 
-    debug!("Found symplectic product map.");
-    (product_powers, product_map)
+        // how to do a zip over 2d array ?
+
+        debug!("Found symplectic product map.");
+        (product_powers, product_map)
+    }
 }
 
 #[test]
@@ -50,7 +75,7 @@ fn test_symplectic_product_map() {
     let ipowers = ndarray::arr1(&[0, 1]);
     let symplectics = ndarray::arr2(&[[true, true, false, false], [true, false, true, false]]);
     let (iproducts, symplectic_products) =
-        symplectic_product_map(ipowers.view(), symplectics.view());
+        MajoranaEncoding::new(ipowers.view(), symplectics.view()).symplectic_product_map();
     println!("{}", iproducts);
     println!("{}", symplectic_products);
     assert_eq!(iproducts, ndarray::arr2(&[[0, 1], [3, 0]]));
@@ -65,6 +90,7 @@ fn test_symplectic_product_map() {
 }
 
 // super ugly function, should definitely work on writing nice rust
+// im on it...
 pub fn hartree_fock_state(
     vacuum_state: ArrayView1<f64>,
     fermionic_hf_state: ArrayView1<bool>,

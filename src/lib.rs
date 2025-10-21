@@ -3,16 +3,17 @@ use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArray4,
 };
-use pyo3::types::{IntoPyDict, PyDict, PyInt, PyString};
+use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 
+mod types;
 mod utils;
 use crate::optimise::template_weight;
 use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::{fill_template, hubbard, molecular, Notation, QubitHamiltonianTemplate};
 mod encoding;
-use crate::encoding::{hartree_fock_state, symplectic_product_map};
+use crate::encoding::{hartree_fock_state, MajoranaEncoding};
 mod optimise;
 use crate::optimise::anneal_enumerations;
 
@@ -94,10 +95,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_symplectic_to_pauli<'py>(
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
-    ) -> (Bound<'py, PyInt>, Bound<'py, PyString>) {
+        ipower: usize,
+    ) -> (Bound<'py, PyString>, Bound<'py, PyInt>) {
         let symplectic = symplectic.as_array();
-        let (ipower, pauli) = symplectic_to_pauli(symplectic);
-        (PyInt::new(py, ipower), PyString::new(py, &pauli))
+        let (pauli, ipower) = symplectic_to_pauli(symplectic, ipower);
+        (PyString::new(py, &pauli), PyInt::new(py, ipower))
     }
 
     #[pyfn(m)]
@@ -105,12 +107,13 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_pauli_to_symplectic(
         py: Python<'_>,
         pauli: String,
-    ) -> (Bound<'_, PyInt>, Bound<'_, PyArray1<bool>>) {
+        ipower: usize,
+    ) -> (Bound<'_, PyArray1<bool>>, Bound<'_, PyInt>) {
         // let pauli = pauli.extract();
-        let (ipower, symplectic) = pauli_to_symplectic(pauli);
+        let (symplectic, ipower) = pauli_to_symplectic(pauli, ipower);
         (
-            PyInt::new(py, ipower),
             PyArray1::from_owned_array(py, symplectic),
+            PyInt::new(py, ipower),
         )
     }
 
@@ -121,9 +124,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
     ) -> (Bound<'py, PyArray2<u8>>, Bound<'py, PyArray3<bool>>) {
-        let ipowers = ipowers.as_array();
-        let symplectics = symplectics.as_array();
-        let (power_map, product_map) = symplectic_product_map(ipowers, symplectics);
+        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
+
+        let (power_map, product_map) = encoding.symplectic_product_map();
         (
             PyArray2::from_owned_array(py, power_map),
             PyArray3::from_owned_array(py, product_map),
@@ -135,17 +138,18 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_symplectic_to_sparse<'py>(
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
+        ipower: usize,
     ) -> (
-        Bound<'py, PyInt>,
         Bound<'py, PyString>,
         Bound<'py, PyArray1<usize>>,
+        Bound<'py, PyComplex>,
     ) {
         let symplectic = symplectic.as_array();
-        let (ipower, pauli_string, position_vec) = symplectic_to_sparse(symplectic);
+        let (pauli_string, position_vec, coeff) = symplectic_to_sparse(symplectic, ipower);
         (
-            PyInt::new(py, ipower),
             PyString::new(py, &pauli_string),
             PyArray1::from_owned_array(py, position_vec),
+            PyComplex::from_complex_bound(py, coeff),
         )
     }
 
@@ -157,11 +161,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         symplectics: PyReadonlyArray2<bool>,
         physicist_notation: bool,
     ) -> Bound<'py, PyDict> {
-        let ipowers = ipowers.as_array();
-        let symplectics = symplectics.as_array();
+        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
         let hamiltonian: QubitHamiltonianTemplate = match physicist_notation {
-            true => molecular(ipowers, symplectics, Notation::Physicist),
-            false => molecular(ipowers, symplectics, Notation::Chemist),
+            true => molecular(encoding, Notation::Physicist),
+            false => molecular(encoding, Notation::Chemist),
         };
         hamiltonian
             .into_py_dict(py)
@@ -175,9 +178,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
     ) -> Bound<'py, PyDict> {
-        let ipowers = ipowers.as_array();
-        let symplectics = symplectics.as_array();
-        let hamiltonian = hubbard(ipowers, symplectics);
+        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
+
+        let hamiltonian = hubbard(encoding);
         hamiltonian
             .into_py_dict(py)
             .expect("Cannot parse Hamiltonian Template dict.")

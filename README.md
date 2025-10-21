@@ -7,6 +7,24 @@
 This codebase contains methods to generate qubit Hamiltonians from fermionic Hamiltonians.
 
 
+## Interop
+
+Most quantum SDKs will have methods to convert common python types to native objects, so it's usually possible to create an operator using the `.edge_operator` and `number_operator` functions of a `FermionQubitEncoding`.
+
+Please open an issue or pull request on github if you would like to suggest a documented interop.
+
+### Qiskit
+`ferrmion` provides a method to convert its narive encoding class `FermionQubitencoding` to a `qiskit_nature.QubitMapper`.
+
+To use this feature, you'll need to install optional dependencies with:
+```
+pip install ferrmion[qiskit]
+```
+
+For more details, see the [interop documentation](https://ferrmion.readthedocs.io/en/latest/interop/).
+
+
+
 ## Encodings
 - Ternary Tree encodings
 

@@ -7,12 +7,17 @@ from ferrmion.encode import TernaryTree
 from ferrmion.encode.ternary_tree_node import TTNode, node_sorter
 
 
-def draw_tt(graph: rx.PyDiGraph | TTNode | TernaryTree, enumeration_scheme=None):
+def draw_tt(
+    graph: rx.PyDiGraph | TTNode | TernaryTree,
+    enumeration_scheme=None,
+    linear_tree=False,
+):
     """Draws a rustworkx graph with nodes positioned as a ternary tree.
 
     Args:
         graph (rustworkx.PyDiGraph | ferrmion.TTNode | TernaryTree): A ternary tree.
         enumeration_scheme (dict[str, tuple[int, int]]): A mapping from node labels to a tuple of (mode index, qubit index).
+        linear_tree (bool): Make the graph prettier if it's completely linear.
 
     Example:
         >>> from ferrmion.encode.ternary_tree import TernaryTree

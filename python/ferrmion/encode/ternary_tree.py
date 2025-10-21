@@ -66,6 +66,7 @@ class TernaryTree(FermionQubitEncoding):
             }
 
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
+        self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
@@ -329,7 +330,7 @@ class TernaryTree(FermionQubitEncoding):
             operator = pauli_string_map[operator]
             operator = np.array(list(operator), dtype=str)
             # If the string is X or Y then assign 1
-            term_ipower, symplectic_term = self._pauli_to_symplectic(0, operator)
+            symplectic_term, term_ipower = self._pauli_to_symplectic(operator, 0)
 
             ipowers[majorana_index] = term_ipower
             symplectic[majorana_index] = symplectic_term

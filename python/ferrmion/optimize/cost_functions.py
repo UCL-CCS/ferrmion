@@ -93,7 +93,7 @@ def minimise_mi_distance(
     return best
 
 
-def pauli_weighted_norm(pauli_hamiltonian: dict[str, float]) -> list[float]:
+def coefficient_pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]:
     """The Pauli-weight of a template scaled by the term coefficients.
 
     Args:
@@ -103,10 +103,10 @@ def pauli_weighted_norm(pauli_hamiltonian: dict[str, float]) -> list[float]:
         list[float]: A single value in a list (needed for deap) giving the cost.
 
     Example:
-        >>> from ferrmion.optimize.enumeration.cost_functions import pauli_weighted_norm
+        >>> from ferrmion.optimize.enumeration.cost_functions import coefficient_pauli_weight
         >>> from ferrmion.utils import symplectic_hash
         >>> hashed_vec = symplectic_hash(np.array([True, False, False, True]))
-        >>> pauli_weighted_norm({hashed_vec:1}, [0,1,2])
+        >>> coefficient_pauli_weight({hashed_vec:1}, [0,1,2])
     """
     logger.debug("Calculating Pauli-weighted Norm")
     logger.debug(pauli_hamiltonian)
@@ -128,10 +128,10 @@ def pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]:
         list[float]: A single value in a list (needed for deap) giving the cost.
 
     Example:
-        >>> from ferrmion.optimize.enumeration.cost_functions import pauli_weighted_norm
+        >>> from ferrmion.optimize.enumeration.cost_functions import coefficient_pauli_weight
         >>> from ferrmion.utils import symplectic_hash
         >>> hashed_vec = symplectic_hash(np.array([True, False, False, True]))
-        >>> pauli_weighted_norm({hashed_vec:1}, [0,1,2])
+        >>> coefficient_pauli_weight({hashed_vec:1}, [0,1,2])
     """
     logger.debug("Calculating Pauli-weighted Norm")
     logger.debug(pauli_hamiltonian)

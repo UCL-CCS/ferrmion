@@ -18,7 +18,7 @@
 project = 'ferrmion'
 copyright = '2025, Michael Williams de la Bastida'
 author = 'Michael Williams de la Bastida'
-version = "0.2.0"
+version = "0.3.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

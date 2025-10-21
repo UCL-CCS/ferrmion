@@ -5,13 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0]
 ### Added
 - `interop.QiskitAdapter` which takes a `FermionQubitEncoding` as input, returning a `qiskit_nature.QubitMapper` which can be used in the normal way with `mapper.map(<fermionic operator>)`
 
 ### Changed
 - Conversion functions `symplectic_to_pauli`, `pauli_to_symplectic` now take in ipower as second argument, returning updated ipower.
 - `symplectic_to_sparse` output has been reodered so that it can be directly input the `SparsePauliOp`.
+- `anneal_enerumations` takes a flag "coefficient_weighted" to switch between pauli weight and coeffient pauli weight.
+- `optimize.enumeration.cost_functions` move to `optimize.cost_functions`.
 
 ## [0.2.0]
 ### Added

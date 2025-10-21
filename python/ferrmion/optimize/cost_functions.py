@@ -6,7 +6,7 @@ from functools import partial
 import numpy as np
 from numpy.typing import NDArray
 
-from .evolutionary import lambda_plus_mu
+from .enumeration.evolutionary import lambda_plus_mu
 
 logger = logging.getLogger(__name__)
 
@@ -114,5 +114,28 @@ def pauli_weighted_norm(pauli_hamiltonian: dict[str, float]) -> list[float]:
     weighted_terms = [
         (len(k) - k.count("I")) * np.abs(v) for k, v in pauli_hamiltonian.items()
     ]
+    logger.debug(weighted_terms)
+    return [np.sum(weighted_terms)]
+
+
+def pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]:
+    """The Pauli-weight of a template scaled by the term coefficients.
+
+    Args:
+        pauli_hamiltonian (dict[bytes, float]): A filled template hamiltonian with byte-hashed keys.
+
+    Return:
+        list[float]: A single value in a list (needed for deap) giving the cost.
+
+    Example:
+        >>> from ferrmion.optimize.enumeration.cost_functions import pauli_weighted_norm
+        >>> from ferrmion.utils import symplectic_hash
+        >>> hashed_vec = symplectic_hash(np.array([True, False, False, True]))
+        >>> pauli_weighted_norm({hashed_vec:1}, [0,1,2])
+    """
+    logger.debug("Calculating Pauli-weighted Norm")
+    logger.debug(pauli_hamiltonian)
+
+    weighted_terms = [(len(k) - k.count("I")) for k, v in pauli_hamiltonian.items()]
     logger.debug(weighted_terms)
     return [np.sum(weighted_terms)]

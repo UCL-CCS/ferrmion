@@ -245,6 +245,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         two_e_coeffs: PyReadonlyArray4<f64>,
         temperature: f64,
         initial_guess: PyReadonlyArray1<usize>,
+        coefficient_weighted: bool,
     ) -> PyResult<(f64, Bound<'py, PyArray1<usize>>)> {
         let one_e_coeffs = one_e_coeffs.as_array();
         let two_e_coeffs = two_e_coeffs.as_array();
@@ -256,6 +257,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             two_e_coeffs,
             temperature,
             initial_guess,
+            coefficient_weighted,
         );
         let (cost, permutation) = result.expect("Annealing output error.");
         Ok((cost, permutation.into_pyarray(py)))

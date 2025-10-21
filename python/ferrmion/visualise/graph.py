@@ -40,8 +40,13 @@ def draw_tt(
         same_len = np.array([l for l in graph.nodes() if len(l) == len(label)])
         this_pos = np.where(same_len == label)[0][0]
         pos = (this_pos + 1) / (len(same_len) + 1) - 0.5
+
         if linear_tree and len(same_len) <= 1:
-            pos = len(label)
+            pos = (
+                len(label)
+                if "x" not in label
+                else -(1 ** (label.count("y") + 1)) * len(label)
+            )
 
         return pos
 

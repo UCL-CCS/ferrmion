@@ -2,7 +2,7 @@
 
 from ferrmion.optimize.rett import reduced_entanglement_ternary_tree
 from ferrmion.optimize.huffman import huffman_ternary_tree
-from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, coefficient_pauli_weight
+from ferrmion.optimize.cost_functions import minimise_mi_distance, distance_squared, coefficient_pauli_weight
 from ferrmion.optimize.bonsai import bonsai_algorithm
 from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree
 from ferrmion.encode import TernaryTree

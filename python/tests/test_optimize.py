@@ -2,7 +2,7 @@
 
 from ferrmion.optimize.rett import reduced_entanglement_ternary_tree
 from ferrmion.optimize.huffman import huffman_ternary_tree
-from ferrmion.optimize.enumeration import minimise_mi_distance, distance_squared, pauli_weighted_norm
+from ferrmion.optimize.cost_functions import minimise_mi_distance, distance_squared, coefficient_pauli_weight
 from ferrmion.optimize.bonsai import bonsai_algorithm
 from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree
 from ferrmion.encode import TernaryTree
@@ -87,13 +87,13 @@ def test_huffman(water_integrals):
         'yzz': ('yzzy', 'yzzx')
         }
 
-def test_pauli_weighted_norm(water_integrals):
+def test_coefficient_pauli_weight(water_integrals):
     jw = TernaryTree(14).JW()
     ipowers, symplectics = jw._build_symplectic_matrix()
     ones, twos = water_integrals
     jw_pauli_ham = molecular_hamiltonian_template(ipowers, symplectics, True)
     jw_filled_template = fill_template(jw_pauli_ham, 0., ones, twos, jw.default_mode_op_map)
-    jw_norm = pauli_weighted_norm(jw_filled_template)
+    jw_norm = coefficient_pauli_weight(jw_filled_template)
 
     assert np.allclose(jw_norm, [np.float64(272.4190655251233)])
 
@@ -101,7 +101,7 @@ def test_pauli_weighted_norm(water_integrals):
     ipowers, symplectics = pe._build_symplectic_matrix()
     pe_template = molecular_hamiltonian_template(ipowers, symplectics, True)
     pe_filled_template = fill_template(pe_template, 0, ones, twos, pe.default_mode_op_map)
-    pe_norm = pauli_weighted_norm(pe_filled_template)
+    pe_norm = coefficient_pauli_weight(pe_filled_template)
     assert np.allclose(pe_norm, [np.float64(354.23056347814577)])
 
 

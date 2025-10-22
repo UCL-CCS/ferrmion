@@ -19,7 +19,7 @@ pub struct FastTernaryTree {
 
 impl FastTernaryTree {
     pub fn new() -> Self {
-        let initial_array: NodeIndexArray = core::array::from_fn(|i| { i + 1 } as u8);
+        let initial_array: NodeIndexArray = core::array::from_fn(|i| { i } as u8);
         Self {
             parent_of: initial_array,
             x_child_of: initial_array,
@@ -58,7 +58,7 @@ fn qubit_term_weight(term: &[u8; 4], children: &[u8; 3]) -> usize {
     for c in children {
         let occurances: usize = term
             .iter()
-            .fold(0, |acc, t| if t == c { acc + 1 } else { acc });
+            .fold(0, |acc, t| if t == c { acc+1 } else { acc });
         if occurances % 2 == 1 {
             odd_parity_paulis += 1;
         }
@@ -111,12 +111,16 @@ pub fn hatt(
         let parent_index = (n_leaves + ind) as u8;
         let mut min = usize::MAX;
         for comb in unassigned.iter().flatten().combinations(2) {
-            println!("{:?}", comb);
 
             let x_index = *comb[0];
             let z_index = *comb[1];
 
             let small_x: u8 = tree.z_descendant_of[x_index as usize];
+            
+            if small_x as usize == 2*n_nodes {
+                continue;
+            };
+            
             let small_y: u8 = if small_x % 2 == 0 {
                 small_x + 1
             } else {
@@ -124,14 +128,14 @@ pub fn hatt(
             };
 
             if small_y == x_index || small_y == z_index {
-                println!("small y cannot be one of the children");
+                // println!("small y cannot be one of the children");
                 continue;
             };
 
             let y_index = tree.z_ancestor_of[small_y as usize];
 
             if y_index == x_index || y_index == z_index {
-                println!("y index cannot be one of the children");
+                // println!("y index cannot be one of the children");
                 continue;
             };
 
@@ -155,11 +159,10 @@ pub fn hatt(
             .fold(0, |acc, v| if *v == u8::MAX { acc + 1 } else { acc })
             > 1
         {
-            println!("Selection constians initialisation values.");
+            // println!("Selection constians initialisation values.");
             continue;
         }
 
-        println!("{:?}", selection);
         total_weight += min;
         for (child_index, child_of) in zip(
             selection,
@@ -187,7 +190,6 @@ pub fn hatt(
         tree.z_ancestor_of[z_desc as usize] = parent_index;
 
         unassigned[parent_index as usize] = Some(parent_index);
-        println!("{:?}", majorana_terms);
         majorana_terms = reduce_hamiltonian(majorana_terms, parent_index, selection)
     }
 

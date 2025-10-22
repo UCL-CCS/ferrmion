@@ -53,7 +53,7 @@ def _reduce_hamiltonian(
     """
     new_ham = {}
     for term, coeff in majorana_ham.items():
-        new_term = tuple(i if i not in selection else parent_index for i in term)
+        new_term = tuple(parent_index if i in selection else i for i in term)
         if len(set(new_term)) != 1:
             new_ham[new_term] = coeff
     return new_ham

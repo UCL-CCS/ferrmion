@@ -535,28 +535,31 @@ def _hamiltonian_term_to_majorana(
 
             swaps = 0
             n = len(majorana_ind)
-            for i in range(n-1):
+            for i in range(n - 1):
                 swapped = False
-                for j in range(n-i-1):
-                    if majorana_ind[j] > majorana_ind[j+1]:
-                        majorana_ind[j], majorana_ind[j+1] = majorana_ind[j+1], majorana_ind[j]
+                for j in range(n - i - 1):
+                    if majorana_ind[j] > majorana_ind[j + 1]:
+                        majorana_ind[j], majorana_ind[j + 1] = (
+                            majorana_ind[j + 1],
+                            majorana_ind[j],
+                        )
                         swapped = True
                         swaps += 1
                 if not swapped:
                     break
             no_duplicates = []
-            for ind in range(0,len(majorana_ind), 2):
-                if majorana_ind[ind] != majorana_ind[ind+1]:
+            for ind in range(0, len(majorana_ind), 2):
+                if majorana_ind[ind] != majorana_ind[ind + 1]:
                     no_duplicates.append(majorana_ind[ind])
-                    no_duplicates.append(majorana_ind[ind+1])
+                    no_duplicates.append(majorana_ind[ind + 1])
             if no_duplicates == []:
                 continue
-            
+
             majorana_ind = no_duplicates
 
             majoranas = tuple(majorana_ind)
             term_ipowers = np.prod([ipow[lr] for ipow, lr in zip(ipowers, left_right)])
-            term_ipowers = term_ipowers*((-1)**(swaps%2))
+            term_ipowers = term_ipowers * ((-1) ** (swaps % 2))
             majorana_ham[majoranas] = majorana_ham.get(majoranas, 0)
             majorana_ham[majoranas] += normalisation * coeff * term_ipowers
     return majorana_ham

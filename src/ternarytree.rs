@@ -58,7 +58,7 @@ fn qubit_term_weight(term: &[u8; 4], children: &[u8; 3]) -> usize {
     for c in children {
         let occurances: usize = term
             .iter()
-            .fold(0, |acc, t| if t == c { acc+1 } else { acc });
+            .fold(0, |acc, t| if t == c { acc + 1 } else { acc });
         if occurances % 2 == 1 {
             odd_parity_paulis += 1;
         }
@@ -111,16 +111,15 @@ pub fn hatt(
         let parent_index = (n_leaves + ind) as u8;
         let mut min = usize::MAX;
         for comb in unassigned.iter().flatten().combinations(2) {
-
             let x_index = *comb[0];
             let z_index = *comb[1];
 
             let small_x: u8 = tree.z_descendant_of[x_index as usize];
-            
-            if small_x as usize == 2*n_nodes {
+
+            if small_x as usize == 2 * n_nodes {
                 continue;
             };
-            
+
             let small_y: u8 = if small_x % 2 == 0 {
                 small_x + 1
             } else {
@@ -213,7 +212,7 @@ mod tests {
         let root_node: u8;
         let weight: usize;
         (tree, root_node, weight) = hatt(n_nodes, majorana_terms).unwrap();
-        assert_eq!(root_node,9);
+        assert_eq!(root_node, 9);
         assert_eq!(weight, 1);
     }
 }

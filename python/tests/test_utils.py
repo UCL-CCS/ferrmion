@@ -8,6 +8,7 @@ from ferrmion.utils import (
     symplectic_to_pauli,
     symplectic_to_sparse,
     symplectic_unhash,
+    fermionic_to_sparse_majorana
 )
 
 
@@ -40,3 +41,17 @@ def test_symplectic_sparse_conversion() -> None:
     assert symplectic_to_sparse(symplectic,1)[0] == "ZXY"
     assert symplectic_to_sparse(symplectic,1)[2] == 1.
     assert np.array_equal(symplectic_to_sparse(symplectic, 1)[1], [1,2,3])
+
+def test_fermionic_to_sparse_majorana()-> None:
+    n_modes = 3
+    ones = np.zeros((n_modes, n_modes))
+    twos = np.zeros((n_modes, n_modes, n_modes, n_modes))
+
+    ones[0,0]= 1
+    twos[1,2,1,2] = 2
+
+    majorana_ham =fermionic_to_sparse_majorana([(ones, "+-"), (twos, "++--")])
+    assert majorana_ham == {(0, 1): np.complex128(0.5j),
+        (4, 5): np.complex128(-0.5j),
+        (2, 3): np.complex128(-0.5j),
+        (2, 3, 4, 5): np.complex128(0.5+0j)}

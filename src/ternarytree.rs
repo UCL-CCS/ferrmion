@@ -95,7 +95,7 @@ fn reduce_hamiltonian(
 pub fn hatt(
     n_nodes: usize,
     mut majorana_terms: Vec<[u8; 4]>,
-) -> Result<(FastTernaryTree, Vec<u8>, usize)> {
+) -> Result<(FastTernaryTree, u8, usize)> {
     assert!(n_nodes < MAX_SIZE);
 
     let mut tree = FastTernaryTree::new();
@@ -195,7 +195,7 @@ pub fn hatt(
 
     let remaining_nodes: Vec<u8> = unassigned.into_iter().flatten().collect::<Vec<u8>>();
 
-    Ok((tree, remaining_nodes, total_weight))
+    Ok((tree, remaining_nodes[0], total_weight))
 }
 
 #[cfg(test)]
@@ -203,16 +203,17 @@ mod tests {
     use crate::ternarytree::{hatt, FastTernaryTree};
 
     #[test]
-    fn test_hatt() {
+    fn test_hatt_paper_example() {
         let mut majorana_terms: Vec<[u8; 4]> = Vec::from([[0u8, 0u8, 0u8, 1u8]]);
         majorana_terms.push([0u8, 0u8, 2u8, 3u8]);
         majorana_terms.push([0u8, 0u8, 4u8, 5u8]);
         majorana_terms.push([2u8, 3u8, 4u8, 5u8]);
         let n_nodes = 3;
         let tree: FastTernaryTree;
-        let nodes: Vec<u8>;
+        let root_node: u8;
         let weight: usize;
-        (tree, nodes, weight) = hatt(n_nodes, majorana_terms).unwrap();
-        assert_eq!(nodes, Vec::from(&[0]))
+        (tree, root_node, weight) = hatt(n_nodes, majorana_terms).unwrap();
+        assert_eq!(root_node,9);
+        assert_eq!(weight, 1);
     }
 }

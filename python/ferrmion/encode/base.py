@@ -274,10 +274,10 @@ def majorana_product(
     ipower = sum(ipowers[m] for m in product_indices)
 
     # initial operator
-    left = symplectics[product_indices[0]]
+    left = np.zeros(symplectics.shape[1], dtype=bool)
 
-    logger.debug(f"{product_indices[0]=},{ipower=}, {left=}")
-    for m_index in product_indices[1:]:
+    logger.debug(f"{product_indices=},{ipower=}, {left=}")
+    for m_index in product_indices:
         right = symplectics[m_index]
         iprod, left = symplectic_product(left, right)
         ipower += iprod

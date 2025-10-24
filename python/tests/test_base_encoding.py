@@ -131,5 +131,19 @@ def test_majorana_product_doubles_to_idenity(encoding_func):
         prod, coeff = encoding.majorana_product((i,i))
         assert np.all(prod == np.zeros((2*5), dtype=np.bool))
         assert coeff == 1
-        assert encoding.majorana_product((i,i,i))[0] == encoding.majorana_product((i,))[0]
-        assert encoding.majorana_product((i,i,i))[1] == encoding.majorana_product((i,))[1]
+        assert np.all(encoding.majorana_product((i,i,i))[0] == encoding.majorana_product((i,))[0])
+        assert np.all(encoding.majorana_product((i,i,i))[1] == encoding.majorana_product((i,))[1])
+
+@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
+def test_majorana_product_exchange_antusymmetry(encoding_func):
+    encoding: FermionQubitEncoding = encoding_func(5)
+    for i in range(1,5):
+        assert np.all(encoding.majorana_product((i,0))[0] == encoding.majorana_product((0,i))[0])
+        assert np.all(encoding.majorana_product((i,0))[1] == -1* encoding.majorana_product((0,i))[1])
+
+@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
+def test_majorana_product_empty(encoding_func):
+    encoding: FermionQubitEncoding = encoding_func(5)
+    assert np.all(encoding.majorana_product(())[0] == np.zeros(10,dtype=bool))
+    assert np.all(encoding.majorana_product(())[1] == 1)
+

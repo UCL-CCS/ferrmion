@@ -2,8 +2,8 @@
 
 import numpy as np
 import pytest
-from ferrmion.encode import TernaryTree, MaxNTO
-from ferrmion.encode.base import double_fermionic_operator
+from ferrmion.encode import TernaryTree, MaxNTO, JordanWigner, BravyiKitaev, JKMN
+from ferrmion.encode.base import double_fermionic_operator, FermionQubitEncoding
 
 np.random.seed(1710)
 
@@ -122,3 +122,14 @@ def test_double_fermionic_operator(four_mode_tt):
     maxnot_num_zero =double_fermionic_operator(MaxNTO(4), (0,0), "+-")
     assert np.all(l==r for l,r in zip(maxnot_num_zero[1],maxnto_expected[1]))
     assert np.all(l==r for l,r in zip(maxnot_num_zero[2],maxnto_expected[2]))
+
+
+@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
+def test_majorana_product_doubles_to_idenity(encoding_func):
+    encoding: FermionQubitEncoding = encoding_func(5)
+    for i in range(5):
+        prod, coeff = encoding.majorana_product((i,i))
+        assert np.all(prod == np.zeros((2*5), dtype=np.bool))
+        assert coeff == 1
+        assert encoding.majorana_product((i,i,i))[0] == encoding.majorana_product((i,))[0]
+        assert encoding.majorana_product((i,i,i))[1] == encoding.majorana_product((i,))[1]

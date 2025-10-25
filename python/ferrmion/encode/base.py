@@ -9,7 +9,9 @@ from numpy.typing import NDArray
 
 from ferrmion.core import hartree_fock_state, symplectic_product_map
 from ferrmion.utils import (
+    icount_to_sign,
     pauli_to_symplectic,
+    symplectic_product,
     symplectic_to_pauli,
     symplectic_to_sparse,
 )
@@ -231,6 +233,55 @@ class FermionQubitEncoding(ABC):
             >>> tree.edge_operator(0, 1)
         """
         return edge_operator(self, edge_indices)
+
+    def majorana_product(
+        self, product_indices: tuple[int, ...]
+    ) -> tuple[np.ndarray[bool], np.complex64]:
+        """Outputs the XZ-Matrix form of a product of majorana operators in an encoding.
+
+        Args:
+            product_indices (tuple[int,...]): A tuple of indices of majorana operators to apply.
+
+        Return:
+            np.ndarray[bool]: An XZ-encoded Pauli Operator.
+            np.complex64: A complex float coefficient for the operator.
+        """
+        return majorana_product(self, product_indices)
+
+
+def majorana_product(
+    encoding: FermionQubitEncoding, product_indices: tuple[int, ...]
+) -> tuple[np.ndarray[bool], np.complex64]:
+    """Outputs the XZ-Matrix form of a product of majorana operators in an encoding.
+
+    Args:
+        encoding (FermionQubitEncoding): A valid encoding.
+        product_indices (tuple[int,...]): A tuple of indices of majorana operators to apply.
+
+    Return:
+        np.ndarray[bool]: An XZ-encoded Pauli Operator.
+        np.complex64: A complex float coefficient for the operator.
+
+    Example:
+    >>> jw = JordanWigner(4)
+    >>> op, coeff = majorana_product(jw, (0,1,2,3))
+    """
+    ipowers, symplectics = encoding._build_symplectic_matrix()
+
+    # all the majoranas have in imaginary factor which multiply
+    # so they sum since we use powers
+    ipower = sum(ipowers[m] for m in product_indices)
+
+    # initial operator
+    left = np.zeros(symplectics.shape[1], dtype=bool)
+
+    logger.debug(f"{product_indices=},{ipower=}, {left=}")
+    for m_index in product_indices:
+        right = symplectics[m_index]
+        iprod, left = symplectic_product(left, right)
+        ipower += iprod
+        logger.debug(f"{m_index=}, {ipower=}, {left=}")
+    return left, icount_to_sign(ipower)
 
 
 def number_operator(

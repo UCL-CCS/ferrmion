@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0]
 ### Added
 - `interop.QiskitAdapter` which takes a `FermionQubitEncoding` as input, returning a `qiskit_nature.QubitMapper` which can be used in the normal way with `mapper.map(<fermionic operator>)`
+- `encode.base.majorana_product` function to calculate general majorana operator products from an encoding, also added as attribute `FermionQubitEncoding.majorana_product`.
 
 ### Changed
 - Conversion functions `symplectic_to_pauli`, `pauli_to_symplectic` now take in ipower as second argument, returning updated ipower.

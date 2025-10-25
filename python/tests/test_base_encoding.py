@@ -146,4 +146,3 @@ def test_majorana_product_empty(encoding_func):
     encoding: FermionQubitEncoding = encoding_func(5)
     assert np.all(encoding.majorana_product(())[0] == np.zeros(10,dtype=bool))
     assert np.all(encoding.majorana_product(())[1] == 1)
-

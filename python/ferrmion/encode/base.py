@@ -240,8 +240,7 @@ class FermionQubitEncoding(ABC):
         """Outputs the XZ-Matrix form of a product of majorana operators in an encoding.
 
         Args:
-            encoding (FermionQubitEncoding): A valid encoding.
-            majorana_product (tuple[int,...]): A tuple of indices of majorana operators to apply.
+            product_indices (tuple[int,...]): A tuple of indices of majorana operators to apply.
 
         Return:
             np.ndarray[bool]: An XZ-encoded Pauli Operator.
@@ -257,7 +256,7 @@ def majorana_product(
 
     Args:
         encoding (FermionQubitEncoding): A valid encoding.
-        majorana_product (tuple[int,...]): A tuple of indices of majorana operators to apply.
+        product_indices (tuple[int,...]): A tuple of indices of majorana operators to apply.
 
     Return:
         np.ndarray[bool]: An XZ-encoded Pauli Operator.

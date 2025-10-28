@@ -602,7 +602,8 @@ def fermionic_to_sparse_majorana(
         total_ham.update(
             _hamiltonian_term_to_majorana(total_ham, coeffs=coeffs, signature=signature)
         )
-    return total_ham
+
+    return {k: v for k, v in total_ham.items() if np.abs(v) > 1e-16}
 
 
 def setup_logs() -> None:

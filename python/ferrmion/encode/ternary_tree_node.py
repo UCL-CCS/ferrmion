@@ -33,7 +33,11 @@ class TTNode:
 
     def __str__(self):
         """String representation of node."""
-        return f"TTNode (root path:{self.root_path})"
+        return f"TTNode (root path:'{self.root_path}', Qubit Index:{self.qubit_label})"
+
+    def __repr__(self):
+        """String representation of node."""
+        return f"TTNode (root path:'{self.root_path}', Qubit Index:{self.qubit_label})"
 
     def __init__(
         self,

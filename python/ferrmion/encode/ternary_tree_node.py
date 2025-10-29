@@ -140,6 +140,10 @@ class TTNode:
         """
         return update_root_path(root=self, prefix=prefix)
 
+    def z_descendant(self) -> "TTNode":
+        """Find the furthest z-descendant of a node."""
+        return z_descendant(self)
+
     def add_child(
         self,
         which_child: str,

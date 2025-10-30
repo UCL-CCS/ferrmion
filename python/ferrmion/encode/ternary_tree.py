@@ -324,6 +324,7 @@ class TernaryTree(FermionQubitEncoding):
         symplectic = np.zeros((2 * self.n_qubits, 2 * self.n_qubits), dtype=bool)
         ipowers = np.zeros((2 * self.n_qubits), dtype=np.uint8)
         for operator, majorana_index in branch_majorana_map.items():
+            print(operator, majorana_index)
             if "x" not in operator and "y" not in operator:
                 continue
 

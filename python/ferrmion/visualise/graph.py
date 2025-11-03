@@ -10,7 +10,7 @@ from ferrmion.encode.ternary_tree_node import TTNode, node_sorter
 
 def draw_tt(
     graph: rx.PyDiGraph | TTNode | TernaryTree,
-    type: str,
+    type: str = "spaced",
     enumeration_scheme=None,
 ):
     """Draws a rustworkx graph with nodes positioned as a ternary tree.

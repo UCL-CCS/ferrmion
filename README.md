@@ -43,6 +43,7 @@ For more details, see the [interop documentation](https://ferrmion.readthedocs.i
 - [Simulated Annealing](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#simulated-annealing)
 
 ### Ternary Trees
+- [Topology-preserving Hamiltonian Adaptive Ternary Tree][https://ferrmion.readthedocs.io/en/latest/optimize.html#module-ferrmion.optimize.topphatt]
 - [Bonsai Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/bonsai.html)
 - [Reduced Entanglement Ternary Trees](https://ferrmion.readthedocs.io/en/latest/notebooks/rett.html)
 - [Huffman-code Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/huffman.html)

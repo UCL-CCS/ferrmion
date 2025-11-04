@@ -12,6 +12,7 @@ from .enumeration.evolutionary import lambda_plus_mu
 from .hatt import hamiltonian_adaptive_ternary_tree
 from .huffman import huffman_ternary_tree
 from .rett import reduced_entanglement_ternary_tree
+from .topphatt import topphatt
 
 __all__ = [
     "lambda_plus_mu",
@@ -24,4 +25,5 @@ __all__ = [
     "huffman_ternary_tree",
     "reduced_entanglement_ternary_tree",
     "hamiltonian_adaptive_ternary_tree",
+    "topphatt",
 ]

@@ -14,18 +14,27 @@ except ImportError:
     qiskit = None
     qiskit_nature = None
 
-@pytest.mark.skipif(qiskit is None or qiskit_nature is None, reason="Extra depdency `ferrmion[qiskit]` not installed.")
+
+@pytest.mark.skipif(
+    qiskit is None or qiskit_nature is None,
+    reason="Extra depdency `ferrmion[qiskit]` not installed.",
+)
 def test_qiskit_adapter_jw():
     fop = FermionicOp(
-        {
-            "+_0 -_0": 1.0,
-            "+_1 -_1": -1.0,
-            "-_1 +_0": 2.
-        },
+        {"+_0 -_0": 1.0, "+_1 -_1": -1.0, "-_1 +_0": 2.0},
         num_spin_orbitals=2,
     )
-    expected = SparsePauliOp(['IZ', 'ZI', 'XY', 'XX', 'YY', 'YX'],
-              coeffs=[-0.5+0.j ,  0.5+0.j ,  0. +0.5j, -0.5+0.j , -0.5+0.j ,  0. -0.5j])
+    expected = SparsePauliOp(
+        ["IZ", "ZI", "XY", "XX", "YY", "YX"],
+        coeffs=[
+            -0.5 + 0.0j,
+            0.5 + 0.0j,
+            0.0 + 0.5j,
+            -0.5 + 0.0j,
+            -0.5 + 0.0j,
+            0.0 - 0.5j,
+        ],
+    )
 
     mapper = JordanWignerMapper()
     inbuilt = mapper.map(fop)

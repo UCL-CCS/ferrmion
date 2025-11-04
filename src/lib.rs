@@ -16,7 +16,7 @@ mod encoding;
 use crate::encoding::{hartree_fock_state, MajoranaEncoding};
 mod optimise;
 use crate::optimise::anneal_enumerations;
-
+mod ternarytree;
 /// A Python module implemented in Rust.
 #[pymodule]
 #[pyo3(name = "core")]

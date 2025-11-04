@@ -1,7 +1,16 @@
 import numpy as np
 import pytest
 import scipy as sp
-from ferrmion.encode.ternary_tree import TernaryTree, TTNode, JW, JordanWigner, BK, BravyiKitaev, JKMN, ParityEncoding
+from ferrmion.encode.ternary_tree import (
+    TernaryTree,
+    TTNode,
+    JW,
+    JordanWigner,
+    BK,
+    BravyiKitaev,
+    JKMN,
+    ParityEncoding,
+)
 from ferrmion.utils import symplectic_hash, symplectic_unhash
 from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator
@@ -12,6 +21,7 @@ from ferrmion.hamiltonians import molecular_hamiltonian
 @pytest.fixture
 def six_mode_tree():
     return TernaryTree(n_modes=6, root_node=TTNode())
+
 
 @pytest.fixture(scope="module")
 def bonsai_paper_tree():
@@ -28,6 +38,7 @@ def bonsai_paper_tree():
     tt = tt.add_node("yzz")
     tt.enumeration_scheme = tt.default_enumeration_scheme()
     return tt
+
 
 def test_standard_encoding_functions(six_mode_tree):
     # Test function aliases
@@ -60,60 +71,256 @@ def test_standard_encoding_functions(six_mode_tree):
     jw_different_enumeration.enumeration_scheme["zz"] = JW(6).enumeration_scheme["z"]
     assert JW(6) != jw_different_enumeration
 
+
 def test_default_enumeration_scheme(six_mode_tree):
-    assert six_mode_tree.default_enumeration_scheme() == {'':(0,0)}
+    assert six_mode_tree.default_enumeration_scheme() == {"": (0, 0)}
     jkmn = six_mode_tree.JKMN()
-    assert jkmn.default_enumeration_scheme() == {'': (0, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 5)}
+    assert jkmn.default_enumeration_scheme() == {
+        "": (0, 0),
+        "x": (1, 1),
+        "y": (2, 2),
+        "z": (3, 3),
+        "xx": (4, 4),
+        "xy": (5, 5),
+    }
+
 
 def test_invalid_enumeration_scheme(six_mode_tree):
     jkmn = six_mode_tree.JKMN()
     # Not enough qubit labels
     with pytest.raises(ValueError) as exc:
-        jkmn.enumeration_scheme = {'': (0, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 4)}
+        jkmn.enumeration_scheme = {
+            "": (0, 0),
+            "x": (1, 1),
+            "y": (2, 2),
+            "z": (3, 3),
+            "xx": (4, 4),
+            "xy": (5, 4),
+        }
     assert "Invalid qubit labels" in str(exc.value)
 
     # Not enough mode labels
     with pytest.raises(ValueError) as exc:
-        jkmn.enumeration_scheme = {'': (0, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (5, 4), 'xy': (5, 5)}
+        jkmn.enumeration_scheme = {
+            "": (0, 0),
+            "x": (1, 1),
+            "y": (2, 2),
+            "z": (3, 3),
+            "xx": (5, 4),
+            "xy": (5, 5),
+        }
     assert "Invalid mode labels" in str(exc.value)
 
     # Qubit label not in range
     with pytest.raises(ValueError) as exc:
-        jkmn.enumeration_scheme = {'': (0, 6), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 5)}
+        jkmn.enumeration_scheme = {
+            "": (0, 6),
+            "x": (1, 1),
+            "y": (2, 2),
+            "z": (3, 3),
+            "xx": (4, 4),
+            "xy": (5, 5),
+        }
     assert "Invalid qubit labels" in str(exc.value)
 
     # Mode label not in range
     with pytest.raises(ValueError) as exc:
-        jkmn.enumeration_scheme = {'': (6, 0), 'x': (1, 1), 'y': (2, 2), 'z': (3, 3), 'xx': (4, 4), 'xy': (5, 5)}
+        jkmn.enumeration_scheme = {
+            "": (6, 0),
+            "x": (1, 1),
+            "y": (2, 2),
+            "z": (3, 3),
+            "xx": (4, 4),
+            "xy": (5, 5),
+        }
     assert "Invalid mode labels" in str(exc.value)
+
 
 def test_valid_enumeration_scheme(six_mode_tree):
     jkmn = six_mode_tree.JKMN()
-    jkmn.enumeration_scheme = {'': (3, 1), 'x': (2, 5), 'y': (0, 3), 'z': (1, 4), 'xx': (4, 2), 'xy': (5, 0)}
-    assert np.all(jkmn._build_symplectic_matrix()[1] == np.array([[False,  True, False,  True, False, False, False,  True, False,
-         True, False, False],
-       [False,  True, False,  True, False, False, False,  True, False,
-        False, False, False],
-       [False, False, False, False,  True, False, False,  True, False,
-        False, False, False],
-       [False, False, False, False,  True, False, False,  True, False,
-        False,  True, False],
-       [False,  True, False, False, False,  True, False, False,  True,
-        False, False, False],
-       [False,  True, False, False, False,  True,  True, False, False,
-        False, False,  True],
-       [False,  True, False, False, False, False, False, False, False,
-        False, False,  True],
-       [False,  True, False, False, False, False, False,  True, False,
-         True, False, False],
-       [False,  True,  True, False, False,  True, False, False, False,
-        False, False, False],
-       [False,  True,  True, False, False,  True, False, False,  True,
-        False, False, False],
-       [ True,  True, False, False, False,  True,  True, False, False,
-        False, False,  True],
-       [ True,  True, False, False, False,  True, False, False, False,
-        False, False,  True]]))
+    jkmn.enumeration_scheme = {
+        "": (3, 1),
+        "x": (2, 5),
+        "y": (0, 3),
+        "z": (1, 4),
+        "xx": (4, 2),
+        "xy": (5, 0),
+    }
+    assert np.all(
+        jkmn._build_symplectic_matrix()[1]
+        == np.array(
+            [
+                [
+                    False,
+                    True,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    True,
+                    False,
+                    False,
+                ],
+                [
+                    False,
+                    True,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                ],
+                [
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                ],
+                [
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    True,
+                    False,
+                ],
+                [
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                ],
+                [
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                ],
+                [
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                ],
+                [
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    True,
+                    False,
+                    False,
+                ],
+                [
+                    False,
+                    True,
+                    True,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                ],
+                [
+                    False,
+                    True,
+                    True,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                ],
+                [
+                    True,
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                ],
+                [
+                    True,
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    False,
+                    False,
+                    True,
+                ],
+            ]
+        )
+    )
 
 
 def test_bravyi_kitaev(six_mode_tree):
@@ -151,12 +358,12 @@ def test_bravyi_kitaev(six_mode_tree):
     }
 
     assert tt.default_enumeration_scheme() == {
-        "": (0,0),
-        "x": (1,1),
-        "xx": (2,2),
-        "xz": (3,3),
-        "xxx": (4,4),
-        "xxz": (5,5),
+        "": (0, 0),
+        "x": (1, 1),
+        "xx": (2, 2),
+        "xz": (3, 3),
+        "xxx": (4, 4),
+        "xxz": (5, 5),
     }
 
     assert tt.string_pairs == {
@@ -208,7 +415,6 @@ def test_bravyi_kitaev(six_mode_tree):
 
     for line in tt._build_symplectic_matrix()[1]:
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
-
 
 
 def tests_bonsai_paper_tree(bonsai_paper_tree):
@@ -268,17 +474,17 @@ def tests_bonsai_paper_tree(bonsai_paper_tree):
     }
 
     assert tt.default_enumeration_scheme() == {
-        "": (0,0),
-        "x": (1,1),
-        "y": (2,2),
-        "z": (3,3),
-        "xx": (4,4),
-        "xy": (5,5),
-        "yx": (6,6),
-        "yy": (7,7),
-        "yz": (8,8),
-        "zz": (9,9),
-        "yzz": (10,10),
+        "": (0, 0),
+        "x": (1, 1),
+        "y": (2, 2),
+        "z": (3, 3),
+        "xx": (4, 4),
+        "xy": (5, 5),
+        "yx": (6, 6),
+        "yy": (7, 7),
+        "yz": (8, 8),
+        "zz": (9, 9),
+        "yzz": (10, 10),
     }
 
     assert tt.string_pairs == {
@@ -356,13 +562,12 @@ def tests_bonsai_paper_tree(bonsai_paper_tree):
     for line in tt._build_symplectic_matrix()[1]:
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
+
 def test_eigenvalues_with_openfermion(water_eigenvalues, water_integrals):
     # qham_zeros = InteractionOperator(0, tt.one_e_coeffs, np.zeros(tt.two_e_coeffs.shape))
     # ofop_zeros = jordan_wigner(qham_zeros)
     one_e_ints, two_e_ints = water_integrals
-    qham = InteractionOperator(
-        0, one_e_ints, 0.5*two_e_ints
-    )
+    qham = InteractionOperator(0, one_e_ints, 0.5 * two_e_ints)
     # print(qham)
     ofop = jordan_wigner(qham)
     # print(f"diff {ofop-ofop_zeros}")
@@ -374,7 +579,7 @@ def test_eigenvalues_with_openfermion(water_eigenvalues, water_integrals):
 def test_eigenvalues_across_encodings(water_eigenvalues, water_tt, water_integrals):
     one_e_ints, two_e_ints = water_integrals
 
-    qham2 = molecular_hamiltonian(water_tt.JKMN(), one_e_ints, 0.5*two_e_ints, 0)
+    qham2 = molecular_hamiltonian(water_tt.JKMN(), one_e_ints, 0.5 * two_e_ints, 0)
     ofop2 = QubitOperator()
     for k, v in qham2.items():
         string = " ".join(

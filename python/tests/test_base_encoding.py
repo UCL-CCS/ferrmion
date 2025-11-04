@@ -17,8 +17,10 @@ def four_mode_tt():
 def sixteen_mode_tt():
     return TernaryTree(n_modes=16)
 
+
 def test_default_vacuum_state(four_mode_tt):
     assert np.all(four_mode_tt.vacuum_state == np.array([0] * 4))
+
 
 def test_valid_vacuum_state(four_mode_tt):
     with pytest.raises(ValueError) as excinfo:
@@ -60,39 +62,59 @@ def test_number_operator(four_mode_tt):
     tree = four_mode_tt.JW()
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     # numpy doesn't like comparing empty arrays
-    assert str(TernaryTree(n_modes=4).JW().edge_operator((0,0))) == str(TernaryTree(n_modes=4).JW().number_operator(0))
-    assert str(TernaryTree(n_modes=4).JW().edge_operator((1,1))) == str(TernaryTree(n_modes=4).JW().number_operator(1))
-    assert str(TernaryTree(n_modes=4).JW().edge_operator((2,2))) == str(TernaryTree(n_modes=4).JW().number_operator(2))
-    assert str(TernaryTree(n_modes=4).JW().edge_operator((3,3))) == str(TernaryTree(n_modes=4).JW().number_operator(3))
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((0, 0))) == str(
+        TernaryTree(n_modes=4).JW().number_operator(0)
+    )
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((1, 1))) == str(
+        TernaryTree(n_modes=4).JW().number_operator(1)
+    )
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((2, 2))) == str(
+        TernaryTree(n_modes=4).JW().number_operator(2)
+    )
+    assert str(TernaryTree(n_modes=4).JW().edge_operator((3, 3))) == str(
+        TernaryTree(n_modes=4).JW().number_operator(3)
+    )
 
     with pytest.raises(ValueError) as excinfo:
-        tree.number_operator(tree.n_modes+1)
+        tree.number_operator(tree.n_modes + 1)
     assert "indices invalid" in str(excinfo.value)
 
     with pytest.raises(ValueError) as excinfo:
         tree.number_operator(-1)
     assert "indices invalid" in str(excinfo.value)
 
+
 def test_edge_operator(four_mode_tt):
     tree = four_mode_tt.JKMN()
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    left = np.array([t[2] for t in tree.edge_operator((1,0))], dtype=complex)
-    right = np.array([np.conjugate(t[2]) for t in tree.edge_operator((0,1))], dtype=complex)
-    assert np.all(right == left[[0,2,1,3]])
-    assert np.all(left == np.array([ 0.  -0.25j,  -0.25+0.j  , 0.25+0.j  ,  0.  +0.25j]))
-    assert np.all(right == np.array([ 0.  -0.25j,  0.25+0.j  , -0.25+0.j  ,  0.  +0.25j]))
+    left = np.array([t[2] for t in tree.edge_operator((1, 0))], dtype=complex)
+    right = np.array(
+        [np.conjugate(t[2]) for t in tree.edge_operator((0, 1))], dtype=complex
+    )
+    assert np.all(right == left[[0, 2, 1, 3]])
+    assert np.all(
+        left == np.array([0.0 - 0.25j, -0.25 + 0.0j, 0.25 + 0.0j, 0.0 + 0.25j])
+    )
+    assert np.all(
+        right == np.array([0.0 - 0.25j, 0.25 + 0.0j, -0.25 + 0.0j, 0.0 + 0.25j])
+    )
 
-    output = tree.edge_operator((0,3))
-    expected = [('XZY', np.array([0,2,3]), -0-0.25j),('YZY', np.array([0,2,3]), 0.25-0j),('XZX', np.array([0,1,3]), 0.25+0j),('YZX', np.array([0,1,3]), 0+0.25j)]
+    output = tree.edge_operator((0, 3))
+    expected = [
+        ("XZY", np.array([0, 2, 3]), -0 - 0.25j),
+        ("YZY", np.array([0, 2, 3]), 0.25 - 0j),
+        ("XZX", np.array([0, 1, 3]), 0.25 + 0j),
+        ("YZX", np.array([0, 1, 3]), 0 + 0.25j),
+    ]
     for oterm, eterm in zip(output, expected):
-        np.all(oitem==eitem for oitem,eitem in zip(oterm, eterm))
+        np.all(oitem == eitem for oitem, eitem in zip(oterm, eterm))
 
     with pytest.raises(ValueError) as excinfo:
-        tree.edge_operator((0, tree.n_modes+1))
+        tree.edge_operator((0, tree.n_modes + 1))
     assert "indices invalid" in str(excinfo.value)
 
     with pytest.raises(ValueError) as excinfo:
-        tree.edge_operator((tree.n_modes+1, 0))
+        tree.edge_operator((tree.n_modes + 1, 0))
     assert "indices invalid" in str(excinfo.value)
 
     with pytest.raises(ValueError) as excinfo:
@@ -103,9 +125,15 @@ def test_edge_operator(four_mode_tt):
         tree.number_operator((-1, 0))
     assert "indices invalid" in str(excinfo.value)
 
+
 def test_double_fermionic_operator(four_mode_tt):
-    jw_expected = [('', np.array([], dtype=np.int64), 0.25), ('Z', np.array([0]), -0.25), ('Z', np.array([0]), -0.25), ('', np.array([], dtype=np.int64), 0.25)]
-    jw_num_zero =double_fermionic_operator(four_mode_tt.JW(), (0,0),"+-")
+    jw_expected = [
+        ("", np.array([], dtype=np.int64), 0.25),
+        ("Z", np.array([0]), -0.25),
+        ("Z", np.array([0]), -0.25),
+        ("", np.array([], dtype=np.int64), 0.25),
+    ]
+    jw_num_zero = double_fermionic_operator(four_mode_tt.JW(), (0, 0), "+-")
     assert jw_num_zero[0][0] == jw_num_zero[3][0] == jw_expected[0][0]
     assert type(jw_num_zero[0][1]) == type(jw_num_zero[3][1]) == type(jw_expected[0][1])
     assert len(jw_num_zero[0][1]) == len(jw_num_zero[3][1]) == len(jw_expected[0][1])
@@ -113,36 +141,59 @@ def test_double_fermionic_operator(four_mode_tt):
     assert np.all(jw_num_zero[1] == jw_expected[1])
     assert np.all(jw_num_zero[2] == jw_expected[2])
 
-    bk_expected = [('', np.array([], dtype=np.int64), 0.25), ('ZZZ', np.array([0,1,3]), -0.25), ('ZZZ', np.array([0,1,3]), -0.25), ('', np.array([], dtype=np.int64), 0.25)]
-    bk_num_zero =double_fermionic_operator(four_mode_tt.BK(), (0,0),"+-")
-    assert np.all(l==r for l,r in zip(bk_num_zero[1], bk_expected[1]))
-    assert np.all(l==r for l,r in zip(bk_num_zero[2], bk_expected[2]))
+    bk_expected = [
+        ("", np.array([], dtype=np.int64), 0.25),
+        ("ZZZ", np.array([0, 1, 3]), -0.25),
+        ("ZZZ", np.array([0, 1, 3]), -0.25),
+        ("", np.array([], dtype=np.int64), 0.25),
+    ]
+    bk_num_zero = double_fermionic_operator(four_mode_tt.BK(), (0, 0), "+-")
+    assert np.all(l == r for l, r in zip(bk_num_zero[1], bk_expected[1]))
+    assert np.all(l == r for l, r in zip(bk_num_zero[2], bk_expected[2]))
 
-    maxnto_expected = [('', np.array([], dtype=np.int64), 0.25), ('ZZZ', np.array([0,1,2]), 0.25), ('ZZZ', np.array([0,1,2]), 0.25), ('', np.array([], dtype=np.int64), 0.25)]
-    maxnot_num_zero =double_fermionic_operator(MaxNTO(4), (0,0), "+-")
-    assert np.all(l==r for l,r in zip(maxnot_num_zero[1],maxnto_expected[1]))
-    assert np.all(l==r for l,r in zip(maxnot_num_zero[2],maxnto_expected[2]))
+    maxnto_expected = [
+        ("", np.array([], dtype=np.int64), 0.25),
+        ("ZZZ", np.array([0, 1, 2]), 0.25),
+        ("ZZZ", np.array([0, 1, 2]), 0.25),
+        ("", np.array([], dtype=np.int64), 0.25),
+    ]
+    maxnot_num_zero = double_fermionic_operator(MaxNTO(4), (0, 0), "+-")
+    assert np.all(l == r for l, r in zip(maxnot_num_zero[1], maxnto_expected[1]))
+    assert np.all(l == r for l, r in zip(maxnot_num_zero[2], maxnto_expected[2]))
 
 
 @pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
 def test_majorana_product_doubles_to_idenity(encoding_func):
     encoding: FermionQubitEncoding = encoding_func(5)
     for i in range(5):
-        prod, coeff = encoding.majorana_product((i,i))
-        assert np.all(prod == np.zeros((2*5), dtype=np.bool))
+        prod, coeff = encoding.majorana_product((i, i))
+        assert np.all(prod == np.zeros((2 * 5), dtype=np.bool))
         assert coeff == 1
-        assert np.all(encoding.majorana_product((i,i,i))[0] == encoding.majorana_product((i,))[0])
-        assert np.all(encoding.majorana_product((i,i,i))[1] == encoding.majorana_product((i,))[1])
+        assert np.all(
+            encoding.majorana_product((i, i, i))[0]
+            == encoding.majorana_product((i,))[0]
+        )
+        assert np.all(
+            encoding.majorana_product((i, i, i))[1]
+            == encoding.majorana_product((i,))[1]
+        )
+
 
 @pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
 def test_majorana_product_exchange_antusymmetry(encoding_func):
     encoding: FermionQubitEncoding = encoding_func(5)
-    for i in range(1,5):
-        assert np.all(encoding.majorana_product((i,0))[0] == encoding.majorana_product((0,i))[0])
-        assert np.all(encoding.majorana_product((i,0))[1] == -1* encoding.majorana_product((0,i))[1])
+    for i in range(1, 5):
+        assert np.all(
+            encoding.majorana_product((i, 0))[0] == encoding.majorana_product((0, i))[0]
+        )
+        assert np.all(
+            encoding.majorana_product((i, 0))[1]
+            == -1 * encoding.majorana_product((0, i))[1]
+        )
+
 
 @pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
 def test_majorana_product_empty(encoding_func):
     encoding: FermionQubitEncoding = encoding_func(5)
-    assert np.all(encoding.majorana_product(())[0] == np.zeros(10,dtype=bool))
+    assert np.all(encoding.majorana_product(())[0] == np.zeros(10, dtype=bool))
     assert np.all(encoding.majorana_product(())[1] == 1)

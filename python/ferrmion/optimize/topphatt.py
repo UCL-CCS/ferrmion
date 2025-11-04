@@ -254,7 +254,7 @@ def _build_valid_combination(
     return comb
 
 
-def topp_hatt(
+def topphatt(
     majorana_ham: dict[Iterable[int], float],
     tree: TernaryTree,
 ) -> TernaryTree:

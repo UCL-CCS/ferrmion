@@ -175,15 +175,18 @@ class TTNode:
             qubit_label=qubit_label,
         )
 
-    def to_rustworkx(self) -> rx.PyDiGraph:
+    def to_rustworkx(self, with_leaves: bool = False) -> rx.PyDiGraph:
         """Create a rustworkx graph from this node and its children.
+
+        Args:
+            with_leaves (bool): True to draw graph with leaves present.
 
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
             >>> tree = TernaryTree(10).BK()
             >>> rx_graph = tree.root_node.to_rustworkx()
         """
-        return to_rustworkx(self)
+        return to_rustworkx(self, with_leaves=with_leaves)
 
 
 def update_root_path(root: TTNode, prefix: str) -> None:
@@ -411,11 +414,12 @@ def node_sorter(label: str) -> int:
     return int("".join([pauli_dict[item] for item in label.lower()]))
 
 
-def to_rustworkx(root: TTNode) -> rx.PyDiGraph:
+def to_rustworkx(root: TTNode, with_leaves: bool = False) -> rx.PyDiGraph:
     """Convert a TT node and its children to a rustworkx PyDiGraph.
 
     Args:
         root (TTNode): A node to be the root of the rx graph.
+        with_leaves (bool): True to show leaves of tree in graph.
 
     Example:
         >>> from ferrmion.encode.ternary_tree import TernaryTree
@@ -423,7 +427,11 @@ def to_rustworkx(root: TTNode) -> rx.PyDiGraph:
         >>> rx_graph = to_rustworkx(tree.root)
     """
     graph = rx.PyDiGraph(check_cycle=True)
-    child_dict = {s: i for i, s in enumerate(root.child_strings)}
+    if with_leaves:
+        child_dict = {s: i for i, s in enumerate(root.branch_strings)}
+    else:
+        child_dict = {s: i for i, s in enumerate(root.child_strings)}
+
     graph.add_nodes_from(child_dict)
     for string in root.child_strings:
         if len(string) == 0:

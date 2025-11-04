@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unrealeased]
+### Added
+- Topology-preserving Hamiltonian Adaptive Ternary Tree (TOPP-HATT) in `ferrmion.optimize.topphatt`.
+
 ## [0.3.0]
 ### Added
 - `interop.QiskitAdapter` which takes a `FermionQubitEncoding` as input, returning a `qiskit_nature.QubitMapper` which can be used in the normal way with `mapper.map(<fermionic operator>)`

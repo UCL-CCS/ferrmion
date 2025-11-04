@@ -57,6 +57,8 @@ def draw_tt(
             pos = (this_pos + 1) / (len(same_len) + 1) - 0.5
             if len(same_len) <= 1:
                 pos = len(label)
+            if "z" not in label:
+                pos *= -1.0
         else:
             raise ValueError("Type must be one of standard,spaced or linear.")
         return pos

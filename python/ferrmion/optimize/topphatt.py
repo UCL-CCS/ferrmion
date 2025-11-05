@@ -99,7 +99,7 @@ def _initialise_restrictions(tree: TernaryTree):
         node_objects_map[string_index_map[child]]
         for child in tree.root_node.child_strings
     ]:
-        node.leaf_majorana_indices = {"x": None, "y": None, "z": None}
+        node.leaf_majorana_indices = {k: None for k in node.leaf_majorana_indices}
 
     # each node has restrictions in tuple (restrictions on x, restrictions on y, restrictions on z)
     restrictions = {i: [None, None, None] for i in string_index_map.values()}
@@ -275,7 +275,7 @@ def topphatt(
     # We need 2*M +1 leaves and M nodes.
     nodes: dict[int, TTNode | None] = {i: None for i in range(n_leaves - 1)}
     node_dependencies = _initialise_node_dependencies(tree)
-    logging.debug(f"Initial Dependencies:\n{node_dependencies}")
+    logging.debug(f"Initial Dependencies:{node_dependencies}")
 
     string_index_map = _get_string_index_map(tree)
     index_string_map = {v: k for k, v in string_index_map.items()}
@@ -284,7 +284,7 @@ def topphatt(
 
     for node in node_objects_map.values():
         for char in ["x", "y", "z"]:
-            node.branch_majorana_map[char] = None
+            node.leaf_majorana_indices[char] = None
 
     nodes.update(_get_node_objects_map(tree, string_index_map))
 
@@ -295,7 +295,7 @@ def topphatt(
     # active_nodes:set[int] = {node for node, deps in node_dependencies.items() if deps == []}
     completed_nodes = set()
     restrictions = _initialise_restrictions(tree)
-    logging.debug(f"Initial Restrictions:\n{restrictions}")
+    logging.debug(f"Initial Restrictions:{restrictions}")
     # Start with all the leaves unassigned
     unassigned_leaves = [*range(n_leaves)]
     unassigned_leaves.reverse()
@@ -306,7 +306,7 @@ def topphatt(
 
     total_weight = 0
     for i in range(n_modes + 1):
-        logging.debug(f"\nLoop {i}")
+        logging.debug(f"Loop {i}")
         # Update the restrictions with the new information about the tree.
         # Any nodes that are required to be in a certain position
         # have to be removed from unassigned!
@@ -329,7 +329,7 @@ def topphatt(
         max_len_active = active_nodes[max([*active_nodes.keys()])]
         logging.debug(f"{max_len_active=}")
         for parent_index in max_len_active:
-            logging.debug(f"\n{parent_index=}")
+            logging.debug(f"{parent_index=}")
 
             # Z-child of new node will always be the previous node.
             # We only need to use every second entry in unassigned
@@ -348,7 +348,9 @@ def topphatt(
             allowed_z = _unpack_single_restriction(
                 parent_restrictions[2], unassigned_leaves
             )
-
+            logger.debug(f"{allowed_x=}")
+            logger.debug(f"{allowed_y=}")
+            logger.debug(f"{allowed_z=}")
             match parent_restrictions[0], parent_restrictions[1]:
                 case None, None:
                     allowed_product = product(allowed_z, allowed_x)
@@ -412,7 +414,14 @@ def topphatt(
         # Now find the Y pair of the x-node
         unassigned_leaves = [u for u in unassigned_leaves if u not in selection]
         for child_index, char in zip(selection, ["x", "y", "z"]):
-            node_objects_map[min_parent].leaf_majorana_indices[char] = child_index
+            # We don't want to
+            child_object = node_objects_map.get(child_index, None)
+            if isinstance(child_object, TTNode):
+                node_objects_map[min_parent].leaf_majorana_indices[char] = (
+                    child_object.leaf_majorana_indices
+                )
+            else:
+                node_objects_map[min_parent].leaf_majorana_indices[char] = child_index
 
         if i + 1 == n_modes:
             break

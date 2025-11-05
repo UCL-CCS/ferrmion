@@ -12,6 +12,8 @@ def draw_tt(
     graph: rx.PyDiGraph | TTNode | TernaryTree,
     type: str = "spaced",
     enumeration_scheme=None,
+    node_size=600,
+    font_size=10,
 ):
     """Draws a rustworkx graph with nodes positioned as a ternary tree.
 
@@ -76,9 +78,9 @@ def draw_tt(
         graph,
         pos=posmap,
         with_labels=True,
-        node_size=600,
+        node_size=node_size,
         node_color="orange",
         edge_labels=str,
         labels=labels,
-        font_size=10,
+        font_size=font_size,
     )

@@ -49,15 +49,8 @@ mod tests {
             LadderOperator::from_str("-").unwrap(),
             LadderOperator::Annihilation
         );
-        assert_eq!(
-            LadderOperator::from_str("+-"),
-            Err(ParseLadderError)
-        );
-        assert_eq!(
-            LadderOperator::from_str("-+"),
-            Err(ParseLadderError)
-        );
-        
+        assert_eq!(LadderOperator::from_str("+-"), Err(ParseLadderError));
+        assert_eq!(LadderOperator::from_str("-+"), Err(ParseLadderError));
     }
 }
 
@@ -93,7 +86,6 @@ Fermion
 // /*
 // Majorana
 // */
-
 // struct MajoranaOperator(u32);
 
 // struct MajoranaHamiltonian<'coeff> {

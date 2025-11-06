@@ -2,7 +2,7 @@
 Utility functions for core functionality.
 */
 use ndarray::{concatenate, Axis, Zip};
-use numpy::ndarray::{s, Array1, ArrayView1};
+use numpy::ndarray::{s, Array1, Array2, ArrayView1, ArrayView2};
 use numpy::Complex64;
 
 pub fn icount_to_sign(icount: usize) -> Complex64 {

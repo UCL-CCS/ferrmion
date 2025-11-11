@@ -3,7 +3,6 @@
 from ferrmion.optimize.topphatt import topphatt
 from ferrmion.utils import fermionic_to_sparse_majorana
 from ferrmion.encode import (
-    TernaryTree,
     JordanWigner,
     BravyiKitaev,
     ParityEncoding,

@@ -11,12 +11,18 @@ from ferrmion.encode.ternary_tree_node import TTNode
 logger = logging.getLogger(__name__)
 
 
-def bonsai_algorithm(graph: rx.PyGraph, homogenous: bool = True) -> TernaryTree:
+def bonsai_algorithm(
+    graph: rx.PyGraph, homogenous: bool = True, max_nodes: None | int = None
+) -> TernaryTree:
     """Create a TernayTree encoding using the Bonsai Algorithm.
 
     Args:
         graph (rx.PyGraph): A RustworkX graph of device qubit-connectivity.
         homogenous (bool): "homogenous" labelling if true, else "heterogenous"
+        max_nodes (int): Maximum number of nodes to include in output tree.
+
+    Returns:
+        TernaryTree: A ternary tree encoding.
     """
     logger.debug("Starting Bonsai Algorithm.")
     if homogenous:
@@ -30,7 +36,7 @@ def bonsai_algorithm(graph: rx.PyGraph, homogenous: bool = True) -> TernaryTree:
     used_indices = {root_index}
     nodes = [TTNode(parent=None) for _ in range(graph.num_nodes())]
     nodes[root_index].root_path = ""
-    nodes[root_index].qubit_label = 0
+    nodes[root_index].qubit_label = root_index
 
     while len(node_queue) > 0:
         logger.debug(f"{node_queue=}")
@@ -58,7 +64,12 @@ def bonsai_algorithm(graph: rx.PyGraph, homogenous: bool = True) -> TernaryTree:
         logger.debug(node_queue)
         logger.debug("")
 
-    if len(used_indices) == graph.num_nodes():
+        if max_nodes is not None and len(used_indices) == max_nodes:
+            break
+
+    if max_nodes is not None and len(used_indices) == max_nodes:
+        logger.debug(f"Found {max_nodes} nodes.")
+    elif len(used_indices) == graph.num_nodes():
         logger.debug("Found spanning tree")
     else:
         logger.debug("Tree does not span the graph.")
@@ -83,6 +94,8 @@ def bonsai_algorithm(graph: rx.PyGraph, homogenous: bool = True) -> TernaryTree:
             logger.debug("All graph nodes assigned to tree.")
 
     logger.debug("Creating encoding.")
-    tree = TernaryTree(n_modes=graph.num_nodes(), root_node=nodes[root_index])
+
+    n_nodes = graph.num_nodes() if max_nodes is None else max_nodes
+    tree = TernaryTree(n_modes=n_nodes, root_node=nodes[root_index])
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     return tree

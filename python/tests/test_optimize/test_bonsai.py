@@ -5,8 +5,8 @@ import rustworkx as rx
 import numpy as np
 from pytest import fixture
 
-
-def test_bonsai():
+@fixture
+def heavy_hex_graph():
     graph = rx.PyGraph()
     graph.add_nodes_from(range(37))
     graph.add_edges_from_no_data(
@@ -49,7 +49,142 @@ def test_bonsai():
             (33, 36),
         ]
     )
+    return graph
 
+@fixture
+def garnet_graph():
+    garnet_edges = [
+        (1, 0),
+        (1, 4),
+        (3, 0),
+        (3, 2),
+        (3, 4),
+        (3, 8),
+        (5, 4),
+        (5, 6),
+        (5, 10),
+        (7, 2),
+        (7, 8),
+        (7, 12),
+        (9, 4),
+        (9, 8),
+        (9, 10),
+        (9, 14),
+        (11, 6),
+        (11, 10),
+        (11, 16),
+        (13, 8),
+        (13, 12),
+        (13, 14),
+        (13, 17),
+        (15, 10),
+        (15, 14),
+        (15, 16),
+        (15, 19),
+        (18, 14),
+        (18, 17),
+        (18, 19)
+    ]
+
+    graph = rx.PyGraph()
+    graph.add_nodes_from(range(20))
+    graph.add_edges_from_no_data(garnet_edges)
+    return graph
+
+@fixture
+def emerald_graph():
+    emerald_edges = [(0, 1),
+        (0, 4),
+        (3, 2),
+        (3, 4),
+        (3, 9),
+        (5, 1),
+        (5, 4),
+        (5, 6),
+        (5, 11),
+        (8, 2),
+        (8, 7),
+        (8, 9),
+        (8, 16),
+        (10, 4),
+        (10, 9),
+        (10, 11),
+        (10, 18),
+        (12, 11),
+        (12, 13),
+        (12, 20),
+        (15, 7),
+        (15, 14),
+        (15, 16),
+        (15, 23),
+        (17, 16),
+        (17, 18),
+        (17, 25),
+        (18, 26),
+        (19, 11),
+        (19, 18),
+        (19, 20),
+        (19, 27),
+        (21, 13),
+        (21, 20),
+        (21, 29),
+        (22, 14),
+        (22, 23),
+        (24, 16),
+        (24, 23),
+        (24, 25),
+        (24, 32),
+        (25, 26),
+        (26, 27),
+        (26, 34),
+        (28, 20),
+        (28, 27),
+        (28, 29),
+        (28, 36),
+        (30, 29),
+        (30, 38),
+        (31, 23),
+        (31, 32),
+        (33, 25),
+        (33, 32),
+        (33, 34),
+        (33, 41),
+        (34, 42),
+        (35, 27),
+        (35, 34),
+        (35, 36),
+        (35, 43),
+        (36, 37),
+        (37, 38),
+        (37, 45),
+        (40, 32),
+        (40, 39),
+        (40, 41),
+        (40, 46),
+        (41, 42),
+        (43, 49),
+        (44, 36),
+        (44, 43),
+        (44, 45),
+        (44, 50),
+        (47, 41),
+        (47, 46),
+        (47, 48),
+        (47, 51),
+        (49, 50),
+        (49, 53),
+        (52, 48),
+        (52, 51),
+        (52, 53)
+    ]
+
+    graph = rx.PyGraph()
+    graph.add_nodes_from(range(54))
+    graph.add_edges_from_no_data(emerald_edges)
+    return graph
+
+def test_heavy_hex(heavy_hex_graph):
+    graph = heavy_hex_graph
     bonsai_homo = bonsai_algorithm(graph=graph, homogenous=True)
     assert bonsai_homo.as_dict() == {
         "x": {
@@ -295,3 +430,164 @@ def test_bonsai():
         "yzxzxzz": 36,
         "zzzzxzz": 34,
     }
+
+def test_heavy_hex_max_nodes(heavy_hex_graph):
+    bonsai= bonsai_algorithm(graph=heavy_hex_graph, homogenous=False, max_nodes=14)
+    bonsai.string_pairs
+    assert bonsai.as_dict() == {'x': {'x': None,
+  'y': None,
+  'z': {'x': {'x': None, 'y': None, 'z': None},
+   'y': None,
+   'z': {'x': None, 'y': None, 'z': None}}},
+ 'y': {'x': None,
+  'y': None,
+  'z': {'x': {'x': None, 'y': None, 'z': None},
+   'y': None,
+   'z': {'x': None, 'y': None, 'z': None}}},
+ 'z': {'x': None,
+  'y': None,
+  'z': {'x': {'x': None, 'y': None, 'z': None},
+   'y': None,
+   'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}}}}
+
+def test_garnet(garnet_graph):
+    graph = garnet_graph
+    bonsai= bonsai_algorithm(graph=graph, homogenous=False)
+    assert bonsai.as_dict() == {'x': {'x': {'x': None, 'y': None, 'z': None},
+  'y': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}},
+  'z': {'x': {'x': None, 'y': None, 'z': None},
+   'y': None,
+   'z': {'x': None, 'y': None, 'z': None}}},
+ 'y': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}},
+ 'z': {'x': {'x': {'x': None, 'y': None, 'z': None},
+   'y': {'x': None, 'y': None, 'z': None},
+   'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}},
+  'y': {'x': None, 'y': None, 'z': None},
+  'z': {'x': {'x': None, 'y': None, 'z': None},
+   'y': None,
+   'z': {'x': None, 'y': None, 'z': None}}}}
+
+    bonsai= bonsai_algorithm(graph=graph, homogenous=True)
+    assert bonsai.as_dict() == {'x': {'x': {'x': {'x': None, 'y': None, 'z': None},
+   'y': {'x': None, 'y': None, 'z': None},
+   'z': None},
+  'y': {'x': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None},
+   'y': {'x': None, 'y': None, 'z': None},
+   'z': {'x': None, 'y': None, 'z': None}},
+  'z': {'x': None, 'y': None, 'z': None}},
+ 'y': {'x': {'x': {'x': None, 'y': None, 'z': None},
+   'y': {'x': None, 'y': None, 'z': None},
+   'z': None},
+  'y': {'x': None, 'y': None, 'z': None},
+  'z': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None}},
+ 'z': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None}}
+
+
+def test_emerald(emerald_graph):
+    graph = emerald_graph
+    bonsai= bonsai_algorithm(graph=graph, homogenous=False)
+    assert bonsai.as_dict() == {
+    'x': {'x': {'x': None,
+    'y': None,
+    'z': {'x': {'x': None,
+        'y': None,
+        'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}},
+        'y': None,
+        'z': {'x': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}},
+        'y': None,
+        'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}}}},
+    'y': None,
+    'z': {'x': {'x': {'x': None, 'y': None, 'z': None},
+        'y': None,
+        'z': {'x': None,
+        'y': None,
+        'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}}},
+    'y': None,
+    'z': {'x': None, 'y': None, 'z': None}}},
+    'y': {'x': {'x': None,
+    'y': None,
+    'z': {'x': None,
+        'y': None,
+        'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}}},
+    'y': None,
+    'z': {'x': {'x': None,
+        'y': None,
+        'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}},
+    'y': None,
+    'z': {'x': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}},
+        'y': None,
+        'z': {'x': {'x': {'x': None, 'y': None, 'z': None},
+        'y': None,
+        'z': {'x': None, 'y': None, 'z': None}},
+        'y': None,
+        'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}}}}},
+    'z': {'x': {'x': {'x': None, 'y': None, 'z': None},
+    'y': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}},
+    'z': {'x': {'x': None, 'y': None, 'z': None},
+        'y': {'x': None, 'y': None, 'z': None},
+        'z': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}}}},
+    'y': {'x': None, 'y': None, 'z': {'x': None, 'y': None, 'z': None}},
+    'z': {'x': {'x': None, 'y': None, 'z': None},
+    'y': None,
+    'z': {'x': {'x': None, 'y': None, 'z': None},
+        'y': None,
+        'z': {'x': None, 'y': None, 'z': None}}}}}
+
+
+    bonsai= bonsai_algorithm(graph=graph, homogenous=True)
+    assert bonsai.as_dict() == {
+        'x': {'x': {'x': {'x': {'x': {'x': None, 'y': None, 'z': None},
+        'y': None,
+        'z': None},
+        'y': {'x': None, 'y': None, 'z': None},
+        'z': {'x': None, 'y': None, 'z': None}},
+    'y': {'x': None, 'y': None, 'z': None},
+    'z': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None}},
+    'y': {'x': {'x': {'x': None, 'y': None, 'z': None},
+        'y': {'x': None, 'y': None, 'z': None},
+        'z': None},
+    'y': {'x': None, 'y': None, 'z': None},
+    'z': None},
+    'z': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None}},
+    'y': {'x': {'x': {'x': None, 'y': None, 'z': None},
+    'y': {'x': {'x': {'x': {'x': None, 'y': None, 'z': None},
+        'y': None,
+        'z': None},
+        'y': None,
+        'z': None},
+        'y': {'x': None, 'y': None, 'z': None},
+        'z': None},
+    'z': None},
+    'y': {'x': {'x': {'x': {'x': {'x': None, 'y': None, 'z': None},
+        'y': None,
+        'z': None},
+        'y': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None},
+        'z': None},
+        'y': {'x': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None},
+        'y': None,
+        'z': None},
+        'z': None},
+    'y': None,
+    'z': None},
+    'z': None},
+    'z': {'x': {'x': {'x': {'x': {'x': {'x': None, 'y': None, 'z': None},
+        'y': None,
+        'z': None},
+        'y': {'x': {'x': None, 'y': None, 'z': None},
+        'y': {'x': None, 'y': None, 'z': None},
+        'z': None},
+        'z': None},
+        'y': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None},
+        'z': None},
+    'y': {'x': {'x': {'x': None, 'y': None, 'z': None}, 'y': None, 'z': None},
+        'y': None,
+        'z': None},
+    'z': None},
+    'y': {'x': {'x': {'x': {'x': None, 'y': None, 'z': None},
+        'y': None,
+        'z': None},
+        'y': None,
+        'z': None},
+    'y': None,
+    'z': None},
+    'z': None}}

@@ -97,7 +97,7 @@ def test_invalid_enumeration_scheme(six_mode_tree):
             "xx": (4, 4),
             "xy": (5, 4),
         }
-    assert "Invalid qubit labels" in str(exc.value)
+    assert "Expected 6 qubit labels" in str(exc.value)
 
     # Not enough mode labels
     with pytest.raises(ValueError) as exc:
@@ -110,18 +110,6 @@ def test_invalid_enumeration_scheme(six_mode_tree):
             "xy": (5, 5),
         }
     assert "Invalid mode labels" in str(exc.value)
-
-    # Qubit label not in range
-    with pytest.raises(ValueError) as exc:
-        jkmn.enumeration_scheme = {
-            "": (0, 6),
-            "x": (1, 1),
-            "y": (2, 2),
-            "z": (3, 3),
-            "xx": (4, 4),
-            "xy": (5, 5),
-        }
-    assert "Invalid qubit labels" in str(exc.value)
 
     # Mode label not in range
     with pytest.raises(ValueError) as exc:
@@ -138,6 +126,17 @@ def test_invalid_enumeration_scheme(six_mode_tree):
 
 def test_valid_enumeration_scheme(six_mode_tree):
     jkmn = six_mode_tree.JKMN()
+    # We allow any qubit labels
+    jkmn.enumeration_scheme = {
+        "": (3, 10),
+        "x": (2, 50),
+        "y": (0, 30),
+        "z": (1, 40),
+        "xx": (4, 20),
+        "xy": (5, 0),
+    }
+
+
     jkmn.enumeration_scheme = {
         "": (3, 1),
         "x": (2, 5),

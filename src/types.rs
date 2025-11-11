@@ -1,7 +1,10 @@
+use std::ops::Mul;
 /*
 Shared Types.
 */
-use std::{error::Error, result::Result, str::FromStr};
+use numpy::ndarray::{Array2, ArrayView1, ArrayView2};
+use numpy::Complex64;
+use std::{result::Result, str::FromStr};
 
 #[allow(dead_code)]
 #[derive(Debug, Default)]
@@ -13,13 +16,13 @@ pub enum Pauli {
     Z,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum LadderOperator {
     Creation,
     Annihilation,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ParseLadderError;
 
 impl FromStr for LadderOperator {
@@ -37,8 +40,8 @@ impl FromStr for LadderOperator {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod ladder_tests {
+    use crate::types::*;
 
     fn test_ladder_operators() {
         assert_eq!(
@@ -58,30 +61,105 @@ mod tests {
 Fermion
 */
 
-// struct FermionHamiltonian<'coeff> {
-//     terms: Vec<(Vec<LadderOperator>, ArrayView2<'coeff, f64>)>,
-// }
+#[derive(Debug, PartialEq)]
+struct FermionHamiltonian<'coeff> {
+    terms: Vec<(Vec<LadderOperator>, ArrayView2<'coeff, f64>)>,
+}
 
-// struct FermionOperator(LadderOperator, u32);
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct FermionOperator {
+    op: LadderOperator,
+    index: u32,
+}
 
-// struct FermionProduct(Vec<FermionOperator>);
+impl FermionOperator {
+    fn new(op: LadderOperator, index: u32) -> Self {
+        FermionOperator { op, index }
+    }
+}
 
-// struct SparseFermionHamiltonian<'coeff> {
-//     terms: Array2<FermionOperator>,
-//     coefficients: ArrayView1<'coeff, Complex64>,
-// }
+impl Mul for FermionOperator {
+    type Output = FermionProduct;
 
-// impl<'coeff> SparseFermionHamiltonian<'coeff> {
-//     pub fn new(
-//         terms: Array2<FermionOperator>,
-//         coefficients: ArrayView1<'coeff, Complex64>,
-//     ) -> Self {
-//         Self {
-//             terms,
-//             coefficients,
-//         }
+    fn mul(self, rhs: Self) -> Self::Output {
+        let mut ops = Vec::<FermionOperator>::with_capacity(4);
+        let mut odd_parity: bool = false;
+        if self.index >= rhs.index {
+            ops.push(self);
+            ops.push(rhs);
+        } else {
+            ops.push(rhs);
+            ops.push(self);
+            odd_parity = true;
+        };
+        FermionProduct::new(ops, odd_parity)
+    }
+}
+
+// impl Mul<FermionProduct> for FermionOperator {
+//     type Output = FermionProduct;
+//     fn mul(self, rhs:FermionProduct) -> Self::Output {
+
 //     }
 // }
+
+#[derive(Debug, PartialEq)]
+struct FermionProduct {
+    ops: Vec<FermionOperator>,
+    odd_parity: bool,
+}
+
+impl FermionProduct {
+    pub fn new(ops: Vec<FermionOperator>, odd_parity: bool) -> Self {
+        Self {
+            ops: ops,
+            odd_parity: odd_parity,
+        }
+    }
+}
+
+struct SparseFermionHamiltonian<'coeff> {
+    terms: Array2<FermionOperator>,
+    coefficients: ArrayView1<'coeff, Complex64>,
+}
+
+impl<'coeff> SparseFermionHamiltonian<'coeff> {
+    pub fn new(
+        terms: Array2<FermionOperator>,
+        coefficients: ArrayView1<'coeff, Complex64>,
+    ) -> Self {
+        Self {
+            terms,
+            coefficients,
+        }
+    }
+}
+
+#[cfg(test)]
+mod fermion_tests {
+    use crate::types::*;
+
+    fn test_fermion_operators() {
+        let c0 = FermionOperator::new(LadderOperator::Creation, 0);
+        let a1 = FermionOperator::new(LadderOperator::Annihilation, 1);
+        assert_eq!(
+            c0,
+            FermionOperator {
+                op: LadderOperator::Creation,
+                index: 0
+            }
+        );
+        assert_eq!(
+            a1,
+            FermionOperator {
+                op: LadderOperator::Annihilation,
+                index: 1
+            }
+        );
+        assert_eq!(c0 * a1, FermionProduct::new(vec![c0, a1], false));
+        assert_eq!(a1 * c0, FermionProduct::new(vec![c0, a1], true));
+    }
+}
 
 // /*
 // Majorana

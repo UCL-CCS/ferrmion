@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `TernaryTree.default_enumeration_scheme` allows arbitrary qubit labels but enforces mode labels from `range(n_modes)`.
+- `TernaryTree.n_qubits` allowed as init input, with default to `n_modes`, this allows building operators where the qubit labels are not `(0,...,n_qubits)`.
+
+### Fixed
+- `bonai_algorithm` now deterministic in choice of qubits
 
 
 ## [0.3.0]

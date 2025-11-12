@@ -45,15 +45,15 @@ def bonsai_algorithm(
         parent = nodes[node]
         logger.debug(node)
 
-        neighbors = list(set(graph.neighbors(node)).difference(used_indices))
+        neighbors = sorted(list(set(graph.neighbors(node)).difference(used_indices)))
         logger.debug(f"{neighbors=}")
 
-        for child in neighbors[:3]:
-            node_queue.append(child)
-            used_indices.add(child)
-
         n_neighbors = len(neighbors)
+
         for neighbor, char in zip(neighbors[:3], chars[:n_neighbors]):
+            node_queue.append(neighbor)
+            used_indices.add(neighbor)
+
             parent.add_child(
                 char,
                 child_node=nodes[neighbor],
@@ -61,11 +61,14 @@ def bonsai_algorithm(
                 qubit_label=neighbor,
             )
             nodes[neighbor].parent = parent
-        logger.debug(node_queue)
-        logger.debug("")
+
+            if max_nodes is not None and len(used_indices) == max_nodes:
+                break
 
         if max_nodes is not None and len(used_indices) == max_nodes:
             break
+        logger.debug(node_queue)
+        logger.debug("")
 
     if max_nodes is not None and len(used_indices) == max_nodes:
         logger.debug(f"Found {max_nodes} nodes.")
@@ -88,6 +91,7 @@ def bonsai_algorithm(
                         )
                         unused_indices.remove(used)
                         break
+
         if len(unused_indices) > 0:
             logger.debug("Error, not all qubits assigned to nodes.")
         else:
@@ -96,6 +100,8 @@ def bonsai_algorithm(
     logger.debug("Creating encoding.")
 
     n_nodes = graph.num_nodes() if max_nodes is None else max_nodes
-    tree = TernaryTree(n_modes=n_nodes, root_node=nodes[root_index])
+    tree = TernaryTree(
+        n_modes=n_nodes, n_qubits=graph.num_nodes(), root_node=nodes[root_index]
+    )
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     return tree

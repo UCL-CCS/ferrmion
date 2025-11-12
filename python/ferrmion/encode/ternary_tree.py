@@ -15,7 +15,8 @@ class TernaryTree(FermionQubitEncoding):
     """Ternary tree encoding for fermionic operators.
 
     Attributes:
-        n_qubits (int): The number of qubits.
+        n_modes (int): The number of fermionic modes to be encoded.
+        n_qubits (int): The number of qubits in encoded operators.
         root (TTNode): The root node of the tree.
         enumeration_scheme (dict[str, tuple[int, int]] | None): The enumeration scheme.
 
@@ -47,16 +48,18 @@ class TernaryTree(FermionQubitEncoding):
     def __init__(
         self,
         n_modes: int,
+        n_qubits: None | int = None,
         root_node: TTNode = TTNode(),
     ):
         """Initialise a ternary tree.
 
         Args:
             n_modes (int): How many fermionic modes in the encoding.
+            n_qubits (int): Optional overwrite of number of qubits in target encoding.
             root_node (TTNode): The root node of the tree.
         """
         self.n_modes = n_modes
-        self.n_qubits = n_modes
+        self.n_qubits = n_modes if n_qubits is None else n_qubits
         self.root_node = root_node
 
         if None not in root_node.child_qubit_labels.values():
@@ -128,8 +131,8 @@ class TernaryTree(FermionQubitEncoding):
         expected_modes = set(range(self.n_modes))
         if set(modes).symmetric_difference(expected_modes):
             error_string += f"Invalid mode labels {set(modes)} in enumeration scheme ({expected_modes=}).\n"
-        if len(set(qubits)) != self.n_qubits:
-            error_string += f"Expected {self.n_qubits} qubit labels, got {len(set(qubits))} in enumeration scheme.\n"
+        if len(set(qubits)) != self.n_modes:
+            error_string += f"Expected {self.n_modes} qubit labels, got {len(set(qubits))} in enumeration scheme.\n"
 
         if error_string != "":
             logger.error(error_string)

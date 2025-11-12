@@ -61,12 +61,14 @@ class TernaryTree(FermionQubitEncoding):
 
         if None not in root_node.child_qubit_labels.values():
             self.enumeration_scheme: dict[str, tuple[int, int]] = {
-                node: (index, index)
-                for node, index in root_node.child_qubit_labels.items()
+                node: (mode, qubit)
+                for mode, (node, qubit) in enumerate(
+                    root_node.child_qubit_labels.items()
+                )
             }
 
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
-        self._enumeration_scheme = {}
+        # self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
@@ -124,11 +126,10 @@ class TernaryTree(FermionQubitEncoding):
             modes.add(m)
             qubits.add(q)
         expected_modes = set(range(self.n_modes))
-        expected_qubits = set(range(self.n_qubits))
         if set(modes).symmetric_difference(expected_modes):
             error_string += f"Invalid mode labels {set(modes)} in enumeration scheme ({expected_modes=}).\n"
-        if set(qubits).symmetric_difference(expected_qubits):
-            error_string += f"Invalid qubit labels {set(qubits)} in enumeration scheme ({expected_qubits=}).\n"
+        if len(set(qubits)) != self.n_qubits:
+            error_string += f"Expected {self.n_qubits} qubit labels, got {len(set(qubits))} in enumeration scheme.\n"
 
         if error_string != "":
             logger.error(error_string)
@@ -156,10 +157,10 @@ class TernaryTree(FermionQubitEncoding):
         spare_labels: set[int] = set(range(len(child_labels))).difference(
             child_labels.values()
         )
-        for child, label in child_labels.items():
-            if label is None:
-                label = spare_labels.pop()
-            enumeration_scheme[child] = (int(label), int(label))
+        for mode, (child, qubit) in enumerate(child_labels.items()):
+            if qubit is None:
+                qubit = spare_labels.pop()
+            enumeration_scheme[child] = (int(mode), int(qubit))
         return enumeration_scheme
 
     def as_dict(self):

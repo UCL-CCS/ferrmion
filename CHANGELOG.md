@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unrealeased]
 ### Added
 - Topology-preserving Hamiltonian Adaptive Ternary Tree (TOPP-HATT) in `ferrmion.optimize.topphatt`.
+- `max_nodes` option in `bonsai_algorithm` to build trees without using all the nodes of a device.
+
+### Changed
+- `TernaryTree.default_enumeration_scheme` allows arbitrary qubit labels but enforces mode labels from `range(n_modes)`.
+
 
 ## [0.3.0]
 ### Added

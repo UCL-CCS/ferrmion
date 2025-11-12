@@ -74,7 +74,7 @@ struct FermionOperator {
 
 impl FermionOperator {
     fn new(op: LadderOperator, index: u32) -> Self {
-        FermionOperator { op, index }
+        Self { op, index }
     }
 }
 
@@ -83,37 +83,43 @@ impl Mul for FermionOperator {
 
     fn mul(self, rhs: Self) -> Self::Output {
         let mut ops = Vec::<FermionOperator>::with_capacity(4);
-        let mut odd_parity: bool = false;
+        let mut coeff = Complex64::new(1., 0.);
         if self.index >= rhs.index {
             ops.push(self);
             ops.push(rhs);
         } else {
             ops.push(rhs);
             ops.push(self);
-            odd_parity = true;
+            coeff *= -1.;
         };
-        FermionProduct::new(ops, odd_parity)
+        FermionProduct::new(ops, Some(coeff))
     }
 }
 
-// impl Mul<FermionProduct> for FermionOperator {
-//     type Output = FermionProduct;
-//     fn mul(self, rhs:FermionProduct) -> Self::Output {
-
-//     }
-// }
+impl Mul<FermionProduct> for FermionOperator {
+    type Output = FermionProduct;
+    fn mul(self, rhs: FermionProduct) -> Self::Output {
+        rhs.ops.push(self);
+    }
+}
 
 #[derive(Debug, PartialEq)]
 struct FermionProduct {
     ops: Vec<FermionOperator>,
-    odd_parity: bool,
+    coeff: Complex64,
 }
 
 impl FermionProduct {
-    pub fn new(ops: Vec<FermionOperator>, odd_parity: bool) -> Self {
-        Self {
-            ops: ops,
-            odd_parity: odd_parity,
+    pub fn new(ops: Vec<FermionOperator>, coeff: Option<Complex64>) -> Self {
+        match coeff {
+            Some(val) => Self {
+                ops: ops,
+                coeff: val,
+            },
+            None => Self {
+                ops: ops,
+                coeff: Complex64::new(1., 0.),
+            },
         }
     }
 }

@@ -21,6 +21,8 @@ def draw_tt(
         graph (rustworkx.PyDiGraph | ferrmion.TTNode | TernaryTree): A ternary tree.
         type (str): Make the graph prettier, one of "standard", "spaced", "linear".
         enumeration_scheme (dict[str, tuple[int, int]]): A mapping from node labels to a tuple of (mode index, qubit index).
+        node_size (int): Size of nodes in the image.
+        font_size (int): Size of node and edge labels in the image.
 
     Example:
         >>> from ferrmion.encode.ternary_tree import TernaryTree

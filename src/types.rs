@@ -1,11 +1,13 @@
-use ndarray::Axis;
+use ndarray::{Axis, Zip};
 /*
 Shared Types.
 */
 use crate::utils::vector_kron;
-use numpy::ndarray::{arr1, arr2, Array1, Array2, ArrayView1};
+use itertools::Itertools;
+use numpy::ndarray::{arr1, Array1, Array2};
 use numpy::Complex64;
 use std::collections::HashMap;
+use std::iter::zip;
 use std::{result::Result, str::FromStr};
 
 #[allow(dead_code)]
@@ -128,11 +130,11 @@ struct SparseFermionHamiltonian {
 
 #[cfg(test)]
 mod fermion_tests {
-    use ndarray::arr1;
-
     use crate::types::*;
+    use ndarray::{arr1, arr2};
 
-    fn test_fermion_operators() {
+    #[test]
+    fn test_operator_creation() {
         let c0 = FermionOperator::new(LadderOperator::Creation, 0);
         let a1 = FermionOperator::new(LadderOperator::Annihilation, 1);
         assert_eq!(
@@ -151,7 +153,27 @@ mod fermion_tests {
         );
     }
 
-    fn test_sparse_term() {
+    #[test]
+    fn test_signature_conversion() {
+        let signature = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let im_coeffs: Array1<Complex64> = signature
+            .iter()
+            .map(|s| s.fermion_coeff())
+            .reduce(|acc, s| vector_kron(&acc, &s))
+            .unwrap();
+        assert_eq!(
+            im_coeffs,
+            arr1(&[
+                Complex64 { re: 0.25, im: 0.0 },
+                Complex64 { re: 0.0, im: -0.25 },
+                Complex64 { re: 0.0, im: 0.25 },
+                Complex64 { re: 0.25, im: 0.0 }
+            ])
+        );
+    }
+
+    #[test]
+    fn test_term_creation() {
         let signature = vec![LadderOperator::Creation, LadderOperator::Annihilation];
         let indices = arr2(&[[0, 1], [2, 3]]);
         let coefficients = arr1(&[Complex64::new(1.0, 0.), Complex64::new(-1., 0.)]);
@@ -162,6 +184,7 @@ mod fermion_tests {
 // /*
 // Majorana
 // */
+#[derive(Debug, PartialEq, Clone)]
 struct SparseMajoranaTerm {
     indices: Array2<u16>,
     coefficients: Array1<Complex64>,
@@ -175,7 +198,7 @@ impl SparseMajoranaTerm {
         indices: Array2<u16>,
         coefficients: Array1<Complex64>,
     ) -> Result<Self, SparseMajoranaError> {
-        if coefficients.len() != indices.len_of(Axis(1)) {
+        if coefficients.len() != indices.len_of(Axis(0)) {
             return Err(SparseMajoranaError);
         };
         Ok(Self {
@@ -189,16 +212,45 @@ impl From<SparseFermionTerm> for SparseMajoranaTerm {
     fn from(sft: SparseFermionTerm) -> Self {
         // Start off by creating a hashmap as we'll need to add a few fermionic terms
         // to each majorana term
-        let signature_coeffs = sft
-            .signature
-            .iter()
-            .map(|s| s.fermion_coeff())
-            .reduce(|acc, s| vector_kron(&acc, &s));
-        let mut majoranas: HashMap<ArrayView1<u16>, Complex64> = HashMap::new();
-        for fermion_index in sft.indices.rows() {
-            majoranas.entry(fermion_index);
+        let term_length = sft.signature.len();
+        //     .flatten()
+        //     .collect::<Vec<u16>>();
+        // let offset_array: Array2<u16> =
+        //     Array2::from_shape_vec((2_i32.pow(term_length as u32), term_length), offset_vec);
+        let mut majoranas: HashMap<Array1<u16>, Complex64> = HashMap::new();
+        Zip::from(sft.indices.rows())
+            .and(sft.coefficients.view())
+            .for_each(|ind, coeff| {
+                let signature_coeffs: Vec<Complex64> = sft
+                    .signature
+                    .iter()
+                    .map(|s| s.fermion_coeff())
+                    .reduce(|acc, s| vector_kron(&acc, &s))
+                    .unwrap()
+                    .to_vec();
+
+                // println!("{:#?}", signature_coeffs);
+                let offset = (0u16..2u16).combinations_with_replacement(term_length);
+                for (sc, offset) in zip(signature_coeffs, offset) {
+                    let mut majorana_term = Array1::zeros(term_length);
+                    majorana_term += &ind;
+                    majorana_term *= 2;
+                    majorana_term = majorana_term + Array1::from_vec(offset);
+                    *majoranas
+                        .entry(majorana_term)
+                        .or_insert(Complex64 { re: 0.0, im: 0.0 }) += sc * coeff;
+                }
+            });
+
+        println!("{:#?}", majoranas);
+        let sparse_values: Array1<Complex64> = majoranas.values().cloned().collect();
+        let mut sparse_indices: Array2<u16> = Array2::zeros((majoranas.keys().len(), term_length));
+        println!("{:#?}", sparse_values.clone());
+        for (mut row, k) in zip(sparse_indices.rows_mut(), majoranas.keys()) {
+            row += k;
         }
-        SparseMajoranaTerm::new(sft.indices, sft.coefficients)
+        println!("{:#?}", sparse_indices.clone());
+        SparseMajoranaTerm::new(sparse_indices, sparse_values)
             .expect("Indices and coefficients should be same length.")
     }
 }
@@ -210,9 +262,18 @@ struct SparseMajoranaHamiltonian {
 #[cfg(test)]
 mod majorana_tests {
     use crate::types::*;
+    use ndarray::{arr1, arr2};
+
+    #[test]
     fn test_sparse_term() {
         let indices = arr2(&[[0, 1], [2, 3]]);
         let coefficients = arr1(&[Complex64::new(1.0, 0.), Complex64::new(-1., 0.)]);
-        let term = SparseMajoranaTerm::new(indices, coefficients).unwrap();
+        let signature = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+
+        let majorana_term = SparseMajoranaTerm::new(indices.clone(), coefficients.clone()).unwrap();
+        let fermion_term =
+            SparseFermionTerm::new(signature.clone(), indices.clone(), coefficients.clone())
+                .unwrap();
+        assert_eq!(majorana_term, SparseMajoranaTerm::from(fermion_term));
     }
 }

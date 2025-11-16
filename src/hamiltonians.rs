@@ -3,7 +3,7 @@ use ndarray::Axis;
 // use ndarray::{azip, concatenate, Axis, Zip};
 use ahash::RandomState;
 use itertools::iproduct;
-use numpy::ndarray::{s, Array1, Array2, ArrayView1, ArrayView2, ArrayView4};
+use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
 use pyo3::{FromPyObject, IntoPyObject};
 use std::collections::HashMap;

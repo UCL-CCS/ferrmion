@@ -328,7 +328,9 @@ def child_strings(node: TTNode, prefix: str = "") -> set[str]:
     for pauli in ["x", "y", "z"]:
         child = getattr(node, pauli, None)
         if child is not None:
-            strings = strings.union(child_strings(node=child, prefix=f"{prefix+pauli}"))
+            strings = strings.union(
+                child_strings(node=child, prefix=f"{prefix + pauli}")
+            )
     logger.debug("Sorting nodes.")
     return strings
 

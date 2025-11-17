@@ -6,8 +6,8 @@ use crate::utils::vector_kron;
 use itertools::Itertools;
 use numpy::ndarray::{arr1, Array1, Array2};
 use numpy::Complex64;
-use std::collections::HashMap;
-use std::iter::zip;
+use std::collections::BTreeMap;
+use std::iter::{repeat_n, zip};
 use std::{result::Result, str::FromStr};
 
 #[allow(dead_code)]
@@ -58,6 +58,7 @@ impl LadderOperator {
 mod ladder_tests {
     use crate::types::*;
 
+    #[test]
     fn test_ladder_operators() {
         assert_eq!(
             LadderOperator::from_str("+").unwrap(),
@@ -110,9 +111,11 @@ impl SparseFermionTerm {
         indices: Array2<u16>,
         coefficients: Array1<Complex64>,
     ) -> Result<Self, SparseFermionError> {
-        if coefficients.len() != indices.len_of(Axis(1))
-            || signature.len() != indices.len_of(Axis(0))
+        if coefficients.len() != indices.len_of(Axis(0))
+            || signature.len() != indices.len_of(Axis(1))
         {
+            println!("{:#?}", coefficients.len());
+            println!("{:#?}", signature.len());
             return Err(SparseFermionError);
         };
 
@@ -124,6 +127,7 @@ impl SparseFermionTerm {
     }
 }
 
+#[allow(dead_code)]
 struct SparseFermionHamiltonian {
     terms: Vec<SparseFermionTerm>,
 }
@@ -177,7 +181,7 @@ mod fermion_tests {
         let signature = vec![LadderOperator::Creation, LadderOperator::Annihilation];
         let indices = arr2(&[[0, 1], [2, 3]]);
         let coefficients = arr1(&[Complex64::new(1.0, 0.), Complex64::new(-1., 0.)]);
-        let term = SparseFermionTerm::new(signature, indices, coefficients).unwrap();
+        let _term = SparseFermionTerm::new(signature, indices, coefficients).unwrap();
     }
 }
 
@@ -210,14 +214,14 @@ impl SparseMajoranaTerm {
 
 impl From<SparseFermionTerm> for SparseMajoranaTerm {
     fn from(sft: SparseFermionTerm) -> Self {
-        // Start off by creating a hashmap as we'll need to add a few fermionic terms
+        // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
         // to each majorana term
         let term_length = sft.signature.len();
         //     .flatten()
         //     .collect::<Vec<u16>>();
         // let offset_array: Array2<u16> =
         //     Array2::from_shape_vec((2_i32.pow(term_length as u32), term_length), offset_vec);
-        let mut majoranas: HashMap<Array1<u16>, Complex64> = HashMap::new();
+        let mut majoranas: BTreeMap<Vec<u16>, Complex64> = BTreeMap::new();
         Zip::from(sft.indices.rows())
             .and(sft.coefficients.view())
             .for_each(|ind, coeff| {
@@ -230,24 +234,28 @@ impl From<SparseFermionTerm> for SparseMajoranaTerm {
                     .to_vec();
 
                 // println!("{:#?}", signature_coeffs);
-                let offset = (0u16..2u16).combinations_with_replacement(term_length);
+                let offset = repeat_n(0u16..2u16, term_length).multi_cartesian_product();
                 for (sc, offset) in zip(signature_coeffs, offset) {
+                    println!("Majorana componentnts {:#?}", sc.clone());
+                    println!("Majorana componentnts {:#?}", offset.clone());
                     let mut majorana_term = Array1::zeros(term_length);
                     majorana_term += &ind;
                     majorana_term *= 2;
                     majorana_term = majorana_term + Array1::from_vec(offset);
+                    println!("Majorana componentnts {:#?}", majorana_term.clone());
                     *majoranas
-                        .entry(majorana_term)
+                        .entry(majorana_term.to_vec())
                         .or_insert(Complex64 { re: 0.0, im: 0.0 }) += sc * coeff;
                 }
             });
 
-        println!("{:#?}", majoranas);
+        // println!("Majoranas {:#?}", majoranas);
         let sparse_values: Array1<Complex64> = majoranas.values().cloned().collect();
         let mut sparse_indices: Array2<u16> = Array2::zeros((majoranas.keys().len(), term_length));
-        println!("{:#?}", sparse_values.clone());
+        // println!("{:#?}", sparse_values.clone());
         for (mut row, k) in zip(sparse_indices.rows_mut(), majoranas.keys()) {
-            row += k;
+            // let mut row_array: Array1<u16> = Array1::from_vec(k.clone());
+            row.scaled_add(1, &Array1::from_vec(k.to_vec()));
         }
         println!("{:#?}", sparse_indices.clone());
         SparseMajoranaTerm::new(sparse_indices, sparse_values)
@@ -255,6 +263,7 @@ impl From<SparseFermionTerm> for SparseMajoranaTerm {
     }
 }
 
+#[allow(dead_code)]
 struct SparseMajoranaHamiltonian {
     terms: Vec<SparseMajoranaTerm>,
 }
@@ -266,11 +275,23 @@ mod majorana_tests {
 
     #[test]
     fn test_sparse_term() {
-        let indices = arr2(&[[0, 1], [2, 3]]);
-        let coefficients = arr1(&[Complex64::new(1.0, 0.), Complex64::new(-1., 0.)]);
+        let indices = arr2(&[[0, 1]]);
+        let coefficients = arr1(&[Complex64::new(10.0, 0.)]);
         let signature = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        println!("{:#?}", indices.clone());
+        println!("{:#?}", coefficients.clone());
+        println!("{:#?}", signature.clone());
 
-        let majorana_term = SparseMajoranaTerm::new(indices.clone(), coefficients.clone()).unwrap();
+        let majorana_term = SparseMajoranaTerm::new(
+            arr2(&[[0, 2], [0, 3], [1, 2], [1, 3]]),
+            arr1(&[
+                Complex64::new(2.5, 0.),
+                Complex64::new(0., -2.5),
+                Complex64::new(0.0, 2.5),
+                Complex64::new(2.5, 0.),
+            ]),
+        )
+        .unwrap();
         let fermion_term =
             SparseFermionTerm::new(signature.clone(), indices.clone(), coefficients.clone())
                 .unwrap();

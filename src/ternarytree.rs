@@ -214,5 +214,6 @@ mod tests {
         (tree, root_node, weight) = hatt(n_nodes, majorana_terms).unwrap();
         assert_eq!(root_node, 9);
         assert_eq!(weight, 5);
+        assert_eq!(tree.parent_of[9], 9);
     }
 }

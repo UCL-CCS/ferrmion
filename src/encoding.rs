@@ -113,7 +113,7 @@ pub fn hartree_fock_state(
     );
     matrices.insert(
         (false, true),
-        arr2(&[[c64(1., 0.), c64(0., 0.)], [c64(0., 0.), c64(1., 0.)]]),
+        arr2(&[[c64(1., 0.), c64(0., 0.)], [c64(0., 0.), c64(-1., 0.)]]),
     );
     matrices.insert(
         (true, true),

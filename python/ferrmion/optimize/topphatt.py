@@ -342,7 +342,10 @@ def topphatt(
             # the z-ancestor all all other nodes.
 
             parent_restrictions = restrictions[parent_index]
-            if tuple(parent_restrictions) in unique_restrictions:
+
+            if ("Any", "Any", "Any") in unique_restrictions:
+                continue
+            elif tuple(parent_restrictions) in unique_restrictions:
                 continue
             else:
                 unique_restrictions.add(tuple(parent_restrictions))

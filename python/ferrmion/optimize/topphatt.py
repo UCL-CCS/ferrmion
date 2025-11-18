@@ -329,7 +329,10 @@ def topphatt(
         max_len_active = active_nodes[max([*active_nodes.keys()])]
         logging.debug(f"{max_len_active=}")
         unique_restrictions = set()
-        for parent_index in max_len_active:
+        max_len_active = sorted([index_string_map[i] for i in max_len_active])
+        for parent_string in max_len_active:
+            parent_index = string_index_map[parent_string]
+
             logging.debug(f"\n{parent_index=}")
 
             # Z-child of new node will always be the previous node.
@@ -421,6 +424,9 @@ def topphatt(
         # Now find the Y pair of the x-node
         unassigned_leaves = [u for u in unassigned_leaves if u not in selection]
         for child_index, char in zip(selection, ["x", "y", "z"]):
+            maybe_node = node_objects_map.get(child_index, None)
+            if isinstance(maybe_node, TTNode):
+                continue
             node_objects_map[min_parent].leaf_majorana_indices[char] = child_index
 
         if i + 1 == n_modes:

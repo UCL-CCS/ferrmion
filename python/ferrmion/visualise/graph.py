@@ -12,6 +12,8 @@ def draw_tt(
     graph: rx.PyDiGraph | TTNode | TernaryTree,
     type: str = "spaced",
     enumeration_scheme=None,
+    node_size=600,
+    font_size=10,
 ):
     """Draws a rustworkx graph with nodes positioned as a ternary tree.
 
@@ -19,6 +21,8 @@ def draw_tt(
         graph (rustworkx.PyDiGraph | ferrmion.TTNode | TernaryTree): A ternary tree.
         type (str): Make the graph prettier, one of "standard", "spaced", "linear".
         enumeration_scheme (dict[str, tuple[int, int]]): A mapping from node labels to a tuple of (mode index, qubit index).
+        node_size (int): Size of nodes in diagram.
+        font_size (int): Size of text in diagram.
 
     Example:
         >>> from ferrmion.encode.ternary_tree import TernaryTree
@@ -76,9 +80,9 @@ def draw_tt(
         graph,
         pos=posmap,
         with_labels=True,
-        node_size=600,
+        node_size=node_size,
         node_color="orange",
         edge_labels=str,
         labels=labels,
-        font_size=10,
+        font_size=font_size,
     )

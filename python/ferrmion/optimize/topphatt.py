@@ -28,7 +28,7 @@ def _add_all_z_restriction(tree, string_index_map, restrictions):
         reverse=True,
     )[0]
     all_z_index = string_index_map[all_z]
-    restrictions[all_z_index][2] = [2 * tree.n_modes]
+    restrictions[all_z_index][2] = 2 * tree.n_modes
     return restrictions
 
 
@@ -43,11 +43,11 @@ def _add_retain_child_restrictions(tree: TernaryTree, string_index_map, restrict
         node_index = string_index_map[node]
         match node[-1]:
             case "x":
-                restrictions[parent_index][0] = [node_index]
+                restrictions[parent_index][0] = node_index
             case "y":
-                restrictions[parent_index][1] = [node_index]
+                restrictions[parent_index][1] = node_index
             case "z":
-                restrictions[parent_index][2] = [node_index]
+                restrictions[parent_index][2] = node_index
     return restrictions
 
 
@@ -59,7 +59,6 @@ def _add_xy_parent_restrictions(
 ):
     """Nodes that have an X-parent or Y-parent."""
     child_strings = tree.root_node.child_strings
-    n_leaves = 2 * tree.n_modes
     for child in child_strings:
         child_index = string_index_map[child]
         child_node = node_objects_map[child_index]
@@ -70,10 +69,10 @@ def _add_xy_parent_restrictions(
             continue
         # Z-ancestors of an x-child have even z-leaf
         if ancestor.root_path[-1] == "x":
-            restrictions[child_index][2] = [*range(0, n_leaves, 2)]
+            restrictions[child_index][2] = "Even"
         # Z-ancestors of an y-child have odd z-leaf
         elif ancestor.root_path[-1] == "y":
-            restrictions[child_index][2] = [*range(1, n_leaves, 2)]
+            restrictions[child_index][2] = "Odd"
 
     return restrictions
 
@@ -99,10 +98,10 @@ def _initialise_restrictions(tree: TernaryTree):
         node_objects_map[string_index_map[child]]
         for child in tree.root_node.child_strings
     ]:
-        node.leaf_majorana_indices = {"x": None, "y": None, "z": None}
+        node.leaf_majorana_indices = {k: None for k in node.leaf_majorana_indices}
 
     # each node has restrictions in tuple (restrictions on x, restrictions on y, restrictions on z)
-    restrictions = {i: [None, None, None] for i in string_index_map.values()}
+    restrictions = {i: ["Any", "Any", "Any"] for i in string_index_map.values()}
     restrictions = _add_xy_parent_restrictions(
         tree, string_index_map, node_objects_map, restrictions
     )
@@ -114,15 +113,18 @@ def _initialise_restrictions(tree: TernaryTree):
 def _unpack_single_restriction(
     restriction: None | list[int] | Callable, unassigned_leaves: set
 ):
-    if restriction is None:
-        restriction = unassigned_leaves
-    # a REQUIRED assignment will be removed from unassigned_leaves
-    elif isinstance(restriction, list) and len(restriction) == 1:
-        restriction = restriction
-    elif isinstance(restriction, list):
-        restriction = [r for r in restriction if r in unassigned_leaves]
-    else:
-        raise ValueError("Restriction should be None or list.")
+    match restriction:
+        case "Any":
+            restriction = unassigned_leaves
+        case "Even":
+            restriction = [i for i in unassigned_leaves if i % 2 == 0]
+        case "Odd":
+            restriction = [i for i in unassigned_leaves if i % 2 == 1]
+        # a REQUIRED assignment will be removed from unassigned_leaves
+        case int():
+            restriction = [restriction]
+        case _:
+            raise ValueError("Restriction should be 'Any', 'Even', 'Odd' or int.")
     return restriction
 
 
@@ -138,29 +140,29 @@ def _update_restrictions(restrictions, parent_node, string_index_map):
         if isinstance(restrictor.parent.y, TTNode):
             restricted = restrictor.parent.y.z_descendant
             logger.debug(f"{restricted=}")
-            restrictions[string_index_map[restricted.root_path]][2] = [
+            restrictions[string_index_map[restricted.root_path]][2] = (
                 restrictor.z_descendant.leaf_majorana_indices["z"] + 1
-            ]
+            )
         elif restrictor.parent.y is None:
             restricted = restrictor.parent
             logger.debug(f"{restricted=}")
-            restrictions[string_index_map[restricted.root_path]][1] = [
+            restrictions[string_index_map[restricted.root_path]][1] = (
                 restrictor.z_descendant.leaf_majorana_indices["z"] + 1
-            ]
+            )
 
     elif restrictor.root_path[-1] == "y":
         if isinstance(restrictor.parent.x, TTNode):
             restricted = restrictor.parent.x.z_descendant
             logger.debug(f"{restricted=}")
-            restrictions[string_index_map[restricted.root_path]][2] = [
+            restrictions[string_index_map[restricted.root_path]][2] = (
                 restrictor.z_descendant.leaf_majorana_indices["z"] - 1
-            ]
+            )
         elif restrictor.parent.x is None:
             restricted = restrictor.parent
             logger.debug(f"{restricted=}")
-            restrictions[string_index_map[restricted.root_path]][0] = [
+            restrictions[string_index_map[restricted.root_path]][0] = (
                 restrictor.z_descendant.leaf_majorana_indices["z"] - 1
-            ]
+            )
     logger.debug(f"{restrictions=}")
     return restrictions
 
@@ -266,10 +268,6 @@ def topphatt(
     Returns:
         TernaryTree: Optimised Ternary Tree encoding.
     """
-    # if coeff_weight:
-    # majorana_ham = {k:v for k,v in sorted(majorana_ham.items(), key=lambda item: sum(item[0])*item[1], reverse=True)}
-    # else:
-    # majorana_ham = {k:v for k,v in sorted(majorana_ham.items(), key=lambda item: sum(item[0]), reverse=True)}
     n_modes = tree.n_modes
     n_leaves = 2 * n_modes + 1
     # We need 2*M +1 leaves and M nodes.
@@ -295,7 +293,8 @@ def topphatt(
     # active_nodes:set[int] = {node for node, deps in node_dependencies.items() if deps == []}
     completed_nodes = set()
     restrictions = _initialise_restrictions(tree)
-    logging.debug(f"Initial Restrictions:\n{restrictions}")
+
+    logger.debug(f"Initial Restrictions:\n{restrictions}")
     # Start with all the leaves unassigned
     unassigned_leaves = [*range(n_leaves)]
     unassigned_leaves.reverse()
@@ -307,15 +306,16 @@ def topphatt(
     total_weight = 0
     for i in range(n_modes + 1):
         logging.debug(f"\nLoop {i}")
-        # Update the restrictions with the new information about the tree.
-        # Any nodes that are required to be in a certain position
-        # have to be removed from unassigned!
+        # # Update the restrictions with the new information about the tree.
+        # # Any nodes that are required to be in a certain position
+        # # have to be removed from unassigned!
         to_remove = []
         for restriction in restrictions.values():
             for term in restriction:
-                if isinstance(term, list) and len(term) == 1:
-                    to_remove.append(term[0])
+                if isinstance(term, int):
+                    to_remove.append(term)
         unassigned_leaves = [l for l in unassigned_leaves if l not in to_remove]
+        logger.debug(f"{unassigned_leaves=}")
 
         min_weight = np.inf
         min_parent = None
@@ -328,7 +328,11 @@ def topphatt(
         logging.debug(f"{active_nodes=}")
         max_len_active = active_nodes[max([*active_nodes.keys()])]
         logging.debug(f"{max_len_active=}")
-        for parent_index in max_len_active:
+        unique_restrictions = set()
+        max_len_active = sorted([index_string_map[i] for i in max_len_active])
+        for parent_string in max_len_active:
+            parent_index = string_index_map[parent_string]
+
             logging.debug(f"\n{parent_index=}")
 
             # Z-child of new node will always be the previous node.
@@ -339,6 +343,14 @@ def topphatt(
 
             parent_restrictions = restrictions[parent_index]
 
+            if ("Any", "Any", "Any") in unique_restrictions:
+                continue
+            elif tuple(parent_restrictions) in unique_restrictions:
+                continue
+            else:
+                unique_restrictions.add(tuple(parent_restrictions))
+            logger.debug(f"{unique_restrictions=}")
+
             allowed_x = _unpack_single_restriction(
                 parent_restrictions[0], unassigned_leaves
             )
@@ -348,15 +360,18 @@ def topphatt(
             allowed_z = _unpack_single_restriction(
                 parent_restrictions[2], unassigned_leaves
             )
+            logger.debug(f"{allowed_x=}")
+            logger.debug(f"{allowed_y=}")
+            logger.debug(f"{allowed_z=}")
 
             match parent_restrictions[0], parent_restrictions[1]:
-                case None, None:
+                case ("Any", "Any"):
                     allowed_product = product(allowed_z, allowed_x)
-                case list(), None:
+                case (x, "Any") if x != "Any":
                     allowed_product = product(allowed_z, allowed_x)
-                case None, list():
+                case ("Any", y) if y != "Any":
                     allowed_product = product(allowed_z, allowed_y)
-                case list(), list():
+                case (x, y) if "Any" not in [x, y]:
                     allowed_product = product(allowed_x, allowed_y, allowed_z)
 
             # If x and y are both none, just do all x and create a pair
@@ -395,7 +410,7 @@ def topphatt(
 
                 if weight < min_weight:
                     logging.debug(
-                        f"NEW Min Node:{i}, Parent Index: {parent_index}, Comb: {comb}, Old Min:{min_weight }, New Min:{weight}"
+                        f"NEW Min Node:{i}, Parent Index: {parent_index}, Comb: {comb}, Old Min:{min_weight}, New Min:{weight}"
                     )
                     min_weight = weight
                     selection = comb
@@ -412,6 +427,9 @@ def topphatt(
         # Now find the Y pair of the x-node
         unassigned_leaves = [u for u in unassigned_leaves if u not in selection]
         for child_index, char in zip(selection, ["x", "y", "z"]):
+            maybe_node = node_objects_map.get(child_index, None)
+            if isinstance(maybe_node, TTNode):
+                continue
             node_objects_map[min_parent].leaf_majorana_indices[char] = child_index
 
         if i + 1 == n_modes:

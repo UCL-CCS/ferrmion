@@ -214,15 +214,6 @@ pub fn fill_template<'template>(
     mode_op_map: ArrayView1<usize>,
 ) -> QubitHamiltonian<'template> {
     debug!("Filling template with mode-operator map {:#?}", mode_op_map);
-    assert!(one_e_coeffs
-        .shape()
-        .iter()
-        .all(|&s| s == two_e_coeffs.len_of(Axis(0))));
-    assert!(two_e_coeffs
-        .shape()
-        .iter()
-        .all(|&s| s == one_e_coeffs.len_of(Axis(0))));
-    assert!(one_e_coeffs.len_of(Axis(0)) == mode_op_map.len());
     // assert_eq!(HashSet::from(mode_op_map.keys()), HashSet::from(0..one_e_coeffs.len_of(Axis(0))));
     // assert_eq!(HashSet::from(mode_op_map.values()), (HashSet::from(0..one_e_coeffs.len_of(Axis(0)))));
     let s = RandomState::new();

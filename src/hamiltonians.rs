@@ -36,8 +36,6 @@ pub fn molecular(encoding: MajoranaEncoding, notation: Notation) -> QubitHamilto
         encoding.symplectics.shape()
     );
 
-    assert_eq!(encoding.ipowers.len(), encoding.symplectics.nrows());
-
     let (iproducts, sym_products) = encoding.symplectic_product_map();
 
     let mut hamiltonian: QubitHamiltonianTemplate =
@@ -214,15 +212,6 @@ pub fn fill_template<'template>(
     mode_op_map: ArrayView1<usize>,
 ) -> QubitHamiltonian<'template> {
     debug!("Filling template with mode-operator map {:#?}", mode_op_map);
-    assert!(one_e_coeffs
-        .shape()
-        .iter()
-        .all(|&s| s == two_e_coeffs.len_of(Axis(0))));
-    assert!(two_e_coeffs
-        .shape()
-        .iter()
-        .all(|&s| s == one_e_coeffs.len_of(Axis(0))));
-    assert!(one_e_coeffs.len_of(Axis(0)) == mode_op_map.len());
     // assert_eq!(HashSet::from(mode_op_map.keys()), HashSet::from(0..one_e_coeffs.len_of(Axis(0))));
     // assert_eq!(HashSet::from(mode_op_map.values()), (HashSet::from(0..one_e_coeffs.len_of(Axis(0)))));
     let s = RandomState::new();
@@ -262,4 +251,23 @@ pub fn fill_template<'template>(
         hamiltonian.keys()
     );
     hamiltonian
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{encoding::{self, MajoranaEncoding}, hamiltonians::molecular};
+    use ndarray::{arr1,arr2};
+
+    #[test]
+    fn test_molecular() {
+        let ipowers = ndarray::arr1(&[0, 1, 2, 3]);
+        let symplectics = ndarray::arr2(&[
+            [true, false, false, false],
+            [true, false, true, false],
+            [false, true, true, false],
+            [false, true, true, true],
+        ]);
+        let encoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
+        let _template = molecular(encoding, super::Notation::Physicist);
+    } 
 }

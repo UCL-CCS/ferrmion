@@ -36,8 +36,6 @@ pub fn molecular(encoding: MajoranaEncoding, notation: Notation) -> QubitHamilto
         encoding.symplectics.shape()
     );
 
-    assert_eq!(encoding.ipowers.len(), encoding.symplectics.nrows());
-
     let (iproducts, sym_products) = encoding.symplectic_product_map();
 
     let mut hamiltonian: QubitHamiltonianTemplate =
@@ -253,4 +251,23 @@ pub fn fill_template<'template>(
         hamiltonian.keys()
     );
     hamiltonian
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{encoding::{self, MajoranaEncoding}, hamiltonians::molecular};
+    use ndarray::{arr1,arr2};
+
+    #[test]
+    fn test_molecular() {
+        let ipowers = ndarray::arr1(&[0, 1, 2, 3]);
+        let symplectics = ndarray::arr2(&[
+            [true, false, false, false],
+            [true, false, true, false],
+            [false, true, true, false],
+            [false, true, true, true],
+        ]);
+        let encoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
+        let _template = molecular(encoding, super::Notation::Physicist);
+    } 
 }

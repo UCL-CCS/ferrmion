@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `bonai_algorithm` now deterministic in choice of qubits
 
-
 ## [0.3.0]
 ### Added
 - `interop.QiskitAdapter` which takes a `FermionQubitEncoding` as input, returning a `qiskit_nature.QubitMapper` which can be used in the normal way with `mapper.map(<fermionic operator>)`

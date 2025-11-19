@@ -169,6 +169,7 @@ class FermionQubitEncoding(ABC):
             self.vacuum_state,
             fermionic_hf_state,
             mode_op_map,
+            self._build_symplectic_matrix()[0],
             self._build_symplectic_matrix()[1],
         )
 

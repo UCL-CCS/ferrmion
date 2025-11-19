@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 /*
 Functions relating to the FermionQubitEncoding base class.
 */
-use crate::types::Pauli;
-use crate::utils::{symplectic_product, vector_kron};
+use crate::types::{MajoranaProduct, MajoranaSparse, Pauli};
+use crate::utils::{self, icount_to_sign, vector_kron};
+use ahash::RandomState;
 use anyhow::Result;
 use log::debug;
 use ndarray::{Axis, Zip};
@@ -40,6 +43,118 @@ impl<'e> MajoranaEncoding<'e> {
         }
     }
 
+    pub fn symplectic_to_pauli(symplectic: ArrayView1<bool>, ipower: u8) -> (String, u8) {
+        let block_width = symplectic.len_of(Axis(0)) / 2;
+        let mut ipower: u8 = ipower;
+        let (x_block, z_block) = symplectic.split_at(Axis(0), block_width);
+        let mut pauli_string = String::new();
+        Zip::from(x_block).and(z_block).for_each(|&x, &z| {
+            if x && z {
+                ipower += 3;
+            };
+            pauli_string.push(Pauli::from((x, z)).into());
+        });
+        (pauli_string, (ipower % 4))
+    }
+
+    pub fn symplectic_product(
+        left: ArrayView1<bool>,
+        right: ArrayView1<bool>,
+        mut ipower: u8,
+    ) -> (Array1<bool>, u8) {
+        // bitwise or between two vectors
+        let product = &left ^ &right;
+
+        // bitwise sum of left z and right x
+        let half_length: usize = left.len() / 2;
+
+        let left_z = left.slice(s![half_length..]);
+        let right_x = right.slice(s![..half_length]);
+        for index in 0..half_length {
+            if left_z[index] & right_x[index] {
+                ipower += 2;
+            };
+        }
+
+        (product, ipower % 4)
+    }
+
+    pub fn encode_product(
+        &self,
+        majorana: MajoranaProduct,
+    ) -> HashMap<String, Complex64, RandomState> {
+        let mut hamiltonian: HashMap<String, Complex64, RandomState> =
+            HashMap::with_hasher(RandomState::new());
+        let mut ipower: u8 = majorana
+            .indices
+            .iter()
+            .fold(0_u8, |acc, &ind| acc + &self.ipowers[ind])
+            % 4;
+        let (operator, product_ipower) = majorana.indices.iter().fold(
+            (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
+            |acc, &ind| Self::symplectic_product(acc.0.view(), self.symplectics.row(ind), acc.1),
+        );
+        ipower += product_ipower;
+        println!("{:#?}", operator);
+        println!(
+            "{:#?}",
+            MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
+        );
+        let (pauli, ipower) = MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
+
+        hamiltonian.insert(
+            pauli,
+            utils::icount_to_sign(ipower as usize) * majorana.coefficient,
+        );
+
+        hamiltonian
+    }
+    pub fn encode_sparse(
+        &self,
+        majorana: MajoranaSparse,
+    ) -> HashMap<String, Complex64, RandomState> {
+        let mut hamiltonian: HashMap<String, Complex64, RandomState> =
+            HashMap::with_hasher(RandomState::new());
+        Zip::from(majorana.indices.rows())
+            .and(&majorana.coefficients)
+            .for_each(|indices, &coef| {
+                println!("{:#?}", indices);
+                let (operator, product_ipower) = indices.iter().fold(
+                    (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
+                    |acc, &ind| {
+                        println!("Ind {:#?}", ind);
+                        let (a, i) = Self::symplectic_product(
+                            acc.0.view(),
+                            self.symplectics.row(ind),
+                            acc.1,
+                        );
+                        println!("a,i {:#?}", (a.clone(), i.clone()));
+                        // println!("acc {:#?}", acc);
+                        (a, i)
+                    },
+                );
+                println!("Op {:#?}\n", operator);
+                println!("Prod ipower: {:#?}\n", product_ipower);
+                let ipower: u8 = indices
+                    .iter()
+                    .fold(product_ipower, |acc, &ind| acc + &self.ipowers[ind])
+                    % 4;
+                println!("Sum Ipower {:#?}\n", ipower);
+                // println!(
+                //     "EncodeSparse ME {:#?}",
+                //     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
+                // );
+                let (pauli, ipower) =
+                    MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
+                println!("Pauli {:#?}\n", pauli);
+                println!("Final Ipower {:#?}\n", ipower);
+                *hamiltonian.entry(pauli).or_insert(Complex64::new(0., 0.)) +=
+                    (coef * icount_to_sign(ipower as usize));
+                println!("Ham {:#?}\n", hamiltonian);
+            });
+        hamiltonian
+    }
+
     pub fn symplectic_product_map(
         &self,
         // ipowers: ArrayView1<u8>,
@@ -56,7 +171,7 @@ impl<'e> MajoranaEncoding<'e> {
         azip!((index (l, r), pow in &mut product_powers) {
             let left = self.symplectics.slice(s![l,..]);
             let right = self.symplectics.slice(s![r,..]);
-            let (imaginary, term) = symplectic_product(left, right);
+            let (term, imaginary) = MajoranaEncoding::symplectic_product(left, right, 0);
 
             *pow += &((imaginary as u8 + self.ipowers[[l]] + self.ipowers[[r]]) % 4);
             product_map.slice_mut(s![l,r,..]).assign(&term);
@@ -146,9 +261,155 @@ impl<'e> MajoranaEncoding<'e> {
 }
 #[cfg(test)]
 mod tests {
-    use crate::MajoranaEncoding;
-    use ndarray::{arr2, ArrayView1, ArrayView2};
+    use crate::{
+        types::{MajoranaProduct, MajoranaSparse},
+        MajoranaEncoding,
+    };
+    use ndarray::{arr1, arr2, Array1, ArrayView1, ArrayView2};
     use num_complex::c64;
+    use numpy::Complex64;
+
+    #[test]
+    fn test_symplectic_product() {
+        let xxx: Array1<bool> = ndarray::arr1(&[true, true, true, false, false, false]);
+        let zzz: Array1<bool> = ndarray::arr1(&[false, false, false, true, true, true]);
+        let product_result = MajoranaEncoding::symplectic_product(xxx.view(), zzz.view(), 0);
+        let expected = (ndarray::arr1(&[true, true, true, true, true, true]), 0);
+        assert_eq!(product_result, expected);
+        let product_result = MajoranaEncoding::symplectic_product(zzz.view(), xxx.view(), 0);
+        let expected = (ndarray::arr1(&[true, true, true, true, true, true]), 2);
+        assert_eq!(product_result, expected);
+    }
+
+    #[test]
+    fn test_symplectic_to_pauli() {
+        // YXZI
+        let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
+            ndarray::arr1(&[true, true, false, false, true, false, true, false]);
+        assert_eq!(
+            MajoranaEncoding::symplectic_to_pauli(symplectic.view(), 0),
+            (String::from("YXZI"), 3)
+        );
+        let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
+            ndarray::arr1(&[false, false]);
+        assert_eq!(
+            MajoranaEncoding::symplectic_to_pauli(symplectic.view(), 0),
+            (String::from("I"), 0)
+        );
+        let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
+            ndarray::arr1(&[false, true]);
+        assert_eq!(
+            MajoranaEncoding::symplectic_to_pauli(symplectic.view(), 0),
+            (String::from("Z"), 0)
+        );
+        let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
+            ndarray::arr1(&[true, false]);
+        assert_eq!(
+            MajoranaEncoding::symplectic_to_pauli(symplectic.view(), 0),
+            (String::from("X"), 0)
+        );
+        let symplectic: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>> =
+            ndarray::arr1(&[true, true]);
+        assert_eq!(
+            MajoranaEncoding::symplectic_to_pauli(symplectic.view(), 0),
+            (String::from("Y"), 3)
+        );
+    }
+
+    #[test]
+    fn test_encode_product() {
+        let ipowers = ndarray::arr1(&[0, 1, 0, 0]);
+        let symplectics = ndarray::arr2(&[
+            [false, false, false, false, false, false],
+            [true, true, true, true, true, true],
+            [true, true, false, false, true, true],
+            [true, false, true, false, true, false],
+        ]);
+        let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
+
+        let mp = MajoranaProduct::new(vec![0], Complex64::new(1.0, 0.));
+        let qham = encoding.encode_product(mp);
+        assert_eq!(qham.get("III").unwrap(), &Complex64::new(1., 0.));
+
+        let mp = MajoranaProduct::new(vec![0, 0], Complex64::new(1.0, 0.));
+        let qham = encoding.encode_product(mp);
+        assert_eq!(qham.get("III").unwrap(), &Complex64::new(1.0, 0.));
+
+        let mp = MajoranaProduct::new(vec![1, 1], Complex64::new(1.0, 0.));
+        let qham = encoding.encode_product(mp);
+        assert_eq!(qham.get("III").unwrap(), &Complex64::new(1.0, 0.));
+
+        let mp = MajoranaProduct::new(vec![2, 3], Complex64::new(1.0, 0.));
+        let qham = encoding.encode_product(mp);
+        assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0., 1.));
+
+        let mp = MajoranaProduct::new(vec![3, 2], Complex64::new(1.0, 0.));
+        let qham = encoding.encode_product(mp);
+        assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0.0, -1.));
+    }
+
+    #[test]
+    fn test_encode_sparse_xz() {
+        let ipowers = ndarray::arr1(&[0, 0]);
+        let symplectics = ndarray::arr2(&[
+            [true, true, true, false, false, false],
+            [false, false, false, true, true, true],
+        ]);
+        let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
+        let ms = MajoranaSparse::new(
+            arr2(&[[0, 1], [1, 0]]),
+            arr1(&[Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)]),
+        )
+        .unwrap();
+        let qham = encoding.encode_sparse(ms);
+        assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
+    }
+
+    #[test]
+    fn test_encode_sparse_iy() {
+        let ipowers = ndarray::arr1(&[0, 0]);
+        let symplectics = ndarray::arr2(&[
+            [false, false, false, false, false, false],
+            [true, true, true, true, true, true],
+        ]);
+        let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
+        let ms = MajoranaSparse::new(
+            arr2(&[[0, 1], [1, 0]]),
+            arr1(&[Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)]),
+        )
+        .unwrap();
+        println!("{:#?}", ms);
+        let qham = encoding.encode_sparse(ms);
+        println!("{:#?}", qham);
+        assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
+    }
+    #[test]
+    fn test_encode_sparse_long() {
+        let ipowers = ndarray::arr1(&[0, 1, 0, 0]);
+        let symplectics = ndarray::arr2(&[
+            [false, false, false, false, false, false],
+            [true, true, true, true, true, true],
+            [true, true, false, false, true, true],
+            [true, false, true, false, true, false],
+        ]);
+        let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
+        let ms = MajoranaSparse::new(
+            arr2(&[[0, 0], [1, 1], [2, 3], [3, 2]]),
+            arr1(&[
+                Complex64::new(1.0, 0.),
+                Complex64::new(1.0, 0.),
+                Complex64::new(1.0, 0.),
+                Complex64::new(1.0, 0.),
+            ]),
+        )
+        .unwrap();
+        println!("{:#?}", ms);
+        let qham = encoding.encode_sparse(ms);
+        println!("{:#?}", qham);
+        assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
+        assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0., 2.));
+        // assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(-1., 0.));
+    }
 
     #[test]
     fn test_symplectic_product_map() {

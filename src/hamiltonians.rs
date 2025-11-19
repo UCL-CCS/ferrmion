@@ -1,5 +1,4 @@
 use log::debug;
-use ndarray::Axis;
 // use ndarray::{azip, concatenate, Axis, Zip};
 use ahash::RandomState;
 use itertools::iproduct;
@@ -9,7 +8,7 @@ use pyo3::{FromPyObject, IntoPyObject};
 use std::collections::HashMap;
 
 use crate::encoding::MajoranaEncoding;
-use crate::utils::{icount_to_sign, symplectic_product, symplectic_to_pauli};
+use crate::utils::icount_to_sign;
 
 pub type QubitHamiltonianTemplate =
     HashMap<String, HashMap<IntegralIndex, Complex64, RandomState>, RandomState>;
@@ -51,10 +50,12 @@ pub fn molecular(encoding: MajoranaEncoding, notation: Notation) -> QubitHamilto
             // ipowers can be updated to account for +/- operators
             for (l, r) in iproduct!(0..2, 0..2) {
                 let term = sym_products.slice(s![2 * m + l, 2 * n + r, ..]);
-                let (pauli_string, im_term_pauli) = symplectic_to_pauli(term, 0);
+                let (pauli_string, im_term_pauli) = MajoranaEncoding::symplectic_to_pauli(term, 0);
                 let weight = Complex64::new(0.25, 0.)
                     * icount_to_sign(
-                        iproducts[[2 * m + l, 2 * n + r]] as usize + im_term_pauli + (r + 3 * l),
+                        iproducts[[2 * m + l, 2 * n + r]] as usize
+                            + im_term_pauli as usize
+                            + (r + 3 * l),
                     );
                 let components = hamiltonian.entry(pauli_string).or_default();
                 components
@@ -70,17 +71,18 @@ pub fn molecular(encoding: MajoranaEncoding, notation: Notation) -> QubitHamilto
                     for (l1, l2, r1, r2) in iproduct!(0..2, 0..2, 0..2, 0..2) {
                         let left = sym_products.slice(s![2 * m + l1, 2 * n + l2, ..]);
                         let right = sym_products.slice(s![2 * p + r1, 2 * q + r2, ..]);
-                        let (iproduct, product_term) = symplectic_product(left, right);
+                        let (product_term, iproduct) =
+                            MajoranaEncoding::symplectic_product(left, right, 0);
                         let (pauli_string, im_term_pauli) =
-                            symplectic_to_pauli(product_term.view(), 0);
+                            MajoranaEncoding::symplectic_to_pauli(product_term.view(), 0);
                         let term_ipowers = match notation {
                             Notation::Physicist => 3 * (l1 + l2) + r1 + r2,
                             Notation::Chemist => 3 * (l1 + r1) + l2 + r2,
                         };
                         let weight = Complex64::new(0.0625, 0.)
                             * icount_to_sign(
-                                iproduct
-                                    + im_term_pauli
+                                iproduct as usize
+                                    + im_term_pauli as usize
                                     + term_ipowers
                                     + iproducts[[2 * m + l1, 2 * n + l2]] as usize
                                     + iproducts[[2 * p + r1, 2 * q + r2]] as usize,
@@ -122,10 +124,12 @@ pub fn hubbard(encoding: MajoranaEncoding) -> QubitHamiltonianTemplate {
             // ipowers can be updated to account for +/- operators
             for (l, r) in iproduct!(0..2, 0..2) {
                 let term = sym_products.slice(s![2 * m + l, 2 * n + r, ..]);
-                let (pauli_string, im_term_pauli) = symplectic_to_pauli(term, 0);
+                let (pauli_string, im_term_pauli) = MajoranaEncoding::symplectic_to_pauli(term, 0);
                 let weight = Complex64::new(0.25, 0.)
                     * icount_to_sign(
-                        iproducts[[2 * m + l, 2 * n + r]] as usize + im_term_pauli + (r + 3 * l),
+                        iproducts[[2 * m + l, 2 * n + r]] as usize
+                            + im_term_pauli as usize
+                            + (r + 3 * l),
                     );
                 let components = hamiltonian.entry(pauli_string).or_default();
                 components
@@ -139,13 +143,15 @@ pub fn hubbard(encoding: MajoranaEncoding) -> QubitHamiltonianTemplate {
                 for (l1, l2, r1, r2) in iproduct!(0..2, 0..2, 0..2, 0..2) {
                     let left = sym_products.slice(s![2 * m + l1, 2 * n + l2, ..]);
                     let right = sym_products.slice(s![2 * p + r1, 2 * q + r2, ..]);
-                    let (iproduct, product_term) = symplectic_product(left, right);
-                    let (pauli_string, im_term_pauli) = symplectic_to_pauli(product_term.view(), 0);
+                    let (product_term, iproduct) =
+                        MajoranaEncoding::symplectic_product(left, right, 0);
+                    let (pauli_string, im_term_pauli) =
+                        MajoranaEncoding::symplectic_to_pauli(product_term.view(), 0);
                     let term_ipowers = 3 * (l1 + r1) + l2 + r2;
                     let weight = Complex64::new(0.0625, 0.)
                         * icount_to_sign(
-                            iproduct
-                                + im_term_pauli
+                            iproduct as usize
+                                + im_term_pauli as usize
                                 + term_ipowers
                                 + iproducts[[2 * m + l1, 2 * n + l2]] as usize
                                 + iproducts[[2 * p + r1, 2 * q + r2]] as usize,
@@ -255,11 +261,10 @@ pub fn fill_template<'template>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{encoding::{self, MajoranaEncoding}, hamiltonians::molecular};
-    use ndarray::{arr1,arr2};
+    use crate::{encoding::MajoranaEncoding, hamiltonians::molecular};
 
     #[test]
-    fn test_molecular() {
+    fn test_template_padding() {
         let ipowers = ndarray::arr1(&[0, 1, 2, 3]);
         let symplectics = ndarray::arr2(&[
             [true, false, false, false],
@@ -268,6 +273,18 @@ mod tests {
             [false, true, true, true],
         ]);
         let encoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
-        let _template = molecular(encoding, super::Notation::Physicist);
-    } 
+        let template = molecular(encoding, super::Notation::Physicist);
+
+        let symplectics = ndarray::arr2(&[
+            [true, false, false, false, false, false],
+            [true, false, false, true, false, false],
+            [false, true, false, true, false, false],
+            [false, true, false, true, true, false],
+        ]);
+        let padded_encoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
+        let padded_template = molecular(padded_encoding, super::Notation::Physicist);
+        for short_key in template.keys() {
+            assert!(padded_template.contains_key(&format!("{short_key}I")))
+        }
+    }
 }

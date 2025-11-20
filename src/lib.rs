@@ -45,9 +45,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         */
         let left = left.as_array();
         let right = right.as_array();
-        let (ipower, product) = symplectic_product(left, right);
+        let (product, ipower) = MajoranaEncoding::symplectic_product(left, right, 0);
         let pyproduct = PyArray1::from_owned_array(py, product);
-        (ipower, pyproduct)
+        (ipower as usize, pyproduct)
     }
 
     #[pyfn(m)]
@@ -94,10 +94,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_symplectic_to_pauli<'py>(
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
-        ipower: usize,
+        ipower: u8,
     ) -> (Bound<'py, PyString>, Bound<'py, PyInt>) {
         let symplectic = symplectic.as_array();
-        let (pauli, ipower) = symplectic_to_pauli(symplectic, ipower);
+        let (pauli, ipower) = MajoranaEncoding::symplectic_to_pauli(symplectic, ipower);
         (PyString::new(py, &pauli), PyInt::new(py, ipower))
     }
 

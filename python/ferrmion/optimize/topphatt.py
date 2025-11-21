@@ -422,7 +422,7 @@ def topphatt(
                 # min_parent = parent_index
             logging.debug(f"{parent_index=}, {selection=}")
         total_weight += min_weight
-
+        print(f"{total_weight=}")
         logging.debug(f"{min_parent=}")
         # Now find the Y pair of the x-node
         unassigned_leaves = [u for u in unassigned_leaves if u not in selection]

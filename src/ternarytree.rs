@@ -2,11 +2,16 @@
 Ternary tree encodings and methods.
 */
 
+use crate::types::MajoranaSparse;
 use anyhow::Result;
+use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use std::iter::zip;
+use tinyvec::array_vec;
+use tinyvec::ArrayVec;
 type NodeIndexArray = [u8; 256];
 const MAX_SIZE: usize = 85;
+const MAJORANA_MAX: usize = 4;
 
 pub struct FastTernaryTree {
     parent_of: NodeIndexArray,
@@ -53,17 +58,15 @@ fn add_child(
     Ok(())
 }
 
-fn qubit_term_weight(term: &[u8; 4], children: &[u8; 3]) -> usize {
+fn qubit_term_weight(term: &ArrayVec<[u8; MAJORANA_MAX]>, children: &[u8; 3]) -> usize {
     let mut odd_parity_paulis: u8 = 0;
     for c in children {
-        let occurances: usize = term
-            .iter()
-            .fold(0, |acc, t| if t == c { acc + 1 } else { acc });
+        let occurances: usize = term.iter().filter(|&t| t == c).count();
         if occurances % 2 == 1 {
             odd_parity_paulis += 1;
         }
     }
-    if odd_parity_paulis % 3 == 0 {
+    if odd_parity_paulis % 3 != 0 {
         1
     } else {
         0
@@ -71,30 +74,32 @@ fn qubit_term_weight(term: &[u8; 4], children: &[u8; 3]) -> usize {
 }
 
 fn reduce_hamiltonian(
-    majorana_terms: Vec<[u8; 4]>,
+    mut majorana_terms: Vec<ArrayVec<[u8; MAJORANA_MAX]>>,
     parent_index: u8,
     selection: [u8; 3],
-) -> Vec<[u8; 4]> {
+) -> Vec<ArrayVec<[u8; MAJORANA_MAX]>> {
     // could also filter here by terms that
     // only contain indices in pairs.
     majorana_terms
         .iter()
-        .map(|term: &[u8; 4]| {
-            term.map(|ind| {
-                if selection.contains(&ind) {
-                    parent_index
-                } else {
-                    ind
-                }
-            })
+        .map(|&term| {
+            let initial_length = term.len();
+            let mut new_term: ArrayVec<[u8; MAJORANA_MAX]> = term
+                .into_iter()
+                .filter(|ind| !selection.contains(&ind))
+                .collect();
+            if (initial_length - new_term.len()) % 2 == 1 {
+                new_term.push(parent_index);
+            }
+            new_term
         })
-        // .filter(|term: &[u8; 4]| term[0]!=term[1]||term[2]!=term[3])
+        .filter(|&term| term != ArrayVec::<[u8; MAJORANA_MAX]>::new())
         .collect()
 }
 
 pub fn hatt(
     n_nodes: usize,
-    mut majorana_terms: Vec<[u8; 4]>,
+    mut majorana_terms: Vec<ArrayVec<[u8; MAJORANA_MAX]>>,
 ) -> Result<(FastTernaryTree, u8, usize)> {
     assert!(n_nodes < MAX_SIZE);
 
@@ -110,6 +115,7 @@ pub fn hatt(
         let mut selection: [u8; 3] = [u8::MAX, u8::MAX, u8::MAX];
         let parent_index = (n_leaves + ind) as u8;
         let mut min = usize::MAX;
+        println!("\nParent {:?}", parent_index);
         for comb in unassigned.iter().flatten().combinations(2) {
             let x_index = *comb[0];
             let z_index = *comb[1];
@@ -145,19 +151,32 @@ pub fn hatt(
             };
             let weight = majorana_terms
                 .iter()
-                .fold(0, |acc, term| acc + qubit_term_weight(term, &children));
+                .fold_while(0, |acc, term| {
+                    if acc > min {
+                        Done(acc)
+                    } else {
+                        if term.get(term.len() - 1) < children.get(0)
+                            || term.get(0) > children.get(2)
+                        {
+                            Continue(acc)
+                        } else {
+                            Continue(acc + qubit_term_weight(term, &children))
+                        }
+                    }
+                })
+                .into_inner();
 
+            println!("Children {:?}", children.clone());
+            println!("Weight {:}", weight.clone());
             if weight < min {
                 min = weight;
+                println!("NEW MIN {:}", min.clone());
                 selection = children;
+                println!("SELECTION {:?}", selection.clone());
             }
         }
         // Initialized to max, but we could only ever use this leaf once at most.
-        if selection
-            .iter()
-            .fold(0, |acc, v| if *v == u8::MAX { acc + 1 } else { acc })
-            > 1
-        {
+        if selection.contains(&u8::MAX) {
             // println!("Selection constians initialisation values.");
             continue;
         }
@@ -189,7 +208,8 @@ pub fn hatt(
         tree.z_ancestor_of[z_desc as usize] = parent_index;
 
         unassigned[parent_index as usize] = Some(parent_index);
-        majorana_terms = reduce_hamiltonian(majorana_terms, parent_index, selection)
+        majorana_terms = reduce_hamiltonian(majorana_terms, parent_index, selection);
+        println!("Majorana Terms {:?}", majorana_terms);
     }
 
     let remaining_nodes: Vec<u8> = unassigned.into_iter().flatten().collect::<Vec<u8>>();
@@ -199,14 +219,16 @@ pub fn hatt(
 
 #[cfg(test)]
 mod tests {
-    use crate::ternarytree::{hatt, FastTernaryTree};
+    use crate::ternarytree::*;
 
     #[test]
     fn test_hatt_paper_example() {
-        let mut majorana_terms: Vec<[u8; 4]> = Vec::from([[0u8, 0u8, 0u8, 1u8]]);
-        majorana_terms.push([0u8, 0u8, 2u8, 3u8]);
-        majorana_terms.push([0u8, 0u8, 4u8, 5u8]);
-        majorana_terms.push([2u8, 3u8, 4u8, 5u8]);
+        let mut majorana_terms: Vec<ArrayVec<[u8; 4]>> =
+            Vec::from([array_vec!([u8;4] => 0u8, 1u8)]);
+        majorana_terms.push(array_vec!([u8;4] => 2u8, 3u8));
+        majorana_terms.push(array_vec!([u8;4] => 4u8, 5u8));
+        majorana_terms.push(array_vec!([u8;4] => 2u8, 3u8, 4u8, 5u8));
+        println!("Majorana Terms {:?}", majorana_terms);
         let n_nodes = 3;
         let root_node: u8;
         let weight: usize;

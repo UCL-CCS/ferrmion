@@ -2,12 +2,14 @@ use log::debug;
 // use ndarray::{azip, concatenate, Axis, Zip};
 use ahash::RandomState;
 use itertools::iproduct;
+use ndarray::Zip;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
 use pyo3::{FromPyObject, IntoPyObject};
 use std::collections::HashMap;
 
 use crate::encoding::MajoranaEncoding;
+use crate::types::MajoranaSparse;
 use crate::utils::icount_to_sign;
 
 pub type QubitHamiltonianTemplate =

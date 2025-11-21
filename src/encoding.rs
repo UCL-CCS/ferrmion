@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
+use crate::hamiltonians::QubitHamiltonian;
 /*
 Functions relating to the FermionQubitEncoding base class.
 */
-use crate::types::{MajoranaProduct, MajoranaSparse, Pauli};
+use crate::types::{FermionMatrix, MajoranaProduct, MajoranaSparse, Pauli};
 use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
 use anyhow::Result;
 use log::debug;
-use ndarray::{Axis, Zip};
+use ndarray::{Axis, Dimension, Zip};
 use num_complex::c64;
 use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2};
 use numpy::Complex64;
@@ -115,9 +116,11 @@ impl<'e> MajoranaEncoding<'e> {
     ) -> HashMap<String, Complex64, RandomState> {
         let mut hamiltonian: HashMap<String, Complex64, RandomState> =
             HashMap::with_hasher(RandomState::new());
-        Zip::from(majorana.indices.rows())
-            .and(&majorana.coefficients)
-            .for_each(|indices, &coef| {
+        majorana
+            .indices
+            .iter()
+            .zip(majorana.coefficients)
+            .for_each(|(&indices, coef)| {
                 println!("{:#?}", indices);
                 let (operator, product_ipower) = indices.iter().fold(
                     (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
@@ -261,6 +264,16 @@ impl<'e> MajoranaEncoding<'e> {
     }
 }
 
+impl<'e> MajoranaEncoding<'e> {
+    pub fn encode_fermion_matrix(
+        hamiltonian: FermionMatrix,
+    ) -> HashMap<String, Complex64, RandomState> {
+        let mut qham: HashMap<String, Complex64, RandomState> =
+            HashMap::with_hasher(RandomState::new());
+        qham
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -270,6 +283,7 @@ mod tests {
     use ndarray::{arr1, arr2, Array1, ArrayView1, ArrayView2};
     use num_complex::c64;
     use numpy::Complex64;
+    use tinyvec::array_vec;
 
     #[test]
     fn test_symplectic_product() {
@@ -359,8 +373,8 @@ mod tests {
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
-            arr2(&[[0, 1], [1, 0]]),
-            arr1(&[Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)]),
+            vec![array_vec!([usize; 4] =>0, 1), array_vec!([usize; 4] =>1,0)],
+            vec![Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)],
         )
         .unwrap();
         let qham = encoding.encode_sparse(ms);
@@ -376,8 +390,8 @@ mod tests {
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
-            arr2(&[[0, 1], [1, 0]]),
-            arr1(&[Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)]),
+            vec![array_vec!([usize; 4] =>0, 1), array_vec!([usize; 4] =>1,0)],
+            vec![Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)],
         )
         .unwrap();
         println!("{:#?}", ms);
@@ -396,13 +410,18 @@ mod tests {
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
-            arr2(&[[0, 0], [1, 1], [2, 3], [3, 2]]),
-            arr1(&[
+            vec![
+                array_vec!([usize; 4] =>0,0),
+                array_vec!([usize; 4] =>1,1),
+                array_vec!([usize; 4] =>2,3),
+                array_vec!([usize; 4] =>3,2),
+            ],
+            vec![
                 Complex64::new(1.0, 0.),
                 Complex64::new(1.0, 0.),
                 Complex64::new(1.0, 0.),
                 Complex64::new(1.0, 0.),
-            ]),
+            ],
         )
         .unwrap();
         println!("{:#?}", ms);

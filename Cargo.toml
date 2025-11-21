@@ -23,6 +23,8 @@ rand_xoshiro = "0.7.0"
 argmin = "0.10.0"
 argmin-observer-slog = "0.1.0"
 num-complex = "0.4.6"
+arrayvec = "0.7.6"
+tinyvec = "1.10.0"
 
 [dev-dependencies]
 

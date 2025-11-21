@@ -1,14 +1,21 @@
 use ndarray::Dimension;
+use num_complex::Complex;
+use tinyvec::{array_vec, ArrayVec};
 /*
 Shared Types.
 */
 use crate::utils::vector_kron;
-use itertools::Itertools;
-use numpy::ndarray::{arr0, arr1, arr2, Array, Array1, Array2, Axis, IntoDimension, Zip};
+use itertools::{izip, Itertools};
+use numpy::ndarray::{
+    arr0, arr1, arr2, Array, Array1, Array2, ArrayD, ArrayView1, Axis, IntoDimension, Zip,
+};
 use numpy::Complex64;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::RandomState;
 use std::iter::{repeat_n, zip};
 use std::{result::Result, str::FromStr};
+
+const MAX_MAJORANAS: usize = 4;
 
 #[allow(dead_code)]
 #[derive(Debug, Default)]
@@ -198,18 +205,18 @@ impl FermionProduct {
     }
 }
 
-struct FermionMatrix<D: Dimension> {
+pub struct FermionMatrix {
     ops: Vec<LadderOperator>,
-    coefficients: Array<f64, D>,
+    coefficients: ArrayD<f64>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 struct FermionMatrixError;
 
-impl<D: Dimension> FermionMatrix<D> {
+impl FermionMatrix {
     pub fn new(
         ops: Vec<LadderOperator>,
-        coefficients: Array<f64, D>,
+        coefficients: ArrayD<f64>,
     ) -> Result<Self, FermionMatrixError> {
         if ops.len() != coefficients.ndim()
             || !coefficients
@@ -223,7 +230,7 @@ impl<D: Dimension> FermionMatrix<D> {
     }
 }
 
-struct FermionSparse {
+pub struct FermionSparse {
     ops: Vec<LadderOperator>,
     indices: Array2<usize>,
     coefficients: Array1<Complex64>,
@@ -250,17 +257,31 @@ impl FermionSparse {
     }
 }
 
-impl<D: ndarray::Dimension + Copy> From<FermionMatrix<D>> for FermionSparse {
-    fn from(mft: FermionMatrix<D>) -> FermionSparse {
+impl From<FermionMatrix> for FermionSparse {
+    fn from(mft: FermionMatrix) -> FermionSparse {
+        // let temp_hashmap: HashMap<ArrayView1<usize>, f64, RandomState> =
+        //     HashMap::with_hasher(RandomState::new());
+        // mft.coefficients
+        //     .indexed_iter()
+        //     .filter(|(_, &v)| v != 0.)
+        //     .for_each(|(ind, &v)| {
+        //         *temp_hashmap.entry(ind.as_array_view()).or_default() += v;
+        //     });
+
         let n_nonzero = mft.coefficients.iter().filter(|&v| *v != 0.).count();
         let mut sparse_indices: Array2<usize> = Array2::zeros((n_nonzero, mft.ops.len()));
-        let mut sparse_coefficients: Array1<Complex64> = Array1::zeros(n_nonzero);
+        let mut sparse_coefficients: Array1<Complex64> =
+            Array1::from_elem(n_nonzero, Complex64::new(0., 0.));
         mft.coefficients
             .indexed_iter()
-            .filter(|(_, v)| **v != 0.)
-            .for_each(|(ind, v)| {
-                let _ = sparse_indices.push_row(ind.into_dimension().as_array_view());
-                let _ = sparse_coefficients.push(Axis(0), arr0(Complex64::new(*v, 0.)).view());
+            .filter(|(_, &v)| v != 0.)
+            .enumerate()
+            .for_each(|(count, (ind, &v))| {
+                println!("{:#?}", ind.clone());
+                sparse_indices
+                    .row_mut(count)
+                    .assign(&ind.into_dimension().as_array_view());
+                sparse_coefficients[count] += Complex64::new(v, 0.);
             });
         FermionSparse::new(mft.ops, sparse_indices, sparse_coefficients)
             .expect("Conversion from MatrixFermionTerm should be validated.")
@@ -329,8 +350,24 @@ mod fermion_tests {
     #[test]
     fn test_matrix_term_creation() {
         let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
-        let coefficients = arr2(&[[0., 0.], [0., 0.]]);
+        let dyn_shape = ndarray::IxDyn(&[2, 2]);
+        assert_eq!(dyn_shape.clone().ndim(), 2);
+        let coefficients = ArrayD::from_elem(dyn_shape, 1.);
         let _term = FermionMatrix::new(ops, coefficients).unwrap();
+    }
+    #[test]
+    fn test_spare_from_matrix() {
+        let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let dyn_shape = ndarray::IxDyn(&[2, 2]);
+        assert_eq!(dyn_shape.clone().ndim(), 2);
+        let mut coefficients = ArrayD::from_elem(dyn_shape, 0.);
+        coefficients[[0, 0]] = 1.;
+        coefficients[[0, 1]] = 0.;
+        coefficients[[1, 0]] = 2.;
+        coefficients[[1, 1]] = 10.;
+        let term = FermionMatrix::new(ops, coefficients).unwrap();
+        let sparse = FermionSparse::from(term);
+        assert_eq!(sparse.indices, arr2(&[[0, 0], [1, 0], [1, 1]]))
     }
 }
 
@@ -406,8 +443,8 @@ impl MajoranaProduct {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparse {
-    pub indices: Array2<usize>,
-    pub coefficients: Array1<Complex64>,
+    pub indices: Vec<ArrayVec<[usize; MAX_MAJORANAS]>>,
+    pub coefficients: Vec<Complex64>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -415,10 +452,10 @@ pub struct MajoranaSparseError;
 
 impl MajoranaSparse {
     pub fn new(
-        indices: Array2<usize>,
-        coefficients: Array1<Complex64>,
+        indices: Vec<ArrayVec<[usize; MAX_MAJORANAS]>>,
+        coefficients: Vec<Complex64>,
     ) -> Result<Self, MajoranaSparseError> {
-        if coefficients.len() != indices.nrows() {
+        if coefficients.len() != indices.len() {
             return Err(MajoranaSparseError);
         };
         Ok(Self {
@@ -466,14 +503,27 @@ impl From<FermionSparse> for MajoranaSparse {
             });
 
         // println!("Majoranas {:#?}", majoranas);
-        let sparse_values: Array1<Complex64> = majoranas.values().cloned().collect();
-        let mut sparse_indices: Array2<usize> =
-            Array2::zeros((majoranas.keys().len(), term_length));
+        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
+            majoranas
+                .values()
+                .filter(|&v| *v != Complex64::ZERO)
+                .count(),
+        );
+        let mut sparse_indices: Vec<ArrayVec<[usize; MAX_MAJORANAS]>> =
+            Vec::with_capacity(sparse_values.len());
         // println!("{:#?}", sparse_values.clone());
-        for (mut row, k) in zip(sparse_indices.rows_mut(), majoranas.keys()) {
-            // let mut row_array: Array1<usize> = Array1::from_vec(k.clone());
-            row.scaled_add(1, &Array1::from_vec(k.to_vec()));
-        }
+
+        majoranas
+            .iter()
+            .filter(|(_, &v)| v != Complex64::ZERO)
+            .for_each(|(k, &v)| {
+                let mut op: ArrayVec<[usize; MAX_MAJORANAS]> = ArrayVec::new();
+                for ind in k {
+                    op.push(*ind);
+                }
+                sparse_indices.push(op);
+                sparse_values.push(v);
+            });
         MajoranaSparse::new(sparse_indices, sparse_values)
             .expect("Indices and coefficients should be same length.")
     }
@@ -556,13 +606,18 @@ mod majorana_tests {
         println!("{:#?}", ops.clone());
 
         let majorana_term = MajoranaSparse::new(
-            arr2(&[[0, 2], [0, 3], [1, 2], [1, 3]]),
-            arr1(&[
+            vec![
+                array_vec!([usize; 4]=> 0, 2),
+                array_vec!([usize; 4]=> 0, 3),
+                array_vec!([usize; 4]=> 1,2),
+                array_vec!([usize; 4]=> 1,3),
+            ],
+            vec![
                 Complex64::new(2.5, 0.),
                 Complex64::new(0., -2.5),
                 Complex64::new(0.0, 2.5),
                 Complex64::new(2.5, 0.),
-            ]),
+            ],
         )
         .unwrap();
         let fermion_term =

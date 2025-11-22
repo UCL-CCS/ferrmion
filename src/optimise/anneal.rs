@@ -2,7 +2,7 @@
 Functions relating to encoding optimisation.
 */
 
-use crate::hamiltonians::{fill_template, QubitHamiltonian, QubitHamiltonianTemplate};
+use crate::hamiltonians::{fill_template, FilledTemplate, QubitHamiltonianTemplate};
 
 use argmin::{
     core::{CostFunction, Error, Executor},
@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 /// Returns the mean Pauli-weight of Hamiltonian terms.
 /// scaled by the coefficient of the term.
-pub fn pauli_coefficient_weight(hamiltonian: QubitHamiltonian) -> f64 {
+pub fn pauli_coefficient_weight(hamiltonian: FilledTemplate) -> f64 {
     let weight = hamiltonian.iter().fold(0., |acc, (key, val)| {
         let n_identity = key.chars().filter(|c| c == &'I').count();
         acc + (key.len() - n_identity) as f64 * val.abs()
@@ -27,7 +27,7 @@ pub fn pauli_coefficient_weight(hamiltonian: QubitHamiltonian) -> f64 {
 }
 
 /// Returns the mean Pauli-weight of Hamiltonian terms.
-pub fn pauli_weight(hamiltonian: QubitHamiltonian) -> f64 {
+pub fn pauli_weight(hamiltonian: FilledTemplate) -> f64 {
     let weight = hamiltonian.keys().fold(0., |acc, key| {
         let n_identity = key.chars().filter(|c| c == &'I').count();
         acc + (key.len() - n_identity) as f64
@@ -72,7 +72,7 @@ struct OptimalEnumeration<'coeff> {
     template: QubitHamiltonianTemplate,
     one_e_coeffs: ArrayView2<'coeff, f64>,
     two_e_coeffs: ArrayView4<'coeff, f64>,
-    cost_function: fn(QubitHamiltonian) -> f64,
+    cost_function: fn(FilledTemplate) -> f64,
     rng: Arc<Mutex<Xoshiro256PlusPlus>>,
 }
 
@@ -81,7 +81,7 @@ impl<'coeff> OptimalEnumeration<'coeff> {
         template: QubitHamiltonianTemplate,
         one_e_coeffs: ArrayView2<'coeff, f64>,
         two_e_coeffs: ArrayView4<'coeff, f64>,
-        cost_function: fn(QubitHamiltonian) -> f64,
+        cost_function: fn(FilledTemplate) -> f64,
     ) -> Self {
         OptimalEnumeration {
             template,
@@ -145,7 +145,7 @@ pub fn anneal_enumerations<'coeff>(
     initial_guess: ArrayView1<usize>,
     coefficient_weighted: bool,
 ) -> Result<(f64, Array1<usize>), Error> {
-    let cost_function: fn(QubitHamiltonian) -> f64 = match coefficient_weighted {
+    let cost_function: fn(FilledTemplate) -> f64 = match coefficient_weighted {
         true => pauli_coefficient_weight,
         false => pauli_weight,
     };

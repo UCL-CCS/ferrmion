@@ -1,14 +1,17 @@
+use std::str::FromStr;
+
 use log::info;
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
-    PyReadonlyArray4,
+    PyReadonlyArray4, PyReadonlyArrayDyn, PyUntypedArrayMethods,
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
-
+use std::iter::zip;
 mod types;
 mod utils;
-use crate::optimise::template_weight;
+use crate::optimise::{hatt, template_weight};
+use crate::types::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
 use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::{fill_template, hubbard, molecular, Notation, QubitHamiltonianTemplate};
@@ -17,6 +20,7 @@ use crate::encoding::MajoranaEncoding;
 mod optimise;
 use crate::optimise::anneal_enumerations;
 mod ternarytree;
+
 /// A Python module implemented in Rust.
 #[pymodule]
 #[pyo3(name = "core")]
@@ -266,9 +270,27 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "hatt")]
     fn wrap_hatt<'py>(
         py: Python<'py>,
-        one_e_coeffs: PyReadonlyArray2<f64>,
-        two_e_coeffs: PyReadonlyArray4<f64>,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
     ) -> PyResult<()> {
+        let n_modes = coeffs[0].shape()[0];
+        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
+        for (sig, coeff) in zip(signatures, coeffs) {
+            let vec_sig: Vec<LadderOperator> = sig
+                .chars()
+                .map(|v| {
+                    LadderOperator::try_from(v).expect("Signature components should be + or -")
+                })
+                .collect();
+            let term_coef = coeff.as_array().to_owned();
+            fsparse_vec.push(
+                FermionMatrix::new(vec_sig, term_coef)
+                    .expect("Signature lengths and coeff dimensions must match")
+                    .into(),
+            );
+        }
+        let msparse: MajoranaSparse = fsparse_vec.into();
+        // hatt(n_modes, msparse);
         Ok(())
     }
     Ok(())

@@ -9,7 +9,7 @@ use tinyvec::ArrayVec;
 const MAX_SIZE: usize = 85;
 const MAJORANA_MAX: usize = 4;
 
-use crate::ternarytree::FastTernaryTree;
+use crate::ternarytree::{Edge, FastTernaryTree};
 
 fn qubit_term_weight(term: &ArrayVec<[u8; MAJORANA_MAX]>, children: &[u8; 3]) -> usize {
     let mut odd_parity_paulis: u8 = 0;
@@ -50,13 +50,19 @@ fn reduce_hamiltonian(
         .collect()
 }
 
+struct HattResult {
+    tree: FastTernaryTree,
+    root_node_index: u8,
+    pauli_weight: usize,
+}
+
 pub fn hatt(
     n_nodes: usize,
     mut majorana_terms: Vec<ArrayVec<[u8; MAJORANA_MAX]>>,
-) -> Result<(FastTernaryTree, u8, usize)> {
+) -> Result<HattResult> {
     assert!(n_nodes < MAX_SIZE);
 
-    let mut tree = FastTernaryTree::new();
+    let mut tree = FastTernaryTree::new(n_nodes);
     let n_leaves = 2 * n_nodes + 1;
     let mut total_weight: usize = 0;
     let mut unassigned: [Option<u8>; 256] = core::array::from_fn(|i: usize| Some((i) as u8));
@@ -135,28 +141,16 @@ pub fn hatt(
         }
 
         total_weight += min;
-        for (child_index, child_of) in zip(
-            selection,
-            [
-                &mut tree.x_child_of,
-                &mut tree.y_child_of,
-                &mut tree.z_child_of,
-            ],
-        ) {
+        for (child_index, branch) in zip(selection, [Edge::X, Edge::Y, Edge::Z]) {
             unassigned[child_index as usize] = None;
             if (child_index as usize) < n_leaves {
                 // If the child is a node,
                 // we need a few steps to keep things consistent.
-                FastTernaryTree::add_child(
-                    parent_index,
-                    &mut tree.parent_of,
-                    child_index,
-                    child_of,
-                )?;
+                tree.add_child(branch, parent_index, child_index);
             } else {
-                // If it's a leaf then we just assign the leave
+                // If it's a leaf then we just assign the leaf
                 // number as child
-                child_of[parent_index as usize] = child_index;
+                tree.add_leaf(branch, parent_index, child_index);
             }
         }
         let z_index = selection[2];
@@ -172,7 +166,11 @@ pub fn hatt(
 
     let remaining_nodes: Vec<u8> = unassigned.into_iter().flatten().collect::<Vec<u8>>();
 
-    Ok((tree, remaining_nodes[0], total_weight))
+    Ok(HattResult {
+        tree: tree,
+        root_node_index: remaining_nodes[0],
+        pauli_weight: total_weight,
+    })
 }
 
 #[cfg(test)]
@@ -189,12 +187,9 @@ mod tests {
         majorana_terms.push(array_vec!([u8;4] => 2u8, 3u8, 4u8, 5u8));
         println!("Majorana Terms {:?}", majorana_terms);
         let n_nodes = 3;
-        let root_node: u8;
-        let weight: usize;
-        let tree: FastTernaryTree;
-        (tree, root_node, weight) = hatt(n_nodes, majorana_terms).unwrap();
-        assert_eq!(root_node, 9);
-        assert_eq!(weight, 5);
-        assert_eq!(tree.parent_of[9], 9);
+        let hr = hatt(n_nodes, majorana_terms).unwrap();
+        assert_eq!(hr.root_node_index, 9);
+        assert_eq!(hr.pauli_weight, 5);
+        assert_eq!(hr.tree.parent_of[9], 9);
     }
 }

@@ -9,7 +9,6 @@ name = "ferrmion"
 crate-type = ["cdylib"]
 
 [dependencies]
-anyhow = "1.0.98"
 itertools = "0.14.0"
 ndarray = {version="0.16.1", features=["rayon"]}
 numpy = "0.24.0"
@@ -25,6 +24,8 @@ argmin-observer-slog = "0.1.0"
 num-complex = "0.4.6"
 arrayvec = "0.7.6"
 tinyvec = "1.10.0"
+thiserror = "2.0.17"
+anyhow = "1.0.100"
 
 [dev-dependencies]
 

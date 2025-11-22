@@ -1,17 +1,13 @@
 use ndarray::Dimension;
-use num_complex::Complex;
-use tinyvec::{array_vec, ArrayVec};
+use tinyvec::ArrayVec;
 /*
 Shared Types.
 */
 use crate::utils::vector_kron;
-use itertools::{izip, Itertools};
-use numpy::ndarray::{
-    arr0, arr1, arr2, Array, Array1, Array2, ArrayD, ArrayView1, Axis, IntoDimension, Zip,
-};
+use itertools::Itertools;
+use numpy::ndarray::{arr1, arr2, Array1, Array2, ArrayD, Axis, IntoDimension, Zip};
 use numpy::Complex64;
-use std::collections::{BTreeMap, HashMap};
-use std::hash::RandomState;
+use std::collections::BTreeMap;
 use std::iter::{repeat_n, zip};
 use std::{result::Result, str::FromStr};
 
@@ -533,6 +529,7 @@ impl From<FermionSparse> for MajoranaSparse {
 mod majorana_tests {
     use crate::types::*;
     use ndarray::{arr1, arr2};
+    use tinyvec::array_vec;
 
     #[test]
     fn test_majorise_do_nothing() {

@@ -261,5 +261,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let (cost, permutation) = result.expect("Annealing output error.");
         Ok((cost, permutation.into_pyarray(py)))
     }
+
+    #[pyfn(m)]
+    #[pyo3(name = "hatt")]
+    fn wrap_hatt<'py>(
+        py: Python<'py>,
+        one_e_coeffs: PyReadonlyArray2<f64>,
+        two_e_coeffs: PyReadonlyArray4<f64>,
+    ) -> PyResult<()> {
+        Ok(())
+    }
     Ok(())
 }

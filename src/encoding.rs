@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-
-use crate::hamiltonians::QubitHamiltonian;
 /*
 Functions relating to the FermionQubitEncoding base class.
 */
@@ -9,10 +6,11 @@ use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
 use anyhow::Result;
 use log::debug;
-use ndarray::{Axis, Dimension, Zip};
+use ndarray::{Axis, Zip};
 use num_complex::c64;
 use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2};
 use numpy::Complex64;
+use std::collections::HashMap;
 
 // pub fn edge_operator(encoding:FermionQubitEncoding, edge_indices:(usize,usize)) -> Array1<(String, Array1<usize>, Complex64)> {
 //     let (icount, symplectic_products) =
@@ -280,7 +278,7 @@ mod tests {
         types::{MajoranaProduct, MajoranaSparse},
         MajoranaEncoding,
     };
-    use ndarray::{arr1, arr2, Array1, ArrayView1, ArrayView2};
+    use ndarray::{arr2, Array1, ArrayView1, ArrayView2};
     use num_complex::c64;
     use numpy::Complex64;
     use tinyvec::array_vec;

@@ -401,7 +401,7 @@ def topphatt(
                         continue
                     else:
                         odd_parity_paulis = [
-                            sum([t != c for t in key]) % 2 for c in comb
+                            sum([t == c for t in key]) % 2 for c in comb
                         ]
                         non_commuting = sum(odd_parity_paulis) % 3
                         weight += int(non_commuting != 0)

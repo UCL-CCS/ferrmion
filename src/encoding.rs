@@ -1,8 +1,8 @@
-use crate::hamiltonians::{FilledTemplate, QubitHamiltonian};
+use crate::hamiltonians::QubitHamiltonian;
 /*
 Functions relating to the FermionQubitEncoding base class.
 */
-use crate::types::{FermionMatrix, MajoranaProduct, MajoranaSparse, Pauli};
+use crate::types::{MajoranaProduct, MajoranaSparse, Pauli};
 use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
 use anyhow::Result;

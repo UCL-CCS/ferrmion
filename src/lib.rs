@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use log::info;
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
@@ -10,7 +8,7 @@ use pyo3::{prelude::*, pymodule, Bound};
 use std::iter::zip;
 mod types;
 mod utils;
-use crate::optimise::{hatt, template_weight};
+use crate::optimise::template_weight;
 use crate::types::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
 use crate::utils::*;
 mod hamiltonians;

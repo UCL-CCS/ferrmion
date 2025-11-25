@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Conversion functions `symplectic_to_pauli`, `pauli_to_symplectic` now take in ipower as second argument, returning updated ipower.
 - `symplectic_to_sparse` output has been reodered so that it can be directly input the `SparsePauliOp`.
-- `anneal_enerumations` takes a flag "coefficient_weighted" to switch between pauli weight and coeffient pauli weight.
+- `anneal_enumerations` takes a flag "coefficient_weighted" to switch between pauli weight and coeffient pauli weight.
 - `optimize.enumeration.cost_functions` move to `optimize.cost_functions`.
 
 ## [0.2.0]

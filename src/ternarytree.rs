@@ -208,11 +208,12 @@ mod tests {
         majorana_terms.push([0u8, 0u8, 4u8, 5u8]);
         majorana_terms.push([2u8, 3u8, 4u8, 5u8]);
         let n_nodes = 3;
-        let tree: FastTernaryTree;
         let root_node: u8;
         let weight: usize;
+        let tree: FastTernaryTree;
         (tree, root_node, weight) = hatt(n_nodes, majorana_terms).unwrap();
         assert_eq!(root_node, 9);
-        assert_eq!(weight, 1);
+        assert_eq!(weight, 5);
+        assert_eq!(tree.parent_of[9], 9);
     }
 }

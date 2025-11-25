@@ -23,7 +23,7 @@ def _qubit_term_weight(term: Iterable, comb: tuple[int, int, int]) -> int:
     Returns:
         int: Weight of the term.
     """
-    odd_parity_paulis = [sum([t != c for t in term]) % 2 for c in comb]
+    odd_parity_paulis = [sum([t == c for t in term]) % 2 for c in comb]
     non_commuting = sum(odd_parity_paulis) % 3
     return int(non_commuting != 0)
 

@@ -13,7 +13,7 @@ use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::{fill_template, hubbard, molecular, Notation, QubitHamiltonianTemplate};
 mod encoding;
-use crate::encoding::{hartree_fock_state, MajoranaEncoding};
+use crate::encoding::MajoranaEncoding;
 mod optimise;
 use crate::optimise::anneal_enumerations;
 mod ternarytree;
@@ -45,9 +45,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         */
         let left = left.as_array();
         let right = right.as_array();
-        let (ipower, product) = symplectic_product(left, right);
+        let (product, ipower) = MajoranaEncoding::symplectic_product(left, right, 0);
         let pyproduct = PyArray1::from_owned_array(py, product);
-        (ipower, pyproduct)
+        (ipower as usize, pyproduct)
     }
 
     #[pyfn(m)]
@@ -57,6 +57,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         vacuum_state: PyReadonlyArray1<f64>,
         fermionic_hf_state: PyReadonlyArray1<bool>,
         mode_op_map: PyReadonlyArray1<usize>,
+        ipowers: PyReadonlyArray1<u8>,
         symplectic_matrix: PyReadonlyArray2<bool>,
     ) -> (Bound<'py, PyArray1<Complex64>>, Bound<'py, PyArray2<bool>>) {
         /*
@@ -77,13 +78,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let mode_op_map = mode_op_map.as_array();
         let symplectic_matrix = symplectic_matrix.as_array();
-        let (coeffs, states) = hartree_fock_state(
-            vacuum_state,
-            fermionic_hf_state,
-            mode_op_map,
-            symplectic_matrix,
-        )
-        .unwrap();
+        let ipowers = ipowers.as_array();
+        let encoding = MajoranaEncoding::new(ipowers, symplectic_matrix);
+        let (coeffs, states) = encoding
+            .hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map)
+            .unwrap();
         (
             PyArray1::from_owned_array(py, coeffs),
             PyArray2::from_owned_array(py, states),
@@ -95,10 +94,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_symplectic_to_pauli<'py>(
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
-        ipower: usize,
+        ipower: u8,
     ) -> (Bound<'py, PyString>, Bound<'py, PyInt>) {
         let symplectic = symplectic.as_array();
-        let (pauli, ipower) = symplectic_to_pauli(symplectic, ipower);
+        let (pauli, ipower) = MajoranaEncoding::symplectic_to_pauli(symplectic, ipower);
         (PyString::new(py, &pauli), PyInt::new(py, ipower))
     }
 

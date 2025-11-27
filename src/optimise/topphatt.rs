@@ -1,12 +1,10 @@
 use itertools::FoldWhile::{Continue, Done};
-use itertools::{izip, Itertools};
-use std::iter::zip;
-use tinyvec::{array_vec, Array, ArrayVec};
+use tinyvec::ArrayVec;
 const MAX_SIZE: usize = 85;
 const MAJORANA_MAX: usize = 4;
 
-use crate::encoding::{MajoranaEncoding, MajoranaEncodingOwned};
-use crate::ternarytree::{Child, Edge, Parent, TernaryTree, TernaryTreeError};
+use crate::encoding::MajoranaEncodingOwned;
+use crate::ternarytree::{Child, Edge, Parent, TTFlatPack, TernaryTree, TernaryTreeError};
 use crate::types::MajoranaSparse;
 
 enum Restriction {
@@ -20,8 +18,8 @@ enum Restriction {
 type LeafLocation = (usize, Edge);
 
 struct LeafPair {
-    odd: LeafLocation,
-    even: LeafLocation,
+    X: LeafLocation,
+    Y: LeafLocation,
 }
 
 struct TreeRetrictions {
@@ -37,6 +35,7 @@ impl TreeRetrictions {
         let y: Vec<Restriction> = Vec::with_capacity(tree.n_nodes);
         let z: Vec<Restriction> = Vec::with_capacity(tree.n_nodes);
         let pairs: Vec<LeafPair> = Vec::with_capacity(tree.n_nodes);
+
         Self { x, y, z, pairs }
     }
 }
@@ -66,11 +65,21 @@ struct NodeDependencies(Vec<ArrayVec<[usize; 3]>>);
 pub fn topphatt(
     mut tree: TernaryTree,
     hamiltonian: MajoranaSparse,
+    n_qubits: usize,
+    flatpack: TTFlatPack,
 ) -> Result<MajoranaEncodingOwned, TernaryTreeError> {
-    let mut restrictions = TreeRetrictions::new(&tree);
+    let mut tree = TernaryTree::from_flatpack_naive(flatpack);
+    // let mut restrictions = TreeRetrictions::new(&tree);
 
     let mut active_nodes: Vec<usize> = Vec::new();
     // let mut node_dependencies = NodeDependencies::new(&tree);
 
-    Ok(MajoranaEncodingOwned::try_from(tree)?)
+    // Ok(tree.build_encoding(n_qubits, Some(node_qubit_map)))?;
+    todo!()
+}
+
+#[cfg(test)]
+mod test_topphatt {
+    #[test]
+    fn test_initialise_restrictions() {}
 }

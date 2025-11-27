@@ -1,9 +1,9 @@
 use log::info;
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
-    PyReadonlyArray4, PyReadonlyArrayDyn, PyUntypedArrayMethods,
+    PyReadonlyArray4, PyReadonlyArrayDyn,
 };
-use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
+use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyList, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 use std::iter::zip;
 mod types;
@@ -18,6 +18,7 @@ use crate::encoding::MajoranaEncoding;
 mod optimise;
 use crate::optimise::anneal_enumerations;
 mod ternarytree;
+use crate::ternarytree::TTFlatPack;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -265,13 +266,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     #[pyfn(m)]
-    #[pyo3(name = "hatt")]
-    fn wrap_hatt<'py>(
+    #[pyo3(name = "topphatt")]
+    fn wrap_topphatt<'py>(
         py: Python<'py>,
+        node_map: &Bound<'py, PyList>,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
     ) -> PyResult<()> {
-        let n_modes = coeffs[0].shape()[0];
+        let ttmap: TTFlatPack = node_map.extract::<TTFlatPack>()?;
+
         let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
         for (sig, coeff) in zip(signatures, coeffs) {
             let vec_sig: Vec<LadderOperator> = sig

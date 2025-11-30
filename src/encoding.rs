@@ -8,12 +8,12 @@ use ahash::RandomState;
 use anyhow::Result;
 use log::debug;
 use ndarray::{Axis, Zip};
-use num_complex::c64;
+use num_complex::{c64, ComplexFloat};
 use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2};
 use numpy::Complex64;
 use std::collections::HashMap;
 
-trait Encode<T> {
+pub trait Encode<T> {
     fn encode(&self, input: T) -> QubitHamiltonian;
 }
 
@@ -192,8 +192,8 @@ impl Encode<MajoranaProduct> for MajoranaEncoding<'_> {
             |acc, &ind| Self::symplectic_product(acc.0.view(), self.symplectics.row(ind), acc.1),
         );
         ipower += product_ipower;
-        println!("{:#?}", operator);
-        println!(
+        debug!("{:#?}", operator);
+        debug!(
             "{:#?}",
             MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
         );
@@ -215,40 +215,39 @@ impl Encode<MajoranaSparse> for MajoranaEncoding<'_> {
             .iter()
             .zip(hamiltonian.coefficients)
             .for_each(|(&indices, coef)| {
-                println!("{:#?}", indices);
+                debug!("{:#?}", indices);
                 let (operator, product_ipower) = indices.iter().fold(
                     (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
                     |acc, &ind| {
-                        println!("Ind {:#?}", ind);
+                        debug!("Ind {:#?}", ind);
                         let (a, i) = Self::symplectic_product(
                             acc.0.view(),
-                            self.symplectics.row(ind),
+                            self.symplectics.row(ind as usize),
                             acc.1,
                         );
-                        println!("a,i {:#?}", (a.clone(), i.clone()));
-                        // println!("acc {:#?}", acc);
+                        debug!("a,i {:#?}", (a.clone(), i.clone()));
+                        // debug!("acc {:#?}", acc);
                         (a, i)
                     },
                 );
-                println!("Op {:#?}\n", operator);
-                println!("Prod ipower: {:#?}\n", product_ipower);
-                let ipower: u8 = indices
-                    .iter()
-                    .fold(product_ipower, |acc, &ind| acc + &self.ipowers[ind])
-                    % 4;
-                println!("Sum Ipower {:#?}\n", ipower);
-                // println!(
+                debug!("Op {:#?}\n", operator);
+                debug!("Prod ipower: {:#?}\n", product_ipower);
+                let ipower: u8 = indices.iter().fold(product_ipower, |acc, &ind| {
+                    acc + &self.ipowers[ind as usize]
+                }) % 4;
+                debug!("Sum Ipower {:#?}\n", ipower);
+                // debug!(
                 //     "EncodeSparse ME {:#?}",
                 //     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
                 // );
                 let (pauli, ipower) =
                     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
-                println!("Pauli {:#?}\n", pauli);
-                println!("Final Ipower {:#?}\n", ipower);
+                debug!("Pauli {:#?}\n", pauli);
+                debug!("Final Ipower {:#?}\n", ipower);
                 *qham.entry(pauli).or_insert(Complex64::new(0., 0.)) +=
                     coef * icount_to_sign(ipower as usize);
 
-                println!("Ham {:#?}\n", qham);
+                debug!("Ham {:#?}\n", qham);
             });
         qham
     }
@@ -350,8 +349,9 @@ mod tests {
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
-            vec![array_vec!([usize; 4] =>0, 1), array_vec!([usize; 4] =>1,0)],
+            vec![array_vec!([u16; 4] =>0, 1), array_vec!([u16; 4] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)],
+            Complex64::ZERO,
         )
         .unwrap();
         let qham = encoding.encode(ms);
@@ -367,13 +367,14 @@ mod tests {
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
-            vec![array_vec!([usize; 4] =>0, 1), array_vec!([usize; 4] =>1,0)],
+            vec![array_vec!([u16; 4] =>0, 1), array_vec!([u16; 4] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)],
+            Complex64::ZERO,
         )
         .unwrap();
-        println!("{:#?}", ms);
+        debug!("{:#?}", ms);
         let qham = encoding.encode(ms);
-        println!("{:#?}", qham);
+        debug!("{:#?}", qham);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
     #[test]
@@ -388,10 +389,10 @@ mod tests {
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
             vec![
-                array_vec!([usize; 4] =>0,0),
-                array_vec!([usize; 4] =>1,1),
-                array_vec!([usize; 4] =>2,3),
-                array_vec!([usize; 4] =>3,2),
+                array_vec!([u16; 4] =>0,0),
+                array_vec!([u16; 4] =>1,1),
+                array_vec!([u16; 4] =>2,3),
+                array_vec!([u16; 4] =>3,2),
             ],
             vec![
                 Complex64::new(1.0, 0.),
@@ -399,11 +400,12 @@ mod tests {
                 Complex64::new(1.0, 0.),
                 Complex64::new(1.0, 0.),
             ],
+            Complex64::ZERO,
         )
         .unwrap();
-        println!("{:#?}", ms);
+        debug!("{:#?}", ms);
         let qham = encoding.encode(ms);
-        println!("{:#?}", qham);
+        debug!("{:#?}", qham);
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
         assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0., 2.));
         // assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(-1., 0.));
@@ -415,8 +417,8 @@ mod tests {
         let symplectics = ndarray::arr2(&[[true, true, false, false], [true, false, true, false]]);
         let (iproducts, symplectic_products) =
             MajoranaEncoding::new(ipowers.view(), symplectics.view()).symplectic_product_map();
-        println!("{}", iproducts);
-        println!("{}", symplectic_products);
+        debug!("{}", iproducts);
+        debug!("{}", symplectic_products);
         assert_eq!(iproducts, ndarray::arr2(&[[0, 1], [3, 0]]));
         assert_eq!(
             symplectic_products.view(),
@@ -496,8 +498,8 @@ mod tests {
 pub struct MajoranaEncodingOwned {
     pub ipowers: Array1<u8>,
     pub symplectics: Array2<bool>,
-    pub n_modes: usize,
-    pub n_qubits: usize,
+    n_modes: usize,
+    n_qubits: usize,
 }
 
 // This caches symplectic products so that we don't have to calculate them
@@ -669,8 +671,8 @@ impl Encode<MajoranaProduct> for MajoranaEncodingOwned {
             |acc, &ind| Self::symplectic_product(acc.0.view(), self.symplectics.row(ind), acc.1),
         );
         ipower += product_ipower;
-        println!("{:#?}", operator);
-        println!(
+        debug!("{:#?}", operator);
+        debug!(
             "{:#?}",
             MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
         );
@@ -685,50 +687,46 @@ impl Encode<MajoranaProduct> for MajoranaEncodingOwned {
     }
 }
 
-impl Encode<MajoranaSparse> for MajoranaEncodingOwned {
-    fn encode(&self, input: MajoranaSparse) -> QubitHamiltonian {
+impl Encode<&MajoranaSparse> for MajoranaEncodingOwned {
+    fn encode(&self, input: &MajoranaSparse) -> QubitHamiltonian {
         let mut qham: QubitHamiltonian = HashMap::with_hasher(RandomState::new());
         input
             .indices
             .iter()
-            .zip(input.coefficients)
+            .zip(&input.coefficients)
             .for_each(|(&indices, coef)| {
-                println!("{:#?}", indices);
                 let (operator, product_ipower) = indices.iter().fold(
                     (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
                     |acc, &ind| {
-                        println!("Ind {:#?}", ind);
                         let (a, i) = Self::symplectic_product(
                             acc.0.view(),
-                            self.symplectics.row(ind),
+                            self.symplectics.row(ind as usize),
                             acc.1,
                         );
-                        println!("a,i {:#?}", (a.clone(), i.clone()));
-                        // println!("acc {:#?}", acc);
+                        // debug!("acc {:#?}", acc);
                         (a, i)
                     },
                 );
-                println!("Op {:#?}\n", operator);
-                println!("Prod ipower: {:#?}\n", product_ipower);
-                let ipower: u8 = indices
-                    .iter()
-                    .fold(product_ipower, |acc, &ind| acc + &self.ipowers[ind])
-                    % 4;
-                println!("Sum Ipower {:#?}\n", ipower);
-                // println!(
+                let ipower: u8 = indices.iter().fold(product_ipower, |acc, &ind| {
+                    acc + &self.ipowers[ind as usize]
+                }) % 4;
+                // debug!(
                 //     "EncodeSparse ME {:#?}",
                 //     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
                 // );
                 let (pauli, ipower) =
                     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
-                println!("Pauli {:#?}\n", pauli);
-                println!("Final Ipower {:#?}\n", ipower);
                 *qham.entry(pauli).or_insert(Complex64::new(0., 0.)) +=
                     coef * icount_to_sign(ipower as usize);
-
-                println!("Ham {:#?}\n", qham);
             });
-        qham
+        *qham
+            .entry(
+                (0..=self.n_modes)
+                    .map(|_| "I".to_string())
+                    .collect::<String>(),
+            )
+            .or_insert(c64(0., 0.)) += input.constant;
+        qham.into_iter().filter(|(_, v)| v.abs() > 1e-12).collect()
     }
 }
 
@@ -828,8 +826,9 @@ mod owned_tests {
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
-            vec![array_vec!([usize; 4] =>0, 1), array_vec!([usize; 4] =>1,0)],
+            vec![array_vec!([u16; 4] =>0, 1), array_vec!([u16; 4] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)],
+            Complex64::ZERO,
         )
         .unwrap();
         let qham = encoding.encode(ms);
@@ -845,13 +844,14 @@ mod owned_tests {
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
-            vec![array_vec!([usize; 4] =>0, 1), array_vec!([usize; 4] =>1,0)],
+            vec![array_vec!([u16; 4] =>0, 1), array_vec!([u16; 4] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)],
+            Complex64::ZERO,
         )
         .unwrap();
-        println!("{:#?}", ms);
+        debug!("{:#?}", ms);
         let qham = encoding.encode(ms);
-        println!("{:#?}", qham);
+        debug!("{:#?}", qham);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
     #[test]
@@ -866,10 +866,10 @@ mod owned_tests {
         let encoding: MajoranaEncoding = MajoranaEncoding::new(ipowers.view(), symplectics.view());
         let ms = MajoranaSparse::new(
             vec![
-                array_vec!([usize; 4] =>0,0),
-                array_vec!([usize; 4] =>1,1),
-                array_vec!([usize; 4] =>2,3),
-                array_vec!([usize; 4] =>3,2),
+                array_vec!([u16; 4] =>0,0),
+                array_vec!([u16; 4] =>1,1),
+                array_vec!([u16; 4] =>2,3),
+                array_vec!([u16; 4] =>3,2),
             ],
             vec![
                 Complex64::new(1.0, 0.),
@@ -877,11 +877,12 @@ mod owned_tests {
                 Complex64::new(1.0, 0.),
                 Complex64::new(1.0, 0.),
             ],
+            Complex64::ZERO,
         )
         .unwrap();
-        println!("{:#?}", ms);
+        debug!("{:#?}", ms);
         let qham = encoding.encode(ms);
-        println!("{:#?}", qham);
+        debug!("{:#?}", qham);
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
         assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0., 2.));
         // assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(-1., 0.));
@@ -893,8 +894,8 @@ mod owned_tests {
         let symplectics = ndarray::arr2(&[[true, true, false, false], [true, false, true, false]]);
         let (iproducts, symplectic_products) =
             MajoranaEncoding::new(ipowers.view(), symplectics.view()).symplectic_product_map();
-        println!("{}", iproducts);
-        println!("{}", symplectic_products);
+        debug!("{}", iproducts);
+        debug!("{}", symplectic_products);
         assert_eq!(iproducts, ndarray::arr2(&[[0, 1], [3, 0]]));
         assert_eq!(
             symplectic_products.view(),

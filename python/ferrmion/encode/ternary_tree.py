@@ -141,6 +141,33 @@ class TernaryTree(FermionQubitEncoding):
         self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
+    def flatpack(self) -> list[tuple[int, tuple[int,int,int]]]:
+        """Create a TTFlatpack from the tree, which can be passed to rust functions.
+
+        Returns:
+            list[tuple[int, tuple[int,int,int]]]
+        """
+        flatpack: list[tuple[int, tuple[int, int, int]]] = []
+
+        to_flatten: list[TTNode] = [self.root_node]
+        while len(to_flatten) > 0:
+            node:TTNode = to_flatten[0]
+            children = []
+            if isinstance(node.x, TTNode):
+                to_flatten.append(node.x)
+                children.append(int(node.x.qubit_label))
+            if isinstance(node.y, TTNode):
+                to_flatten.append(node.y)
+                children.append(int(node.y.qubit_label))
+            if isinstance(node.z, TTNode):
+                to_flatten.append(node.z)
+                children.append(int(node.z.qubit_label))
+
+            flatpack.append((int(node.qubit_label), tuple(children)))
+
+        return flatpack
+
+
     def default_enumeration_scheme(self) -> dict[str, tuple[int, int]]:
         """Create a default enumeration scheme for the tree.
 

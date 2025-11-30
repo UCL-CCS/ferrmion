@@ -2,11 +2,11 @@
 Ternary tree encodings and methods.
 */
 use crate::{encoding::MajoranaEncodingOwned, types::Pauli};
-use itertools::izip;
 use log::debug;
-use numpy::ndarray::{s, Array1, Array2};
+use ndarray::Axis;
+use numpy::ndarray::{s, Array1, Array2, Zip};
 use std::fmt;
-use std::ops::{Mul, Not};
+use std::ops::Not;
 use std::result::Result;
 use thiserror::Error;
 use tinyvec::ArrayVec;
@@ -14,9 +14,8 @@ use tinyvec::ArrayVec;
 pub type TTFlatPack = Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>;
 
 type NodeIndexArray = ArrayVec<[u8; 256]>;
-const MAX_SIZE: usize = 85;
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum Edge {
     X,
     Y,
@@ -46,12 +45,6 @@ pub enum YParity {
 }
 
 impl YParity {
-    fn swap_inplace(self) -> Self {
-        match self {
-            Self::Odd => Self::Even,
-            Self::Even => Self::Odd,
-        }
-    }
     fn as_u8(&self) -> u8 {
         match self {
             Self::Even => 0,
@@ -70,17 +63,6 @@ impl Not for YParity {
     }
 }
 
-impl Mul for YParity {
-    type Output = Self;
-    fn mul(mut self, rhs: Self) -> Self {
-        if self == rhs {
-            self
-        } else {
-            self.swap_inplace()
-        }
-    }
-}
-
 // As parent_of is stored for eachof the N
 // nodes, a single node can be the parent_of in three
 // different ways.
@@ -93,10 +75,10 @@ pub struct Parent {
 }
 
 impl Parent {
-    fn new(edge: Edge, index: u8) -> Self {
+    pub fn new(edge: Edge, index: u8) -> Self {
         Parent { edge, index }
     }
-    fn node_index(&self) -> usize {
+    pub fn node_index(&self) -> usize {
         self.index as usize
     }
 }
@@ -120,11 +102,11 @@ impl Child {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct TernaryTree {
-    parent_of: Vec<Option<Parent>>,
-    x_child_of: Vec<Option<Child>>,
-    y_child_of: Vec<Option<Child>>,
-    z_child_of: Vec<Option<Child>>,
-    y_parity_of: Vec<YParity>,
+    pub(super) parent_of: Vec<Option<Parent>>,
+    pub(super) x_child_of: Vec<Option<Child>>,
+    pub(super) y_child_of: Vec<Option<Child>>,
+    pub(super) z_child_of: Vec<Option<Child>>,
+    pub(super) y_parity_of: Vec<YParity>,
     pub n_nodes: usize,
 }
 
@@ -208,24 +190,26 @@ impl TernaryTree {
 
 // Standard Encodings
 impl TernaryTree {
-    fn naive_jordan_wigner(n_nodes: usize) -> TernaryTree {
+    pub fn naive_jordan_wigner(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
         let branch: Vec<(Edge, usize)> = (0..n_nodes - 1).map(|v| (Edge::Z, v + 1)).collect();
+        debug!("{:?}", branch);
         tree.add_branch(0, branch)
             .expect("Naive JW branch should be valid.");
+        debug!("{:?}", tree);
         tree
     }
 
-    fn naive_parity(n_nodes: usize) -> TernaryTree {
+    pub fn naive_parity(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
-        println!("{:#?}", tree);
+        debug!("{:#?}", tree);
         let branch: Vec<(Edge, usize)> = (0..n_nodes - 1).map(|v| (Edge::X, v + 1)).collect();
         tree.add_branch(0, branch)
             .expect("Naive Parity branch should be valid.");
         tree
     }
 
-    fn naive_bravyi_kitaev(n_nodes: usize) -> TernaryTree {
+    pub fn naive_bravyi_kitaev(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
         if n_nodes >= 2 {
             tree.add_child(Parent::new(Edge::X, 0), Child::Node(1))
@@ -245,14 +229,14 @@ impl TernaryTree {
         tree
     }
 
-    fn naive_jkmn(n_nodes: usize) -> TernaryTree {
+    pub fn naive_jkmn(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
 
         let mut parent = 0_u8;
         let mut edges = [Edge::X, Edge::Y, Edge::Z].into_iter().cycle();
         for ind in 1..n_nodes {
             if let Some(e) = edges.next() {
-                println!("{:?}", e);
+                debug!("{:?}", e);
                 tree.add_child(Parent::new(e, parent), Child::Node(ind as u8))
                     .expect("Naive JKMN children should be valid.");
                 if matches!(e, Edge::Z) {
@@ -260,7 +244,7 @@ impl TernaryTree {
                 };
             }
         }
-        println!("{:?}", tree);
+        debug!("{:?}", tree);
         tree
     }
 }
@@ -268,10 +252,12 @@ impl TernaryTree {
 // Output
 impl TernaryTree {
     pub fn build_encoding(
-        self,
+        &self,
         n_qubits: usize,
+        // mode_op_map: Option<Vec<usize>>, //TODO
         node_qubit_map: Option<Vec<usize>>,
     ) -> Result<MajoranaEncodingOwned, TernaryTreeError> {
+        debug!("Build encoding from {self:#?}");
         if let Some(ref nqm) = node_qubit_map {
             if nqm.len() != self.n_nodes {
                 return Err(TernaryTreeError::BuildEncodingError(
@@ -290,7 +276,7 @@ impl TernaryTree {
         let mut symplectics: Array2<bool> =
             Array2::from_elem((2 * self.n_nodes as usize, 2 * self.n_nodes), false);
         for final_edge in [Edge::X, Edge::Y, Edge::Z] {
-            println!("\nFinal Edge {:?}", final_edge);
+            debug!("\nFinal Edge {:?}", final_edge);
             let child_of = match final_edge {
                 Edge::X => &self.x_child_of,
                 Edge::Y => &self.y_child_of,
@@ -302,20 +288,45 @@ impl TernaryTree {
                 .filter(|(_, v)| matches!(v, Some(Child::XLeaf(_)) | Some(Child::YLeaf(_))))
                 .map(|(ind, _)| ind as usize)
                 .collect();
-            println!("Leaf locations on edge {:?}", leaf_locations);
+            debug!("Leaf locations on edge {:?}", leaf_locations);
             leaf_locations.iter().for_each(|&ind| {
+                debug!("ind {:?}", ind);
+                debug!("final_edge {:?}", final_edge);
                 let symplectic_result = self
                     .symplectic_from_leaf(&final_edge, ind)
                     .expect("Leaf locations should have been validated.");
+                debug!("leaf_result {:?}", symplectic_result);
                 ipowers[symplectic_result.0 as usize] = symplectic_result.1;
                 symplectics
                     .slice_mut(s![symplectic_result.0 as usize, ..])
                     .assign(&symplectic_result.2);
             });
-            println!("symplectics {:?}", symplectics);
+            debug!("symplectics {:?}", symplectics);
         }
-        if matches!(node_qubit_map, Some(nqm)) {
-            todo!()
+        if let Some(nqm) = node_qubit_map {
+            let padded_symplectics: Array2<bool> =
+                Array2::from_elem((2 * self.n_nodes, 2 * n_qubits), false);
+            Zip::from(
+                padded_symplectics
+                    .select(Axis(1), nqm.as_slice())
+                    .columns_mut(),
+            )
+            .and(symplectics.columns())
+            .for_each(|mut p, s| p.assign(&s));
+            Zip::from(
+                padded_symplectics
+                    .select(
+                        Axis(1),
+                        nqm.iter()
+                            .map(|v| v + self.n_nodes)
+                            .collect::<Vec<usize>>()
+                            .as_slice(),
+                    )
+                    .columns_mut(),
+            )
+            .and(symplectics.columns())
+            .for_each(|mut p, s| p.assign(&s));
+            symplectics = padded_symplectics;
         }
         Ok(MajoranaEncodingOwned::new(ipowers, symplectics))
     }
@@ -334,18 +345,6 @@ impl TernaryTree {
         let mut index = node_index;
         while let Some(Child::Node(z_child)) = self.z_child_of[index] {
             index = z_child as usize;
-        }
-        index
-    }
-
-    fn get_z_ancestor_of(&self, node_index: usize) -> usize {
-        let mut index = node_index;
-        while let Some(Parent {
-            edge: Edge::Z,
-            index: z_parent,
-        }) = self.parent_of[index]
-        {
-            index = z_parent as usize;
         }
         index
     }
@@ -374,12 +373,6 @@ impl TernaryTree {
         };
 
         if let Some(existing_child) = current_child {
-            let child_of = match new_parent.edge {
-                Edge::X => &mut self.x_child_of,
-                Edge::Y => &mut self.y_child_of,
-                Edge::Z => &mut self.z_child_of,
-            };
-
             match existing_child {
                 // If parent has a child node it cannot accept a new child node
                 Child::Node(_) => {
@@ -420,10 +413,10 @@ impl TernaryTree {
             self.y_parity_of[new_child.node_index()] = self.y_parity_of[new_parent.node_index()];
 
             if matches!(new_parent.edge, Edge::Y) {
-                println!("Swapping parity of child.");
+                debug!("Swapping parity of child.");
                 self.y_parity_of[new_child.node_index()] =
                     !self.y_parity_of[new_parent.node_index()];
-                println!("{:?}", self.y_parity_of);
+                debug!("{:?}", self.y_parity_of);
             }
         }
         Ok(())
@@ -462,8 +455,9 @@ impl TernaryTree {
         let mut ipower: u8 = 0;
         let mut xz_array: Array1<bool> = Array1::from_elem(2 * self.n_nodes, false);
         let majorana_index: u8;
-
+        debug!("Parent index {parent_index}");
         if let Some(child) = child_of[usize::from(parent_index)] {
+            debug!("Child {child:?}");
             match child {
                 Child::XLeaf(_) | Child::YLeaf(_) => {
                     majorana_index = self.majorana_index(child);
@@ -481,7 +475,7 @@ impl TernaryTree {
                 parent_index,
             ));
         }
-        println!("Majorana Index - {:?}", majorana_index);
+        debug!("Majorana Index - {:?}", majorana_index);
 
         if matches!(leaf_edge, Edge::Y) {
             ipower += 1
@@ -492,31 +486,28 @@ impl TernaryTree {
         xz_array[[parent_index + self.n_nodes]] = bool_term.1;
 
         // let parent = self.parent_of[]
-        println!("Parent {:?}", parent_index);
-        println!("parent_of {:?}", self.parent_of);
+        debug!("Parent {:?}", parent_index);
+        debug!("parent_of {:?}", self.parent_of);
 
-        let mut counter = 0;
         let mut parent_index = parent_index;
         while let Some(parent) = self.parent_of[parent_index] {
-            println!("{:?}", parent);
+            debug!("{:?}", parent);
             parent_index = parent.node_index();
-            println!("{:?}", parent_index);
+            debug!("{:?}", parent_index);
 
             if matches!(parent.edge, Edge::Y) {
                 ipower += 1;
             }
             let bool_term: (bool, bool) = Pauli::from(&parent.edge).into();
 
-            println!("{:?}", bool_term);
+            debug!("{:?}", bool_term);
             xz_array[[parent_index]] = bool_term.0;
             xz_array[[parent_index + self.n_nodes]] = bool_term.1;
-            println!("{:?}", xz_array);
-            if counter > 5 {
-                break;
-            } else {
-                counter += 1;
-            }
+            debug!("{:?}", xz_array);
         }
+        debug!("Majorana index {:?}", majorana_index);
+        debug!("ipower {:?}", ipower);
+        debug!("symplectic {:?}", xz_array);
         Ok((majorana_index, ipower, xz_array))
     }
 }
@@ -768,7 +759,7 @@ mod tt_tests {
         tt.add_child(Parent::new(X, 0), Child::XLeaf(0))?;
         tt.add_child(Parent::new(Y, 0), Child::YLeaf(0))?;
         tt.add_child(Parent::new(Z, 0), Child::Node(1))?;
-        println!("{:?}", tt);
+        debug!("{:?}", tt);
 
         tt.add_child(Parent::new(X, 1), Child::XLeaf(1))?;
         tt.add_child(Parent::new(Y, 1), Child::YLeaf(1))?;
@@ -891,120 +882,5 @@ mod tt_tests {
         assert_eq!(branch_tt.y_child_of.iter().flatten().count(), 0);
 
         assert!(branch_tt.add_branch(1, vec![(Edge::X, 2)]).is_err());
-    }
-}
-
-#[derive(Debug)]
-pub struct FastTernaryTree {
-    pub parent_of: NodeIndexArray,
-    pub x_child_of: NodeIndexArray,
-    pub y_child_of: NodeIndexArray,
-    pub z_child_of: NodeIndexArray,
-    pub z_ancestor_of: NodeIndexArray,
-    pub z_descendant_of: NodeIndexArray,
-    pub n_nodes: u8,
-}
-
-impl FastTernaryTree {
-    pub fn new(n_nodes: usize) -> Self {
-        // let init_child: NodeIndexArray =
-        // ArrayVec::from_array_len(core::array::from_fn(|i| { i } as u8), n_nodes);
-        let init_parents =
-            ArrayVec::from_array_len(core::array::from_fn(|i| { i } as u8), 3 * n_nodes + 1);
-        Self {
-            parent_of: init_parents,
-            x_child_of: init_parents,
-            y_child_of: init_parents,
-            z_child_of: init_parents,
-            z_ancestor_of: init_parents,
-            z_descendant_of: init_parents,
-            n_nodes: n_nodes as u8,
-        }
-    }
-
-    pub fn add_child(&mut self, branch: Edge, parent_index: u8, child_index: u8) {
-        // Child should always be set
-        // is set as self index initially.
-
-        // if not self-child
-        // change child
-        // add parent to new child
-        // // remove current childs parent
-        let child_of: &mut ArrayVec<[u8; 256]>;
-        let parent_branch_offset: u8;
-        match branch {
-            Edge::X => {
-                child_of = &mut self.x_child_of;
-                parent_branch_offset = 0;
-            }
-            Edge::Y => {
-                child_of = &mut self.y_child_of;
-                parent_branch_offset = self.n_nodes as u8;
-            }
-            Edge::Z => {
-                child_of = &mut self.z_child_of;
-                parent_branch_offset = 2 * self.n_nodes as u8;
-            }
-        }
-        let existing_child: u8 = child_of[parent_index as usize];
-        if existing_child != parent_index {
-            self.parent_of[existing_child as usize] = existing_child;
-        }
-        child_of[parent_index as usize] = child_index;
-        println!("pbo {:?}", parent_branch_offset);
-        self.parent_of[child_index as usize] = parent_index + parent_branch_offset;
-    }
-    pub fn add_leaf(&mut self, branch: Edge, parent_index: u8, leaf_index: u8) {
-        // Child should always be set
-        // is set as self index initially.
-
-        // if not self-child
-        // change current child to leaf
-        // remove current childs parent
-        let child_of: &mut ArrayVec<[u8; 256]>;
-        match branch {
-            Edge::X => {
-                child_of = &mut self.x_child_of;
-            }
-            Edge::Y => {
-                child_of = &mut self.y_child_of;
-            }
-            Edge::Z => {
-                child_of = &mut self.z_child_of;
-            }
-        }
-        let existing_child: u8 = child_of[parent_index as usize];
-        if existing_child != parent_index {
-            self.parent_of[existing_child as usize] = existing_child;
-        }
-        child_of[parent_index as usize] = leaf_index;
-    }
-    pub fn get_parent_edge(&self, parent_index: u8) -> Option<(Edge, usize)> {
-        if parent_index < self.n_nodes {
-            Some((Edge::X, parent_index as usize))
-        } else if parent_index > self.n_nodes && parent_index < 2 * self.n_nodes {
-            Some((Edge::Y, (parent_index % self.n_nodes) as usize))
-        } else if parent_index < 3 * self.n_nodes {
-            Some((Edge::Z, (parent_index % self.n_nodes) as usize))
-        } else {
-            None
-        }
-    }
-}
-
-#[cfg(test)]
-mod test_ftt {
-    use super::*;
-    use ndarray::{arr1, arr2};
-
-    #[test]
-    fn test_new() {
-        let mut ftt = FastTernaryTree::new(10);
-        ftt.add_child(Edge::X, 1, 5);
-        assert_eq!(ftt.parent_of[5], 1);
-        ftt.add_child(Edge::Y, 1, 6);
-        assert_eq!(ftt.parent_of[6], 1 + ftt.n_nodes);
-        ftt.add_child(Edge::Z, 1, 7);
-        assert_eq!(ftt.parent_of[7], 1 + (2 * ftt.n_nodes));
     }
 }

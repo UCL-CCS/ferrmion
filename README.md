@@ -4,8 +4,7 @@
 
 # ferrmion
 
-This codebase contains methods to generate qubit Hamiltonians from fermionic Hamiltonians.
-
+This codebase contains methods to generate optimised qubit Hamiltonians from fermionic Hamiltonians.
 
 ## Interop
 

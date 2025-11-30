@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unrealeased]
 ### Added
-- Topology-preserving Hamiltonian Adaptive Ternary Tree (TOPP-HATT) in `ferrmion.optimize.topphatt`.
+- Topology-preserving Hamiltonian Adaptive Ternary Tree (TOPP-HATT) in `src/topphatt`.
+- `MajoranaEncodingOwned` in `src/encoding`
+- `TernaryTree` in `src/ternarytree`
+- `FermionMatrix`, `FermionSparse`, `FermionProduct`, `MajoranaProduct`, `MajoranaSparse` in `src/types`
 - `max_nodes` option in `bonsai_algorithm` to build trees without using all the nodes of a device.
+- New functions exposed to python api of `core`: `topphatt`, `topphatt_standard`, `encode`, `encode_standard`, `standard_symplectic_matrix`.
 
 ### Changed
 - `TernaryTree.default_enumeration_scheme` allows arbitrary qubit labels but enforces mode labels from `range(n_modes)`.

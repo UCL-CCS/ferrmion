@@ -11,11 +11,12 @@ from ferrmion.encode.ternary_tree import (
     JKMN,
     ParityEncoding,
 )
-from ferrmion.utils import symplectic_hash, symplectic_unhash
+from ferrmion.utils import symplectic_hash, symplectic_unhash, symplectic_to_pauli
 from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator
 from openfermion.transforms import jordan_wigner
 from ferrmion.hamiltonians import molecular_hamiltonian
+from ferrmion.core import standard_symplectic_matrix
 
 
 @pytest.fixture
@@ -595,3 +596,12 @@ def test_eigenvalues_across_encodings(water_eigenvalues, water_tt, water_integra
 
 def test_default_mode_op_map(water_tt):
     assert np.all(water_tt.default_mode_op_map == [*range(water_tt.n_qubits)])
+
+@pytest.mark.parametrize("n_modes", [1,5,10,20])
+@pytest.mark.parametrize("encoding,name", [(JordanWigner, "JW"), (ParityEncoding, "PE"), (BravyiKitaev, "BK"), (JKMN, "JKMN")])
+def test_core_standard_encodings(n_modes,encoding,name):
+    n_modes = 20
+    i,s = encoding(20)._build_symplectic_matrix()
+    ci, cs = standard_symplectic_matrix(name,20)
+    assert np.all(i==ci)
+    assert np.all(s==cs)

@@ -1,22 +1,29 @@
-use log::info;
+use ::core::panic;
+use log::{debug, info};
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
-    PyReadonlyArray4,
+    PyReadonlyArray4, PyReadonlyArrayDyn,
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
-
+use std::iter::zip;
 mod types;
 mod utils;
-use crate::optimise::template_weight;
+#[allow(unused_imports)]
+use crate::optimise::{template_weight, topphatt};
+use crate::types::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
 use crate::utils::*;
 mod hamiltonians;
-use crate::hamiltonians::{fill_template, hubbard, molecular, Notation, QubitHamiltonianTemplate};
+use crate::hamiltonians::{
+    fill_template, hubbard, molecular, Notation, QubitHamiltonian, QubitHamiltonianTemplate,
+};
 mod encoding;
-use crate::encoding::MajoranaEncoding;
+use crate::encoding::{Encode, MajoranaEncoding};
 mod optimise;
 use crate::optimise::anneal_enumerations;
 mod ternarytree;
+use crate::ternarytree::{TTFlatPack, TernaryTree};
+
 /// A Python module implemented in Rust.
 #[pymodule]
 #[pyo3(name = "core")]
@@ -80,9 +87,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let symplectic_matrix = symplectic_matrix.as_array();
         let ipowers = ipowers.as_array();
         let encoding = MajoranaEncoding::new(ipowers, symplectic_matrix);
-        let (coeffs, states) = encoding
-            .hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map)
-            .unwrap();
+        let (coeffs, states) =
+            encoding.hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map);
         (
             PyArray1::from_owned_array(py, coeffs),
             PyArray2::from_owned_array(py, states),
@@ -154,7 +160,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     #[pyfn(m)]
     #[pyo3(name = "molecular_hamiltonian_template")]
-    fn wrap_molecular_hamiltonian<'py>(
+    fn wrap_molecular_hamiltonian_template<'py>(
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
@@ -172,7 +178,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     #[pyfn(m)]
     #[pyo3(name = "hubbard_hamiltonian_template")]
-    fn wrap_hubbard_hamiltonian<'py>(
+    fn wrap_hubbard_hamiltonian_template<'py>(
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
@@ -260,6 +266,283 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         );
         let (cost, permutation) = result.expect("Annealing output error.");
         Ok((cost, permutation.into_pyarray(py)))
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "standard_symplectic_matrix")]
+    fn wrap_standard_symplectic_matrix<'py>(
+        py: Python<'py>,
+        encoding: String,
+        n_modes: usize,
+    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
+        // ) -> PyResult<()> {
+        debug!("Starting TOPPHATT");
+        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
+
+        let tree: TernaryTree = match encoding.as_str() {
+            "Jordan-Wigner" | "JW" => TernaryTree::naive_jordan_wigner(n_modes),
+            "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
+            "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
+            "JKMN" => TernaryTree::naive_jkmn(n_modes),
+            _ => panic!("Encoding must be one of JW, PE, BK or JKMN."),
+        };
+        debug!("Got Tree");
+        let encoding = tree.build_encoding(n_modes, None).unwrap();
+        debug!("Got encoding");
+
+        debug!("Got qham");
+        Ok((
+            encoding.ipowers.into_pyarray(py),
+            encoding.symplectics.into_pyarray(py),
+        ))
+        // Ok(())
+    }
+    #[pyfn(m)]
+    #[pyo3(name = "encode")]
+    fn wrap_encode<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        // ) -> PyResult<()> {
+        assert_eq!(
+            signatures.len(),
+            coeffs.len(),
+            "Signatures and coefficients should be same length"
+        );
+        let ipowers = ipowers.as_array();
+        let symplectics = symplectics.as_array();
+        let n_qubits = symplectics.ncols() / 2;
+        let n_modes = symplectics.nrows() / 2;
+
+        assert!(
+            n_qubits >= n_modes,
+            "Must have at least as many qubits as modes."
+        );
+
+        debug!("Starting TOPPHATT");
+        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
+
+        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
+        for (sig, coeff) in zip(signatures, coeffs) {
+            let vec_sig: Vec<LadderOperator> = sig
+                .chars()
+                .map(|v| {
+                    LadderOperator::try_from(v).expect("Signature components should be + or -")
+                })
+                .collect();
+            let term_coef = coeff.as_array().to_owned();
+            fsparse_vec.push(
+                FermionMatrix::new(vec_sig, term_coef)
+                    .expect("Signature lengths and coeff dimensions must match")
+                    .into(),
+            );
+        }
+        debug!("{:?}", fsparse_vec);
+        debug!("Getting MSparse");
+        let hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+        debug!("Got MSparse");
+        debug!("Got Hamiltonian");
+        debug!("Hamiltonian {:?}", hamiltonian);
+
+        let encoding = MajoranaEncoding::new(ipowers, symplectics);
+        debug!("Got encoding");
+        let qham: QubitHamiltonian = encoding.encode(hamiltonian);
+
+        debug!("Got qham");
+        Ok(qham
+            .into_py_dict(py)
+            .expect("Should be able to convert QubitHamiltonian to PyDict."))
+        // Ok(())
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "encode_standard")]
+    fn wrap_encode_standard<'py>(
+        py: Python<'py>,
+        encoding: String,
+        n_modes: usize,
+        n_qubits: usize,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        // ) -> PyResult<()> {
+        assert_eq!(
+            signatures.len(),
+            coeffs.len(),
+            "Signatures and coefficients should be same length"
+        );
+        assert!(
+            n_qubits >= n_modes,
+            "Must have at least as many qubits as modes."
+        );
+
+        debug!("Starting TOPPHATT");
+        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
+
+        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
+        for (sig, coeff) in zip(signatures, coeffs) {
+            let vec_sig: Vec<LadderOperator> = sig
+                .chars()
+                .map(|v| {
+                    LadderOperator::try_from(v).expect("Signature components should be + or -")
+                })
+                .collect();
+            let term_coef = coeff.as_array().to_owned();
+            fsparse_vec.push(
+                FermionMatrix::new(vec_sig, term_coef)
+                    .expect("Signature lengths and coeff dimensions must match")
+                    .into(),
+            );
+        }
+        debug!("{:?}", fsparse_vec);
+        debug!("Getting MSparse");
+        let hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+        debug!("Got MSparse");
+        debug!("Got Hamiltonian");
+        let tree: TernaryTree = match encoding.as_str() {
+            "Jordan-Wigner" | "JW" => TernaryTree::naive_jordan_wigner(n_modes),
+            "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
+            "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
+            "JKMN" => TernaryTree::naive_jkmn(n_modes),
+            _ => panic!("Encoding must be one of JW, PE, BK or JKMN."),
+        };
+        debug!("Got Tree");
+        debug!("Hamiltonian {:?}", hamiltonian);
+        let encoding = tree.build_encoding(n_qubits, None).unwrap();
+        debug!("Got encoding");
+        let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
+
+        debug!("Got qham");
+        Ok(qham
+            .into_py_dict(py)
+            .expect("Should be able to convert QubitHamiltonian to PyDict."))
+        // Ok(())
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "topphatt")]
+    fn wrap_topphatt<'py>(
+        py: Python<'py>,
+        n_qubits: usize,
+        flatpack: Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
+        // ) -> PyResult<()> {
+        debug!("Starting TOPPHATT");
+        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
+        let flatpack: TTFlatPack = flatpack;
+        debug!("Got flatpack");
+
+        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
+        for (sig, coeff) in zip(signatures, coeffs) {
+            let vec_sig: Vec<LadderOperator> = sig
+                .chars()
+                .map(|v| {
+                    LadderOperator::try_from(v).expect("Signature components should be + or -")
+                })
+                .collect();
+            let term_coef = coeff.as_array().to_owned();
+            fsparse_vec.push(
+                FermionMatrix::new(vec_sig, term_coef)
+                    .expect("Signature lengths and coeff dimensions must match")
+                    .into(),
+            );
+        }
+        debug!("{:?}", fsparse_vec);
+        debug!("Getting MSparse");
+        let hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+        debug!("Got MSparse");
+        debug!("Got Hamiltonian");
+        let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(flatpack)
+            .expect("Ternary tree should build from flatpack");
+        debug!("Got Tree");
+        debug!("Hamiltonian {:?}", hamiltonian);
+        tree = topphatt(hamiltonian.clone(), tree).expect("TOPPHATT should have failed by now.");
+
+        let encoding = tree.build_encoding(n_qubits, None).unwrap();
+        debug!("Got encoding");
+        Ok((
+            encoding.ipowers.into_pyarray(py),
+            encoding.symplectics.into_pyarray(py),
+        ))
+        // let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
+        // debug!("Got qham");
+        // Ok(qham
+        //     .into_py_dict(py)
+        //     .expect("Should be able to convert QubitHamiltonian to PyDict."))
+        // Ok(())
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "topphatt_standard")]
+    fn wrap_topphatt_standard<'py>(
+        py: Python<'py>,
+        encoding: String,
+        n_modes: usize,
+        n_qubits: usize,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
+        // ) -> PyResult<Bound<'py, PyDict>> {
+        assert_eq!(
+            signatures.len(),
+            coeffs.len(),
+            "Signatures and coefficients should be same length"
+        );
+        assert!(
+            n_qubits >= n_modes,
+            "Must have at least as many qubits as modes."
+        );
+
+        debug!("Starting TOPPHATT");
+        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
+
+        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
+        for (sig, coeff) in zip(signatures, coeffs) {
+            let vec_sig: Vec<LadderOperator> = sig
+                .chars()
+                .map(|v| {
+                    LadderOperator::try_from(v).expect("Signature components should be + or -")
+                })
+                .collect();
+            let term_coef = coeff.as_array().to_owned();
+            fsparse_vec.push(
+                FermionMatrix::new(vec_sig, term_coef)
+                    .expect("Signature lengths and coeff dimensions must match")
+                    .into(),
+            );
+        }
+        debug!("{:?}", fsparse_vec);
+        debug!("Getting MSparse");
+        let hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+        debug!("Got MSparse");
+        debug!("Got Hamiltonian");
+        let mut tree: TernaryTree = match encoding.as_str() {
+            "Jordan-Wigner" | "JW" => TernaryTree::naive_jordan_wigner(n_modes),
+            "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
+            "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
+            "JKMN" => TernaryTree::naive_jkmn(n_modes),
+            _ => panic!("Encoding must be one of JW, PE, BK or JKMN."),
+        };
+        debug!("Got Tree");
+        debug!("Hamiltonian {:?}", hamiltonian);
+        tree = topphatt(hamiltonian.clone(), tree).expect("TOPPHATT should have failed by now.");
+        let encoding = tree.build_encoding(n_qubits, None).unwrap();
+        debug!("Got encoding");
+        Ok((
+            encoding.ipowers.into_pyarray(py),
+            encoding.symplectics.into_pyarray(py),
+        ))
+        // let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
+        // debug!("Got qham");
+        // Ok(qham
+        //     .into_py_dict(py)
+        //     .expect("Should be able to convert QubitHamiltonian to PyDict."))
+        // Ok(())
     }
     Ok(())
 }

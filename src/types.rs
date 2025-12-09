@@ -1,14 +1,19 @@
+use crate::ternarytree::Edge;
 use ndarray::Dimension;
+use tinyvec::ArrayVec;
 /*
 Shared Types.
 */
 use crate::utils::vector_kron;
 use itertools::Itertools;
-use numpy::ndarray::{arr0, arr1, arr2, Array, Array1, Array2, Axis, IntoDimension, Zip};
+use num_complex::c64;
+use numpy::ndarray::{arr1, arr2, Array1, Array2, ArrayD, Axis, IntoDimension, Zip};
 use numpy::Complex64;
 use std::collections::BTreeMap;
 use std::iter::{repeat_n, zip};
 use std::{result::Result, str::FromStr};
+
+const MAX_MAJORANAS: usize = 4;
 
 #[allow(dead_code)]
 #[derive(Debug, Default)]
@@ -19,35 +24,19 @@ pub enum Pauli {
     Y,
     Z,
 }
-
-type PauliMatrix = Array2<Complex64>;
-
-impl Into<PauliMatrix> for Pauli {
-    fn into(self) -> PauliMatrix {
-        match self {
-            Pauli::I => arr2(&[
-                [Complex64::new(1., 0.), Complex64::new(0., 0.)],
-                [Complex64::new(0., 0.), Complex64::new(1., 0.)],
-            ]),
-            Pauli::X => arr2(&[
-                [Complex64::new(0., 0.), Complex64::new(1., 0.)],
-                [Complex64::new(1., 0.), Complex64::new(0., 0.)],
-            ]),
-            Pauli::Z => arr2(&[
-                [Complex64::new(1., 0.), Complex64::new(0., 0.)],
-                [Complex64::new(0., 0.), Complex64::new(-1., 0.)],
-            ]),
-            Pauli::Y => arr2(&[
-                [Complex64::new(0., 0.), Complex64::new(0., -1.)],
-                [Complex64::new(0., 1.), Complex64::new(0., 0.)],
-            ]),
+impl From<&Edge> for Pauli {
+    fn from(e: &Edge) -> Pauli {
+        match e {
+            Edge::X => Pauli::X,
+            Edge::Y => Pauli::Y,
+            Edge::Z => Pauli::Z,
         }
     }
 }
 
-impl Into<String> for Pauli {
-    fn into(self) -> String {
-        match self {
+impl From<Pauli> for String {
+    fn from(p: Pauli) -> String {
+        match p {
             Pauli::I => "I".to_string(),
             Pauli::X => "X".to_string(),
             Pauli::Y => "Y".to_string(),
@@ -55,9 +44,10 @@ impl Into<String> for Pauli {
         }
     }
 }
-impl Into<char> for Pauli {
-    fn into(self) -> char {
-        match self {
+
+impl From<Pauli> for char {
+    fn from(p: Pauli) -> char {
+        match p {
             Pauli::I => 'I',
             Pauli::X => 'X',
             Pauli::Y => 'Y',
@@ -77,18 +67,39 @@ impl From<(bool, bool)> for Pauli {
     }
 }
 
+impl From<Pauli> for (bool, bool) {
+    fn from(p: Pauli) -> (bool, bool) {
+        match p {
+            Pauli::I => (false, false),
+            Pauli::X => (true, false),
+            Pauli::Y => (true, true),
+            Pauli::Z => (false, true),
+        }
+    }
+}
+
+type PauliMatrix = Array2<Complex64>;
+
+impl From<Pauli> for PauliMatrix {
+    fn from(p: Pauli) -> PauliMatrix {
+        match p {
+            Pauli::I => arr2(&[[c64(1., 0.), c64(0., 0.)], [c64(0., 0.), c64(1., 0.)]]),
+            Pauli::X => arr2(&[[c64(0., 0.), c64(1., 0.)], [c64(1., 0.), c64(0., 0.)]]),
+            Pauli::Z => arr2(&[[c64(1., 0.), c64(0., 0.)], [c64(0., 0.), c64(-1., 0.)]]),
+            Pauli::Y => arr2(&[[c64(0., 0.), c64(0., -1.)], [c64(0., 1.), c64(0., 0.)]]),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test_pauli {
+    use super::*;
     use crate::types::{Pauli, PauliMatrix};
     use ndarray::arr2;
-    use num_complex::Complex64;
 
     #[test]
     fn test_matrix_identities() {
-        let i = arr2(&[
-            [Complex64::new(1., 0.), Complex64::new(0., 0.)],
-            [Complex64::new(0., 0.), Complex64::new(1., 0.)],
-        ]);
+        let i = arr2(&[[c64(1., 0.), c64(0., 0.)], [c64(0., 0.), c64(1., 0.)]]);
         let x = Into::<PauliMatrix>::into(Pauli::X);
         let y = Into::<PauliMatrix>::into(Pauli::Y);
         let z = Into::<PauliMatrix>::into(Pauli::Z);
@@ -96,8 +107,8 @@ mod test_pauli {
         assert_eq!(&x.dot(&x), i);
         assert_eq!(&y.dot(&y), i);
         assert_eq!(&z.dot(&z), i);
-        assert_eq!(&x.dot(&z), Complex64::new(0., -1.) * y.clone());
-        assert_eq!(&y.dot(&z), Complex64::new(0., 1.) * x.clone());
+        assert_eq!(&x.dot(&z), c64(0., -1.) * y.clone());
+        assert_eq!(&y.dot(&z), c64(0., 1.) * x.clone());
     }
 }
 
@@ -127,10 +138,21 @@ impl FromStr for LadderOperator {
 impl LadderOperator {
     pub fn fermion_coeff(&self) -> Array1<Complex64> {
         match &self {
-            LadderOperator::Creation => arr1(&[Complex64::new(0.5, 0.0), Complex64::new(0., -0.5)]),
-            LadderOperator::Annihilation => {
-                arr1(&[Complex64::new(0.5, 0.0), Complex64::new(0., 0.5)])
-            }
+            LadderOperator::Creation => arr1(&[c64(0.5, 0.0), c64(0., -0.5)]),
+            LadderOperator::Annihilation => arr1(&[c64(0.5, 0.0), c64(0., 0.5)]),
+        }
+    }
+}
+impl TryFrom<char> for LadderOperator {
+    type Error = ParseLadderError;
+
+    fn try_from(string: char) -> Result<Self, Self::Error> {
+        if string == '+' {
+            Ok(LadderOperator::Creation)
+        } else if string == '-' {
+            Ok(LadderOperator::Annihilation)
+        } else {
+            Err(ParseLadderError)
         }
     }
 }
@@ -198,18 +220,18 @@ impl FermionProduct {
     }
 }
 
-struct FermionMatrix<D: Dimension> {
+pub struct FermionMatrix {
     ops: Vec<LadderOperator>,
-    coefficients: Array<f64, D>,
+    coefficients: ArrayD<f64>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct FermionMatrixError;
+pub struct FermionMatrixError;
 
-impl<D: Dimension> FermionMatrix<D> {
+impl FermionMatrix {
     pub fn new(
         ops: Vec<LadderOperator>,
-        coefficients: Array<f64, D>,
+        coefficients: ArrayD<f64>,
     ) -> Result<Self, FermionMatrixError> {
         if ops.len() != coefficients.ndim()
             || !coefficients
@@ -222,24 +244,24 @@ impl<D: Dimension> FermionMatrix<D> {
         Ok(Self { ops, coefficients })
     }
 }
-
-struct FermionSparse {
+#[derive(Debug, PartialEq)]
+pub struct FermionSparse {
     ops: Vec<LadderOperator>,
     indices: Array2<usize>,
     coefficients: Array1<Complex64>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct SparseFermionError;
+pub struct FermionSparseError;
 
 impl FermionSparse {
     pub fn new(
         ops: Vec<LadderOperator>,
         indices: Array2<usize>,
         coefficients: Array1<Complex64>,
-    ) -> Result<Self, SparseFermionError> {
+    ) -> Result<Self, FermionSparseError> {
         if coefficients.len() != indices.len_of(Axis(0)) || ops.len() != indices.len_of(Axis(1)) {
-            return Err(SparseFermionError);
+            return Err(FermionSparseError);
         };
 
         Ok(Self {
@@ -248,19 +270,64 @@ impl FermionSparse {
             coefficients,
         })
     }
+    fn append_majorana_btree<'map>(
+        &self,
+        majoranas: &'map mut MajoranaBTree,
+    ) -> &'map MajoranaBTree {
+        let term_length = self.indices.ncols();
+        Zip::from(self.indices.rows())
+            .and(self.coefficients.view())
+            .for_each(|ind, coeff| {
+                let majorana_op_scalers: Vec<Complex64> = self
+                    .ops
+                    .iter()
+                    .map(|signature| signature.fermion_coeff())
+                    .reduce(|acc, s| vector_kron(&acc, &s))
+                    .unwrap()
+                    .to_vec();
+
+                // debug!("{:#?}", ops_coeffs);
+                let offset = repeat_n(0usize..2usize, term_length).multi_cartesian_product();
+                for (scaler, offset) in zip(majorana_op_scalers, offset) {
+                    let mut majorana_term = Array1::zeros(term_length);
+                    majorana_term += &ind;
+                    majorana_term *= 2;
+                    majorana_term = majorana_term + Array1::from_vec(offset);
+
+                    let mut mp = MajoranaProduct::new(majorana_term.to_vec(), *coeff * scaler);
+                    mp.majorise();
+                    *majoranas
+                        .entry(mp.indices)
+                        .or_insert(Complex64 { re: 0.0, im: 0.0 }) += mp.coefficient;
+                }
+            });
+        majoranas
+    }
 }
 
-impl<D: ndarray::Dimension + Copy> From<FermionMatrix<D>> for FermionSparse {
-    fn from(mft: FermionMatrix<D>) -> FermionSparse {
+impl From<FermionMatrix> for FermionSparse {
+    fn from(mft: FermionMatrix) -> FermionSparse {
+        // let temp_hashmap: HashMap<ArrayView1<usize>, f64, RandomState> =
+        //     HashMap::with_hasher(RandomState::new());
+        // mft.coefficients
+        //     .indexed_iter()
+        //     .filter(|(_, &v)| v != 0.)
+        //     .for_each(|(ind, &v)| {
+        //         *temp_hashmap.entry(ind.as_array_view()).or_default() += v;
+        //     });
+
         let n_nonzero = mft.coefficients.iter().filter(|&v| *v != 0.).count();
         let mut sparse_indices: Array2<usize> = Array2::zeros((n_nonzero, mft.ops.len()));
-        let mut sparse_coefficients: Array1<Complex64> = Array1::zeros(n_nonzero);
+        let mut sparse_coefficients: Array1<Complex64> = Array1::from_elem(n_nonzero, c64(0., 0.));
         mft.coefficients
             .indexed_iter()
-            .filter(|(_, v)| **v != 0.)
-            .for_each(|(ind, v)| {
-                let _ = sparse_indices.push_row(ind.into_dimension().as_array_view());
-                let _ = sparse_coefficients.push(Axis(0), arr0(Complex64::new(*v, 0.)).view());
+            .filter(|(_, &v)| v != 0.)
+            .enumerate()
+            .for_each(|(count, (ind, &v))| {
+                sparse_indices
+                    .row_mut(count)
+                    .assign(&ind.into_dimension().as_array_view());
+                sparse_coefficients[count] += c64(v, 0.);
             });
         FermionSparse::new(mft.ops, sparse_indices, sparse_coefficients)
             .expect("Conversion from MatrixFermionTerm should be validated.")
@@ -271,6 +338,7 @@ impl<D: ndarray::Dimension + Copy> From<FermionMatrix<D>> for FermionSparse {
 mod fermion_tests {
     use crate::types::*;
     use ndarray::{arr1, arr2};
+    use num_complex::c64;
 
     #[test]
     fn test_operator_creation() {
@@ -323,14 +391,34 @@ mod fermion_tests {
     fn test_sparse_term_creation() {
         let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
         let indices = arr2(&[[0, 1], [2, 3]]);
-        let coefficients = arr1(&[Complex64::new(1.0, 0.), Complex64::new(-1., 0.)]);
+        let coefficients = arr1(&[c64(1.0, 0.), c64(-1., 0.)]);
         let _term = FermionSparse::new(ops, indices, coefficients).unwrap();
     }
     #[test]
     fn test_matrix_term_creation() {
         let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
-        let coefficients = arr2(&[[0., 0.], [0., 0.]]);
+        let dyn_shape = ndarray::IxDyn(&[2, 2]);
+        assert_eq!(dyn_shape.clone().ndim(), 2);
+        let coefficients = ArrayD::from_elem(dyn_shape, 1.);
         let _term = FermionMatrix::new(ops, coefficients).unwrap();
+    }
+    #[test]
+    fn test_sparse_from_matrix() {
+        let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let dyn_shape = ndarray::IxDyn(&[2, 2]);
+        assert_eq!(dyn_shape.clone().ndim(), 2);
+        let mut coefficients = ArrayD::from_elem(dyn_shape, 0.);
+        coefficients[[0, 0]] = 1.;
+        coefficients[[0, 1]] = 0.5;
+        coefficients[[1, 0]] = 2.;
+        coefficients[[1, 1]] = 10.;
+        let term = FermionMatrix::new(ops, coefficients).unwrap();
+        let sparse = FermionSparse::from(term);
+        assert_eq!(sparse.indices, arr2(&[[0, 0], [0, 1], [1, 0], [1, 1]]));
+        assert_eq!(
+            sparse.coefficients,
+            arr1(&[c64(1., 0.), c64(0.5, 0.), c64(2., 0.), c64(10., 0.)])
+        );
     }
 }
 
@@ -355,15 +443,14 @@ impl MajoranaProduct {
         out
     }
     fn majorise(&mut self) {
+        if self.indices.len() == 0 {
+            return;
+        }
         let mut counter: usize = 0;
-        let mut lower = 0;
-        let mut upper = 0;
-
         let mut ind = 0;
         let mut safety = 0;
-        'outer: while lower + upper < self.indices.len() && safety < 1000 {
-            upper += 1;
-            while ind < self.indices.len() - upper && safety < 1000 {
+        'outer: while safety < 10 {
+            while ind < (self.indices.len() - 1) && safety < 10 {
                 safety += 1;
                 let left = &self.indices[ind];
                 let right = &self.indices[ind + 1];
@@ -373,16 +460,36 @@ impl MajoranaProduct {
                     if self.indices.len() <= 1 {
                         break 'outer;
                     };
+                    if ind > (self.indices.len() - 1) {
+                        ind = self.indices.len() - 1;
+                        break;
+                    }
+                    continue;
                 } else if left > right {
                     self.indices.swap(ind, ind + 1);
                     counter += 1;
                 }
                 ind += 1;
+                if self.indices.len() == 0 {
+                    break 'outer;
+                }
             }
-            lower += 1;
-            while ind >= lower && safety < 1000 {
+            // ind = if ind >= self.indices.len() {
+            //     self.indices.len() - 1
+            // } else {
+            //     ind
+            // };
+            ind = if ind > (self.indices.len() - 1) {
+                self.indices.len() - 1
+            } else {
+                ind
+            };
+            if ind == 0 {
+                break 'outer;
+            }
+            while (ind >= 1) && (ind < self.indices.len()) && (safety < 10) {
                 safety += 1;
-                let left = &self.indices[ind - 1];
+                let left = &self.indices[ind.checked_sub(1).unwrap()];
                 let right = &self.indices[ind];
                 if left == right {
                     // things get moved left
@@ -391,6 +498,8 @@ impl MajoranaProduct {
                     if self.indices.len() <= 1 {
                         break 'outer;
                     };
+                    ind -= 1;
+                    continue;
                 } else if left > right {
                     self.indices.swap(ind, ind - 1);
                     counter += 1;
@@ -404,26 +513,43 @@ impl MajoranaProduct {
     }
 }
 
+type MajoranaBTree = BTreeMap<Vec<usize>, Complex64>;
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparse {
-    pub indices: Array2<usize>,
-    pub coefficients: Array1<Complex64>,
+    pub indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+    pub coefficients: Vec<Complex64>,
+    pub constant: Complex64,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparseError;
-
 impl MajoranaSparse {
     pub fn new(
-        indices: Array2<usize>,
-        coefficients: Array1<Complex64>,
+        indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+        coefficients: Vec<Complex64>,
+        constant: Complex64,
     ) -> Result<Self, MajoranaSparseError> {
-        if coefficients.len() != indices.nrows() {
+        if coefficients.len() != indices.len() {
             return Err(MajoranaSparseError);
         };
+        let identity_terms_constant: Complex64 = indices
+            .iter()
+            .zip(&coefficients)
+            .filter(|&(ind, _)| ind == &ArrayVec::new())
+            .map(|(_, coeff)| coeff)
+            .sum();
+
+        let (i, c) = indices
+            .iter()
+            .zip(&coefficients)
+            .filter(|&(&inds, &coeff)| (coeff != Complex64::ZERO) && (inds != ArrayVec::new()))
+            .unzip();
+
         Ok(Self {
-            indices,
-            coefficients,
+            indices: i,
+            coefficients: c,
+            constant: constant + identity_terms_constant,
         })
     }
 }
@@ -432,49 +558,82 @@ impl From<FermionSparse> for MajoranaSparse {
     fn from(sft: FermionSparse) -> Self {
         // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
         // to each majorana term
-        let term_length = sft.ops.len();
+        let mut majoranas: MajoranaBTree = MajoranaBTree::new();
+        let majoranas = sft.append_majorana_btree(&mut majoranas);
+
+        // debug!("Majoranas {:#?}", majoranas);
+        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
+            majoranas
+                .values()
+                .filter(|&v| *v != Complex64::ZERO)
+                .count(),
+        );
+        let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
+            Vec::with_capacity(sparse_values.len());
+        // debug!("{:#?}", sparse_values.clone());
+        let mut sparse_constant = c64(0., 0.);
+        majoranas
+            .iter()
+            .filter(|(_, &v)| v != Complex64::ZERO)
+            .for_each(|(k, &v)| {
+                let mut op: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+                if k.len() == 0 {
+                    sparse_constant += v;
+                } else {
+                    for ind in k {
+                        op.push(*ind as u16);
+                    }
+                    sparse_indices.push(op);
+                    sparse_values.push(v);
+                }
+            });
+        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant)
+            .expect("Indices and coefficients should be same length.")
+    }
+}
+
+impl From<Vec<FermionSparse>> for MajoranaSparse {
+    fn from(sft: Vec<FermionSparse>) -> Self {
+        // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
+        // to each majorana term
+        // let term_length = sft.ops.len();
         //     .flatten()
         //     .collect::<Vec<usize>>();
         // let offset_array: Array2<usize> =
         //     Array2::from_shape_vec((2_i32.pow(term_length as u32), term_length), offset_vec);
-        let mut majoranas: BTreeMap<Vec<usize>, Complex64> = BTreeMap::new();
-        Zip::from(sft.indices.rows())
-            .and(sft.coefficients.view())
-            .for_each(|ind, coeff| {
-                let ops_coeffs: Vec<Complex64> = sft
-                    .ops
-                    .iter()
-                    .map(|s| s.fermion_coeff())
-                    .reduce(|acc, s| vector_kron(&acc, &s))
-                    .unwrap()
-                    .to_vec();
 
-                // println!("{:#?}", ops_coeffs);
-                let offset = repeat_n(0usize..2usize, term_length).multi_cartesian_product();
-                for (sc, offset) in zip(ops_coeffs, offset) {
-                    let mut majorana_term = Array1::zeros(term_length);
-                    majorana_term += &ind;
-                    majorana_term *= 2;
-                    majorana_term = majorana_term + Array1::from_vec(offset);
+        // let mut majoranas: MajoranaBTree = MajoranaBTree::new();
+        // for term in sft {
+        //     let majoranas = term.append_majorana_btree(&mut majoranas);
+        // }
+        let mut majoranas: MajoranaBTree = MajoranaBTree::new();
+        sft.iter().for_each(|term| {
+            term.append_majorana_btree(&mut majoranas);
+        });
 
-                    let mut mp = MajoranaProduct::new(majorana_term.to_vec(), *coeff);
-                    mp.majorise();
-                    *majoranas
-                        .entry(mp.indices)
-                        .or_insert(Complex64 { re: 0.0, im: 0.0 }) += sc * mp.coefficient;
+        // debug!("Majoranas {:#?}", majoranas);
+        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
+            majoranas
+                .values()
+                .filter(|&v| *v != Complex64::ZERO)
+                .count(),
+        );
+        let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
+            Vec::with_capacity(sparse_values.len());
+        // debug!("{:#?}", sparse_values.clone());
+
+        majoranas
+            .iter()
+            .filter(|(_, &v)| v != Complex64::ZERO)
+            .for_each(|(k, &v)| {
+                let mut op: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+                for ind in k {
+                    op.push(*ind as u16);
                 }
+                sparse_indices.push(op);
+                sparse_values.push(v);
             });
-
-        // println!("Majoranas {:#?}", majoranas);
-        let sparse_values: Array1<Complex64> = majoranas.values().cloned().collect();
-        let mut sparse_indices: Array2<usize> =
-            Array2::zeros((majoranas.keys().len(), term_length));
-        // println!("{:#?}", sparse_values.clone());
-        for (mut row, k) in zip(sparse_indices.rows_mut(), majoranas.keys()) {
-            // let mut row_array: Array1<usize> = Array1::from_vec(k.clone());
-            row.scaled_add(1, &Array1::from_vec(k.to_vec()));
-        }
-        MajoranaSparse::new(sparse_indices, sparse_values)
+        MajoranaSparse::new(sparse_indices, sparse_values, Complex64::ZERO)
             .expect("Indices and coefficients should be same length.")
     }
 }
@@ -482,12 +641,15 @@ impl From<FermionSparse> for MajoranaSparse {
 #[cfg(test)]
 mod majorana_tests {
     use crate::types::*;
+    use log::debug;
     use ndarray::{arr1, arr2};
+    use num_complex::c64;
+    use tinyvec::array_vec;
 
     #[test]
     fn test_majorise_do_nothing() {
         let indices = vec![0, 1];
-        let coefficient = Complex64::new(10.0, 0.);
+        let coefficient = c64(10.0, 0.);
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
         mp.majorise();
         assert_eq!(mp.indices, indices.clone());
@@ -497,10 +659,10 @@ mod majorana_tests {
     #[test]
     fn test_majorise_single_swap() {
         let indices = vec![1, 0];
-        let coefficient = Complex64::new(10.0, 0.);
+        let coefficient = c64(10.0, 0.);
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
         mp.majorise();
-        // println!("{:#?}", mp);
+        // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0, 1]);
         assert_eq!(mp.coefficient, -1. * coefficient);
     }
@@ -508,10 +670,10 @@ mod majorana_tests {
     #[test]
     fn test_majorise_simplify() {
         let indices = vec![0, 0, 0];
-        let coefficient = Complex64::new(10.0, 0.);
+        let coefficient = c64(10.0, 0.);
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
         mp.majorise();
-        // println!("{:#?}", mp);
+        // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0]);
         assert_eq!(mp.coefficient, coefficient);
     }
@@ -519,10 +681,26 @@ mod majorana_tests {
     #[test]
     fn test_majorise_simplify_to_empty() {
         let indices = vec![0, 0];
-        let coefficient = Complex64::new(10.0, 0.);
+        let coefficient = c64(10.0, 0.);
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
         mp.majorise();
-        // println!("{:#?}", mp);
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, Vec::<usize>::new());
+        assert_eq!(mp.coefficient, coefficient);
+
+        let indices = vec![0, 1, 0, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        mp.majorise();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, Vec::<usize>::new());
+        assert_eq!(mp.coefficient, -1. * coefficient);
+
+        let indices = vec![1, 0, 0, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        mp.majorise();
+        // debug!("{:#?}", mp);
         assert_eq!(mp.indices, Vec::<usize>::new());
         assert_eq!(mp.coefficient, coefficient);
     }
@@ -530,43 +708,99 @@ mod majorana_tests {
     #[test]
     fn test_majorise_reverse() {
         let indices = vec![3, 2, 1];
-        let coefficient = Complex64::new(10.0, 0.);
+        let coefficient = c64(10.0, 0.);
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
         mp.majorise();
-        // println!("{:#?}", mp);
+        // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![1, 2, 3]);
         assert_eq!(mp.coefficient, -1. * coefficient);
 
-        let indices = vec![3, 4, 2, 1];
-        let coefficient = Complex64::new(10.0, 0.);
+        let indices = vec![4, 3, 2, 1];
+        let coefficient = c64(10.0, 0.);
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
         mp.majorise();
-        // println!("{:#?}", mp);
+        // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![1, 2, 3, 4]);
-        assert_eq!(mp.coefficient, -1. * coefficient);
+        assert_eq!(mp.coefficient, coefficient);
     }
 
     #[test]
-    fn test_sparse_term() {
+    fn test_majorise() {
+        let indices = vec![1, 1, 1, 1, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        mp.majorise();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![1]);
+        assert_eq!(mp.coefficient, coefficient);
+
+        let indices = vec![1, 1, 1, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        mp.majorise();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, Vec::<usize>::new());
+        assert_eq!(mp.coefficient, coefficient);
+
+        let indices = vec![1, 1, 1, 0];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        mp.majorise();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1]);
+        assert_eq!(mp.coefficient, -1. * coefficient);
+
+        let indices = vec![1, 1, 0, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        mp.majorise();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1]);
+        assert_eq!(mp.coefficient, coefficient);
+
+        let indices = vec![1, 0, 1, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        mp.majorise();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1]);
+        assert_eq!(mp.coefficient, -1. * coefficient);
+
+        let indices = vec![0, 1, 1, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        mp.majorise();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1]);
+        assert_eq!(mp.coefficient, coefficient);
+    }
+    #[test]
+    fn test_from_fermion_sparse() {
         let indices = arr2(&[[0, 1]]);
-        let coefficients = arr1(&[Complex64::new(10.0, 0.)]);
+        let coefficients = arr1(&[c64(10.0, 0.)]);
         let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
-        println!("{:#?}", indices.clone());
-        println!("{:#?}", coefficients.clone());
-        println!("{:#?}", ops.clone());
+        debug!("{:#?}", indices.clone());
+        debug!("{:#?}", coefficients.clone());
+        debug!("{:#?}", ops.clone());
 
         let majorana_term = MajoranaSparse::new(
-            arr2(&[[0, 2], [0, 3], [1, 2], [1, 3]]),
-            arr1(&[
-                Complex64::new(2.5, 0.),
-                Complex64::new(0., -2.5),
-                Complex64::new(0.0, 2.5),
-                Complex64::new(2.5, 0.),
-            ]),
+            vec![
+                array_vec!([u16; 4]=> 0, 2),
+                array_vec!([u16; 4]=> 0, 3),
+                array_vec!([u16; 4]=> 1,2),
+                array_vec!([u16; 4]=> 1,3),
+            ],
+            vec![c64(2.5, 0.), c64(0., -2.5), c64(0.0, 2.5), c64(2.5, 0.)],
+            Complex64::ZERO,
         )
         .unwrap();
         let fermion_term =
             FermionSparse::new(ops.clone(), indices.clone(), coefficients.clone()).unwrap();
         assert_eq!(majorana_term, MajoranaSparse::from(fermion_term));
     }
+
+    // #[test]
+    // fn test_msparse_from_vec_fsparse() {
+    //     todo!();
+    // }
 }

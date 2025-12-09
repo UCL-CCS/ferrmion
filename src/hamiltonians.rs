@@ -1,7 +1,6 @@
-use log::debug;
-// use ndarray::{azip, concatenate, Axis, Zip};
 use ahash::RandomState;
 use itertools::iproduct;
+use log::debug;
 use numpy::ndarray::{s, ArrayView1, ArrayView2, ArrayView4};
 use numpy::Complex64;
 use pyo3::{FromPyObject, IntoPyObject};
@@ -10,10 +9,11 @@ use std::collections::HashMap;
 use crate::encoding::MajoranaEncoding;
 use crate::utils::icount_to_sign;
 
+pub type QubitHamiltonian = HashMap<String, Complex64, RandomState>;
+
 pub type QubitHamiltonianTemplate =
     HashMap<String, HashMap<IntegralIndex, Complex64, RandomState>, RandomState>;
-
-pub type QubitHamiltonian<'template> = HashMap<&'template String, Complex64, RandomState>;
+pub type FilledTemplate<'template> = HashMap<&'template String, Complex64, RandomState>;
 
 pub enum Notation {
     Physicist,
@@ -176,13 +176,13 @@ pub fn fill_template<'template>(
     one_e_coeffs: ArrayView2<f64>,
     two_e_coeffs: ArrayView4<f64>,
     mode_op_map: ArrayView1<usize>,
-) -> QubitHamiltonian<'template> {
+) -> FilledTemplate<'template> {
     debug!("Filling template with mode-operator map {:#?}", mode_op_map);
     // assert_eq!(HashSet::from(mode_op_map.keys()), HashSet::from(0..one_e_coeffs.len_of(Axis(0))));
     // assert_eq!(HashSet::from(mode_op_map.values()), (HashSet::from(0..one_e_coeffs.len_of(Axis(0)))));
     let s = RandomState::new();
-    let mut hamiltonian: QubitHamiltonian<'template> =
-        QubitHamiltonian::with_capacity_and_hasher(template.keys().len(), s);
+    let mut hamiltonian: FilledTemplate<'template> =
+        FilledTemplate::with_capacity_and_hasher(template.keys().len(), s);
     if let Some((identity_key, _)) =
         template.get_key_value(&"I".repeat(mode_op_map.len()).to_string())
     {

@@ -287,7 +287,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             _ => panic!("Encoding must be one of JW, PE, BK or JKMN."),
         };
         debug!("Got Tree");
-        let encoding = tree.build_encoding(n_modes, None).unwrap();
+        let encoding = tree.build_encoding(n_modes).unwrap();
         debug!("Got encoding");
 
         debug!("Got qham");
@@ -411,7 +411,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         };
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        let encoding = tree.build_encoding(n_qubits, None).unwrap();
+        let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
 
@@ -463,7 +463,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Hamiltonian {:?}", hamiltonian);
         tree = topphatt(hamiltonian.clone(), tree).expect("TOPPHATT should have failed by now.");
 
-        let encoding = tree.build_encoding(n_qubits, None).unwrap();
+        let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
         Ok((
             encoding.ipowers.into_pyarray(py),
@@ -531,7 +531,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
         tree = topphatt(hamiltonian.clone(), tree).expect("TOPPHATT should have failed by now.");
-        let encoding = tree.build_encoding(n_qubits, None).unwrap();
+        let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
         Ok((
             encoding.ipowers.into_pyarray(py),

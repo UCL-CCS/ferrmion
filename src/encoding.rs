@@ -2,6 +2,7 @@ use crate::hamiltonians::QubitHamiltonian;
 /*
 Functions relating to the FermionQubitEncoding base class.
 */
+
 use crate::types::{MajoranaProduct, MajoranaSparse, Pauli};
 use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
@@ -90,7 +91,6 @@ impl<'e> MajoranaEncoding<'e> {
             let left = self.symplectics.slice(s![l,..]);
             let right = self.symplectics.slice(s![r,..]);
             let (term, imaginary) = MajoranaEncoding::symplectic_product(left, right, 0);
-
             *pow += &((imaginary as u8 + self.ipowers[[l]] + self.ipowers[[r]]) % 4);
             product_map.slice_mut(s![l,r,..]).assign(&term);
         });
@@ -256,6 +256,10 @@ impl Encode<MajoranaSparse> for MajoranaEncoding<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        types::{MajoranaProduct, MajoranaSparse},
+        MajoranaEncoding,
+    };
     use ndarray::{arr2, Array1, ArrayView1, ArrayView2};
     use num_complex::c64;
     use numpy::Complex64;

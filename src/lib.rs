@@ -87,9 +87,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let symplectic_matrix = symplectic_matrix.as_array();
         let ipowers = ipowers.as_array();
         let encoding = MajoranaEncoding::new(ipowers, symplectic_matrix);
-        let (coeffs, states) = encoding
-            .hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map)
-            .unwrap();
+        let (coeffs, states) =
+            encoding.hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map);
         (
             PyArray1::from_owned_array(py, coeffs),
             PyArray2::from_owned_array(py, states),

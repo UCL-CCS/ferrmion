@@ -5,7 +5,6 @@ Functions relating to the FermionQubitEncoding base class.
 use crate::types::{MajoranaProduct, MajoranaSparse, Pauli};
 use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
-use anyhow::Result;
 use log::debug;
 use ndarray::{Axis, Zip};
 use num_complex::{c64, ComplexFloat};
@@ -107,7 +106,7 @@ impl<'e> MajoranaEncoding<'e> {
         vacuum_state: ArrayView1<f64>,
         fermionic_hf_state: ArrayView1<bool>,
         mode_op_map: ArrayView1<usize>,
-    ) -> Result<(Array1<Complex64>, Array2<bool>)> {
+    ) -> (Array1<Complex64>, Array2<bool>) {
         debug!("Calculating Hartree-fock state");
 
         let mut current_state =
@@ -170,12 +169,13 @@ impl<'e> MajoranaEncoding<'e> {
         let coeffs = vector_state.mapv(|c| c / (vector_state[0]));
 
         let hf_components: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 2]>> =
-            Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)?;
+            Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)
+                .expect("Should be able to make HF components array from vec.");
         debug!(
             "Found Hartree-Fock state: coeffs={:?}, hf_components={:#?}",
             coeffs, hf_components
         );
-        Ok((coeffs, hf_components))
+        (coeffs, hf_components)
     }
 }
 
@@ -476,20 +476,16 @@ mod tests {
             ],
         ]);
         let encoding = MajoranaEncoding::new(ipowers.view(), symplectics);
-        let result = encoding
-            .hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map)
-            .unwrap();
+        let result = encoding.hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map);
         let c1 = c64(1., 0.);
         assert!(result.0 == ndarray::arr1(&[c1]));
         assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
 
-        let result2 = encoding
-            .hartree_fock_state(
-                vacuum_state,
-                ArrayView1::from(&[true, true, true, true, false, false]),
-                mode_op_map.clone(),
-            )
-            .unwrap();
+        let result2 = encoding.hartree_fock_state(
+            vacuum_state,
+            ArrayView1::from(&[true, true, true, true, false, false]),
+            mode_op_map.clone(),
+        );
         assert!(result2.0 == ndarray::arr1(&[c1]));
         assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
     }
@@ -585,7 +581,7 @@ impl MajoranaEncodingOwned {
         vacuum_state: ArrayView1<f64>,
         fermionic_hf_state: ArrayView1<bool>,
         mode_op_map: ArrayView1<usize>,
-    ) -> Result<(Array1<Complex64>, Array2<bool>)> {
+    ) -> (Array1<Complex64>, Array2<bool>) {
         debug!("Calculating Hartree-fock state");
 
         let mut current_state =
@@ -648,12 +644,13 @@ impl MajoranaEncodingOwned {
         let coeffs = vector_state.mapv(|c| c / (vector_state[0]));
 
         let hf_components: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 2]>> =
-            Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)?;
+            Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)
+                .expect("Should be able to make hf components array from vec.");
         debug!(
             "Found Hartree-Fock state: coeffs={:?}, hf_components={:#?}",
             coeffs, hf_components
         );
-        Ok((coeffs, hf_components))
+        (coeffs, hf_components)
     }
 }
 
@@ -953,20 +950,16 @@ mod owned_tests {
             ],
         ]);
         let encoding = MajoranaEncoding::new(ipowers.view(), symplectics);
-        let result = encoding
-            .hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map)
-            .unwrap();
+        let result = encoding.hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map);
         let c1 = c64(1., 0.);
         assert!(result.0 == ndarray::arr1(&[c1]));
         assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
 
-        let result2 = encoding
-            .hartree_fock_state(
-                vacuum_state,
-                ArrayView1::from(&[true, true, true, true, false, false]),
-                mode_op_map.clone(),
-            )
-            .unwrap();
+        let result2 = encoding.hartree_fock_state(
+            vacuum_state,
+            ArrayView1::from(&[true, true, true, true, false, false]),
+            mode_op_map.clone(),
+        );
         assert!(result2.0 == ndarray::arr1(&[c1]));
         assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
     }

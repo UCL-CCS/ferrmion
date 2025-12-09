@@ -90,12 +90,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayvec"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
-
-[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -107,7 +101,7 @@ version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d6d530bdd2d52966a6d03b7a964add7ae1a288d25214066fd4b600f0f796400"
 dependencies = [
- "arrayvec 0.4.12",
+ "arrayvec",
  "constant_time_eq",
 ]
 
@@ -212,10 +206,8 @@ name = "ferrmion"
 version = "0.3.1"
 dependencies = [
  "ahash",
- "anyhow",
  "argmin",
  "argmin-observer-slog",
- "arrayvec 0.7.6",
  "itertools",
  "log",
  "ndarray",

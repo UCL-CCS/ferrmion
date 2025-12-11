@@ -2,18 +2,15 @@
 Ternary tree encodings and methods.
 */
 use crate::{encoding::MajoranaEncodingOwned, types::Pauli};
-use log::debug;
-use ndarray::Axis;
+use log::{debug, error, info};
 use numpy::ndarray::{s, Array1, Array2, Zip};
-use std::fmt;
+use std::collections::HashMap;
 use std::ops::Not;
 use std::result::Result;
+use std::{fmt, usize};
 use thiserror::Error;
-use tinyvec::ArrayVec;
 
 pub type TTFlatPack = Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>;
-
-type NodeIndexArray = ArrayVec<[u8; 256]>;
 
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum Edge {
@@ -108,6 +105,7 @@ pub struct TernaryTree {
     pub(super) z_child_of: Vec<Option<Child>>,
     pub(super) y_parity_of: Vec<YParity>,
     pub n_nodes: usize,
+    qubit_index_of: Option<Vec<usize>>,
 }
 
 #[derive(Debug, Error)]
@@ -124,6 +122,8 @@ pub enum TernaryTreeError {
     LeafSymplecticError(Edge, usize),
     #[error("Could not build encoding for {0} qubits with Node:Qubit map {1:?}.")]
     BuildEncodingError(usize, Option<Vec<usize>>),
+    #[error("Cannot reassign qubit indices of nodes.")]
+    QubitReassignmentError,
 }
 
 // Constructors and input
@@ -136,6 +136,7 @@ impl TernaryTree {
             z_child_of: vec![None; n_nodes],
             y_parity_of: vec![YParity::Even; n_nodes],
             n_nodes: n_nodes,
+            qubit_index_of: None,
         }
     }
 
@@ -147,44 +148,73 @@ impl TernaryTree {
             z_child_of: vec![None; n_nodes],
             y_parity_of: vec![YParity::Even; n_nodes],
             n_nodes: n_nodes,
+            qubit_index_of: None,
         }
     }
 
     pub fn from_flatpack(flatpack: TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new(n_nodes);
-        for &(parent, children) in flatpack.iter() {
-            let parent = parent as u8;
-            if let Some(x_index) = children.0 {
-                tree.add_child(Parent::new(Edge::X, parent), Child::Node(x_index as u8))?
-            }
-            if let Some(y_index) = children.1 {
-                tree.add_child(Parent::new(Edge::Y, parent), Child::Node(y_index as u8))?
-            }
-            if let Some(z_index) = children.2 {
-                tree.add_child(Parent::new(Edge::Z, parent), Child::Node(z_index as u8))?
-            }
-        }
+        tree.add_children_from_flatpack(flatpack)?;
         Ok(tree)
     }
 
     pub fn from_flatpack_naive(flatpack: TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new_naive(n_nodes);
+        tree.add_children_from_flatpack(flatpack)?;
+        Ok(tree)
+    }
+
+    fn add_children_from_flatpack(&mut self, flatpack: TTFlatPack) -> Result<(), TernaryTreeError> {
+        let n_nodes = self.n_nodes;
+        let qubit_index_of: Vec<usize> = flatpack.iter().map(|v| v.0).collect();
+        self.set_qubit_indices(qubit_index_of)?;
+        println!("{:?}", self);
+
+        let mut qubit_node_map: HashMap<usize, usize> = HashMap::with_capacity(n_nodes);
+        flatpack
+            .iter()
+            .zip(0..n_nodes)
+            .for_each(|(flattened_node, node)| {
+                let qubit_index = flattened_node.0;
+                qubit_node_map.insert(qubit_index, node);
+            });
+
+        debug!("Flatpack nodes have qubit indices {:?}", &qubit_node_map);
+
         for &(parent, children) in flatpack.iter() {
-            let parent = parent as u8;
-            if let Some(x_index) = children.0 {
-                tree.add_child(Parent::new(Edge::X, parent), Child::Node(x_index as u8))?
-            }
-            if let Some(y_index) = children.1 {
-                tree.add_child(Parent::new(Edge::Y, parent), Child::Node(y_index as u8))?
-            }
-            if let Some(z_index) = children.2 {
-                tree.add_child(Parent::new(Edge::Z, parent), Child::Node(z_index as u8))?
+            let parent = *qubit_node_map
+                .get(&parent)
+                .ok_or_else(|| TernaryTreeError::FlatPackError(flatpack.clone()))?
+                as u8;
+            for (child, edge) in std::iter::zip(
+                [children.0, children.1, children.2],
+                [Edge::X, Edge::Y, Edge::Z],
+            ) {
+                if let Some(index) = child {
+                    let index = *qubit_node_map
+                        .get(&index)
+                        .ok_or_else(|| TernaryTreeError::FlatPackError(flatpack.clone()))?;
+                    self.add_child(Parent::new(edge, parent), Child::Node(index as u8))?
+                }
             }
         }
+        Ok(())
+    }
 
-        Ok(tree)
+    fn set_qubit_indices(&mut self, qubit_indices: Vec<usize>) -> Result<(), TernaryTreeError> {
+        match self.qubit_index_of {
+            Some(_) => {
+                error!("Qubit indices are already set.");
+                return Err(TernaryTreeError::QubitReassignmentError);
+            }
+            None => {
+                info!("Setting qubit indices {:?}", qubit_indices);
+                self.qubit_index_of = Some(qubit_indices);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -255,21 +285,12 @@ impl TernaryTree {
         &self,
         n_qubits: usize,
         // mode_op_map: Option<Vec<usize>>, //TODO
-        node_qubit_map: Option<Vec<usize>>,
     ) -> Result<MajoranaEncodingOwned, TernaryTreeError> {
         debug!("Build encoding from {self:#?}");
-        if let Some(ref nqm) = node_qubit_map {
-            if nqm.len() != self.n_nodes {
-                return Err(TernaryTreeError::BuildEncodingError(
-                    n_qubits,
-                    node_qubit_map,
-                ));
-            }
-        }
         if n_qubits < self.n_nodes {
             return Err(TernaryTreeError::BuildEncodingError(
                 n_qubits,
-                node_qubit_map,
+                self.qubit_index_of.clone(),
             ));
         }
         let mut ipowers: Array1<u8> = Array1::zeros(2 * self.n_nodes as usize);
@@ -303,29 +324,46 @@ impl TernaryTree {
             });
             debug!("symplectics {:?}", symplectics);
         }
-        if let Some(nqm) = node_qubit_map {
-            let padded_symplectics: Array2<bool> =
+        if matches!(self.qubit_index_of, Some(_)) {
+            let column_indices: Array1<usize> = self
+                .qubit_index_of
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|&v| v)
+                .chain(
+                    self.qubit_index_of
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .map(|&v| v + n_qubits),
+                )
+                .collect();
+            println!("Column indices {:?}", &column_indices);
+            if let Some(max_column_label) = column_indices.flatten().iter().max() {
+                if *max_column_label > 2 * n_qubits {
+                    error!("Cannot build encoding with {n_qubits} qubits");
+                    return Err(TernaryTreeError::BuildEncodingError(
+                        n_qubits,
+                        self.qubit_index_of.clone(),
+                    ));
+                }
+            }
+            let mut padded_symplectics: Array2<bool> =
                 Array2::from_elem((2 * self.n_nodes, 2 * n_qubits), false);
-            Zip::from(
-                padded_symplectics
-                    .select(Axis(1), nqm.as_slice())
-                    .columns_mut(),
-            )
-            .and(symplectics.columns())
-            .for_each(|mut p, s| p.assign(&s));
-            Zip::from(
-                padded_symplectics
-                    .select(
-                        Axis(1),
-                        nqm.iter()
-                            .map(|v| v + self.n_nodes)
-                            .collect::<Vec<usize>>()
-                            .as_slice(),
-                    )
-                    .columns_mut(),
-            )
-            .and(symplectics.columns())
-            .for_each(|mut p, s| p.assign(&s));
+            println!("Qubit indices {:?}", &self.qubit_index_of);
+            Zip::from(symplectics.columns())
+                .and(&column_indices)
+                .for_each(|unpadded, &index| {
+                    println!("{:?}", unpadded);
+                    println!("{:?}", index);
+                    padded_symplectics.column_mut(index).assign(&unpadded);
+                    println!("",);
+                });
+
+            println!("Halfway Padded symplectics {:?}", padded_symplectics);
+
+            println!("Padded symplectics {:?}", padded_symplectics);
             symplectics = padded_symplectics;
         }
         Ok(MajoranaEncodingOwned::new(ipowers, symplectics))
@@ -585,18 +623,22 @@ mod tt_tests {
             (1, (None, None, Some(2))),
             (2, (None, None, None)),
         ];
+        let mut expected: TernaryTree = TernaryTree::naive_jordan_wigner(3);
+        expected.set_qubit_indices(vec![0, 1, 2]).unwrap();
         assert_eq!(
             TernaryTree::from_flatpack_naive(jw_flatpack).unwrap(),
-            TernaryTree::naive_jordan_wigner(3)
+            expected
         );
         let pe_flatpack: TTFlatPack = vec![
             (0, (Some(1), None, None)),
             (1, (Some(2), None, None)),
             (2, (None, None, None)),
         ];
+        let mut expected: TernaryTree = TernaryTree::naive_parity(3);
+        expected.set_qubit_indices(vec![0, 1, 2]).unwrap();
         assert_eq!(
             TernaryTree::from_flatpack_naive(pe_flatpack).unwrap(),
-            TernaryTree::naive_parity(3)
+            expected
         );
         let bk_flatpack: TTFlatPack = vec![
             (0, (Some(1), None, None)),
@@ -604,9 +646,11 @@ mod tt_tests {
             (2, (None, None, None)),
             (3, (None, None, None)),
         ];
+        let mut expected: TernaryTree = TernaryTree::naive_bravyi_kitaev(4);
+        expected.set_qubit_indices(vec![0, 1, 2, 3]).unwrap();
         assert_eq!(
             TernaryTree::from_flatpack_naive(bk_flatpack).unwrap(),
-            TernaryTree::naive_bravyi_kitaev(4)
+            expected
         );
         let jkmn_flatpack: TTFlatPack = vec![
             (0, (Some(1), Some(2), Some(3))),
@@ -614,10 +658,27 @@ mod tt_tests {
             (2, (None, None, None)),
             (3, (None, None, None)),
         ];
+        let mut expected: TernaryTree = TernaryTree::naive_jkmn(4);
+        expected.set_qubit_indices(vec![0, 1, 2, 3]).unwrap();
         assert_eq!(
             TernaryTree::from_flatpack_naive(jkmn_flatpack).unwrap(),
-            TernaryTree::naive_jkmn(4)
+            expected
         );
+    }
+
+    #[test]
+    fn test_from_flatpack_with_qubit_labels() {
+        let mut flatpack = TTFlatPack::new();
+        flatpack.push((9, (Some(10), Some(11), Some(12))));
+        flatpack.push((10, (None, None, None)));
+        flatpack.push((11, (None, None, None)));
+        flatpack.push((12, (None, None, None)));
+        let tree = TernaryTree::from_flatpack_naive(flatpack).unwrap();
+
+        let mut expected: TernaryTree = TernaryTree::naive_jkmn(4);
+        expected.set_qubit_indices(vec![9, 10, 11, 12]).unwrap();
+
+        assert_eq!(tree, expected);
     }
 
     #[test]
@@ -788,7 +849,7 @@ mod tt_tests {
     }
 
     #[test]
-    fn test_majorana_encoding_try_from() {
+    fn test_jw_manual_build_encoding() {
         let mut tt = TernaryTree::new(3);
         tt.add_child(Parent::new(X, 0), Child::XLeaf(0)).unwrap();
         tt.add_child(Parent::new(Y, 0), Child::YLeaf(0)).unwrap();
@@ -802,7 +863,7 @@ mod tt_tests {
         tt.add_child(Parent::new(Y, 2), Child::YLeaf(2)).unwrap();
 
         let n_qubits = tt.n_nodes;
-        let encoding = tt.build_encoding(n_qubits, None).unwrap();
+        let encoding = tt.build_encoding(n_qubits).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 0, 1]);
         assert_eq!(encoding.ipowers, ipow_expected);
         let symplectic_expected = arr2(&[
@@ -817,9 +878,33 @@ mod tt_tests {
     }
 
     #[test]
-    fn test_naive_jw() {
+    fn test_jw_flatpack_build_encoding() {
+        let flatpack: TTFlatPack = Vec::from(&[
+            (0, (None, None, Some(1))),
+            (1, (None, None, Some(2))),
+            (2, (None, None, None)),
+        ]);
+        let tt = TernaryTree::from_flatpack_naive(flatpack).unwrap();
+        assert_eq!(tt.qubit_index_of, Some(vec![0, 1, 2]));
+        let n_qubits = tt.n_nodes;
+        let encoding = tt.build_encoding(n_qubits).unwrap();
+        let ipow_expected = arr1(&[0, 1, 0, 1, 0, 1]);
+        assert_eq!(encoding.ipowers, ipow_expected);
+        let symplectic_expected = arr2(&[
+            [true, false, false, false, false, false],
+            [true, false, false, true, false, false],
+            [false, true, false, true, false, false],
+            [false, true, false, true, true, false],
+            [false, false, true, true, true, false],
+            [false, false, true, true, true, true],
+        ]);
+        assert_eq!(encoding.symplectics, symplectic_expected);
+    }
+
+    #[test]
+    fn test_naive_jw_encoding() {
         let tree = TernaryTree::naive_jordan_wigner(3);
-        let encoding = tree.build_encoding(3, None).unwrap();
+        let encoding = tree.build_encoding(3).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 0, 1]);
         assert_eq!(encoding.ipowers, ipow_expected);
         let symplectic_expected = arr2(&[
@@ -834,9 +919,9 @@ mod tt_tests {
     }
 
     #[test]
-    fn test_naive_parity() {
+    fn test_naive_parity_encoding() {
         let tree = TernaryTree::naive_parity(3);
-        let encoding = tree.build_encoding(3, None).unwrap();
+        let encoding = tree.build_encoding(3).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 0, 1]);
         assert_eq!(encoding.ipowers, ipow_expected);
         let symplectic_expected = arr2(&[
@@ -851,9 +936,9 @@ mod tt_tests {
     }
 
     #[test]
-    fn test_naive_jkmn() {
+    fn test_naive_jkmn_encoding() {
         let tree = TernaryTree::naive_jkmn(3);
-        let encoding = tree.build_encoding(3, None).unwrap();
+        let encoding = tree.build_encoding(3).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 2, 1]);
         assert_eq!(encoding.ipowers, ipow_expected);
         let symplectic_expected = arr2(&[

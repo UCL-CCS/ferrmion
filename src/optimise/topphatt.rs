@@ -8,7 +8,7 @@ use thiserror::Error;
 use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 4;
 
-use crate::ternarytree::{Child, Edge, TernaryTree, TernaryTreeError, YParity};
+use crate::ternarytree::{Child, Edge, TernaryTree, YParity};
 use crate::types::MajoranaSparse;
 
 #[derive(Debug, Error)]
@@ -567,6 +567,7 @@ mod test_topphatt {
     use super::*;
     use crate::encoding::MajoranaEncodingOwned;
     use crate::optimise::topphatt::NodeDependencies;
+    use crate::ternarytree::TTFlatPack;
     use crate::{optimise::topphatt::TreeRetrictions, ternarytree::TernaryTree};
     use log::debug;
     use ndarray::{arr1, arr2};
@@ -765,7 +766,7 @@ mod test_topphatt {
         let tree = TernaryTree::naive_jordan_wigner(3);
 
         let jw_topphatt = topphatt(hamiltonian, tree).unwrap();
-        let encoding: MajoranaEncodingOwned = jw_topphatt.build_encoding(3, None).unwrap();
+        let encoding: MajoranaEncodingOwned = jw_topphatt.build_encoding(3).unwrap();
         assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         assert_eq!(
             encoding.symplectics,
@@ -776,6 +777,36 @@ mod test_topphatt {
                 [true, false, false, true, false, false],
                 [false, true, false, true, false, false],
                 [false, true, false, true, true, false],
+            ])
+        );
+    }
+
+    #[test]
+    fn test_with_qubit_labels() {
+        let hamiltonian = MajoranaSparse::new(
+            vec![array_vec!([u16; 4]=> 2,3)],
+            vec![Complex64::new(1., 0.)],
+            Complex64::ZERO,
+        )
+        .unwrap();
+        let mut flatpack = TTFlatPack::new();
+        flatpack.push((1, (None, None, Some(2))));
+        flatpack.push((2, (None, None, Some(3))));
+        flatpack.push((3, (None, None, None)));
+
+        let tree = TernaryTree::from_flatpack_naive(flatpack).unwrap();
+        let jw_topphatt = topphatt(hamiltonian, tree).unwrap();
+        let encoding = jw_topphatt.build_encoding(4).unwrap();
+        assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
+        assert_eq!(
+            encoding.symplectics,
+            arr2(&[
+                [false, false, false, true, false, true, true, false],
+                [false, false, false, true, false, true, true, true],
+                [false, true, false, false, false, false, false, false],
+                [false, true, false, false, false, true, false, false],
+                [false, false, true, false, false, true, false, false],
+                [false, false, true, false, false, true, true, false],
             ])
         );
     }

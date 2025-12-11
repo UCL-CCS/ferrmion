@@ -548,16 +548,14 @@ def _hamiltonian_term_to_majorana(
                 if not swapped:
                     break
             no_duplicates = []
-            for ind in range(0, len(majorana_ind), 2):
-                if majorana_ind[ind] != majorana_ind[ind + 1]:
+            for ind in range(0, len(majorana_ind)):
+                if majorana_ind.count(majorana_ind[ind]) % 2 == 1:
                     no_duplicates.append(majorana_ind[ind])
-                    no_duplicates.append(majorana_ind[ind + 1])
+                
             if no_duplicates == []:
                 continue
 
-            majorana_ind = no_duplicates
-
-            majoranas = tuple(majorana_ind)
+            majoranas = tuple(no_duplicates)
             term_ipowers = np.prod([ipow[lr] for ipow, lr in zip(ipowers, left_right)])
             term_ipowers = term_ipowers * ((-1) ** (swaps % 2))
             majorana_ham[majoranas] = majorana_ham.get(majoranas, 0)

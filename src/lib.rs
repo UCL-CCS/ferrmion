@@ -295,7 +295,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             encoding.ipowers.into_pyarray(py),
             encoding.symplectics.into_pyarray(py),
         ))
-        // Ok(())
     }
     #[pyfn(m)]
     #[pyo3(name = "encode")]

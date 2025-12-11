@@ -232,7 +232,7 @@ impl TernaryTree {
 
     pub fn naive_parity(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
-        debug!("{:#?}", tree);
+        debug!("{:?}", tree);
         let branch: Vec<(Edge, usize)> = (0..n_nodes - 1).map(|v| (Edge::X, v + 1)).collect();
         tree.add_branch(0, branch)
             .expect("Naive Parity branch should be valid.");
@@ -286,7 +286,7 @@ impl TernaryTree {
         n_qubits: usize,
         // mode_op_map: Option<Vec<usize>>, //TODO
     ) -> Result<MajoranaEncodingOwned, TernaryTreeError> {
-        debug!("Build encoding from {self:#?}");
+        debug!("Build encoding from {self:?}");
         if n_qubits < self.n_nodes {
             return Err(TernaryTreeError::BuildEncodingError(
                 n_qubits,
@@ -529,19 +529,17 @@ impl TernaryTree {
 
         let mut parent_index = parent_index;
         while let Some(parent) = self.parent_of[parent_index] {
-            debug!("{:?}", parent);
             parent_index = parent.node_index();
-            debug!("{:?}", parent_index);
+            debug!("Parent index {parent_index}");
 
             if matches!(parent.edge, Edge::Y) {
                 ipower += 1;
             }
             let bool_term: (bool, bool) = Pauli::from(&parent.edge).into();
 
-            debug!("{:?}", bool_term);
+            debug!("XZ Operator {bool_term:?}");
             xz_array[[parent_index]] = bool_term.0;
             xz_array[[parent_index + self.n_nodes]] = bool_term.1;
-            debug!("{:?}", xz_array);
         }
         debug!("Majorana index {:?}", majorana_index);
         debug!("ipower {:?}", ipower);

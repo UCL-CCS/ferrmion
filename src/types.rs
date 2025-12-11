@@ -6,7 +6,8 @@ Shared Types.
 */
 use crate::utils::vector_kron;
 use itertools::Itertools;
-use num_complex::c64;
+use log::debug;
+use num_complex::{c64, ComplexFloat};
 use numpy::ndarray::{arr1, arr2, Array1, Array2, ArrayD, Axis, IntoDimension, Zip};
 use numpy::Complex64;
 use std::collections::BTreeMap;
@@ -233,6 +234,8 @@ impl FermionMatrix {
         ops: Vec<LadderOperator>,
         coefficients: ArrayD<f64>,
     ) -> Result<Self, FermionMatrixError> {
+        // Check we have enough ladder operators
+        // and a square/cube/... matrix
         if ops.len() != coefficients.ndim()
             || !coefficients
                 .shape()
@@ -562,19 +565,15 @@ impl From<FermionSparse> for MajoranaSparse {
         let majoranas = sft.append_majorana_btree(&mut majoranas);
 
         // debug!("Majoranas {:#?}", majoranas);
-        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
-            majoranas
-                .values()
-                .filter(|&v| *v != Complex64::ZERO)
-                .count(),
-        );
+        let mut sparse_values: Vec<Complex64> =
+            Vec::with_capacity(majoranas.values().filter(|&v| v.abs() >= 1e-16).count());
         let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
             Vec::with_capacity(sparse_values.len());
         // debug!("{:#?}", sparse_values.clone());
-        let mut sparse_constant = c64(0., 0.);
+        let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
         majoranas
             .iter()
-            .filter(|(_, &v)| v != Complex64::ZERO)
+            .filter(|(_, &v)| v.abs() >= 1e-16)
             .for_each(|(k, &v)| {
                 let mut op: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
                 if k.len() == 0 {
@@ -587,6 +586,8 @@ impl From<FermionSparse> for MajoranaSparse {
                     sparse_values.push(v);
                 }
             });
+        debug!("Sparse Majorana Indices {:?}", &sparse_indices);
+        debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
         MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant)
             .expect("Indices and coefficients should be same length.")
     }
@@ -611,29 +612,30 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
             term.append_majorana_btree(&mut majoranas);
         });
 
-        // debug!("Majoranas {:#?}", majoranas);
-        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
-            majoranas
-                .values()
-                .filter(|&v| *v != Complex64::ZERO)
-                .count(),
-        );
+        let mut sparse_values: Vec<Complex64> =
+            Vec::with_capacity(majoranas.values().filter(|&v| v.abs() >= 1e-16).count());
         let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
             Vec::with_capacity(sparse_values.len());
         // debug!("{:#?}", sparse_values.clone());
-
+        let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
         majoranas
             .iter()
-            .filter(|(_, &v)| v != Complex64::ZERO)
+            .filter(|(_, &v)| v.abs() >= 1e-16)
             .for_each(|(k, &v)| {
                 let mut op: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-                for ind in k {
-                    op.push(*ind as u16);
+                if k.len() == 0 {
+                    sparse_constant += v;
+                } else {
+                    for ind in k {
+                        op.push(*ind as u16);
+                    }
+                    sparse_indices.push(op);
+                    sparse_values.push(v);
                 }
-                sparse_indices.push(op);
-                sparse_values.push(v);
             });
-        MajoranaSparse::new(sparse_indices, sparse_values, Complex64::ZERO)
+        debug!("Sparse Majorana Indices {:?}", &sparse_indices);
+        debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
+        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant)
             .expect("Indices and coefficients should be same length.")
     }
 }

@@ -192,11 +192,6 @@ impl Encode<MajoranaProduct> for MajoranaEncoding<'_> {
             |acc, &ind| Self::symplectic_product(acc.0.view(), self.symplectics.row(ind), acc.1),
         );
         ipower += product_ipower;
-        debug!("{:#?}", operator);
-        debug!(
-            "{:#?}",
-            MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
-        );
         let (pauli, ipower) = MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
 
         qham.insert(
@@ -215,40 +210,31 @@ impl Encode<MajoranaSparse> for MajoranaEncoding<'_> {
             .iter()
             .zip(hamiltonian.coefficients)
             .for_each(|(&indices, coef)| {
-                debug!("{:#?}", indices);
                 let (operator, product_ipower) = indices.iter().fold(
                     (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
                     |acc, &ind| {
-                        debug!("Ind {:#?}", ind);
                         let (a, i) = Self::symplectic_product(
                             acc.0.view(),
                             self.symplectics.row(ind as usize),
                             acc.1,
                         );
-                        debug!("a,i {:#?}", (a.clone(), i.clone()));
                         // debug!("acc {:#?}", acc);
                         (a, i)
                     },
                 );
-                debug!("Op {:#?}\n", operator);
-                debug!("Prod ipower: {:#?}\n", product_ipower);
                 let ipower: u8 = indices.iter().fold(product_ipower, |acc, &ind| {
                     acc + &self.ipowers[ind as usize]
                 }) % 4;
-                debug!("Sum Ipower {:#?}\n", ipower);
                 // debug!(
                 //     "EncodeSparse ME {:#?}",
                 //     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
                 // );
                 let (pauli, ipower) =
                     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
-                debug!("Pauli {:#?}\n", pauli);
-                debug!("Final Ipower {:#?}\n", ipower);
                 *qham.entry(pauli).or_insert(Complex64::new(0., 0.)) +=
                     coef * icount_to_sign(ipower as usize);
 
-                debug!("Ham {:#?}\n", qham);
-            });
+                });
         qham
     }
 }

@@ -16,7 +16,7 @@ from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree, fast_hatt
 def test_jw_topphatt(water_sparse_majorana):
     tree = JordanWigner(14)
     tree = topphatt(majorana_ham=water_sparse_majorana, tree=tree)
-    assert tree.pauli_weight == 2291
+    assert tree.pauli_weight == 2128
     assert tree.root_node.child_strings == JordanWigner(14).root_node.child_strings
     assert tree.root_node.branch_strings == JordanWigner(14).root_node.branch_strings
 

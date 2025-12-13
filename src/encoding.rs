@@ -202,13 +202,13 @@ impl Encode<MajoranaProduct> for MajoranaEncoding<'_> {
         qham
     }
 }
-impl Encode<MajoranaSparse> for MajoranaEncoding<'_> {
-    fn encode(&self, hamiltonian: MajoranaSparse) -> QubitHamiltonian {
+impl Encode<&MajoranaSparse> for MajoranaEncoding<'_> {
+    fn encode(&self, hamiltonian: &MajoranaSparse) -> QubitHamiltonian {
         let mut qham: QubitHamiltonian = HashMap::with_hasher(RandomState::new());
         hamiltonian
             .indices
             .iter()
-            .zip(hamiltonian.coefficients)
+            .zip(&hamiltonian.coefficients)
             .for_each(|(&indices, coef)| {
                 let (operator, product_ipower) = indices.iter().fold(
                     (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
@@ -344,7 +344,7 @@ mod tests {
             Complex64::ZERO,
         )
         .unwrap();
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
 
@@ -363,7 +363,7 @@ mod tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
@@ -394,7 +394,7 @@ mod tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
         assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0., 2.));

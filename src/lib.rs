@@ -227,7 +227,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         one_e_coeffs: PyReadonlyArray2<f64>,
         two_e_coeffs: PyReadonlyArray4<f64>,
         n_permutations: usize,
-    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    ) -> PyResult<(Bound<'py, PyArray1<f64>>,Bound<'py, PyArray1<f64>>)> {
         // let constant_energy = constant_energy.extract(py)?;
         let template = template.extract::<QubitHamiltonianTemplate>()?;
         let one_e_coeffs = one_e_coeffs.as_array();
@@ -239,8 +239,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             two_e_coeffs,
             n_permutations,
         );
-        Ok(weight.into_pyarray(py))
+        Ok((weight.0.into_pyarray(py), weight.1.into_pyarray(py)))
     }
+
     #[pyfn(m)]
     #[pyo3(name = "anneal_enumerations")]
     fn wrap_anneal_enumerations<'py>(
@@ -348,7 +349,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         let encoding = MajoranaEncoding::new(ipowers, symplectics);
         debug!("Got encoding");
-        let qham: QubitHamiltonian = encoding.encode(hamiltonian);
+        let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
 
         debug!("Got qham");
         Ok(qham

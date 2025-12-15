@@ -352,14 +352,10 @@ fn reduce_hamiltonian(
                 .into_iter()
                 .filter(|ind| !selection.contains(&ind))
                 .collect();
-            if (initial_length - new_term.len()) % 2 == 1 {
+            for _ in 0..(initial_length - new_term.len()) {
                 new_term.push(parent_majorana_index);
-            // It's imporant to keep terms around that
-            } else if (initial_length - new_term.len()) >= 2 {
-                new_term.push(parent_majorana_index);
-                new_term.push(parent_majorana_index);
-            }
 
+            }
             new_term
         })
         .filter(|&term| term != ArrayVec::<[u16; MAJORANA_MAX]>::new())

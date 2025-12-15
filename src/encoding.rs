@@ -9,7 +9,7 @@ use ahash::RandomState;
 use log::debug;
 use ndarray::{Axis, Zip};
 use num_complex::{c64, ComplexFloat};
-use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2};
+use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2, Slice};
 use numpy::Complex64;
 use std::collections::HashMap;
 
@@ -644,6 +644,18 @@ impl MajoranaEncodingOwned {
     }
 }
 
+impl MajoranaEncodingOwned {
+    fn apply_mode_enumeration(self, mode_op_map: Vec<usize>) -> MajoranaEncodingOwned {
+        assert_eq!(2*mode_op_map.len(), self.ipowers.len());
+        assert_eq!(2*mode_op_map.len(), self.symplectics.nrows());
+        let majorana_rows: Vec<usize> = mode_op_map.iter().map(|v| [2*v, 2*v+1]).flatten().collect();
+        let ipowers: Array1<u8> = self.ipowers.select(Axis(0), &majorana_rows);
+        let symplectics: Array2<bool> = self.symplectics.select(Axis(0), &majorana_rows);
+
+        MajoranaEncodingOwned::new(ipowers, symplectics)
+    }
+}
+
 impl Encode<MajoranaProduct> for MajoranaEncodingOwned {
     fn encode(&self, input: MajoranaProduct) -> HashMap<String, Complex64, RandomState> {
         let mut qham: HashMap<String, Complex64, RandomState> =
@@ -713,7 +725,8 @@ impl Encode<&MajoranaSparse> for MajoranaEncodingOwned {
                     .collect::<String>(),
             )
             .or_insert(c64(0., 0.)) += input.constant;
-        qham.into_iter().filter(|(_, v)| v.abs() > 1e-12).collect()
+        // qham.into_iter().filter(|(_, v)| v.abs() > 1e-12).collect()
+        qham
     }
 }
 
@@ -818,7 +831,7 @@ mod owned_tests {
             Complex64::ZERO,
         )
         .unwrap();
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
 
@@ -837,7 +850,7 @@ mod owned_tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
@@ -868,7 +881,7 @@ mod owned_tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
         assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0., 2.));

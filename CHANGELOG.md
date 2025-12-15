@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unrealeased]
+## [0.4.0]
 ### Added
 - Topology-preserving Hamiltonian Adaptive Ternary Tree (TOPP-HATT) in `src/topphatt`.
 - `MajoranaEncodingOwned` in `src/encoding`
@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FermionMatrix`, `FermionSparse`, `FermionProduct`, `MajoranaProduct`, `MajoranaSparse` in `src/types`
 - `max_nodes` option in `bonsai_algorithm` to build trees without using all the nodes of a device.
 - New functions exposed to python api of `core`: `topphatt`, `topphatt_standard`, `encode`, `encode_standard`, `standard_symplectic_matrix`.
+- `TernaryTree.to_flatpack` to serialise TT structure.
 
 ### Changed
 - `TernaryTree.default_enumeration_scheme` allows arbitrary qubit labels but enforces mode labels from `range(n_modes)`.

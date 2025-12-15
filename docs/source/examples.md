@@ -6,6 +6,7 @@
 :caption: Encoding Examples
 :tooltip:
 
+notebooks/topp_hatt
 notebooks/growing_trees
 notebooks/rett
 notebooks/huffman

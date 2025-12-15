@@ -322,8 +322,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Must have at least as many qubits as modes."
         );
 
-        debug!("Starting TOPPHATT");
-        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
 
         let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
         for (sig, coeff) in zip(signatures, coeffs) {

@@ -4,7 +4,7 @@ import logging
 
 from numpy.typing import NDArray
 
-from ferrmion.core import fill_template, molecular_hamiltonian_template
+from ferrmion.core import encode
 
 from ..encode import FermionQubitEncoding
 
@@ -36,15 +36,12 @@ def molecular_hamiltonian(
         >>> two_e = np.eye((2,2,2,2))
         >>> molecular_hamiltonian(tree, one_e, two_e, 0.0)
     """
-    ipowers, majorana_symplectic = encoding._build_symplectic_matrix()
-    template = molecular_hamiltonian_template(
-        ipowers, majorana_symplectic, physicist_notation
-    )
-    qubit_hamiltonian = fill_template(
-        template=template,
-        constant_energy=constant_energy,
-        one_e_coeffs=one_e_coeffs,
-        two_e_coeffs=two_e_coeffs,
-        mode_op_map=encoding.default_mode_op_map,
-    )
+    sym = encoding._build_symplectic_matrix()
+    if physicist_notation:
+        signatures = ["+-","++--"]
+    else:
+        signatures = ["+-","++--"]
+
+    qubit_hamiltonian = encode(*sym, signatures=signatures, coeffs=[one_e_coeffs, two_e_coeffs])
+
     return qubit_hamiltonian

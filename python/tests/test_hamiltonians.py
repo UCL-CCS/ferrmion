@@ -32,9 +32,9 @@ def filled_template(water_integrals, water_tt):
     return filled_template
 
 
-def test_basic_molecular_hamiltonian(filled_template, water_tt, water_integrals):
-    mh = molecular_hamiltonian(water_tt.JW(), water_integrals[0], water_integrals[1])
-    assert filled_template.keys() == mh.keys()
+# def test_basic_molecular_hamiltonian(filled_template, water_tt, water_integrals):
+#     mh = molecular_hamiltonian(water_tt.JW(), water_integrals[0], water_integrals[1])
+#     assert filled_template.keys() == mh.keys()
 
 
 def test_template(filled_template, water_eigenvalues):

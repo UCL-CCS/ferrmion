@@ -15,10 +15,10 @@ use crate::types::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse}
 use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::{
-    fill_template, hubbard, molecular, Notation, QubitHamiltonian, QubitHamiltonianTemplate,
+    fill_template, hubbard, Notation, QubitHamiltonian, QubitHamiltonianTemplate,
 };
 mod encoding;
-use crate::encoding::{Encode, MajoranaEncoding};
+use crate::encoding::{Encode, MajoranaEncoding, MajoranaEncodingOwned};
 mod optimise;
 use crate::optimise::anneal_enumerations;
 mod ternarytree;
@@ -158,23 +158,23 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
     }
 
-    #[pyfn(m)]
-    #[pyo3(name = "molecular_hamiltonian_template")]
-    fn wrap_molecular_hamiltonian_template<'py>(
-        py: Python<'py>,
-        ipowers: PyReadonlyArray1<u8>,
-        symplectics: PyReadonlyArray2<bool>,
-        physicist_notation: bool,
-    ) -> Bound<'py, PyDict> {
-        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
-        let hamiltonian: QubitHamiltonianTemplate = match physicist_notation {
-            true => molecular(encoding, Notation::Physicist),
-            false => molecular(encoding, Notation::Chemist),
-        };
-        hamiltonian
-            .into_py_dict(py)
-            .expect("Cannot parse Hamiltonian Template dict.")
-    }
+    // #[pyfn(m)]
+    // #[pyo3(name = "molecular_hamiltonian_template")]
+    // fn wrap_molecular_hamiltonian_template<'py>(
+    //     py: Python<'py>,
+    //     ipowers: PyReadonlyArray1<u8>,
+    //     symplectics: PyReadonlyArray2<bool>,
+    //     physicist_notation: bool,
+    // ) -> Bound<'py, PyDict> {
+    //     let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
+    //     let hamiltonian: QubitHamiltonianTemplate = match physicist_notation {
+    //         true => molecular(encoding, Notation::Physicist),
+    //         false => molecular(encoding, Notation::Chemist),
+    //     };
+    //     hamiltonian
+    //         .into_py_dict(py)
+    //         .expect("Cannot parse Hamiltonian Template dict.")
+    // }
 
     #[pyfn(m)]
     #[pyo3(name = "hubbard_hamiltonian_template")]
@@ -227,7 +227,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         one_e_coeffs: PyReadonlyArray2<f64>,
         two_e_coeffs: PyReadonlyArray4<f64>,
         n_permutations: usize,
-    ) -> PyResult<(Bound<'py, PyArray1<f64>>,Bound<'py, PyArray1<f64>>)> {
+    ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
         // let constant_energy = constant_energy.extract(py)?;
         let template = template.extract::<QubitHamiltonianTemplate>()?;
         let one_e_coeffs = one_e_coeffs.as_array();
@@ -312,8 +312,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.len(),
             "Signatures and coefficients should be same length"
         );
-        let ipowers = ipowers.as_array();
-        let symplectics = symplectics.as_array();
+        let ipowers = ipowers.as_array().to_owned();
+        let symplectics = symplectics.as_array().to_owned();
         let n_qubits = symplectics.ncols() / 2;
         let n_modes = symplectics.nrows() / 2;
 
@@ -321,7 +321,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             n_qubits >= n_modes,
             "Must have at least as many qubits as modes."
         );
-
 
         let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
         for (sig, coeff) in zip(signatures, coeffs) {
@@ -345,7 +344,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got Hamiltonian");
         debug!("Hamiltonian {:?}", hamiltonian);
 
-        let encoding = MajoranaEncoding::new(ipowers, symplectics);
+        let encoding = MajoranaEncodingOwned::new(ipowers, symplectics);
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
 

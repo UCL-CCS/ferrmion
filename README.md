@@ -43,7 +43,7 @@ For more details, see the [interop documentation](https://ferrmion.readthedocs.i
 
 ### Ternary Trees
 
-- [Topology-preserving Hamiltonian Adaptive Ternary Tree](https://ferrmion.readthedocs.io/en/latest/optimize.html#module-ferrmion.optimize.topphatt)
+- [Topology-preserving Hamiltonian Adaptive Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/topp_hatt.html)
 - [Bonsai Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/bonsai.html)
 - [Reduced Entanglement Ternary Trees](https://ferrmion.readthedocs.io/en/latest/notebooks/rett.html)
 - [Huffman-code Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/huffman.html)

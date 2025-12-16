@@ -235,6 +235,13 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding<'_> {
                     coef * icount_to_sign(ipower as usize);
 
                 });
+        *qham
+            .entry(
+                (0..self.n_modes)
+                    .map(|_| "I".to_string())
+                    .collect::<String>(),
+            )
+            .or_insert(c64(0., 0.)) += hamiltonian.constant;
         qham
     }
 }
@@ -720,7 +727,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncodingOwned {
             });
         *qham
             .entry(
-                (0..=self.n_modes)
+                (0..self.n_modes)
                     .map(|_| "I".to_string())
                     .collect::<String>(),
             )

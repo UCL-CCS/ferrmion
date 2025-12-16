@@ -10,6 +10,7 @@ def hartree_fock_state(
     vacuum_state: npt.NDArray[np.float64],
     fermionic_hf_state: npt.NDArray[bool],
     mode_op_map: list[int],
+    ipowers: npt.NDArray[np.uint8],
     symplectic_matrix: npt.NDArray[bool],
 ) -> tuple[npt.NDArray[np.complex128], npt.NDArray[bool]]: ...
 def symplectic_to_pauli(symplectic: npt.NDArray[bool], int) -> tuple[str, int]: ...

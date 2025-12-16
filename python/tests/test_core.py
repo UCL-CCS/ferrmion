@@ -1,6 +1,6 @@
 import numpy as np
-from ferrmion.core import symplectic_product, topphatt, topphatt_standard
-
+from ferrmion.core import symplectic_product, topphatt, topphatt_standard, encode, encode_standard, standard_symplectic_matrix
+import pytest
 
 def test_symplectic_product():
     xyz = np.array([1, 1, 0, 0, 1, 1], dtype=bool)
@@ -62,3 +62,16 @@ def test_core_topphatt_bk(water_integrals):
 def test_core_topphatt_jkmn(water_integrals):
     ones, twos = water_integrals
     topphatt_standard("JKMN",14,14, signatures=["+-", "++--"], coeffs=[ones, twos])
+
+
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+def test_core_standard(encoding, water_eigenvalues, water_integrals):
+    ones = water_integrals[0]
+    twos = 0.5*water_integrals[1]
+    one_step = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos])
+
+    two_step = encode(*standard_symplectic_matrix(encoding, ones.shape[0]), signatures=["+-", "++--"], coeffs=[ones, twos])
+
+    assert len(one_step) == len(two_step)
+    for k,v in one_step.items():
+        assert two_step[k] == v

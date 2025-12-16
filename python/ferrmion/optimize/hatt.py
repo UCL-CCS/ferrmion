@@ -56,7 +56,7 @@ def _reduce_hamiltonian(
         new_term = tuple(i for i in term if i not in selection) + tuple(
             parent_index for i in term if i in selection
         )
-        if len(set(new_term)) > 1:
+        if len(set(new_term)) >= 1:
             new_ham[new_term] = new_ham.get(new_term, 0) + coeff
     return new_ham
 

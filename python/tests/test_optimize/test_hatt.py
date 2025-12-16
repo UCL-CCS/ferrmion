@@ -1,6 +1,25 @@
 """Tests for functions in the optimize submodule."""
 
-from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree
+from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree, _qubit_term_weight
+
+def test_reduce_hamiltonian():
+    assert _qubit_term_weight([0], [0,1,2]) == 1
+    assert _qubit_term_weight([1], [0,1,2]) == 1
+    assert _qubit_term_weight([2], [0,1,2]) == 1
+
+    assert _qubit_term_weight([0, 0], [0,1,2]) == 0
+    assert _qubit_term_weight([0, 1], [0,1,2]) == 1
+    assert _qubit_term_weight([0, 1, 1], [0,1,2]) == 1
+    assert _qubit_term_weight([0, 1, 1, 1], [0,1,2]) == 1
+
+    assert _qubit_term_weight([0, 1,2], [0,1,2]) == 0
+    assert _qubit_term_weight([0, 1,2,2], [0,1,2]) == 1
+
+    assert _qubit_term_weight([0, 0], [0,1,2]) == 0
+    assert _qubit_term_weight([0, 0,0], [0,1,2]) == 1
+    assert _qubit_term_weight([0, 0,0,0], [0,1,2]) == 0
+
+    assert _qubit_term_weight([0, 3,5,6], [0,1,2]) == 1
 
 def test_hatt():
     majorana_ham = {(0, 1): 0.5j, (2, 3): -0.5j, (4, 5): -0.5j, (2, 3, 4, 5): 0.5}

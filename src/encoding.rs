@@ -9,7 +9,7 @@ use ahash::RandomState;
 use log::debug;
 use ndarray::{Axis, Zip};
 use num_complex::{c64, ComplexFloat};
-use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2};
+use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2, Slice};
 use numpy::Complex64;
 use std::collections::HashMap;
 
@@ -192,11 +192,6 @@ impl Encode<MajoranaProduct> for MajoranaEncoding<'_> {
             |acc, &ind| Self::symplectic_product(acc.0.view(), self.symplectics.row(ind), acc.1),
         );
         ipower += product_ipower;
-        debug!("{:#?}", operator);
-        debug!(
-            "{:#?}",
-            MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
-        );
         let (pauli, ipower) = MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
 
         qham.insert(
@@ -207,48 +202,39 @@ impl Encode<MajoranaProduct> for MajoranaEncoding<'_> {
         qham
     }
 }
-impl Encode<MajoranaSparse> for MajoranaEncoding<'_> {
-    fn encode(&self, hamiltonian: MajoranaSparse) -> QubitHamiltonian {
+impl Encode<&MajoranaSparse> for MajoranaEncoding<'_> {
+    fn encode(&self, hamiltonian: &MajoranaSparse) -> QubitHamiltonian {
         let mut qham: QubitHamiltonian = HashMap::with_hasher(RandomState::new());
         hamiltonian
             .indices
             .iter()
-            .zip(hamiltonian.coefficients)
+            .zip(&hamiltonian.coefficients)
             .for_each(|(&indices, coef)| {
-                debug!("{:#?}", indices);
                 let (operator, product_ipower) = indices.iter().fold(
                     (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
                     |acc, &ind| {
-                        debug!("Ind {:#?}", ind);
                         let (a, i) = Self::symplectic_product(
                             acc.0.view(),
                             self.symplectics.row(ind as usize),
                             acc.1,
                         );
-                        debug!("a,i {:#?}", (a.clone(), i.clone()));
                         // debug!("acc {:#?}", acc);
                         (a, i)
                     },
                 );
-                debug!("Op {:#?}\n", operator);
-                debug!("Prod ipower: {:#?}\n", product_ipower);
                 let ipower: u8 = indices.iter().fold(product_ipower, |acc, &ind| {
                     acc + &self.ipowers[ind as usize]
                 }) % 4;
-                debug!("Sum Ipower {:#?}\n", ipower);
                 // debug!(
                 //     "EncodeSparse ME {:#?}",
                 //     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
                 // );
                 let (pauli, ipower) =
                     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
-                debug!("Pauli {:#?}\n", pauli);
-                debug!("Final Ipower {:#?}\n", ipower);
                 *qham.entry(pauli).or_insert(Complex64::new(0., 0.)) +=
                     coef * icount_to_sign(ipower as usize);
 
-                debug!("Ham {:#?}\n", qham);
-            });
+                });
         qham
     }
 }
@@ -358,7 +344,7 @@ mod tests {
             Complex64::ZERO,
         )
         .unwrap();
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
 
@@ -377,7 +363,7 @@ mod tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
@@ -408,7 +394,7 @@ mod tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
         assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0., 2.));
@@ -658,6 +644,18 @@ impl MajoranaEncodingOwned {
     }
 }
 
+impl MajoranaEncodingOwned {
+    fn apply_mode_enumeration(self, mode_op_map: Vec<usize>) -> MajoranaEncodingOwned {
+        assert_eq!(2*mode_op_map.len(), self.ipowers.len());
+        assert_eq!(2*mode_op_map.len(), self.symplectics.nrows());
+        let majorana_rows: Vec<usize> = mode_op_map.iter().map(|v| [2*v, 2*v+1]).flatten().collect();
+        let ipowers: Array1<u8> = self.ipowers.select(Axis(0), &majorana_rows);
+        let symplectics: Array2<bool> = self.symplectics.select(Axis(0), &majorana_rows);
+
+        MajoranaEncodingOwned::new(ipowers, symplectics)
+    }
+}
+
 impl Encode<MajoranaProduct> for MajoranaEncodingOwned {
     fn encode(&self, input: MajoranaProduct) -> HashMap<String, Complex64, RandomState> {
         let mut qham: HashMap<String, Complex64, RandomState> =
@@ -727,7 +725,8 @@ impl Encode<&MajoranaSparse> for MajoranaEncodingOwned {
                     .collect::<String>(),
             )
             .or_insert(c64(0., 0.)) += input.constant;
-        qham.into_iter().filter(|(_, v)| v.abs() > 1e-12).collect()
+        // qham.into_iter().filter(|(_, v)| v.abs() > 1e-12).collect()
+        qham
     }
 }
 
@@ -832,7 +831,7 @@ mod owned_tests {
             Complex64::ZERO,
         )
         .unwrap();
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
 
@@ -851,7 +850,7 @@ mod owned_tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
         assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
@@ -882,7 +881,7 @@ mod owned_tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(ms);
+        let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
         assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0., 2.));

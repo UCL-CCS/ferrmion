@@ -268,6 +268,7 @@ def topphatt(
     Returns:
         TernaryTree: Optimised Ternary Tree encoding.
     """
+    logger.debug(f"Number of Hamiltonian terms {len(majorana_ham)}")
     n_modes = tree.n_modes
     n_leaves = 2 * n_modes + 1
     # We need 2*M +1 leaves and M nodes.
@@ -467,6 +468,7 @@ def topphatt(
         ancestor_map[z_desc] = parent_index
 
         majorana_ham = _reduce_hamiltonian(majorana_ham, parent_index, selection)
+        logger.debug(f"{majorana_ham=}")
 
     if len(active_nodes) != 1:
         raise ValueError(f"Not all nodes assigned by HATT. {active_nodes=}")

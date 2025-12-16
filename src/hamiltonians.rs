@@ -207,9 +207,9 @@ pub fn fill_template<'template>(
                 };
                 acc + factor * Complex64::new(coeff, 0.)
             });
-        if val.norm() > 1e-12 {
-            hamiltonian.insert(pauli_term, val);
-        };
+        // if val.norm() > 1e-12 {
+        hamiltonian.insert(pauli_term, val);
+        // };
     }
 
     debug!(

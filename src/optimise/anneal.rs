@@ -2,13 +2,13 @@
 Functions relating to encoding optimisation.
 */
 
-use crate::hamiltonians::{fill_template, FilledTemplate, QubitHamiltonianTemplate};
+use crate::hamiltonians::{self, FilledTemplate, QubitHamiltonianTemplate, fill_template};
 
 use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
 };
-use ndarray::{ArrayView1, Axis};
+use ndarray::{ArrayView1, Axis, Zip};
 use num_complex::ComplexFloat;
 use numpy::ndarray::{Array1, ArrayView2, ArrayView4};
 use permutation_iterator::Permutor;
@@ -34,6 +34,14 @@ pub fn pauli_weight(hamiltonian: FilledTemplate) -> f64 {
     });
     weight
 }
+/// Returns the mean Pauli-weight of Hamiltonian terms.
+pub fn pauli_and_coefficient_pauli(hamiltonian: FilledTemplate) -> (f64,f64) {
+    let weights = hamiltonian.iter().fold((0.,0.), |acc, (key, val)| {
+        let n_identity = key.chars().filter(|c| c == &'I').count();
+        (acc.0 + (key.len() - n_identity) as f64, acc.1 + (key.len() - n_identity) as f64 *val.abs())
+    });
+    weights
+}
 
 pub fn template_weight(
     template: &QubitHamiltonianTemplate,
@@ -41,10 +49,11 @@ pub fn template_weight(
     one_e_coeffs: ArrayView2<f64>,
     two_e_coeffs: ArrayView4<f64>,
     n_permutations: usize,
-) -> Array1<f64> {
+) -> (Array1<f64>, Array1<f64>) {
     let n_modes = one_e_coeffs.len_of(Axis(0));
-    let mut values: Array1<f64> = Array1::zeros(n_permutations);
-    values.map_inplace(|v: &mut f64| {
+    let mut pw_values: Array1<f64> = Array1::from_elem(n_permutations, 0.);
+    let mut cpw_values: Array1<f64> = Array1::from_elem(n_permutations, 0.);
+    Zip::from(&mut pw_values).and(&mut cpw_values).for_each(|pw, cpw| {
         let permutor = Permutor::new(n_modes as u64);
         let permutation: Array1<usize> =
             Array1::from(permutor.map(|p| p as usize).collect::<Vec<usize>>());
@@ -55,9 +64,11 @@ pub fn template_weight(
             two_e_coeffs,
             permutation.view(),
         );
-        *v = pauli_coefficient_weight(hamiltonian);
+        let vals = pauli_and_coefficient_pauli(hamiltonian);
+        *pw = vals.0;
+        *cpw = vals.1;
     });
-    values
+    (pw_values, cpw_values)
 }
 
 // pub fn batch_template_weight<'template>(template: &'template QubitHamiltonianTemplate,

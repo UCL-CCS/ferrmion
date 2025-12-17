@@ -170,7 +170,6 @@ impl TernaryTree {
         let n_nodes = self.n_nodes;
         let qubit_index_of: Vec<usize> = flatpack.iter().map(|v| v.0).collect();
         self.set_qubit_indices(qubit_index_of)?;
-        println!("{:?}", self);
 
         let mut qubit_node_map: HashMap<usize, usize> = HashMap::with_capacity(n_nodes);
         flatpack
@@ -339,7 +338,7 @@ impl TernaryTree {
                         .map(|&v| v + n_qubits),
                 )
                 .collect();
-            println!("Column indices {:?}", &column_indices);
+            debug!("Column indices {:?}", &column_indices);
             if let Some(max_column_label) = column_indices.flatten().iter().max() {
                 if *max_column_label > 2 * n_qubits {
                     error!("Cannot build encoding with {n_qubits} qubits");
@@ -351,19 +350,19 @@ impl TernaryTree {
             }
             let mut padded_symplectics: Array2<bool> =
                 Array2::from_elem((2 * self.n_nodes, 2 * n_qubits), false);
-            println!("Qubit indices {:?}", &self.qubit_index_of);
+            debug!("Qubit indices {:?}", &self.qubit_index_of);
             Zip::from(symplectics.columns())
                 .and(&column_indices)
                 .for_each(|unpadded, &index| {
-                    println!("{:?}", unpadded);
-                    println!("{:?}", index);
+                    debug!("{:?}", unpadded);
+                    debug!("{:?}", index);
                     padded_symplectics.column_mut(index).assign(&unpadded);
-                    println!("",);
+                    debug!("",);
                 });
 
-            println!("Halfway Padded symplectics {:?}", padded_symplectics);
+            debug!("Halfway Padded symplectics {:?}", padded_symplectics);
 
-            println!("Padded symplectics {:?}", padded_symplectics);
+            debug!("Padded symplectics {:?}", padded_symplectics);
             symplectics = padded_symplectics;
         }
         Ok(MajoranaEncoding::new(ipowers, symplectics))

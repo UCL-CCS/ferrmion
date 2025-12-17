@@ -8,8 +8,8 @@ use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
 use log::debug;
 use ndarray::{Axis, Zip};
-use num_complex::{c64, ComplexFloat};
-use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1, ArrayView2, Slice};
+use num_complex::c64;
+use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1};
 use numpy::Complex64;
 use std::collections::HashMap;
 
@@ -21,7 +21,6 @@ pub struct MajoranaEncoding {
     pub ipowers: Array1<u8>,
     pub symplectics: Array2<bool>,
     pub n_modes: usize,
-    pub n_qubits: usize,
 }
 
 // This caches symplectic products so that we don't have to calculate them
@@ -34,7 +33,6 @@ impl MajoranaEncoding {
             ipowers,
             symplectics,
             n_modes,
-            n_qubits: n_modes,
         }
     }
 
@@ -271,7 +269,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
 #[cfg(test)]
 mod owned_tests {
     use super::*;
-    use ndarray::{arr2, Array1, ArrayView1, ArrayView2};
+    use ndarray::{arr2, Array1, ArrayView1};
     use num_complex::c64;
     use numpy::Complex64;
     use tinyvec::array_vec;
@@ -366,7 +364,7 @@ mod owned_tests {
         let ms = MajoranaSparse::new(
             vec![array_vec!([u16; 4] =>0, 1), array_vec!([u16; 4] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)],
-            Complex64::ZERO,
+            0.,
         )
         .unwrap();
         let qham = encoding.encode(&ms);
@@ -384,7 +382,7 @@ mod owned_tests {
         let ms = MajoranaSparse::new(
             vec![array_vec!([u16; 4] =>0, 1), array_vec!([u16; 4] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)],
-            Complex64::ZERO,
+            0.,
         )
         .unwrap();
         debug!("{:#?}", ms);
@@ -415,7 +413,7 @@ mod owned_tests {
                 Complex64::new(1.0, 0.),
                 Complex64::new(1.0, 0.),
             ],
-            Complex64::ZERO,
+            0.,
         )
         .unwrap();
         debug!("{:#?}", ms);

@@ -5,8 +5,8 @@ from ferrmion.optimize.cost_functions import (
     distance_squared,
     coefficient_pauli_weight,
 )
+from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.encode import TernaryTree
-from ferrmion.hamiltonians import molecular_hamiltonian_template, fill_template
 import numpy as np
 import numpy as np
 from pytest import fixture
@@ -166,22 +166,16 @@ def test_distance_squared(n2mi):
 
 
 def test_coefficient_pauli_weight(water_integrals):
-    jw = TernaryTree(14).JW()
-    ipowers, symplectics = jw._build_symplectic_matrix()
     ones, twos = water_integrals
-    jw_pauli_ham = molecular_hamiltonian_template(ipowers, symplectics, True)
-    jw_filled_template = fill_template(
-        jw_pauli_ham, 0.0, ones, twos, jw.default_mode_op_map
-    )
-    jw_norm = coefficient_pauli_weight(jw_filled_template)
+
+    jw = TernaryTree(14).JW()
+    jw_qham = jw.encode(molecular_hamiltonian(ones, twos))
+    jw_norm = coefficient_pauli_weight(jw_qham)
 
     assert np.allclose(jw_norm, [np.float64(272.4190655251233)])
 
     pe = TernaryTree(14).ParityEncoding()
-    ipowers, symplectics = pe._build_symplectic_matrix()
-    pe_template = molecular_hamiltonian_template(ipowers, symplectics, True)
-    pe_filled_template = fill_template(
-        pe_template, 0, ones, twos, pe.default_mode_op_map
-    )
-    pe_norm = coefficient_pauli_weight(pe_filled_template)
+    pe_mol_ham = molecular_hamiltonian(ones, twos)
+    pe_qham = pe.encode(pe_mol_ham)
+    pe_norm = coefficient_pauli_weight(pe_qham)
     assert np.allclose(pe_norm, [np.float64(354.23056347814577)])

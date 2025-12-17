@@ -307,11 +307,7 @@ impl NodeDependencies {
             return;
         }
         self.root_distances.remove(&index);
-        let uc = self.children_without_leaves.remove(&index);
-        // assert!(
-        //     uc.iter().len() %3 == 0,
-        //     "Should not drop nodes which have unassigned leaves."
-        // );
+        self.children_without_leaves.remove(&index);
         debug!("{:?}", self.children_without_leaves);
         for v in self.children_without_leaves.values_mut() {
             v.retain(|&i| i != index);
@@ -606,12 +602,11 @@ mod test_topphatt {
     use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
     use crate::encoding::MajoranaEncoding;
-    use crate::hamiltonians;
     use crate::optimise::topphatt::NodeDependencies;
     use crate::ternarytree::TTFlatPack;
     use crate::{optimise::topphatt::TreeRetrictions, ternarytree::TernaryTree};
     use log::debug;
-    use ndarray::{arr1, arr2};
+    use ndarray::arr1;
     use numpy::Complex64;
     use tinyvec::array_vec;
 
@@ -828,7 +823,7 @@ mod test_topphatt {
         let hamiltonian = MajoranaSparse::new(
             vec![array_vec!([u16; 4]=> 2,3)],
             vec![Complex64::new(1., 0.)],
-            Complex64::ZERO,
+            0.,
         )
         .unwrap();
         let tree = TernaryTree::naive_jordan_wigner(3);
@@ -854,7 +849,7 @@ mod test_topphatt {
         let hamiltonian = MajoranaSparse::new(
             vec![array_vec!([u16; 4]=> 2,3)],
             vec![Complex64::new(1., 0.)],
-            Complex64::ZERO,
+            0.,
         )
         .unwrap();
         let mut flatpack = TTFlatPack::new();

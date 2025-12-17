@@ -580,7 +580,7 @@ impl MajoranaBTree {
 pub struct MajoranaSparse {
     pub indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
     pub coefficients: Vec<Complex64>,
-    pub constant: Complex64,
+    pub constant: f64,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -589,7 +589,7 @@ impl MajoranaSparse {
     pub fn new(
         indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
         coefficients: Vec<Complex64>,
-        constant: Complex64,
+        constant: f64,
     ) -> Result<Self, MajoranaSparseError> {
         if coefficients.len() != indices.len() {
             return Err(MajoranaSparseError);
@@ -610,7 +610,7 @@ impl MajoranaSparse {
         Ok(Self {
             indices: i,
             coefficients: c,
-            constant: constant + identity_terms_constant,
+            constant: constant + identity_terms_constant.norm(),
         })
     }
 }
@@ -652,7 +652,7 @@ impl From<FermionSparse> for MajoranaSparse {
             });
         debug!("Sparse Majorana Indices {:?}", &sparse_indices);
         debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
-        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant)
+        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
             .expect("Indices and coefficients should be same length.")
     }
 }
@@ -693,7 +693,7 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
             });
         debug!("Sparse Majorana Indices {:?}", &sparse_indices);
         debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
-        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant)
+        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
             .expect("Indices and coefficients should be same length.")
     }
 }
@@ -851,7 +851,7 @@ mod majorana_tests {
                 array_vec!([u16; 4]=> 1,3),
             ],
             vec![c64(2.5, 0.), c64(0., -2.5), c64(0.0, 2.5), c64(2.5, 0.)],
-            Complex64::ZERO,
+            0.,
         )
         .unwrap();
         let fermion_term =

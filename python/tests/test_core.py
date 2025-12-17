@@ -36,14 +36,14 @@ def test_symplectic_product():
 def test_core_topphatt():
     ones = np.random.random((4,4))
     twos = np.random.random((4,4,4,4))
-    node_map = [(0,(None, None, 1)), (1, (None,None,2)), (2,(None, None,3)), (3, (None, None, None))]
-    topphatt(4, node_map, signatures=["+-", "++--"], coeffs=[ones, twos])
+    flatpack = [(0,(None, None, 1)), (1, (None,None,2)), (2,(None, None,3)), (3, (None, None, None))]
+    topphatt(flatpack, 4, signatures=["+-", "++--"], coeffs=[ones, twos])
 
 def test_core_topphatt_water(water_integrals):
     ones, twos = water_integrals
 
     flatpack = [(i, (None, None, i+1)) for i in range(13)] + [(13, (None, None, None))]
-    topphatt(14, flatpack, signatures=["+-", "++--"], coeffs=[ones, twos])
+    topphatt(flatpack,14, signatures=["+-", "++--"], coeffs=[ones, twos])
 
 def test_core_topphatt_jw(water_integrals):
     ones, twos = water_integrals
@@ -68,9 +68,10 @@ def test_core_topphatt_jkmn(water_integrals):
 def test_core_standard(encoding, water_eigenvalues, water_integrals):
     ones = water_integrals[0]
     twos = 0.5*water_integrals[1]
-    one_step = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos])
+    one_step = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos], 0.)
 
-    two_step = encode(*standard_symplectic_matrix(encoding, ones.shape[0]), signatures=["+-", "++--"], coeffs=[ones, twos])
+    ipow, sym = standard_symplectic_matrix(encoding, ones.shape[0])
+    two_step = encode(ipow, sym,["+-","++--"], [ones, twos], 0.) 
 
     assert len(one_step) == len(two_step)
     for k,v in one_step.items():

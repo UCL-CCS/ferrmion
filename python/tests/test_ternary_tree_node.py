@@ -6,7 +6,7 @@ from ferrmion.encode.ternary_tree_node import (
     z_descendant,
     node_sorter,
 )
-from ferrmion.encode import JKMN
+from ferrmion.encode.ternary_tree import JKMN
 import numpy as np
 
 

@@ -1,6 +1,6 @@
 """Tests for Interop Functions."""
 
-from ferrmion.encode import JordanWigner, BravyiKitaev
+from ferrmion.encode.ternary_tree import JordanWigner, BravyiKitaev
 import pytest
 
 try:

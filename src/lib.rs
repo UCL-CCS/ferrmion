@@ -25,6 +25,7 @@ use crate::ternarytree::{TTFlatPack, TernaryTree};
 fn build_majorana_sparse(
     signatures: Vec<String>,
     coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+    constant_energy: f64,
 ) -> MajoranaSparse {
     let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
     for (sig, coeff) in zip(signatures, coeffs) {
@@ -41,7 +42,8 @@ fn build_majorana_sparse(
     }
     debug!("{:?}", fsparse_vec);
     debug!("Getting MSparse");
-    let hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+    let mut hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+    hamiltonian.constant += constant_energy;
     debug!("Got MSparse");
     hamiltonian
 }
@@ -249,7 +251,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> PyResult<(f64, Bound<'py, PyArray1<usize>>)> {
         let initial_guess = initial_guess.as_array();
 
-        let msparse = build_majorana_sparse(signatures, coeffs);
+        let msparse = build_majorana_sparse(signatures, coeffs, 0.);
         let encoding = MajoranaEncoding::new(
             ipowers.as_array().to_owned(),
             symplectics.as_array().to_owned(),
@@ -301,6 +303,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         symplectics: PyReadonlyArray2<bool>,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+        constant_energy: f64,
     ) -> PyResult<Bound<'py, PyDict>> {
         // ) -> PyResult<()> {
         assert_eq!(
@@ -318,7 +321,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Must have at least as many qubits as modes."
         );
 
-        let hamiltonian = build_majorana_sparse(signatures, coeffs);
+        let hamiltonian = build_majorana_sparse(signatures, coeffs, constant_energy);
 
         let encoding = MajoranaEncoding::new(ipowers, symplectics);
         debug!("Got encoding");
@@ -341,6 +344,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         n_qubits: usize,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+        constant_energy: f64,
     ) -> PyResult<Bound<'py, PyDict>> {
         // ) -> PyResult<()> {
         assert_eq!(
@@ -353,27 +357,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Must have at least as many qubits as modes."
         );
 
-        debug!("Starting TOPPHATT");
-        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
+        let hamiltonian = build_majorana_sparse(signatures, coeffs, constant_energy);
 
-        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
-        for (sig, coeff) in zip(signatures, coeffs) {
-            let vec_sig: Vec<LadderOperator> = sig
-                .chars()
-                .map(|v| {
-                    LadderOperator::try_from(v).expect("Signature components should be + or -")
-                })
-                .collect();
-            let term_coef = coeff.as_array().to_owned();
-            fsparse_vec.push(
-                FermionMatrix::new(vec_sig, term_coef)
-                    .expect("Signature lengths and coeff dimensions must match")
-                    .into(),
-            );
-        }
-        debug!("{:?}", fsparse_vec);
-        debug!("Getting MSparse");
-        let hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
         let tree: TernaryTree = match encoding.as_str() {
@@ -400,8 +385,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "topphatt")]
     fn wrap_topphatt<'py>(
         py: Python<'py>,
-        n_qubits: usize,
         flatpack: Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>,
+        n_qubits: usize,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
     ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {

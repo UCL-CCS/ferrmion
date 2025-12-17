@@ -40,6 +40,7 @@ dev = [
     "nb-clean>=4.0.1",
     "openfermionpyscf>=0.5",
     "matplotlib>=3.10.7",
+    "ty>=0.0.2",
 ]
 test = [
     "pytest>=8.3.5",

@@ -1,4 +1,5 @@
 """Molecular Hamiltonian."""
+
 """Hubbard Hamiltonian."""
 
 import numpy as np
@@ -9,53 +10,82 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+"""
+Type alias for qubit hamiltonians.
+"""
+type QubitHamiltonian = dict[str, float]
+
 
 class FermionHamiltonian:
     """
     Class for building Fermionic Hamiltonians.
-
     """
-    def __init__(self, signatures: list[str]|str|None=None, coefficients:list[NDArray[np.float]]|str|None=None, constant_energy: float = 0.0):
-        if signatures is None:
-            self.signatures = []
-        elif isinstance(signatures, str):
-            self.signatures = [signatures]
-        elif isinstance(signatures, list):
-            self.signatures = signatures
 
-        if coefficients is None:
-            self.coefficients = []
-        elif isinstance(coefficients, str):
-            self.coefficients = [coefficients]
-        elif isinstance(coefficients, list):
-            self.coefficients = coefficients
-
+    def __init__(self,*, terms: dict[str, NDArray] = {}, constant_energy: float = 0.0):
+        logger.debug("Initialising FermionHamiltonian")
+        self._terms: dict[str, NDArray] = terms
         self.constant_energy = constant_energy
         self._next_term = ""
+        self.n_modes = 0
+        self._check_and_set_n_modes()
 
+    def _check_and_set_n_modes(self):
+        if len(self._terms) == 0:
+            pass
+        elif len(self._terms) > 0 and self.n_modes == 0:
+            logger.debug(f"Setting n_modes: {self.n_modes}")
+            self.n_modes = [*self._terms.values()][0].shape[0]
+        else:
+            for term in self._terms.values():
+                if np.any([side != self.n_modes for side in term.shape]):
+                    logger.error(
+                        f"Hamiltonian coefficient {term.shape} must have constant length on all dimensions."
+                    )
+                    raise ValueError(
+                        f"Hamiltonian coefficient {term.shape} must have constant length on all dimensions."
+                    )
 
-    def creation(self):
+    def __repr__(self):
+        terms = ", ".join([*self._terms])
+        return f"FermionHamiltonian({terms}, {self.n_modes} modes, constant {self.constant_energy})"
+
+    @property
+    def signatures_and_coefficients(self) -> tuple[list[str], list[NDArray]]:
+        sigs: list[str] = []
+        coeffs: list[NDArray] = []
+        for k, v in self._terms.items():
+            sigs.append(k)
+            coeffs.append(v)
+        return (sigs, coeffs)
+
+    def creation(self) -> "FermionHamiltonian":
         self._next_term += "+"
+        return self
 
-    def annihilation(self):
+    def annihilation(self) -> "FermionHamiltonian":
         self._next_term += "-"
+        return self
 
-    def term_coefficients(self, coefficients: NDArray):
+    def with_coefficients(self, coefficients: NDArray) -> "FermionHamiltonian":
         if coefficients.ndim != len(self._next_term):
             logger.error(f"Cannot apply coefficents to term {self._next_term}")
         else:
-            self.coefficients.append(coefficients)
-            self.signatures.append(self._next_term)
+            self._terms[self._next_term] = coefficients
             self._next_term = ""
+            self._check_and_set_n_modes()
+        return self
 
+    def add_constant(self, constant_energy:float) -> "FermionHamiltonian":
+        self.constant_energy += constant_energy
+        return self
 
 
 def molecular_hamiltonian(
     one_e_coeffs: NDArray,
     two_e_coeffs: NDArray,
-    constant_energy: float = 0.,
+    constant_energy: float = 0.0,
     physicist_notation: bool = True,
-):
+) -> FermionHamiltonian:
     """Return an encoded electronic stucture hamiltonain with niave enumeration.
 
     Args:
@@ -76,14 +106,11 @@ def molecular_hamiltonian(
         >>> tree.encode(fham)
     """
     if physicist_notation:
-        signatures = ["+-","++--"]
+        terms = {"+-": one_e_coeffs, "++--": two_e_coeffs}
     else:
-        signatures = ["+-","++--"]
+        terms = {"+-": one_e_coeffs, "+-+-": two_e_coeffs}
 
-    return FermionHamiltonian(signatures=signatures, coefficients=[one_e_coeffs, two_e_coeffs], constant_energy=constant_energy)
-
-
-
+    return FermionHamiltonian(terms=terms, constant_energy=constant_energy)
 
 
 def linear_adjacency_matrix(length: int, periodic: bool) -> npt.NDArray[bool]:
@@ -216,7 +243,7 @@ def hubbard_hamiltonian(
     onsite_term: float,
     hopping_term: float = 1.0,
     spinless: bool = False,
-) -> dict[str, float]:
+) -> FermionHamiltonian:
     """Return an encoded Hubbard hamiltonain with niave enumeration.
 
     As the Hubbard Hamiltonian has the same signature as the Chemists' Molecular Hamiltonian:
@@ -243,10 +270,11 @@ def hubbard_hamiltonian(
         >>> fham = hubbard_hamiltonian(adjacency, onsite_term=2,...)
         >>> tree.encode(fham)
     """
-    n_sites = adjacency_matrix.size
+    n_sites = adjacency_matrix.shape[0]
 
     one_e_coeffs, two_e_coeffs = hubbard_coefficients(
         n_sites, adjacency_matrix, onsite_term, hopping_term, spinless=spinless
     )
-
-    return FermionHamiltonian(signatures=["+-", "+-+-"], coefficients=[one_e_coeffs, two_e_coeffs], constant_energy=0.)
+    return FermionHamiltonian(
+        terms={"+-": one_e_coeffs, "+-+-": two_e_coeffs}, constant_energy=0.0
+    )

@@ -576,10 +576,12 @@ def test_eigenvalues_with_openfermion(water_eigenvalues, water_integrals):
     assert np.allclose(sorted(diag), sorted(water_eigenvalues))
 
 
-def test_eigenvalues_across_encodings(water_eigenvalues, water_tt, water_integrals):
+def test_eigenvalues_across_encodings(water_eigenvalues, water_tt: TernaryTree, water_integrals):
     one_e_ints, two_e_ints = water_integrals
 
-    qham2 = molecular_hamiltonian(water_tt.JKMN(), one_e_ints, 0.5 * two_e_ints, 0)
+    mol_ham = molecular_hamiltonian(one_e_ints, 0.5 * two_e_ints, 0)
+    qham2 = water_tt.JW().encode(mol_ham)
+    
     ofop2 = QubitOperator()
     for k, v in qham2.items():
         string = " ".join(

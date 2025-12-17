@@ -1,6 +1,6 @@
 use crate::ternarytree::Edge;
 use ndarray::Dimension;
-use tinyvec::ArrayVec;
+use tinyvec::{Array, ArrayVec};
 /*
 Shared Types.
 */
@@ -8,13 +8,23 @@ use crate::utils::vector_kron;
 use itertools::Itertools;
 use log::debug;
 use num_complex::{c64, ComplexFloat};
-use numpy::ndarray::{arr1, arr2, Array1, Array2, ArrayD, Axis, IntoDimension, Zip};
+use numpy::ndarray::{
+    arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayView2, Axis, IntoDimension, Zip,
+};
 use numpy::Complex64;
 use std::collections::BTreeMap;
 use std::iter::{repeat_n, zip};
 use std::{result::Result, str::FromStr};
 
 const MAX_MAJORANAS: usize = 4;
+
+pub trait PauliWeight {
+    fn pauli_weight(&self) -> usize;
+}
+
+pub trait CoefficientPauliWeight: PauliWeight {
+    fn coeff_pauli_weight(&self) -> f64;
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Default)]
@@ -79,6 +89,15 @@ impl From<Pauli> for (bool, bool) {
     }
 }
 
+impl PauliWeight for Pauli {
+    fn pauli_weight(&self) -> usize {
+        match self {
+            Pauli::I => 0,
+            _ => 1,
+        }
+    }
+}
+
 type PauliMatrix = Array2<Complex64>;
 
 impl From<Pauli> for PauliMatrix {
@@ -110,6 +129,38 @@ mod test_pauli {
         assert_eq!(&z.dot(&z), i);
         assert_eq!(&x.dot(&z), c64(0., -1.) * y.clone());
         assert_eq!(&y.dot(&z), c64(0., 1.) * x.clone());
+    }
+
+    #[test]
+    fn test_pauli_weight() {
+        assert_eq!(Pauli::I.pauli_weight(), 0);
+        assert_eq!(Pauli::X.pauli_weight(), 1);
+        assert_eq!(Pauli::Y.pauli_weight(), 1);
+        assert_eq!(Pauli::Z.pauli_weight(), 1);
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub struct XZOperator<'sym> {
+    ipower: u8,
+    symplectic: ArrayView1<'sym, bool>,
+}
+
+impl PauliWeight for XZOperator<'_> {
+    fn pauli_weight(&self) -> usize {
+        let view = self.symplectic.view();
+        let x_block: ArrayView1<bool>;
+        let z_block: ArrayView1<bool>;
+        (x_block, z_block) = view.split_at(Axis(0), view.len() / 2);
+        Zip::from(x_block).and(z_block).fold(0, |acc, x, z| {
+            acc + if (x == &false) & (z == &false) { 0 } else { 1 }
+        })
+    }
+}
+
+impl CoefficientPauliWeight for XZOperator<'_> {
+    fn coeff_pauli_weight(&self) -> f64 {
+        self.pauli_weight() as f64
     }
 }
 

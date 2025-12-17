@@ -95,7 +95,7 @@ impl From<Pauli> for PauliMatrix {
 #[cfg(test)]
 mod test_pauli {
     use super::*;
-    use crate::types::{Pauli, PauliMatrix};
+    use crate::operators::{Pauli, PauliMatrix};
     use ndarray::arr2;
 
     #[test]
@@ -160,7 +160,7 @@ impl TryFrom<char> for LadderOperator {
 
 #[cfg(test)]
 mod ladder_tests {
-    use crate::types::*;
+    use crate::operators::*;
 
     #[test]
     fn test_ladder_operators() {
@@ -339,7 +339,7 @@ impl From<FermionMatrix> for FermionSparse {
 
 #[cfg(test)]
 mod fermion_tests {
-    use crate::types::*;
+    use crate::operators::*;
     use ndarray::{arr1, arr2};
     use num_complex::c64;
 
@@ -642,7 +642,7 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
 
 #[cfg(test)]
 mod majorana_tests {
-    use crate::types::*;
+    use crate::operators::*;
     use log::debug;
     use ndarray::{arr1, arr2};
     use num_complex::c64;

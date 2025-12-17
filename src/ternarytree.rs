@@ -1,7 +1,7 @@
 /*
 Ternary tree encodings and methods.
 */
-use crate::{encoding::MajoranaEncodingOwned, types::Pauli};
+use crate::{encoding::MajoranaEncoding, operators::Pauli};
 use log::{debug, error, info};
 use numpy::ndarray::{s, Array1, Array2, Zip};
 use std::collections::HashMap;
@@ -285,7 +285,7 @@ impl TernaryTree {
         &self,
         n_qubits: usize,
         // mode_op_map: Option<Vec<usize>>, //TODO
-    ) -> Result<MajoranaEncodingOwned, TernaryTreeError> {
+    ) -> Result<MajoranaEncoding, TernaryTreeError> {
         debug!("Build encoding from {self:?}");
         if n_qubits < self.n_nodes {
             return Err(TernaryTreeError::BuildEncodingError(
@@ -366,7 +366,7 @@ impl TernaryTree {
             println!("Padded symplectics {:?}", padded_symplectics);
             symplectics = padded_symplectics;
         }
-        Ok(MajoranaEncodingOwned::new(ipowers, symplectics))
+        Ok(MajoranaEncoding::new(ipowers, symplectics))
     }
 }
 

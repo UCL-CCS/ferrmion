@@ -7,18 +7,18 @@ use numpy::{
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 use std::iter::zip;
-mod types;
+mod operators;
 mod utils;
+use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
 #[allow(unused_imports)]
 use crate::optimise::{template_weight, topphatt};
-use crate::types::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
 use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::{
     fill_template, hubbard, Notation, QubitHamiltonian, QubitHamiltonianTemplate,
 };
 mod encoding;
-use crate::encoding::{Encode, MajoranaEncoding, MajoranaEncodingOwned};
+use crate::encoding::{Encode, MajoranaEncoding};
 mod optimise;
 use crate::optimise::anneal_enumerations;
 mod ternarytree;
@@ -84,8 +84,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let vacuum_state = vacuum_state.as_array();
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let mode_op_map = mode_op_map.as_array();
-        let symplectic_matrix = symplectic_matrix.as_array();
-        let ipowers = ipowers.as_array();
+        let ipowers = ipowers.as_array().to_owned();
+        let symplectic_matrix = symplectic_matrix.as_array().to_owned();
         let encoding = MajoranaEncoding::new(ipowers, symplectic_matrix);
         let (coeffs, states) =
             encoding.hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map);
@@ -129,7 +129,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
     ) -> (Bound<'py, PyArray2<u8>>, Bound<'py, PyArray3<bool>>) {
-        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
+        let encoding = MajoranaEncoding::new(
+            ipowers.as_array().to_owned(),
+            symplectics.as_array().to_owned(),
+        );
 
         let (power_map, product_map) = encoding.symplectic_product_map();
         (
@@ -183,7 +186,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
     ) -> Bound<'py, PyDict> {
-        let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
+        let encoding = MajoranaEncoding::new(
+            ipowers.as_array().to_owned(),
+            symplectics.as_array().to_owned(),
+        );
 
         let hamiltonian = hubbard(encoding);
         hamiltonian
@@ -344,7 +350,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got Hamiltonian");
         debug!("Hamiltonian {:?}", hamiltonian);
 
-        let encoding = MajoranaEncodingOwned::new(ipowers, symplectics);
+        let encoding = MajoranaEncoding::new(ipowers, symplectics);
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
 

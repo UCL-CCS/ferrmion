@@ -8,8 +8,8 @@ use thiserror::Error;
 use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 4;
 
+use crate::operators::MajoranaSparse;
 use crate::ternarytree::{Child, Edge, TernaryTree, YParity};
-use crate::types::MajoranaSparse;
 
 #[derive(Debug, Error)]
 pub enum ToppHattError {
@@ -354,7 +354,6 @@ fn reduce_hamiltonian(
                 .collect();
             for _ in 0..(initial_length - new_term.len()) {
                 new_term.push(parent_majorana_index);
-
             }
             new_term
         })
@@ -435,9 +434,13 @@ pub fn topphatt(
                 // debug!("Comb {:?}", &comb);
                 let comb: [u16; 3] = match comb.len() {
                     2 => {
-                        let pair = if comb[0] %2==0 {comb[0] + 1} else {comb[0] -1};
+                        let pair = if comb[0] % 2 == 0 {
+                            comb[0] + 1
+                        } else {
+                            comb[0] - 1
+                        };
                         [comb[0], pair, comb[1]]
-                    },
+                    }
                     3 => [comb[0], comb[1], comb[2]],
                     _ => return Err(ToppHattError::InvalidCombinationError(comb)),
                 };
@@ -602,7 +605,7 @@ mod test_topphatt {
     use super::Edge::{X, Y, Z};
     use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
-    use crate::encoding::MajoranaEncodingOwned;
+    use crate::encoding::MajoranaEncoding;
     use crate::hamiltonians;
     use crate::optimise::topphatt::NodeDependencies;
     use crate::ternarytree::TTFlatPack;
@@ -831,7 +834,7 @@ mod test_topphatt {
         let tree = TernaryTree::naive_jordan_wigner(3);
 
         let jw_topphatt = topphatt(hamiltonian, tree).unwrap();
-        let encoding: MajoranaEncodingOwned = jw_topphatt.build_encoding(3).unwrap();
+        let encoding: MajoranaEncoding = jw_topphatt.build_encoding(3).unwrap();
         assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
         //     encoding.symplectics,

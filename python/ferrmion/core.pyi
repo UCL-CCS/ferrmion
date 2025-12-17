@@ -48,8 +48,9 @@ def fill_template(
 ) -> dict: ...
 def anneal_enumerations(
     template: dict,
-    one_e_coeffs: npt.NDArray[np.float64],
-    two_e_coeffs: npt.NDArray[np.float64],
+    ipowers: npt.NDArray[np.uint8],
+    symplectics: npt.NDArray[np.bool],
+    signatures: list[str], coeffs: list[np.ndarray],
     temperature: float,
     initial_guess: npt.NDArray[np.uint],
     coefficient_weighted: bool,
@@ -62,5 +63,5 @@ def encode_standard(encoding:str, n_modes: int,n_qubits: int, signatures: list[s
 def encode( 
     ipowers: npt.NDArray[np.uint8],
     symplectics: npt.NDArray[np.bool],
-    signatures: list[str], coeffs: list[np.ndarray]
+    signatures: list[str], coeffs: list[np.ndarray],
     ) -> dict: ...

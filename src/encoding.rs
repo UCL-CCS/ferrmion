@@ -96,8 +96,6 @@ impl MajoranaEncoding {
             product_map.slice_mut(s![l,r,..]).assign(&term);
         });
 
-        // how to do a zip over 2d array ?
-
         debug!("Found symplectic product map.");
         (product_powers, product_map)
     }
@@ -181,7 +179,7 @@ impl MajoranaEncoding {
 }
 
 impl MajoranaEncoding {
-    fn apply_mode_enumeration(self, mode_op_map: Vec<usize>) -> MajoranaEncoding {
+    pub fn apply_mode_enumeration(&self, mode_op_map: Vec<usize>) -> MajoranaEncoding {
         assert_eq!(2 * mode_op_map.len(), self.ipowers.len());
         assert_eq!(2 * mode_op_map.len(), self.symplectics.nrows());
         let majorana_rows: Vec<usize> = mode_op_map

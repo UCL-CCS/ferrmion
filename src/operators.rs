@@ -324,39 +324,6 @@ impl FermionSparse {
             coefficients,
         })
     }
-    fn append_majorana_btree<'map>(
-        &self,
-        majoranas: &'map mut MajoranaBTree,
-    ) -> &'map MajoranaBTree {
-        let term_length = self.indices.ncols();
-        Zip::from(self.indices.rows())
-            .and(self.coefficients.view())
-            .for_each(|ind, coeff| {
-                let majorana_op_scalers: Vec<Complex64> = self
-                    .ops
-                    .iter()
-                    .map(|signature| signature.fermion_coeff())
-                    .reduce(|acc, s| vector_kron(&acc, &s))
-                    .unwrap()
-                    .to_vec();
-
-                // debug!("{:#?}", ops_coeffs);
-                let offset = repeat_n(0usize..2usize, term_length).multi_cartesian_product();
-                for (scaler, offset) in zip(majorana_op_scalers, offset) {
-                    let mut majorana_term = Array1::zeros(term_length);
-                    majorana_term += &ind;
-                    majorana_term *= 2;
-                    majorana_term = majorana_term + Array1::from_vec(offset);
-
-                    let mut mp = MajoranaProduct::new(majorana_term.to_vec(), *coeff * scaler);
-                    mp.majorise();
-                    *majoranas
-                        .entry(mp.indices)
-                        .or_insert(Complex64 { re: 0.0, im: 0.0 }) += mp.coefficient;
-                }
-            });
-        majoranas
-    }
 }
 
 impl From<FermionMatrix> for FermionSparse {
@@ -567,7 +534,47 @@ impl MajoranaProduct {
     }
 }
 
-type MajoranaBTree = BTreeMap<Vec<usize>, Complex64>;
+pub(super) struct MajoranaBTree {
+    operators: BTreeMap<Vec<usize>, Complex64>,
+}
+
+impl MajoranaBTree {
+    fn new() -> Self {
+        let operators = BTreeMap::<Vec<usize>, Complex64>::new();
+        Self { operators }
+    }
+
+    fn append_fermion_sparse(&mut self, fsparse: FermionSparse) {
+        let term_length = fsparse.indices.ncols();
+        Zip::from(fsparse.indices.rows())
+            .and(fsparse.coefficients.view())
+            .for_each(|ind, coeff| {
+                let majorana_op_scalers: Vec<Complex64> = fsparse
+                    .ops
+                    .iter()
+                    .map(|signature| signature.fermion_coeff())
+                    .reduce(|acc, s| vector_kron(&acc, &s))
+                    .unwrap()
+                    .to_vec();
+
+                // debug!("{:#?}", ops_coeffs);
+                let offset = repeat_n(0usize..=1usize, term_length).multi_cartesian_product();
+                for (scaler, offset) in zip(majorana_op_scalers, offset) {
+                    let mut majorana_term = Array1::zeros(term_length);
+                    majorana_term += &ind;
+                    majorana_term *= 2;
+                    majorana_term = majorana_term + Array1::from_vec(offset);
+
+                    let mut mp = MajoranaProduct::new(majorana_term.to_vec(), *coeff * scaler);
+                    mp.majorise();
+                    *self
+                        .operators
+                        .entry(mp.indices)
+                        .or_insert(Complex64 { re: 0.0, im: 0.0 }) += mp.coefficient;
+                }
+            });
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparse {
@@ -613,16 +620,22 @@ impl From<FermionSparse> for MajoranaSparse {
         // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
         // to each majorana term
         let mut majoranas: MajoranaBTree = MajoranaBTree::new();
-        let majoranas = sft.append_majorana_btree(&mut majoranas);
+        majoranas.append_fermion_sparse(sft);
 
         // debug!("Majoranas {:#?}", majoranas);
-        let mut sparse_values: Vec<Complex64> =
-            Vec::with_capacity(majoranas.values().filter(|&v| v.abs() >= 1e-16).count());
+        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
+            majoranas
+                .operators
+                .values()
+                .filter(|&v| v.abs() >= 1e-16)
+                .count(),
+        );
         let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
             Vec::with_capacity(sparse_values.len());
         // debug!("{:#?}", sparse_values.clone());
         let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
         majoranas
+            .operators
             .iter()
             .filter(|(_, &v)| v.abs() >= 1e-16)
             .for_each(|(k, &v)| {
@@ -646,30 +659,24 @@ impl From<FermionSparse> for MajoranaSparse {
 
 impl From<Vec<FermionSparse>> for MajoranaSparse {
     fn from(sft: Vec<FermionSparse>) -> Self {
-        // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
-        // to each majorana term
-        // let term_length = sft.ops.len();
-        //     .flatten()
-        //     .collect::<Vec<usize>>();
-        // let offset_array: Array2<usize> =
-        //     Array2::from_shape_vec((2_i32.pow(term_length as u32), term_length), offset_vec);
-
-        // let mut majoranas: MajoranaBTree = MajoranaBTree::new();
-        // for term in sft {
-        //     let majoranas = term.append_majorana_btree(&mut majoranas);
-        // }
         let mut majoranas: MajoranaBTree = MajoranaBTree::new();
-        sft.iter().for_each(|term| {
-            term.append_majorana_btree(&mut majoranas);
+        sft.into_iter().for_each(|term| {
+            majoranas.append_fermion_sparse(term);
         });
 
-        let mut sparse_values: Vec<Complex64> =
-            Vec::with_capacity(majoranas.values().filter(|&v| v.abs() >= 1e-16).count());
+        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
+            majoranas
+                .operators
+                .values()
+                .filter(|&v| v.abs() >= 1e-16)
+                .count(),
+        );
         let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
             Vec::with_capacity(sparse_values.len());
         // debug!("{:#?}", sparse_values.clone());
         let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
         majoranas
+            .operators
             .iter()
             .filter(|(_, &v)| v.abs() >= 1e-16)
             .for_each(|(k, &v)| {

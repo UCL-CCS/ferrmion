@@ -2,8 +2,10 @@
 Functions relating to encoding optimisation.
 */
 
-use crate::hamiltonians::{self, FilledTemplate, QubitHamiltonianTemplate, fill_template};
+use crate::encoding::Encode;
+use crate::{encoding::MajoranaEncoding, hamiltonians::QubitHamiltonian};
 
+use crate::operators::{CoefficientPauliWeight, MajoranaSparse, PauliWeight};
 use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
@@ -18,7 +20,7 @@ use std::sync::{Arc, Mutex};
 
 /// Returns the mean Pauli-weight of Hamiltonian terms.
 /// scaled by the coefficient of the term.
-pub fn pauli_coefficient_weight(hamiltonian: FilledTemplate) -> f64 {
+pub fn pauli_coefficient_weight(hamiltonian: QubitHamiltonian) -> f64 {
     let weight = hamiltonian.iter().fold(0., |acc, (key, val)| {
         let n_identity = key.chars().filter(|c| c == &'I').count();
         acc + (key.len() - n_identity) as f64 * val.abs()
@@ -27,7 +29,7 @@ pub fn pauli_coefficient_weight(hamiltonian: FilledTemplate) -> f64 {
 }
 
 /// Returns the mean Pauli-weight of Hamiltonian terms.
-pub fn pauli_weight(hamiltonian: FilledTemplate) -> f64 {
+pub fn pauli_weight(hamiltonian: QubitHamiltonian) -> f64 {
     let weight = hamiltonian.keys().fold(0., |acc, key| {
         let n_identity = key.chars().filter(|c| c == &'I').count();
         acc + (key.len() - n_identity) as f64
@@ -35,92 +37,84 @@ pub fn pauli_weight(hamiltonian: FilledTemplate) -> f64 {
     weight
 }
 /// Returns the mean Pauli-weight of Hamiltonian terms.
-pub fn pauli_and_coefficient_pauli(hamiltonian: FilledTemplate) -> (f64,f64) {
-    let weights = hamiltonian.iter().fold((0.,0.), |acc, (key, val)| {
+pub fn pauli_and_coefficient_pauli(hamiltonian: QubitHamiltonian) -> (f64, f64) {
+    let weights = hamiltonian.iter().fold((0., 0.), |acc, (key, val)| {
         let n_identity = key.chars().filter(|c| c == &'I').count();
-        (acc.0 + (key.len() - n_identity) as f64, acc.1 + (key.len() - n_identity) as f64 *val.abs())
+        (
+            acc.0 + (key.len() - n_identity) as f64,
+            acc.1 + (key.len() - n_identity) as f64 * val.abs(),
+        )
     });
     weights
 }
 
-pub fn template_weight(
-    template: &QubitHamiltonianTemplate,
-    constant_energy: f64,
-    one_e_coeffs: ArrayView2<f64>,
-    two_e_coeffs: ArrayView4<f64>,
-    n_permutations: usize,
-) -> (Array1<f64>, Array1<f64>) {
-    let n_modes = one_e_coeffs.len_of(Axis(0));
-    let mut pw_values: Array1<f64> = Array1::from_elem(n_permutations, 0.);
-    let mut cpw_values: Array1<f64> = Array1::from_elem(n_permutations, 0.);
-    Zip::from(&mut pw_values).and(&mut cpw_values).for_each(|pw, cpw| {
-        let permutor = Permutor::new(n_modes as u64);
-        let permutation: Array1<usize> =
-            Array1::from(permutor.map(|p| p as usize).collect::<Vec<usize>>());
-        let hamiltonian = fill_template(
-            template,
-            constant_energy,
-            one_e_coeffs,
-            two_e_coeffs,
-            permutation.view(),
-        );
-        let vals = pauli_and_coefficient_pauli(hamiltonian);
-        *pw = vals.0;
-        *cpw = vals.1;
-    });
-    (pw_values, cpw_values)
-}
-
-// pub fn batch_template_weight<'template>(template: &'template QubitHamiltonianTemplate,
+// pub fn pauli_weight_distribution(
 //     constant_energy: f64,
-//     one_e_coeffs: ArrayView2<f64>,
-//     two_e_coeffs: ArrayView4<f64>,
-//     mode_op_map: HashMap<usize, usize>) {
-//         pass
+//     signatures: Vec<String>,
+//     coefficients: Vec<ArrayD<f64>>,
+//     n_permutations: usize,
+// ) -> (Array1<f64>, Array1<f64>) {
+//     let n_modes = one_e_coeffs.len_of(Axis(0));
+//     let mut pw_values: Array1<f64> = Array1::from_elem(n_permutations, 0.);
+//     let mut cpw_values: Array1<f64> = Array1::from_elem(n_permutations, 0.);
+//     Zip::from(&mut pw_values)
+//         .and(&mut cpw_values)
+//         .for_each(|pw, cpw| {
+//             let permutor = Permutor::new(n_modes as u64);
+//             let permutation: Array1<usize> =
+//                 Array1::from(permutor.map(|p| p as usize).collect::<Vec<usize>>());
+//             let hamiltonian = fill_template(
+//                 template,
+//                 constant_energy,
+//                 one_e_coeffs,
+//                 two_e_coeffs,
+//                 permutation.view(),
+//             );
+//             let vals = pauli_and_coefficient_pauli(hamiltonian);
+//             *pw = vals.0;
+//             *cpw = vals.1;
+//         });
+//     (pw_values, cpw_values)
 // }
 
-struct OptimalEnumeration<'coeff> {
-    template: QubitHamiltonianTemplate,
-    one_e_coeffs: ArrayView2<'coeff, f64>,
-    two_e_coeffs: ArrayView4<'coeff, f64>,
-    cost_function: fn(FilledTemplate) -> f64,
+struct OptimalEnumeration {
+    msparse: MajoranaSparse,
+    encoding: MajoranaEncoding,
+    coefficient_weighted: bool,
     rng: Arc<Mutex<Xoshiro256PlusPlus>>,
 }
 
-impl<'coeff> OptimalEnumeration<'coeff> {
+impl OptimalEnumeration {
     fn new(
-        template: QubitHamiltonianTemplate,
-        one_e_coeffs: ArrayView2<'coeff, f64>,
-        two_e_coeffs: ArrayView4<'coeff, f64>,
-        cost_function: fn(FilledTemplate) -> f64,
+        msparse: MajoranaSparse,
+        encoding: MajoranaEncoding,
+        coefficient_weighted: bool,
     ) -> Self {
         OptimalEnumeration {
-            template,
-            one_e_coeffs,
-            two_e_coeffs,
-            cost_function,
+            msparse,
+            encoding,
+            coefficient_weighted,
             rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(1017))),
         }
     }
 }
 
-impl CostFunction for OptimalEnumeration<'_> {
+impl CostFunction for OptimalEnumeration {
     type Param = Array1<usize>;
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
-        let filled_template = fill_template(
-            &self.template,
-            0.,
-            self.one_e_coeffs,
-            self.two_e_coeffs,
-            param.view(),
-        );
-        Ok((self.cost_function)(filled_template))
+        let enumerated_encoding = self.encoding.apply_mode_enumeration(param.to_vec());
+        let qham = enumerated_encoding.encode(&self.msparse);
+        let weight = match self.coefficient_weighted {
+            true => qham.coeff_pauli_weight(),
+            false => qham.pauli_weight() as f64,
+        };
+        Ok(weight)
     }
 }
 
-impl Anneal for OptimalEnumeration<'_> {
+impl Anneal for OptimalEnumeration {
     type Param = Array1<usize>;
     type Output = Array1<usize>;
     type Float = f64;
@@ -149,18 +143,13 @@ impl Anneal for OptimalEnumeration<'_> {
 }
 
 pub fn anneal_enumerations<'coeff>(
-    template: QubitHamiltonianTemplate,
-    one_e_coeffs: ArrayView2<'coeff, f64>,
-    two_e_coeffs: ArrayView4<'coeff, f64>,
+    msparse: MajoranaSparse,
+    encoding: MajoranaEncoding,
     temperature: f64,
     initial_guess: ArrayView1<usize>,
     coefficient_weighted: bool,
 ) -> Result<(f64, Array1<usize>), Error> {
-    let cost_function: fn(FilledTemplate) -> f64 = match coefficient_weighted {
-        true => pauli_coefficient_weight,
-        false => pauli_weight,
-    };
-    let operator = OptimalEnumeration::new(template, one_e_coeffs, two_e_coeffs, cost_function);
+    let operator = OptimalEnumeration::new(msparse, encoding, coefficient_weighted);
 
     // Define initial parameter vector
 

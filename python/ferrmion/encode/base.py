@@ -16,6 +16,11 @@ from ferrmion.utils import (
     symplectic_to_sparse,
 )
 
+@dataclass
+class SymplecticMatrix:
+    ipowers: NDArray[np.uint8]
+    symplectics: NDArray[bool]
+
 logger = logging.getLogger(__name__)
 
 
@@ -378,3 +383,9 @@ def double_fermionic_operator(
     ]
     logger.debug(f"Found operator {sparse_op}")
     return sparse_op
+
+
+class InputDefinedEncoding(FermionQubitEncoding):
+
+    def __init__(self, ):
+        super().__init__(n_modes, n_qubits)

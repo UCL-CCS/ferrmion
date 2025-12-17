@@ -1,14 +1,89 @@
+"""Molecular Hamiltonian."""
 """Hubbard Hamiltonian."""
 
 import numpy as np
 import numpy.typing as npt
+from numpy.typing import NDArray
 
-from ferrmion.core import (
-    fill_template,
-    hubbard_hamiltonian_template,
-)
+import logging
 
-from ..encode import FermionQubitEncoding
+logger = logging.getLogger(__name__)
+
+
+class FermionHamiltonian:
+    """
+    Class for building Fermionic Hamiltonians.
+
+    """
+    def __init__(self, signatures: list[str]|str|None=None, coefficients:list[NDArray[np.float]]|str|None=None, constant_energy: float = 0.0):
+        if signatures is None:
+            self.signatures = []
+        elif isinstance(signatures, str):
+            self.signatures = [signatures]
+        elif isinstance(signatures, list):
+            self.signatures = signatures
+
+        if coefficients is None:
+            self.coefficients = []
+        elif isinstance(coefficients, str):
+            self.coefficients = [coefficients]
+        elif isinstance(coefficients, list):
+            self.coefficients = coefficients
+
+        self.constant_energy = constant_energy
+        self._next_term = ""
+
+
+    def creation(self):
+        self._next_term += "+"
+
+    def annihilation(self):
+        self._next_term += "-"
+
+    def term_coefficients(self, coefficients: NDArray):
+        if coefficients.ndim != len(self._next_term):
+            logger.error(f"Cannot apply coefficents to term {self._next_term}")
+        else:
+            self.coefficients.append(coefficients)
+            self.signatures.append(self._next_term)
+            self._next_term = ""
+
+
+
+def molecular_hamiltonian(
+    one_e_coeffs: NDArray,
+    two_e_coeffs: NDArray,
+    constant_energy: float = 0.,
+    physicist_notation: bool = True,
+):
+    """Return an encoded electronic stucture hamiltonain with niave enumeration.
+
+    Args:
+        encoding (FermionQubitEncoding): The encoding to use.
+        one_e_coeffs (NDArray): One electron hamiltonian coefficients in spinorb format.
+        two_e_coeffs (NDArray): Two electron hamiltonian coefficients in spinorb format.
+        constant_energy (float): Constant energy offset.
+        physicist_notation (bool): Set to False for Chemist Notation.
+
+    Example:
+        >>> import numpy as np
+        >>> from ferrmion.hamiltonians.molecular import molecular_hamiltonian
+        >>> from ferrmion.encode import TernaryTree
+        >>> tree = TernaryTree(12).JW()
+        >>> one_e = np.eye((2,2))
+        >>> two_e = np.eye((2,2,2,2))
+        >>> fham = molecular_hamiltonian(one_e, two_e, 0.0)
+        >>> tree.encode(fham)
+    """
+    if physicist_notation:
+        signatures = ["+-","++--"]
+    else:
+        signatures = ["+-","++--"]
+
+    return FermionHamiltonian(signatures=signatures, coefficients=[one_e_coeffs, two_e_coeffs], constant_energy=constant_energy)
+
+
+
 
 
 def linear_adjacency_matrix(length: int, periodic: bool) -> npt.NDArray[bool]:
@@ -21,10 +96,10 @@ def linear_adjacency_matrix(length: int, periodic: bool) -> npt.NDArray[bool]:
     Returns:
         np.ndarray[bool]: Adjacency matrix for lattice sites.
     """
-    return square_adjacency_matrix((length, 1), periodic=periodic)
+    return square_lattice_adjacency_matrix((length, 1), periodic=periodic)
 
 
-def square_adjacency_matrix(
+def square_lattice_adjacency_matrix(
     shape: tuple[int, int], periodic: bool
 ) -> npt.NDArray[bool]:
     """Creates an adjacency matrix for a 2D square lattice Hubbard Hamiltonian.
@@ -64,7 +139,7 @@ def square_adjacency_matrix(
     return np.array(adjacency_matrix, dtype=bool)
 
 
-def cube_adjacency_matrix(
+def cube_lattice_adjacency_matrix(
     shape: tuple[int, int, int], periodic: bool
 ) -> npt.NDArray[bool]:
     """Creates an adjacency matrix for a 3D square lattice Hubbard Hamiltonian.
@@ -83,7 +158,7 @@ def cube_adjacency_matrix(
     # Add each of the layers of a square matrix
     for i in range(0, n_sites, nx * ny):
         adjacency_matrix[i : i + nx * ny, i : i + nx * ny] = np.triu(
-            square_adjacency_matrix((nx, ny), periodic=periodic)
+            square_lattice_adjacency_matrix((nx, ny), periodic=periodic)
         )
 
     # Add connection in D3
@@ -137,7 +212,6 @@ def hubbard_coefficients(
 
 
 def hubbard_hamiltonian(
-    encoding: FermionQubitEncoding,
     adjacency_matrix: npt.NDArray,
     onsite_term: float,
     hopping_term: float = 1.0,
@@ -162,26 +236,17 @@ def hubbard_hamiltonian(
 
     Example:
         >>> import numpy as np
-        >>> from ferrmion.hamiltonians.molecular import molecular_hamiltonian
+        >>> from ferrmion.hamiltonians.molecular import hubbard_hamiltonian, square_adjacency_matrix
         >>> from ferrmion.encode import TernaryTree
         >>> tree = TernaryTree(12).JW()
-        >>> one_e = np.eye((2,2))
-        >>> two_e = np.eye((2,2,2,2))
-        >>> molecular_hamiltonian(tree, one_e, two_e, 0.0)
+        >>> adjacency = square_lattice_adjacency_matrix(shape=(4,4),periodic=False)
+        >>> fham = hubbard_hamiltonian(adjacency, onsite_term=2,...)
+        >>> tree.encode(fham)
     """
-    ipowers, symplectic = encoding._build_symplectic_matrix()
-    template = hubbard_hamiltonian_template(ipowers, symplectic)
+    n_sites = adjacency_matrix.size
 
-    n_modes = encoding.n_modes
     one_e_coeffs, two_e_coeffs = hubbard_coefficients(
-        n_modes, adjacency_matrix, onsite_term, hopping_term, spinless=spinless
+        n_sites, adjacency_matrix, onsite_term, hopping_term, spinless=spinless
     )
 
-    qubit_hamiltonian = fill_template(
-        template=template,
-        constant_energy=0,
-        one_e_coeffs=one_e_coeffs,
-        two_e_coeffs=two_e_coeffs,
-        mode_op_map=encoding.default_mode_op_map,
-    )
-    return qubit_hamiltonian
+    return FermionHamiltonian(signatures=["+-", "+-+-"], coefficients=[one_e_coeffs, two_e_coeffs], constant_energy=0.)

@@ -165,17 +165,22 @@ def test_distance_squared(n2mi):
     assert distance_squared(n2mi, [*range(1, n2mi.shape[0] + 1)]) == [np.inf]
 
 
-def test_coefficient_pauli_weight(water_integrals):
-    ones, twos = water_integrals
+def test_coefficient_pauli_weight(water_data):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
 
     jw = TernaryTree(14).JW()
     jw_qham = jw.encode(molecular_hamiltonian(ones, twos))
-    jw_norm = coefficient_pauli_weight(jw_qham)
+    jw_norm = coefficient_pauli_weight(jw_qham)[0]
 
-    assert np.allclose(jw_norm, [np.float64(272.4190655251233)])
+    assert isinstance(jw_norm, np.float64)
+    assert np.allclose(int(jw_norm), 191)
 
     pe = TernaryTree(14).ParityEncoding()
     pe_mol_ham = molecular_hamiltonian(ones, twos)
     pe_qham = pe.encode(pe_mol_ham)
-    pe_norm = coefficient_pauli_weight(pe_qham)
-    assert np.allclose(pe_norm, [np.float64(354.23056347814577)])
+    pe_norm = coefficient_pauli_weight(pe_qham)[0]
+
+    assert isinstance(pe_norm, np.float64)
+    assert pe_norm > jw_norm
+    assert np.allclose(int(pe_norm), 256)

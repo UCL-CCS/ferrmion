@@ -39,39 +39,23 @@ def test_core_topphatt():
     flatpack = [(0,(None, None, 1)), (1, (None,None,2)), (2,(None, None,3)), (3, (None, None, None))]
     topphatt(flatpack, 4, signatures=["+-", "++--"], coeffs=[ones, twos])
 
-def test_core_topphatt_water(water_integrals):
-    ones, twos = water_integrals
-
+def test_core_topphatt_flatpack_runs(water_data):
     flatpack = [(i, (None, None, i+1)) for i in range(13)] + [(13, (None, None, None))]
-    topphatt(flatpack,14, signatures=["+-", "++--"], coeffs=[ones, twos])
+    topphatt(flatpack,14, signatures=["+-", "++--"], coeffs=[water_data["ones"], water_data["twos"]])
 
-def test_core_topphatt_jw(water_integrals):
-    ones, twos = water_integrals
-    topphatt_standard("JW", 14, 14,signatures=["+-", "++--"], coeffs=[ones, twos])
-
-def test_core_topphatt_pe(water_integrals):
-    ones, twos = water_integrals
-    topphatt_standard("PE",14, 14,signatures=["+-", "++--"], coeffs=[ones, twos])
-
-def test_core_topphatt_bk(water_integrals):
-    ones, twos = water_integrals
-    ones =np.random.random((6,6))
-    twos =np.random.random((6,6, 6,6))
-    topphatt_standard("BK",6, 6, signatures=["+-", "++--"], coeffs=[ones, twos])
-
-def test_core_topphatt_jkmn(water_integrals):
-    ones, twos = water_integrals
-    topphatt_standard("JKMN",14,14, signatures=["+-", "++--"], coeffs=[ones, twos])
+@pytest.mark.parametrize("encoding", ["JW", "PE", "BK", "JKMN"])
+def test_core_topphatt_standard_runs(encoding, water_data):
+    topphatt_standard(encoding, 14, 14,signatures=["+-", "++--"], coeffs=[water_data["ones"], water_data["twos"]])
 
 
 @pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
-def test_core_standard(encoding, water_eigenvalues, water_integrals):
-    ones = water_integrals[0]
-    twos = 0.5*water_integrals[1]
+def test_core_standard(encoding, water_eigenvalues, water_data):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
     one_step = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos], 0.)
 
     ipow, sym = standard_symplectic_matrix(encoding, ones.shape[0])
-    two_step = encode(ipow, sym,["+-","++--"], [ones, twos], 0.) 
+    two_step = encode(ipow, sym,["+-","++--"], [ones, twos], 0.)
 
     assert len(one_step) == len(two_step)
     for k,v in one_step.items():

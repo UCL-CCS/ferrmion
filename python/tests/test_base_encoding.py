@@ -181,7 +181,7 @@ def test_majorana_product_doubles_to_idenity(encoding_func):
 
 
 @pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN, ParityEncoding])
-def test_majorana_product_exchange_antusymmetry(encoding_func):
+def test_majorana_product_exchange_antisymmetry(encoding_func):
     encoding: FermionQubitEncoding = encoding_func(5)
     for i in range(1, 5):
         assert np.all(

@@ -39,6 +39,7 @@ def jordan_wigner(fham: FermionHamiltonian) -> QubitHamiltonian:
         n_qubits=fham.n_modes,
         signatures=sigs,
         coeffs=coeffs,
+        constant_energy=fham.constant_energy,
     )
 
 
@@ -58,6 +59,7 @@ def bravyi_kitaev(fham: FermionHamiltonian) -> QubitHamiltonian:
         n_qubits=fham.n_modes,
         signatures=sigs,
         coeffs=coeffs,
+        constant_energy=fham.constant_energy,
     )
 
 
@@ -77,6 +79,7 @@ def parity(fham: FermionHamiltonian) -> QubitHamiltonian:
         n_qubits=fham.n_modes,
         signatures=sigs,
         coeffs=coeffs,
+        constant_energy=fham.constant_energy,
     )
 
 
@@ -96,6 +99,7 @@ def jkmn(fham: FermionHamiltonian) -> QubitHamiltonian:
         n_qubits=fham.n_modes,
         signatures=sigs,
         coeffs=coeffs,
+        constant_energy=fham.constant_energy,
     )
 
 
@@ -156,7 +160,13 @@ def _standard_topphatt(encoding: str, fham: FermionHamiltonian) -> QubitHamilton
         signatures=sigs,
         coeffs=coeffs,
     )
-    return encode(ipowers=ipow, symplectics=sym, signatures=sigs, coeffs=coeffs, constant_energy=fham.constant_energy)
+    return encode(
+        ipowers=ipow,
+        symplectics=sym,
+        signatures=sigs,
+        coeffs=coeffs,
+        constant_energy=fham.constant_energy,
+    )
 
 
 def jordan_wigner_annealed(
@@ -277,4 +287,10 @@ def _standard_annealed(
         coefficient_weighted=coefficient_weighted,
     )
 
-    return encode(ipowers=ipow, symplectics=sym, signatures=sigs, coeffs=coeffs, constant_energy=fham.constant_energy)
+    return encode(
+        ipowers=ipow,
+        symplectics=sym,
+        signatures=sigs,
+        coeffs=coeffs,
+        constant_energy=fham.constant_energy,
+    )

@@ -133,8 +133,9 @@ def n2mi():
     )
 
 
-def test_huffman(water_integrals):
-    ones, twos = water_integrals
+def test_huffman(water_data):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
     tree = huffman_ternary_tree(ones, twos)
     tree_dict = {
         "x": {

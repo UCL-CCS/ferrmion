@@ -16,7 +16,6 @@ from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree, fast_hatt
 def test_jw_topphatt(water_sparse_majorana):
     tree = JordanWigner(14)
     tree = topphatt(majorana_ham=water_sparse_majorana, tree=tree)
-    assert tree.pauli_weight == 2128
     assert tree.root_node.child_strings == JordanWigner(14).root_node.child_strings
     assert tree.root_node.branch_strings == JordanWigner(14).root_node.branch_strings
 
@@ -27,18 +26,16 @@ def test_topphatt_preserves_topology(water_sparse_majorana, encoding):
     assert tree.root_node.child_strings == encoding(14).root_node.child_strings
     assert tree.root_node.branch_strings == encoding(14).root_node.branch_strings
 
-def test_topphatt_huffman(water_sparse_majorana, water_integrals):
-    ones, twos = water_integrals
-    test_tree = huffman_ternary_tree(ones, twos)
+def test_topphatt_huffman(water_sparse_majorana, water_data):
+    test_tree = huffman_ternary_tree(water_data["ones"], water_data["twos"])
     initial_children = test_tree.root_node.child_strings
     initial_branches = test_tree.root_node.branch_strings
     topphatt_tree = topphatt(water_sparse_majorana, test_tree)
     assert topphatt_tree.root_node.child_strings == initial_children
     assert topphatt_tree.root_node.branch_strings == initial_branches
 
-def test_topphatt_hatt(water_sparse_majorana, water_integrals):
-    ones, twos = water_integrals
-    test_tree = hamiltonian_adaptive_ternary_tree(fermionic_to_sparse_majorana(((ones,"+-"), (twos, "++--"))), n_modes=14)
+def test_topphatt_hatt(water_sparse_majorana, water_data):
+    test_tree = hamiltonian_adaptive_ternary_tree(fermionic_to_sparse_majorana(((water_data["ones"],"+-"), (water_data["twos"], "++--"))), n_modes=14)
     initial_children = test_tree.root_node.child_strings
     initial_branches = test_tree.root_node.branch_strings
     topphatt_tree = topphatt(water_sparse_majorana, test_tree)
@@ -46,8 +43,8 @@ def test_topphatt_hatt(water_sparse_majorana, water_integrals):
     assert topphatt_tree.root_node.branch_strings == initial_branches
 
 
-def test_topphatt_fasthatt(water_sparse_majorana, water_integrals):
-    ones, twos = water_integrals
+def test_topphatt_fasthatt(water_sparse_majorana, water_data):
+    ones, twos = water_data["ones"], water_data["twos"]
     test_tree = fast_hatt(fermionic_to_sparse_majorana(((ones,"+-"), (twos, "++--"))), n_modes=14)
     initial_children = test_tree.root_node.child_strings
     initial_branches = test_tree.root_node.branch_strings

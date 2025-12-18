@@ -29,18 +29,24 @@ fn build_majorana_sparse(
 ) -> MajoranaSparse {
     let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
     for (sig, coeff) in zip(signatures, coeffs) {
-        let vec_sig: Vec<LadderOperator> = sig
+        let mut vec_sig: Vec<LadderOperator> = sig
             .chars()
             .map(|v| LadderOperator::try_from(v).expect("Signature components should be + or -"))
             .collect();
-        let term_coef = coeff.as_array().to_owned();
+        let mut term_coef = coeff.as_array().to_owned();
+        // fsparse_vec.push(
+        //     FermionMatrix::new(vec_sig.clone(), term_coef.clone())
+        //         .expect("Signature lengths and coeff dimensions must match")
+        //         .into(),
+        // );
+        // vec_sig.reverse();
         fsparse_vec.push(
             FermionMatrix::new(vec_sig, term_coef)
                 .expect("Signature lengths and coeff dimensions must match")
                 .into(),
         );
     }
-    debug!("{:?}", fsparse_vec);
+    debug!("FSparse {:?}", &fsparse_vec);
     debug!("Getting MSparse");
     let mut hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
     hamiltonian.constant += constant_energy;
@@ -370,11 +376,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         };
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
+        debug!("Hamiltonian {:?}", hamiltonian);
         let encoding = tree.build_encoding(n_qubits).unwrap();
-        debug!("Got encoding");
+        debug!("Got encoding {:?}", encoding);
+        debug!("Got encoding {:?}", encoding);
+        
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
 
         debug!("Got qham");
+        debug!("Got qham {:?}", qham);
         Ok(qham
             .into_py_dict(py)
             .expect("Should be able to convert QubitHamiltonian to PyDict."))

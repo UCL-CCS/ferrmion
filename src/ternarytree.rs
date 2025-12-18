@@ -966,3 +966,52 @@ mod tt_tests {
         assert!(branch_tt.add_branch(1, vec![(Edge::X, 2)]).is_err());
     }
 }
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use crate::encoding::Encode;
+    use crate::hamiltonians::QubitHamiltonian;
+    use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
+    use ahash::HashMapExt;
+    use num_complex::c64;
+    use numpy::ndarray::{arr2, ArrayD};
+    #[test]
+    fn test_encode_identity_with_jw() {
+        let encoding = TernaryTree::naive_jordan_wigner(2)
+            .build_encoding(2)
+            .unwrap();
+        let mut coeffs = arr2(&[[1f64, 0f64], [0f64, 1f64]]).into_dyn();
+        let fmat = FermionMatrix::new(
+            vec![LadderOperator::Creation, LadderOperator::Annihilation],
+            coeffs,
+        )
+        .unwrap();
+        let mut expected = QubitHamiltonian::new();
+        expected.insert("IZ".to_string(), c64(-0.5, 0.));
+        expected.insert("ZI".to_string(), c64(-0.5, 0.));
+        expected.insert("II".to_string(), c64(1., 0.));
+        let qham = encoding.encode(&MajoranaSparse::from(FermionSparse::from(fmat)));
+        assert_eq!(expected, qham)
+    }
+
+    #[test]
+    fn test_encode_off_diag_with_jw() {
+        let encoding = TernaryTree::naive_jordan_wigner(2)
+            .build_encoding(2)
+            .unwrap();
+        let mut coeffs = arr2(&[[0f64, 0f64], [1f64, 0f64]]).into_dyn();
+        let fmat = FermionMatrix::new(
+            vec![LadderOperator::Creation, LadderOperator::Annihilation],
+            coeffs,
+        )
+        .unwrap();
+        let mut expected = QubitHamiltonian::new();
+        expected.insert("XY".to_string(), c64(0., -0.25));
+        expected.insert("YX".to_string(), c64(0., 0.25));
+        expected.insert("XX".to_string(), c64(0.25, 0.));
+        expected.insert("YY".to_string(), c64(0.25, 0.));
+        let qham = encoding.encode(&MajoranaSparse::from(FermionSparse::from(fmat)));
+        assert_eq!(expected, qham);
+    }
+}

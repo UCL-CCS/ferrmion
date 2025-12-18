@@ -1,12 +1,10 @@
-"""Molecular Hamiltonian."""
+"""Class and methods to easily build general Fermion Hamiltonians."""
 
-"""Hubbard Hamiltonian."""
+import logging
 
 import numpy as np
 import numpy.typing as npt
 from numpy.typing import NDArray
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +15,9 @@ type QubitHamiltonian = dict[str, float]
 
 
 class FermionHamiltonian:
-    """
-    Class for building Fermionic Hamiltonians.
-    """
+    """Class for building Fermionic Hamiltonians."""
 
-    def __init__(self,*, terms: dict[str, NDArray] = {}, constant_energy: float = 0.0):
+    def __init__(self, *, terms: dict[str, NDArray] = {}, constant_energy: float = 0.0):
         logger.debug("Initialising FermionHamiltonian")
         self._terms: dict[str, NDArray] = terms
         self.constant_energy = constant_energy
@@ -56,6 +52,7 @@ class FermionHamiltonian:
         for k, v in self._terms.items():
             sigs.append(k)
             coeffs.append(v)
+
         return (sigs, coeffs)
 
     def creation(self) -> "FermionHamiltonian":
@@ -75,7 +72,7 @@ class FermionHamiltonian:
             self._check_and_set_n_modes()
         return self
 
-    def add_constant(self, constant_energy:float) -> "FermionHamiltonian":
+    def add_constant(self, constant_energy: float) -> "FermionHamiltonian":
         self.constant_energy += constant_energy
         return self
 

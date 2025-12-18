@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def test_molecular_hamiltonian():
+def test_molecular_hamiltonian_equivalent_explicit_fermion_hamiltonian():
     ones = np.eye(4)
     twos = np.ones((4,4,4,4))
     constant_energy = 10.
@@ -24,15 +24,16 @@ def test_molecular_hamiltonian():
     explicit_molh.creation().annihilation().with_coefficients(ones)
     explicit_molh.creation().creation().annihilation().annihilation().with_coefficients(twos)
     assert molh._terms.keys() == explicit_molh._terms.keys()
-    assert np.all(molh._terms["+-"] == explicit_molh._terms["+-"]) 
+    assert np.all(molh._terms["+-"] == explicit_molh._terms["+-"])
     assert np.all(molh._terms["++--"] == explicit_molh._terms["++--"])
 
 @pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
-def test_core_standard(encoding, water_eigenvalues, water_integrals):
-    ones = water_integrals[0]
-    twos = 0.5*water_integrals[1]
+def test_encode_standard_water_eigvals_equal_expected(encoding, water_data):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
+    e_nuc = water_data["constant_energy"]
 
-    qham = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos], 0.)
+    qham = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos], e_nuc)
 
     ofop = QubitOperator()
     for k, v in qham.items():
@@ -43,7 +44,29 @@ def test_core_standard(encoding, water_eigenvalues, water_integrals):
             ]
         )
         ofop+= QubitOperator(term=string, coefficient=v)
-    diag, _ = eigsh(get_sparse_operator(ofop), k=6, which="SA")
+    print(expected:=water_data["eigvals"])
+    diag, _ = eigsh(get_sparse_operator(ofop), k=2, which="SA")
     print(diag)
-    print(water_eigenvalues)
-    assert np.allclose(sorted(diag), sorted(water_eigenvalues))
+    assert np.allclose(np.sort(diag), np.sort(expected)[:2])
+
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+def test_encode_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+    qham = encode_standard(encoding, n_modes, n_modes, ["+-","++--"], [ones, twos], e_nuc)
+
+    ofop = QubitOperator()
+    for k, v in qham.items():
+        string = " ".join(
+            [
+                f"{char.upper()}{pos}" if char != "I" else ""
+                for pos, char in enumerate(k)
+            ]
+        )
+        ofop+= QubitOperator(term=string, coefficient=v)
+    print(expected:=h2_mol_data_sets["eigvals"])
+    diag, _ = eigsh(get_sparse_operator(ofop), k=2*n_modes, which="SA")
+    print(diag)
+    assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))

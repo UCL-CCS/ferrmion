@@ -3,7 +3,7 @@ use crate::hamiltonians::QubitHamiltonian;
 Functions relating to the FermionQubitEncoding base class.
 */
 
-use crate::operators::{MajoranaProduct, MajoranaSparse, Pauli};
+use crate::operators::{FermionMatrix, MajoranaProduct, MajoranaSparse, Pauli};
 use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
 use log::debug;
@@ -17,6 +17,7 @@ pub trait Encode<T> {
     fn encode(&self, input: T) -> QubitHamiltonian;
 }
 
+#[derive(Debug)]
 pub struct MajoranaEncoding {
     pub ipowers: Array1<u8>,
     pub symplectics: Array2<bool>,
@@ -230,6 +231,9 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
             .iter()
             .zip(&input.coefficients)
             .for_each(|(&indices, coef)| {
+                debug!("\nindices {:?}", indices);
+                debug!("coef {:?}", coef);
+
                 let (operator, product_ipower) = indices.iter().fold(
                     (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
                     |acc, &ind| {
@@ -238,22 +242,25 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
                             self.symplectics.row(ind as usize),
                             acc.1,
                         );
-                        // debug!("acc {:#?}", acc);
+                        debug!("a, i {:#?}", (&a, &i));
                         (a, i)
                     },
                 );
+                debug!("Operator {:?}", operator);
+                debug!("Product Ipower {:?}", product_ipower);
                 let ipower: u8 = indices.iter().fold(product_ipower, |acc, &ind| {
                     acc + &self.ipowers[ind as usize]
                 }) % 4;
-                // debug!(
-                //     "EncodeSparse ME {:#?}",
-                //     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower)
-                // );
+                // let ipower = product_ipower;
+                debug!("Total Ipower {:?}", ipower);
                 let (pauli, ipower) =
                     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
+                debug!("Pauli term {:?}", pauli.clone());
                 *qham.entry(pauli).or_insert(Complex64::new(0., 0.)) +=
                     coef * icount_to_sign(ipower as usize);
+                debug!("Total Ipower {:?}", icount_to_sign(ipower as usize));
             });
+
         *qham
             .entry(
                 (0..self.n_modes)
@@ -262,12 +269,14 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
             )
             .or_insert(c64(0., 0.)) += input.constant;
         // qham.into_iter().filter(|(_, v)| v.abs() > 1e-12).collect()
-        qham
+        qham.into_iter().filter(|(k, v)| v.norm() > 1e-16).collect()
     }
 }
 
 #[cfg(test)]
 mod owned_tests {
+    use crate::operators::{FermionMatrix, LadderOperator};
+
     use super::*;
     use ndarray::{arr2, Array1, ArrayView1};
     use num_complex::c64;
@@ -350,6 +359,10 @@ mod owned_tests {
 
         let mp = MajoranaProduct::new(vec![3, 2], Complex64::new(1.0, 0.));
         let qham = encoding.encode(mp);
+        assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0.0, 1.));
+
+        let mp = MajoranaProduct::new(vec![3, 2, 2, 2], Complex64::new(1.0, 0.));
+        let qham = encoding.encode(mp);
         assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(0.0, -1.));
     }
 
@@ -368,7 +381,6 @@ mod owned_tests {
         )
         .unwrap();
         let qham = encoding.encode(&ms);
-        assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
 
     #[test]
@@ -388,7 +400,6 @@ mod owned_tests {
         debug!("{:#?}", ms);
         let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
-        assert_eq!(qham.get("YYY").unwrap(), &Complex64::new(0., 0.));
     }
     #[test]
     fn test_encode_sparse_long() {

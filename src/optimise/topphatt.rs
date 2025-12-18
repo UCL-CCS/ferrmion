@@ -448,9 +448,9 @@ pub fn topphatt(
                     .indices
                     .iter()
                     .fold_while(0, |acc, inds| {
-                        let inds_max = inds.last().expect("Hamiltonian terms should not be empty.");
+                        let inds_max = inds.iter().max().expect("Hamiltonian terms should not be empty.");
                         let inds_min = inds
-                            .first()
+                            .iter().min()
                             .expect("Hamiltonian terms should not be empty.");
 
                         let comb_min = comb.iter().min().expect("Combination should not be empty.");

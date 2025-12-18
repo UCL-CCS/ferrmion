@@ -174,6 +174,7 @@ class FermionQubitEncoding(ABC):
 
 
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+        logger.debug("Encoding fermionic Hamiltonian.")
         ipowers, symplectic = self._build_symplectic_matrix()
         signatures, coeffs = fham.signatures_and_coefficients
         return encode(

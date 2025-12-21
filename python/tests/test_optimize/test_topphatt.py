@@ -8,16 +8,14 @@ from ferrmion.encode.ternary_tree import (
     ParityEncoding,
     JKMN,
 )
+import numpy as np
 import pytest
+from ferrmion.core import topphatt_standard, encode
 from ferrmion.optimize.huffman import huffman_ternary_tree
 from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree, fast_hatt
+from openfermion import QubitOperator, get_sparse_operator
+from scipy.sparse.linalg import eigsh
 
-
-def test_jw_topphatt(water_sparse_majorana):
-    tree = JordanWigner(14)
-    tree = topphatt(majorana_ham=water_sparse_majorana, tree=tree)
-    assert tree.root_node.child_strings == JordanWigner(14).root_node.child_strings
-    assert tree.root_node.branch_strings == JordanWigner(14).root_node.branch_strings
 
 @pytest.mark.parametrize("encoding", [JordanWigner, BravyiKitaev, ParityEncoding, JKMN])
 def test_topphatt_preserves_topology(water_sparse_majorana, encoding):
@@ -55,3 +53,28 @@ def test_topphatt_fasthatt(water_sparse_majorana, water_data):
 
 def test_topphatt_bonsai(water_sparse_majorana):
     pass
+
+
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+def test_core_topphatt_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+    ipow, sym = topphatt_standard(encoding, n_modes, n_modes, ["+-","++--"], [ones, twos])
+    qham = encode(ipow, sym, ["+-","++--"],[ones, twos], e_nuc)
+
+
+    ofop = QubitOperator()
+    for k, v in qham.items():
+        string = " ".join(
+            [
+                f"{char.upper()}{pos}" if char != "I" else ""
+                for pos, char in enumerate(k)
+            ]
+        )
+        ofop+= QubitOperator(term=string, coefficient=v)
+    print(expected:=h2_mol_data_sets["eigvals"])
+    diag, _ = eigsh(get_sparse_operator(ofop), k=2*n_modes, which="SA")
+    print(diag)
+    assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))

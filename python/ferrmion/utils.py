@@ -551,7 +551,7 @@ def _hamiltonian_term_to_majorana(
             for ind in range(0, len(majorana_ind)):
                 if majorana_ind.count(majorana_ind[ind]) % 2 == 1:
                     no_duplicates.append(majorana_ind[ind])
-                
+
             if no_duplicates == []:
                 continue
 

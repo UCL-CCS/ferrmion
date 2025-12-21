@@ -47,20 +47,43 @@ def fill_template(
     mode_op_map: npt.NDArray[np.uint],
 ) -> dict: ...
 def anneal_enumerations(
-    template: dict,
-    one_e_coeffs: npt.NDArray[np.float64],
-    two_e_coeffs: npt.NDArray[np.float64],
+    ipowers: npt.NDArray[np.uint8],
+    symplectics: npt.NDArray[np.bool],
+    signatures: list[str],
+    coeffs: list[np.ndarray],
     temperature: float,
     initial_guess: npt.NDArray[np.uint],
     coefficient_weighted: bool,
 ) -> tuple[float, npt.NDArray[np.uint]]: ...
 def icount_to_sign(icount: int) -> np.complex64: ...
-def topphatt(n_qubits: int, flatpack: list[tuple[np.uint, tuple[np.uint, np.uint, np.uint]]], signatures: list[str], coeffs: list[np.ndarray]) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
-def topphatt_standard(encoding:str, n_modes: int,n_qubits: int, signatures: list[str], coeffs: list[np.ndarray]) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
-def standard_symplectic_matrix(encoding:str, n_modes: int) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
-def encode_standard(encoding:str, n_modes: int,n_qubits: int, signatures: list[str], coeffs: list[np.ndarray]) -> dict: ...
-def encode( 
+def topphatt(
+    flatpack: list[tuple[np.uint, tuple[np.uint, np.uint, np.uint]]],
+    n_qubits: int,
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+def topphatt_standard(
+    encoding: str,
+    n_modes: int,
+    n_qubits: int,
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+def standard_symplectic_matrix(
+    encoding: str, n_modes: int
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+def encode_standard(
+    encoding: str,
+    n_modes: int,
+    n_qubits: int,
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+    constant_energy:float,
+) -> dict: ...
+def encode(
     ipowers: npt.NDArray[np.uint8],
     symplectics: npt.NDArray[np.bool],
-    signatures: list[str], coeffs: list[np.ndarray]
-    ) -> dict: ...
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+    constant_energy: float,
+) -> dict: ...

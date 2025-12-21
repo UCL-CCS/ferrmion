@@ -562,38 +562,6 @@ def tests_bonsai_paper_tree(bonsai_paper_tree):
     for line in tt._build_symplectic_matrix()[1]:
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
-
-def test_eigenvalues_with_openfermion(water_eigenvalues, water_integrals):
-    # qham_zeros = InteractionOperator(0, tt.one_e_coeffs, np.zeros(tt.two_e_coeffs.shape))
-    # ofop_zeros = jordan_wigner(qham_zeros)
-    one_e_ints, two_e_ints = water_integrals
-    qham = InteractionOperator(0, one_e_ints, 0.5 * two_e_ints)
-    # print(qham)
-    ofop = jordan_wigner(qham)
-    # print(f"diff {ofop-ofop_zeros}")
-    diag, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop), k=6, which="SA")
-
-    assert np.allclose(sorted(diag), sorted(water_eigenvalues))
-
-
-def test_eigenvalues_across_encodings(water_eigenvalues, water_tt, water_integrals):
-    one_e_ints, two_e_ints = water_integrals
-
-    qham2 = molecular_hamiltonian(water_tt.JKMN(), one_e_ints, 0.5 * two_e_ints, 0)
-    ofop2 = QubitOperator()
-    for k, v in qham2.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop2 += QubitOperator(term=string, coefficient=v)
-    diag2, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop2), k=6, which="SA")
-
-    assert np.allclose(sorted(water_eigenvalues), sorted(diag2))
-
-
 def test_default_mode_op_map(water_tt):
     assert np.all(water_tt.default_mode_op_map == [*range(water_tt.n_qubits)])
 

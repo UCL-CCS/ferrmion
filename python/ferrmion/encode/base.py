@@ -1,4 +1,5 @@
 """Base FermionQubitEncoding class."""
+from inspect import signature
 
 import logging
 from abc import ABC, abstractmethod
@@ -7,7 +8,7 @@ from itertools import product
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion.core import hartree_fock_state, symplectic_product_map
+from ferrmion.core import hartree_fock_state, symplectic_product_map, encode, topphatt, anneal_enumerations
 from ferrmion.utils import (
     icount_to_sign,
     pauli_to_symplectic,
@@ -15,6 +16,7 @@ from ferrmion.utils import (
     symplectic_to_pauli,
     symplectic_to_sparse,
 )
+from ferrmion.hamiltonians import QubitHamiltonian, FermionHamiltonian
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +145,45 @@ class FermionQubitEncoding(ABC):
     ) -> tuple[NDArray[np.uint8], NDArray[bool]]:
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
+
+    def encode_annealed(self, fham:FermionHamiltonian, temperature:int|None=None, initial_guess:list[int]|None=None, coefficient_weighted:bool=True):
+        sigs, coeffs = fham.signatures_and_coefficients
+        ipow, sym = self._build_symplectic_matrix()
+
+        if temperature is None:
+            temperature = fham.n_modes
+
+        if isinstance(initial_guess, list):
+            initial_guess: NDArray[np.uint] = np.array(initial_guess, dtype=np.uint)
+        else:
+            initial_guess: NDArray[np.uint] = np.array(
+                [*range(fham.n_modes)], dtype=np.uint
+            )
+
+        anneal_enumerations(
+            ipowers=ipow,
+            symplectics=sym,
+            signatures=sigs,
+            coeffs=coeffs,
+            temperature=temperature,
+            initial_guess=initial_guess,
+            coefficient_weighted=coefficient_weighted,
+        )
+
+        return encode(ipowers=ipow, symplectics=sym, signatures=sigs, coeffs=coeffs, constant_energy=fham.constant_energy)
+
+
+    def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+        logger.debug("Encoding fermionic Hamiltonian.")
+        ipowers, symplectic = self._build_symplectic_matrix()
+        signatures, coeffs = fham.signatures_and_coefficients
+        return encode(
+            ipowers=ipowers,
+            symplectics=symplectic,
+            signatures=signatures,
+            coeffs=coeffs,
+            constant_energy=fham.constant_energy
+        )
 
     def hartree_fock_state(
         self,

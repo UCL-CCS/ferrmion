@@ -1,7 +1,7 @@
 /*
 Ternary tree encodings and methods.
 */
-use crate::{encoding::MajoranaEncodingOwned, types::Pauli};
+use crate::{encoding::MajoranaEncoding, operators::Pauli};
 use log::{debug, error, info};
 use numpy::ndarray::{s, Array1, Array2, Zip};
 use std::collections::HashMap;
@@ -170,7 +170,6 @@ impl TernaryTree {
         let n_nodes = self.n_nodes;
         let qubit_index_of: Vec<usize> = flatpack.iter().map(|v| v.0).collect();
         self.set_qubit_indices(qubit_index_of)?;
-        println!("{:?}", self);
 
         let mut qubit_node_map: HashMap<usize, usize> = HashMap::with_capacity(n_nodes);
         flatpack
@@ -285,7 +284,7 @@ impl TernaryTree {
         &self,
         n_qubits: usize,
         // mode_op_map: Option<Vec<usize>>, //TODO
-    ) -> Result<MajoranaEncodingOwned, TernaryTreeError> {
+    ) -> Result<MajoranaEncoding, TernaryTreeError> {
         debug!("Build encoding from {self:?}");
         if n_qubits < self.n_nodes {
             return Err(TernaryTreeError::BuildEncodingError(
@@ -339,7 +338,7 @@ impl TernaryTree {
                         .map(|&v| v + n_qubits),
                 )
                 .collect();
-            println!("Column indices {:?}", &column_indices);
+            debug!("Column indices {:?}", &column_indices);
             if let Some(max_column_label) = column_indices.flatten().iter().max() {
                 if *max_column_label > 2 * n_qubits {
                     error!("Cannot build encoding with {n_qubits} qubits");
@@ -351,22 +350,22 @@ impl TernaryTree {
             }
             let mut padded_symplectics: Array2<bool> =
                 Array2::from_elem((2 * self.n_nodes, 2 * n_qubits), false);
-            println!("Qubit indices {:?}", &self.qubit_index_of);
+            debug!("Qubit indices {:?}", &self.qubit_index_of);
             Zip::from(symplectics.columns())
                 .and(&column_indices)
                 .for_each(|unpadded, &index| {
-                    println!("{:?}", unpadded);
-                    println!("{:?}", index);
+                    debug!("{:?}", unpadded);
+                    debug!("{:?}", index);
                     padded_symplectics.column_mut(index).assign(&unpadded);
-                    println!("",);
+                    debug!("",);
                 });
 
-            println!("Halfway Padded symplectics {:?}", padded_symplectics);
+            debug!("Halfway Padded symplectics {:?}", padded_symplectics);
 
-            println!("Padded symplectics {:?}", padded_symplectics);
+            debug!("Padded symplectics {:?}", padded_symplectics);
             symplectics = padded_symplectics;
         }
-        Ok(MajoranaEncodingOwned::new(ipowers, symplectics))
+        Ok(MajoranaEncoding::new(ipowers, symplectics))
     }
 }
 
@@ -965,5 +964,54 @@ mod tt_tests {
         assert_eq!(branch_tt.y_child_of.iter().flatten().count(), 0);
 
         assert!(branch_tt.add_branch(1, vec![(Edge::X, 2)]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use crate::encoding::Encode;
+    use crate::hamiltonians::QubitHamiltonian;
+    use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
+    use ahash::HashMapExt;
+    use num_complex::c64;
+    use numpy::ndarray::{arr2, ArrayD};
+    #[test]
+    fn test_encode_identity_with_jw() {
+        let encoding = TernaryTree::naive_jordan_wigner(2)
+            .build_encoding(2)
+            .unwrap();
+        let mut coeffs = arr2(&[[1f64, 0f64], [0f64, 1f64]]).into_dyn();
+        let fmat = FermionMatrix::new(
+            vec![LadderOperator::Creation, LadderOperator::Annihilation],
+            coeffs,
+        )
+        .unwrap();
+        let mut expected = QubitHamiltonian::new();
+        expected.insert("IZ".to_string(), c64(-0.5, 0.));
+        expected.insert("ZI".to_string(), c64(-0.5, 0.));
+        expected.insert("II".to_string(), c64(1., 0.));
+        let qham = encoding.encode(&MajoranaSparse::from(FermionSparse::from(fmat)));
+        assert_eq!(expected, qham)
+    }
+
+    #[test]
+    fn test_encode_off_diag_with_jw() {
+        let encoding = TernaryTree::naive_jordan_wigner(2)
+            .build_encoding(2)
+            .unwrap();
+        let mut coeffs = arr2(&[[0f64, 0f64], [1f64, 0f64]]).into_dyn();
+        let fmat = FermionMatrix::new(
+            vec![LadderOperator::Creation, LadderOperator::Annihilation],
+            coeffs,
+        )
+        .unwrap();
+        let mut expected = QubitHamiltonian::new();
+        expected.insert("XY".to_string(), c64(0., -0.25));
+        expected.insert("YX".to_string(), c64(0., 0.25));
+        expected.insert("XX".to_string(), c64(0.25, 0.));
+        expected.insert("YY".to_string(), c64(0.25, 0.));
+        let qham = encoding.encode(&MajoranaSparse::from(FermionSparse::from(fmat)));
+        assert_eq!(expected, qham);
     }
 }

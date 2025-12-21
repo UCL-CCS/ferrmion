@@ -9,7 +9,9 @@ from ferrmion.encode import TernaryTree
 from ferrmion.encode.ternary_tree_node import TTNode
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 def _qubit_term_weight(term: Iterable, comb: tuple[int, int, int]) -> int:
     """Find the single-qubit Pauli-weight of majorana terms.

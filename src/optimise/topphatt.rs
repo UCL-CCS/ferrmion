@@ -8,8 +8,8 @@ use thiserror::Error;
 use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 4;
 
+use crate::operators::MajoranaSparse;
 use crate::ternarytree::{Child, Edge, TernaryTree, YParity};
-use crate::types::MajoranaSparse;
 
 #[derive(Debug, Error)]
 pub enum ToppHattError {
@@ -307,11 +307,7 @@ impl NodeDependencies {
             return;
         }
         self.root_distances.remove(&index);
-        let uc = self.children_without_leaves.remove(&index);
-        // assert!(
-        //     uc.iter().len() %3 == 0,
-        //     "Should not drop nodes which have unassigned leaves."
-        // );
+        self.children_without_leaves.remove(&index);
         debug!("{:?}", self.children_without_leaves);
         for v in self.children_without_leaves.values_mut() {
             v.retain(|&i| i != index);
@@ -354,7 +350,6 @@ fn reduce_hamiltonian(
                 .collect();
             for _ in 0..(initial_length - new_term.len()) {
                 new_term.push(parent_majorana_index);
-
             }
             new_term
         })
@@ -435,9 +430,13 @@ pub fn topphatt(
                 // debug!("Comb {:?}", &comb);
                 let comb: [u16; 3] = match comb.len() {
                     2 => {
-                        let pair = if comb[0] %2==0 {comb[0] + 1} else {comb[0] -1};
+                        let pair = if comb[0] % 2 == 0 {
+                            comb[0] + 1
+                        } else {
+                            comb[0] - 1
+                        };
                         [comb[0], pair, comb[1]]
-                    },
+                    }
                     3 => [comb[0], comb[1], comb[2]],
                     _ => return Err(ToppHattError::InvalidCombinationError(comb)),
                 };
@@ -449,9 +448,9 @@ pub fn topphatt(
                     .indices
                     .iter()
                     .fold_while(0, |acc, inds| {
-                        let inds_max = inds.last().expect("Hamiltonian terms should not be empty.");
+                        let inds_max = inds.iter().max().expect("Hamiltonian terms should not be empty.");
                         let inds_min = inds
-                            .first()
+                            .iter().min()
                             .expect("Hamiltonian terms should not be empty.");
 
                         let comb_min = comb.iter().min().expect("Combination should not be empty.");
@@ -602,13 +601,12 @@ mod test_topphatt {
     use super::Edge::{X, Y, Z};
     use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
-    use crate::encoding::MajoranaEncodingOwned;
-    use crate::hamiltonians;
+    use crate::encoding::MajoranaEncoding;
     use crate::optimise::topphatt::NodeDependencies;
     use crate::ternarytree::TTFlatPack;
     use crate::{optimise::topphatt::TreeRetrictions, ternarytree::TernaryTree};
     use log::debug;
-    use ndarray::{arr1, arr2};
+    use ndarray::arr1;
     use numpy::Complex64;
     use tinyvec::array_vec;
 
@@ -825,13 +823,13 @@ mod test_topphatt {
         let hamiltonian = MajoranaSparse::new(
             vec![array_vec!([u16; 4]=> 2,3)],
             vec![Complex64::new(1., 0.)],
-            Complex64::ZERO,
+            0.,
         )
         .unwrap();
         let tree = TernaryTree::naive_jordan_wigner(3);
 
         let jw_topphatt = topphatt(hamiltonian, tree).unwrap();
-        let encoding: MajoranaEncodingOwned = jw_topphatt.build_encoding(3).unwrap();
+        let encoding: MajoranaEncoding = jw_topphatt.build_encoding(3).unwrap();
         assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
         //     encoding.symplectics,
@@ -851,7 +849,7 @@ mod test_topphatt {
         let hamiltonian = MajoranaSparse::new(
             vec![array_vec!([u16; 4]=> 2,3)],
             vec![Complex64::new(1., 0.)],
-            Complex64::ZERO,
+            0.,
         )
         .unwrap();
         let mut flatpack = TTFlatPack::new();

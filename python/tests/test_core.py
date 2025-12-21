@@ -1,6 +1,6 @@
 import numpy as np
-from ferrmion.core import symplectic_product, topphatt, topphatt_standard
-
+from ferrmion.core import symplectic_product, topphatt, topphatt_standard, encode, encode_standard, standard_symplectic_matrix
+import pytest
 
 def test_symplectic_product():
     xyz = np.array([1, 1, 0, 0, 1, 1], dtype=bool)
@@ -36,29 +36,27 @@ def test_symplectic_product():
 def test_core_topphatt():
     ones = np.random.random((4,4))
     twos = np.random.random((4,4,4,4))
-    node_map = [(0,(None, None, 1)), (1, (None,None,2)), (2,(None, None,3)), (3, (None, None, None))]
-    topphatt(4, node_map, signatures=["+-", "++--"], coeffs=[ones, twos])
+    flatpack = [(0,(None, None, 1)), (1, (None,None,2)), (2,(None, None,3)), (3, (None, None, None))]
+    topphatt(flatpack, 4, signatures=["+-", "++--"], coeffs=[ones, twos])
 
-def test_core_topphatt_water(water_integrals):
-    ones, twos = water_integrals
-
+def test_core_topphatt_flatpack_runs(water_data):
     flatpack = [(i, (None, None, i+1)) for i in range(13)] + [(13, (None, None, None))]
-    topphatt(14, flatpack, signatures=["+-", "++--"], coeffs=[ones, twos])
+    topphatt(flatpack,14, signatures=["+-", "++--"], coeffs=[water_data["ones"], water_data["twos"]])
 
-def test_core_topphatt_jw(water_integrals):
-    ones, twos = water_integrals
-    topphatt_standard("JW", 14, 14,signatures=["+-", "++--"], coeffs=[ones, twos])
+@pytest.mark.parametrize("encoding", ["JW", "PE", "BK", "JKMN"])
+def test_core_topphatt_standard_runs(encoding, water_data):
+    topphatt_standard(encoding, 14, 14,signatures=["+-", "++--"], coeffs=[water_data["ones"], water_data["twos"]])
 
-def test_core_topphatt_pe(water_integrals):
-    ones, twos = water_integrals
-    topphatt_standard("PE",14, 14,signatures=["+-", "++--"], coeffs=[ones, twos])
 
-def test_core_topphatt_bk(water_integrals):
-    ones, twos = water_integrals
-    ones =np.random.random((6,6))
-    twos =np.random.random((6,6, 6,6))
-    topphatt_standard("BK",6, 6, signatures=["+-", "++--"], coeffs=[ones, twos])
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+def test_core_standard(encoding, water_eigenvalues, water_data):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
+    one_step = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos], 0.)
 
-def test_core_topphatt_jkmn(water_integrals):
-    ones, twos = water_integrals
-    topphatt_standard("JKMN",14,14, signatures=["+-", "++--"], coeffs=[ones, twos])
+    ipow, sym = standard_symplectic_matrix(encoding, ones.shape[0])
+    two_step = encode(ipow, sym,["+-","++--"], [ones, twos], 0.)
+
+    assert len(one_step) == len(two_step)
+    for k,v in one_step.items():
+        assert two_step[k] == v

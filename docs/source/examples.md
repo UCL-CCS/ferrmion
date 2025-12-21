@@ -19,8 +19,7 @@ notebooks/hatt
 :caption: Hamiltonian Examples
 :tooltip:
 
-notebooks/molecular_hamiltonian
-notebooks/hubbard_hamiltonian
+notebooks/encoding_hamiltonians
 ```
 s
 ## Optimization

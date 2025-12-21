@@ -1,20 +1,18 @@
 use crate::ternarytree::Edge;
 use ndarray::Dimension;
-use tinyvec::{Array, ArrayVec};
+use tinyvec::{ArrayVec};
 /*
 Shared Types.
 */
-use crate::utils::vector_kron;
 use itertools::Itertools;
 use log::debug;
 use num_complex::{c64, ComplexFloat};
 use numpy::ndarray::{
-    arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayView2, Axis, IntoDimension, Zip,
+    arr1, arr2, Array1, Array2, ArrayD, ArrayView1, Axis, IntoDimension, Zip,
 };
 use numpy::Complex64;
 use std::collections::BTreeMap;
-use std::iter::{self, repeat_n, zip};
-use std::str::Matches;
+use std::iter::{repeat_n};
 use std::{result::Result, str::FromStr};
 
 const MAX_MAJORANAS: usize = 4;
@@ -359,6 +357,7 @@ impl From<FermionMatrix> for FermionSparse {
 #[cfg(test)]
 mod fermion_tests {
     use crate::operators::*;
+    use crate::vector_kron;
     use ndarray::{arr1, arr2};
     use num_complex::c64;
 
@@ -706,6 +705,7 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
 #[cfg(test)]
 mod majorana_tests {
     use crate::operators::*;
+    use crate::vector_kron;
     use log::debug;
     use ndarray::{arr1, arr2};
     use num_complex::c64;

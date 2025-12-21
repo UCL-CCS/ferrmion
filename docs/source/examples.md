@@ -21,7 +21,7 @@ notebooks/hatt
 
 notebooks/encoding_hamiltonians
 ```
-s
+
 ## Optimization
 ```{base-gallery}
 :caption: Optimization Examples

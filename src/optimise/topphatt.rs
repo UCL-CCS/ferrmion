@@ -343,15 +343,7 @@ fn reduce_hamiltonian(
     majorana_terms
         .iter_mut()
         .map(|&mut term| {
-            let initial_length = term.len();
-            let mut new_term: ArrayVec<[u16; MAJORANA_MAX]> = term
-                .into_iter()
-                .filter(|ind| !selection.contains(&ind))
-                .collect();
-            for _ in 0..(initial_length - new_term.len()) {
-                new_term.push(parent_majorana_index);
-            }
-            new_term
+                term.iter().map(|&ind| if selection.contains(&ind) {parent_majorana_index} else {ind}).collect()
         })
         .filter(|&term| term != ArrayVec::<[u16; MAJORANA_MAX]>::new())
         .collect::<BTreeSet<ArrayVec<[u16; MAJORANA_MAX]>>>()
@@ -465,7 +457,10 @@ pub fn topphatt(
                         }
                     })
                     .into_inner();
-                // debug!("Weight {:?}", weight);
+                // For most trees, using < gives the best results.
+                // counter example: JKMN(14), benefits from setting <=
+                // This part interacts with the ordering of active nodes, 
+                // which is X-most to Z-Most
                 if weight < min_weight {
                     min_weight = weight;
                     selection = comb;
@@ -875,7 +870,7 @@ mod test_topphatt {
     }
 
     #[test]
-    fn test_reduce_hamiltonian() {
+    fn test_reduce_hamiltonian_substitutes_inplace() {
         let mut hamiltonian = vec![
             array_vec!([u16;4] => 0,1,2,3),
             array_vec!([u16;4] => 0,2,3,4),
@@ -885,7 +880,7 @@ mod test_topphatt {
 
         let expected = vec![
             array_vec!([u16;4] => 0,1,999,999),
-            array_vec!([u16;4] => 0,4,999,999),
+            array_vec!([u16;4] => 0,999,999, 4),
         ];
 
         assert_eq!(hamiltonian, expected);

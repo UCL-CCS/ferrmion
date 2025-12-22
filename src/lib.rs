@@ -1,8 +1,7 @@
 use ::core::panic;
 use log::{debug, info};
 use numpy::{
-    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
-    PyReadonlyArray4, PyReadonlyArrayDyn,
+    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArrayDyn,
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
@@ -363,7 +362,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Must have at least as many qubits as modes."
         );
 
-        let hamiltonian = build_majorana_sparse(signatures, coeffs, constant_energy);
+        let hamiltonian: MajoranaSparse = build_majorana_sparse(signatures, coeffs, constant_energy);
 
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
@@ -406,24 +405,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let flatpack: TTFlatPack = flatpack;
         debug!("Got flatpack");
 
-        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
-        for (sig, coeff) in zip(signatures, coeffs) {
-            let vec_sig: Vec<LadderOperator> = sig
-                .chars()
-                .map(|v| {
-                    LadderOperator::try_from(v).expect("Signature components should be + or -")
-                })
-                .collect();
-            let term_coef = coeff.as_array().to_owned();
-            fsparse_vec.push(
-                FermionMatrix::new(vec_sig, term_coef)
-                    .expect("Signature lengths and coeff dimensions must match")
-                    .into(),
-            );
-        }
-        debug!("{:?}", fsparse_vec);
-        debug!("Getting MSparse");
-        let hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+        let hamiltonian: MajoranaSparse = build_majorana_sparse(signatures, coeffs, 0.);
+
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
         let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(flatpack)
@@ -469,25 +452,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         debug!("Starting TOPPHATT");
         // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
-
-        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
-        for (sig, coeff) in zip(signatures, coeffs) {
-            let vec_sig: Vec<LadderOperator> = sig
-                .chars()
-                .map(|v| {
-                    LadderOperator::try_from(v).expect("Signature components should be + or -")
-                })
-                .collect();
-            let term_coef = coeff.as_array().to_owned();
-            fsparse_vec.push(
-                FermionMatrix::new(vec_sig, term_coef)
-                    .expect("Signature lengths and coeff dimensions must match")
-                    .into(),
-            );
-        }
-        debug!("{:?}", fsparse_vec);
-        debug!("Getting MSparse");
-        let hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+        let hamiltonian: MajoranaSparse = build_majorana_sparse(signatures, coeffs, 0.);
+        
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
         let mut tree: TernaryTree = match encoding.as_str() {

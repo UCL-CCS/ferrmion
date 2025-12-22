@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- `FermionHamiltonian` class in `hamiltonians.py` for building general hamiltonians with matrix coefficients.
+  - 
+- `encode.FermionQubitEncoding`
+  - `encode`, `encode_annealed` which accept a `FermionHamiltonian`
+- `encode.TernaryTree` now has methods:
+  - `topphatt` which returns a new encoding optimised using TOPP-HATT
+  - `encode_topphatt`
+- `encode.standard` with wrappers on the `core` functions for enocoding Jordan-Wigner, Bravyi-Kitaev, Parity and JKMN. Each of naive, topphatt and annealed.
+
+### Removed
+- There are now no functions relating to hamiltonian templates. The SparseMajorana type in core is used instead.
+
+### Fixed
+- `core` hamiltonians now correctly handle constant energy term.
+
+
 ## [0.4.1]
 ### Fixed
 - `Encode<&MajoranaSparse>` now correctly handles constant term.

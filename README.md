@@ -51,10 +51,12 @@ For more details, see the [interop documentation](https://ferrmion.readthedocs.i
 
 
 ## Hamiltonians
-Functions to produce Hamiltonian templates and enumerated encodings are available in `ferrmion.hamiltonians`
+Arbitrary fermionic Hamiltonians can be built with the `FermionHamiltonian` class in `ferrmion.hamiltonians`. Additionally there are named functions for:
 
 - Molecular Hamiltonian (Born-Oppenheimer Approximation)
 - Hubbard Hamiltonian (3D Square lattice)
+
+See the [example notebook](https://ferrmion.readthedocs.io/en/latest/notebooks/encoding_hamiltonians.html#) for more information.
 
 ## Development
 For information on development, check out the project [documentation](https://ferrmion.readthedocs.io/en/latest/development.html).

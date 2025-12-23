@@ -78,7 +78,7 @@ def encode_standard(
     n_qubits: int,
     signatures: list[str],
     coeffs: list[np.ndarray],
-    constant_energy:float,
+    constant_energy: float,
 ) -> dict: ...
 def encode(
     ipowers: npt.NDArray[np.uint8],

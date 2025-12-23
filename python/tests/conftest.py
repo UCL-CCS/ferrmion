@@ -5,7 +5,7 @@ import numpy as np
 from pytest import fixture
 from ferrmion.encode import TernaryTree
 from pathlib import Path
-from openfermion import InteractionOperator, jordan_wigner, get_sparse_operator
+from openfermion import InteractionOperator, jordan_wigner, get_sparse_operator, QubitOperator
 from scipy.sparse.linalg import eigsh
 from ferrmion.utils import fermionic_to_sparse_majorana
 from ferrmion.hamiltonians import FermionHamiltonian
@@ -51,3 +51,16 @@ def water_fham(water_data) -> FermionHamiltonian:
 @fixture(scope="module")
 def water_sparse_majorana(water_data) -> dict:
     return fermionic_to_sparse_majorana(((water_data["ones"], "+-"), (water_data["twos"], "++--")))
+
+def diagonalise_pauli_hamiltonian(qham, neigvals:int):
+    ofop = QubitOperator()
+    for k, v in qham.items():
+        string = " ".join(
+            [
+                f"{char.upper()}{pos}" if char != "I" else ""
+                for pos, char in enumerate(k)
+            ]
+        )
+        ofop+= QubitOperator(term=string, coefficient=v)
+    diag, _ = eigsh(get_sparse_operator(ofop), k=neigvals, which="SA")
+    return diag

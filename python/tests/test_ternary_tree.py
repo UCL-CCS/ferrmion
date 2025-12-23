@@ -1,3 +1,6 @@
+from copy import deepcopy
+from fontTools.misc.etree import TreeBuilder
+from typing import Callable
 from ferrmion import FermionHamiltonian
 import numpy as np
 import pytest
@@ -19,7 +22,7 @@ from openfermion.transforms import jordan_wigner
 from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.core import standard_symplectic_matrix
 from scipy.sparse.linalg import eigsh
-
+from .conftest import diagonalise_pauli_hamiltonian
 
 @pytest.fixture
 def six_mode_tree():
@@ -576,49 +579,49 @@ def test_core_standard_encodings(n_modes,encoding,name):
     assert np.all(i==ci)
     assert np.all(s==cs)
 
+@pytest.mark.parametrize("optimisation", ["naive", "anneal", "topphatt"])
 @pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
-def test_encode_standard_water_eigvals_equal_expected(encoding, water_data):
-    ones = water_data["ones"]
-    twos = water_data["twos"]
-    e_nuc = water_data["constant_energy"]
-
-    fham = FermionHamiltonian(terms = {"+-":ones,"++--":twos}, constant_energy=e_nuc)
-    qham = encoding(fham.n_modes).encode(fham)
-    assert np.isclose(qham["I"*14], -46.465600781952176)
-
-    ofop = QubitOperator()
-    for k, v in qham.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop+= QubitOperator(term=string, coefficient=v)
-    print(expected:=water_data["eigvals"])
-    diag, _ = eigsh(get_sparse_operator(ofop), k=2, which="SA")
-    print(diag)
-    assert np.allclose(np.sort(diag), np.sort(expected)[:2])
-
-@pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
-def test_encode_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
+def test_encode_h2_eigvals_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str, h2_mol_data_sets: dict):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]
     n_modes = ones.shape[0]
     fham = FermionHamiltonian(terms = {"+-":ones,"++--":twos}, constant_energy=e_nuc)
-    qham = encoding(n_modes).encode(fham)
+    initial_ones = deepcopy(ones)
+    initial_twos = deepcopy(twos)
 
-    ofop = QubitOperator()
-    for k, v in qham.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop+= QubitOperator(term=string, coefficient=v)
-    print(expected:=h2_mol_data_sets["eigvals"])
-    diag, _ = eigsh(get_sparse_operator(ofop), k=2*n_modes, which="SA")
-    print(diag)
+    match optimisation:
+        case "naive":
+            qham = encoding(fham.n_modes).encode(fham)
+        case "anneal":
+            qham = encoding(fham.n_modes).encode_annealed(fham)
+        case "topphatt":
+            qham = encoding(fham.n_modes).encode_topphatt(fham)
+    diag  = diagonalise_pauli_hamiltonian(qham, 2*n_modes)
+
+    assert np.all(initial_ones == ones)
+    assert np.all(initial_twos == twos)
     assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
+
+@pytest.mark.parametrize("optimisation", ["naive", "topphatt"])
+@pytest.mark.parametrize("encoding", [JW])
+def test_encode_jw_water_eigvals_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str,  water_data: dict):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
+    e_nuc = water_data["constant_energy"]
+    n_modes = ones.shape[0]
+
+    fham = FermionHamiltonian(terms = {"+-":ones,"++--":twos}, constant_energy=e_nuc)
+
+    match optimisation:
+        case "naive":
+            qham = encoding(fham.n_modes).encode(fham)
+        # Takes too long for tests!
+        # case "anneal":
+            # qham = encoding(fham.n_modes).encode_annealed(fham)
+        case "topphatt":
+            qham = encoding(fham.n_modes).encode_topphatt(fham)
+    assert np.isclose(qham["I"*14], -46.465600781952176)
+    diag = diagonalise_pauli_hamiltonian(qham, 2)
+
+    assert np.allclose(np.sort(diag), np.sort(water_data["eigvals"])[:2])

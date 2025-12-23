@@ -1,5 +1,6 @@
 use ::core::panic;
 use log::{debug, info};
+use numpy::ndarray::Array1;
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
@@ -254,7 +255,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         temperature: f64,
         initial_guess: PyReadonlyArray1<usize>,
         coefficient_weighted: bool,
-    ) -> PyResult<(f64, Bound<'py, PyArray1<usize>>)> {
+    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
         let initial_guess = initial_guess.as_array();
 
         let msparse = build_majorana_sparse(signatures, coeffs, 0.);
@@ -262,15 +263,26 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             ipowers.as_array().to_owned(),
             symplectics.as_array().to_owned(),
         );
-        let result = anneal_enumerations(
+        let best_mode_enumeration: Array1<usize>;
+        (_, best_mode_enumeration) = anneal_enumerations(
             msparse,
             encoding,
             temperature,
             initial_guess,
             coefficient_weighted,
-        );
-        let (cost, permutation) = result.expect("Annealing output error.");
-        Ok((cost, permutation.into_pyarray(py)))
+        )
+        .expect("Annealing should have succeeded.");
+
+        let encoding = MajoranaEncoding::new(
+            ipowers.as_array().to_owned(),
+            symplectics.as_array().to_owned(),
+        )
+        .apply_mode_enumeration(best_mode_enumeration.to_vec());
+
+        Ok((
+            encoding.ipowers.into_pyarray(py),
+            encoding.symplectics.into_pyarray(py),
+        ))
     }
 
     #[pyfn(m)]

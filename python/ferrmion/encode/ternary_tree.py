@@ -1,14 +1,15 @@
 """Ternary Tree fermion to qubit mappings."""
-from ferrmion.hamiltonians import FermionHamiltonian, QubitHamiltonian
-from ferrmion.core import encode, topphatt
 
 import logging
+from copy import deepcopy
 
 import numpy as np
 from numpy.typing import NDArray
 
+from ferrmion import core
+from ferrmion.hamiltonians import FermionHamiltonian, QubitHamiltonian
+
 from .base import FermionQubitEncoding
-from ferrmion.core import encode_standard
 from .ternary_tree_node import TTNode, node_sorter
 
 logger = logging.getLogger(__name__)
@@ -144,31 +145,36 @@ class TernaryTree(FermionQubitEncoding):
         self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
-    def encode_topphatt(self, fham:FermionHamiltonian) -> QubitHamiltonian:
+    def encode_topphatt(self, fham: FermionHamiltonian) -> QubitHamiltonian:
         sigs, coeffs = fham.signatures_and_coefficients
-        ipow, sym = topphatt(
+        ipow, sym = core.topphatt(
             flatpack=self.flatpack(),
             n_qubits=self.n_qubits,
+            signatures=deepcopy(sigs),
+            coeffs=deepcopy(coeffs),
+        )
+        self._build_symplectic_matrix = lambda: (ipow, sym)
+        self.default_mode_op_map = [*range(self.n_modes)]
+        return core.encode(
+            ipowers=ipow,
+            symplectics=sym,
             signatures=sigs,
             coeffs=coeffs,
+            constant_energy=fham.constant_energy,
         )
 
-        self._build_symplectic_matrix = lambda : (ipow, sym)
-        self.default_mode_op_map = [*range(self.n_modes)]
-        return self.encode(fham)
-
-    def flatpack(self) -> list[tuple[int, tuple[int|None, int|None, int|None]]]:
+    def flatpack(self) -> list[tuple[int, tuple[int | None, int | None, int | None]]]:
         """Create a TTFlatpack from the tree, which can be passed to rust functions.
 
         Returns:
             list[tuple[int, tuple[int,int,int]]]
         """
-        flatpack: list[tuple[int, tuple[int|None, int|None, int|None]]] = []
+        flatpack: list[tuple[int, tuple[int | None, int | None, int | None]]] = []
 
         to_flatten: list[TTNode] = [self.root_node]
         while len(to_flatten) > 0:
             node: TTNode = to_flatten.pop(0)
-            children: list[int|None] = [None, None,None]
+            children: list[int | None] = [None, None, None]
             if isinstance(node.x, TTNode):
                 to_flatten.append(node.x)
                 children[0] = self.enumeration_scheme[node.x.root_path][1]
@@ -179,7 +185,12 @@ class TernaryTree(FermionQubitEncoding):
                 to_flatten.append(node.z)
                 children[2] = self.enumeration_scheme[node.z.root_path][1]
 
-            flatpack.append((int(self.enumeration_scheme[node.root_path][1]), (children[0], children[1], children[2])))
+            flatpack.append(
+                (
+                    int(self.enumeration_scheme[node.root_path][1]),
+                    (children[0], children[1], children[2]),
+                )
+            )
 
         return flatpack
 
@@ -443,6 +454,7 @@ class TernaryTree(FermionQubitEncoding):
             >>> min_height_tree = TernaryTree(3).JKMN()
         """
         return JKMN(self.n_modes)
+
 
 def string_pairing_algorithm(tree: TernaryTree):
     """String-pairing algoritm.

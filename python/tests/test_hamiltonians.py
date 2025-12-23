@@ -34,6 +34,7 @@ def test_encode_standard_water_eigvals_equal_expected(encoding, water_data):
     e_nuc = water_data["constant_energy"]
 
     qham = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos], e_nuc)
+    assert np.isclose(qham["I"*14], -46.465600781952176)
 
     ofop = QubitOperator()
     for k, v in qham.items():

@@ -1,3 +1,4 @@
+from ferrmion import FermionHamiltonian
 import numpy as np
 import pytest
 import scipy as sp
@@ -17,6 +18,7 @@ from openfermion.ops import InteractionOperator
 from openfermion.transforms import jordan_wigner
 from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.core import standard_symplectic_matrix
+from scipy.sparse.linalg import eigsh
 
 
 @pytest.fixture
@@ -573,3 +575,50 @@ def test_core_standard_encodings(n_modes,encoding,name):
     ci, cs = standard_symplectic_matrix(name,20)
     assert np.all(i==ci)
     assert np.all(s==cs)
+
+@pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
+def test_encode_standard_water_eigvals_equal_expected(encoding, water_data):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
+    e_nuc = water_data["constant_energy"]
+
+    fham = FermionHamiltonian(terms = {"+-":ones,"++--":twos}, constant_energy=e_nuc)
+    qham = encoding(fham.n_modes).encode(fham)
+    assert np.isclose(qham["I"*14], -46.465600781952176)
+
+    ofop = QubitOperator()
+    for k, v in qham.items():
+        string = " ".join(
+            [
+                f"{char.upper()}{pos}" if char != "I" else ""
+                for pos, char in enumerate(k)
+            ]
+        )
+        ofop+= QubitOperator(term=string, coefficient=v)
+    print(expected:=water_data["eigvals"])
+    diag, _ = eigsh(get_sparse_operator(ofop), k=2, which="SA")
+    print(diag)
+    assert np.allclose(np.sort(diag), np.sort(expected)[:2])
+
+@pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
+def test_encode_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+    fham = FermionHamiltonian(terms = {"+-":ones,"++--":twos}, constant_energy=e_nuc)
+    qham = encoding(n_modes).encode(fham)
+
+    ofop = QubitOperator()
+    for k, v in qham.items():
+        string = " ".join(
+            [
+                f"{char.upper()}{pos}" if char != "I" else ""
+                for pos, char in enumerate(k)
+            ]
+        )
+        ofop+= QubitOperator(term=string, coefficient=v)
+    print(expected:=h2_mol_data_sets["eigvals"])
+    diag, _ = eigsh(get_sparse_operator(ofop), k=2*n_modes, which="SA")
+    print(diag)
+    assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))

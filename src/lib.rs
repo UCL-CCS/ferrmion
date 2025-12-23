@@ -1,7 +1,8 @@
 use ::core::panic;
 use log::{debug, info};
 use numpy::{
-    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArrayDyn,
+    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    PyReadonlyArrayDyn,
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
@@ -362,7 +363,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Must have at least as many qubits as modes."
         );
 
-        let hamiltonian: MajoranaSparse = build_majorana_sparse(signatures, coeffs, constant_energy);
+        let hamiltonian: MajoranaSparse =
+            build_majorana_sparse(signatures, coeffs, constant_energy);
 
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
@@ -379,7 +381,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding {:?}", encoding);
         debug!("Got encoding {:?}", encoding);
-        
+
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
 
         debug!("Got qham");
@@ -453,7 +455,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Starting TOPPHATT");
         // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
         let hamiltonian: MajoranaSparse = build_majorana_sparse(signatures, coeffs, 0.);
-        
+
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
         let mut tree: TernaryTree = match encoding.as_str() {

@@ -1,18 +1,16 @@
 use crate::ternarytree::Edge;
 use ndarray::Dimension;
-use tinyvec::{ArrayVec};
+use tinyvec::ArrayVec;
 /*
 Shared Types.
 */
 use itertools::Itertools;
 use log::debug;
 use num_complex::{c64, ComplexFloat};
-use numpy::ndarray::{
-    arr1, arr2, Array1, Array2, ArrayD, ArrayView1, Axis, IntoDimension, Zip,
-};
+use numpy::ndarray::{arr1, arr2, Array1, Array2, ArrayD, ArrayView1, Axis, IntoDimension, Zip};
 use numpy::Complex64;
 use std::collections::BTreeMap;
-use std::iter::{repeat_n};
+use std::iter::repeat_n;
 use std::{result::Result, str::FromStr};
 
 const MAX_MAJORANAS: usize = 4;
@@ -608,13 +606,13 @@ impl MajoranaSparse {
         let (i, c) = indices
             .iter()
             .zip(&coefficients)
-            .filter(|&(&inds, &coeff)| (coeff != Complex64::ZERO) && (inds != ArrayVec::new()))
+            .filter(|&(_, &coeff)| (coeff != Complex64::ZERO))
             .unzip();
 
         Ok(Self {
             indices: i,
             coefficients: c,
-            constant: constant + identity_terms_constant.norm(),
+            constant: constant,
         })
     }
 }

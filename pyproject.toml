@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.10.6",
     "rustworkx>=0.16.0",
     "numpy>=2",
+    "hypothesis>=6.148.8",
 ]
 
 [project.optional-dependencies]

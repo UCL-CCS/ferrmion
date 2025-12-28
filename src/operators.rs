@@ -9,6 +9,7 @@ use log::debug;
 use num_complex::{c64, ComplexFloat};
 use numpy::ndarray::{arr1, arr2, Array1, Array2, ArrayD, ArrayView1, Axis, IntoDimension, Zip};
 use numpy::Complex64;
+use proptest::prelude::*;
 use std::collections::BTreeMap;
 use std::iter::repeat_n;
 use std::{result::Result, str::FromStr};
@@ -24,7 +25,7 @@ pub trait CoefficientPauliWeight: PauliWeight {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub enum Pauli {
     #[default]
     I,
@@ -134,6 +135,23 @@ mod test_pauli {
         assert_eq!(Pauli::X.pauli_weight(), 1);
         assert_eq!(Pauli::Y.pauli_weight(), 1);
         assert_eq!(Pauli::Z.pauli_weight(), 1);
+    }
+
+    #[test]
+    fn test_pauli_bool_rountrip() {
+        for pauli in [Pauli::I, Pauli::X, Pauli::Y, Pauli::Z] {
+            let tbool: (bool, bool) = pauli.into();
+            let pauli_again: Pauli = tbool.into();
+            assert_eq!(pauli, pauli_again);
+        }
+    }
+    #[test]
+    fn test_bool_pauli_rountrip() {
+        for tbool in [(true, true), (true, false), (false, true), (false, false)] {
+            let pauli: Pauli = tbool.into();
+            let tbool_again: (bool, bool) = pauli.into();
+            assert_eq!(tbool, tbool_again);
+        }
     }
 }
 

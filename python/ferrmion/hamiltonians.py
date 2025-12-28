@@ -29,16 +29,16 @@ class FermionHamiltonian:
         if len(self._terms) == 0:
             pass
         elif len(self._terms) > 0 and self.n_modes == 0:
-            logger.debug(f"Setting n_modes: {self.n_modes}")
+            logger.debug(f"Setting n_modes: {[*self._terms.values()][0]}")
             self.n_modes = [*self._terms.values()][0].shape[0]
         else:
             for term in self._terms.values():
                 if np.any([side != self.n_modes for side in term.shape]):
                     logger.error(
-                        f"Hamiltonian coefficient {term.shape} must have constant length on all dimensions."
+                        f"Hamiltonian coefficient {term.shape} must have constant length {self.n_modes} on all dimensions.\n"
                     )
                     raise ValueError(
-                        f"Hamiltonian coefficient {term.shape} must have constant length on all dimensions."
+                        f"Hamiltonian coefficient {term.shape} must have constant length {self.n_modes} on all dimensions."
                     )
 
     def __repr__(self):

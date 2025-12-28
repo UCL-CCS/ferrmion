@@ -3,6 +3,7 @@
 import logging
 from abc import ABC, abstractmethod
 from itertools import product
+from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -180,8 +181,8 @@ class FermionQubitEncoding(ABC):
             coefficient_weighted=coefficient_weighted,
         )
 
-        ipow, sym = self._build_symplectic_matrix()
-        self.default_mode_op_map = [*range(len(ipow) // 2)]
+        self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
+        self.default_mode_op_map = [*range(self.n_modes)]
 
         return encode(
             ipowers=ipow,

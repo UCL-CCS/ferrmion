@@ -2,6 +2,7 @@
 
 import logging
 from copy import deepcopy
+from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -153,8 +154,9 @@ class TernaryTree(FermionQubitEncoding):
             signatures=deepcopy(sigs),
             coeffs=deepcopy(coeffs),
         )
-        self._build_symplectic_matrix = lambda: (ipow, sym)
+        self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
         self.default_mode_op_map = [*range(self.n_modes)]
+
         return core.encode(
             ipowers=ipow,
             symplectics=sym,

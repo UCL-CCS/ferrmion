@@ -1,3 +1,13 @@
+#![warn(missing_docs)]
+//! Fast, reliable and easy optimisation of fermion-qubit encodings.
+//!
+//! To simulate fermionic Hamiltonians with gate-based quantum computers,
+//! it is necessary to encode the fermionic operators to qubit operators
+//! which obey commutation fermionic relations.
+//!
+//! This file contains the PyO3 interop layer which wraps rust functions and exposes
+//! these to a python API.
+
 use ::core::panic;
 use log::{debug, info};
 use numpy::ndarray::Array1;
@@ -7,11 +17,9 @@ use numpy::{
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
-use std::iter::zip;
-mod operators;
+pub mod operators;
 mod utils;
-use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
-#[allow(unused_imports)]
+use crate::operators::MajoranaSparse;
 use crate::optimise::topphatt;
 use crate::utils::*;
 mod hamiltonians;
@@ -20,40 +28,8 @@ mod encoding;
 use crate::encoding::{Encode, MajoranaEncoding};
 mod optimise;
 use crate::optimise::anneal_enumerations;
-mod ternarytree;
+pub mod ternarytree;
 use crate::ternarytree::{TTFlatPack, TernaryTree};
-
-fn build_majorana_sparse(
-    signatures: Vec<String>,
-    coeffs: Vec<PyReadonlyArrayDyn<f64>>,
-    constant_energy: f64,
-) -> MajoranaSparse {
-    let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
-    for (sig, coeff) in zip(signatures, coeffs) {
-        let mut vec_sig: Vec<LadderOperator> = sig
-            .chars()
-            .map(|v| LadderOperator::try_from(v).expect("Signature components should be + or -"))
-            .collect();
-        let mut term_coef = coeff.as_array().to_owned();
-        // fsparse_vec.push(
-        //     FermionMatrix::new(vec_sig.clone(), term_coef.clone())
-        //         .expect("Signature lengths and coeff dimensions must match")
-        //         .into(),
-        // );
-        // vec_sig.reverse();
-        fsparse_vec.push(
-            FermionMatrix::new(vec_sig, term_coef)
-                .expect("Signature lengths and coeff dimensions must match")
-                .into(),
-        );
-    }
-    debug!("FSparse {:?}", &fsparse_vec);
-    debug!("Getting MSparse");
-    let mut hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
-    hamiltonian.constant += constant_energy;
-    debug!("Got MSparse");
-    hamiltonian
-}
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -258,7 +234,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
         let initial_guess = initial_guess.as_array();
 
-        let msparse = build_majorana_sparse(signatures, coeffs, 0.);
+        let msparse = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            0.,
+        );
         let encoding = MajoranaEncoding::new(
             ipowers.as_array().to_owned(),
             symplectics.as_array().to_owned(),
@@ -287,11 +267,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     #[pyfn(m)]
     #[pyo3(name = "standard_symplectic_matrix")]
-    fn wrap_standard_symplectic_matrix<'py>(
-        py: Python<'py>,
+    fn wrap_standard_symplectic_matrix(
+        py: Python<'_>,
         encoding: String,
         n_modes: usize,
-    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
+    ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
         // ) -> PyResult<()> {
         debug!("Starting TOPPHATT");
         // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
@@ -339,8 +319,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Must have at least as many qubits as modes."
         );
 
-        let hamiltonian = build_majorana_sparse(signatures, coeffs, constant_energy);
-
+        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            constant_energy,
+        );
         let encoding = MajoranaEncoding::new(ipowers, symplectics);
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
@@ -375,9 +358,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Must have at least as many qubits as modes."
         );
 
-        let hamiltonian: MajoranaSparse =
-            build_majorana_sparse(signatures, coeffs, constant_energy);
-
+        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            constant_energy,
+        );
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
         let tree: TernaryTree = match encoding.as_str() {
@@ -419,7 +404,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let flatpack: TTFlatPack = flatpack;
         debug!("Got flatpack");
 
-        let hamiltonian: MajoranaSparse = build_majorana_sparse(signatures, coeffs, 0.);
+        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            0.,
+        );
 
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
@@ -466,8 +455,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         debug!("Starting TOPPHATT");
         // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
-        let hamiltonian: MajoranaSparse = build_majorana_sparse(signatures, coeffs, 0.);
-
+        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            0.,
+        );
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
         let mut tree: TernaryTree = match encoding.as_str() {

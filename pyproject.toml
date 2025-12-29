@@ -12,10 +12,8 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "deap>=1.4.3",
-    "pydantic>=2.10.6",
     "rustworkx>=0.16.0",
     "numpy>=2",
-    "hypothesis>=6.148.8",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +32,7 @@ features = ["pyo3/extension-module"]
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.148.8",
     "jupyter>=1.1.1",
     "ipywidgets>=8.1.7",
     "ipykernel>=6.30.1",

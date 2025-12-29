@@ -1,13 +1,12 @@
 """Classes which represent physical devices or objects."""
 
 import logging
-
-from pydantic import BaseModel
+from abc import ABC
 
 logger = logging.getLogger(__name__)
 
 
-class Qubit(BaseModel):
+class Qubit(ABC):
     """A qubit object which represents a physical qubit.
 
     Args:

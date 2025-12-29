@@ -1,38 +1,55 @@
+//! Quantum operator types and conversions.
+//!
+//! `ferrmion` is fundamentally a tool for transforming between fermionic operators and qubit operators.
+//! These types underly a lot of the functionality of optimisation methods.
+//!
+//! Additionally, there are a few different ways in which we may want to describe each of these, primarily:
+//! - Single operators
+//! - Product operators: Tensor products of individual operators.
+//! - Sparse operators: Iterables containing product operator indices and coefficients.
+//! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
+//!
 use crate::ternarytree::Edge;
-use ndarray::Dimension;
-use tinyvec::ArrayVec;
-/*
-Shared Types.
-*/
 use itertools::Itertools;
 use log::debug;
+use ndarray::Dimension;
 use num_complex::{c64, ComplexFloat};
-use numpy::ndarray::{arr1, arr2, Array1, Array2, ArrayD, ArrayView1, Axis, IntoDimension, Zip};
+use numpy::ndarray::{
+    arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis, IntoDimension, Zip,
+};
 use numpy::Complex64;
-use proptest::prelude::*;
 use std::collections::BTreeMap;
 use std::iter::repeat_n;
 use std::{result::Result, str::FromStr};
+use tinyvec::ArrayVec;
 
+/// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
 const MAX_MAJORANAS: usize = 4;
 
+/// Total number of qubits for which
+/// non-identity Pauli-operators appear in the operator.
 pub trait PauliWeight {
+    /// Returns the ['PauliWeight'] of a type.
     fn pauli_weight(&self) -> usize;
 }
 
+/// [`PauliWeight`] of a term multiplied its coefficient.
 pub trait CoefficientPauliWeight: PauliWeight {
+    /// Returns the ['CoefficientPauliWeight'] of a type.
     fn coeff_pauli_weight(&self) -> f64;
 }
 
+/// Operators of the Pauli-basis.
 #[allow(dead_code)]
 #[derive(Debug, Default, PartialEq, Clone, Copy)]
-pub enum Pauli {
+pub(super) enum Pauli {
     #[default]
     I,
     X,
     Y,
     Z,
 }
+
 impl From<&Edge> for Pauli {
     fn from(e: &Edge) -> Pauli {
         match e {
@@ -155,13 +172,15 @@ mod test_pauli {
     }
 }
 
+/// Pauli operator encoded in symplectic (XZ) form.
+#[allow(dead_code)]
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub struct XZOperator<'sym> {
+struct SymplecticOperator<'sym> {
     ipower: u8,
     symplectic: ArrayView1<'sym, bool>,
 }
 
-impl PauliWeight for XZOperator<'_> {
+impl PauliWeight for SymplecticOperator<'_> {
     fn pauli_weight(&self) -> usize {
         let view = self.symplectic.view();
         let x_block: ArrayView1<bool>;
@@ -173,24 +192,32 @@ impl PauliWeight for XZOperator<'_> {
     }
 }
 
-impl CoefficientPauliWeight for XZOperator<'_> {
+impl CoefficientPauliWeight for SymplecticOperator<'_> {
     fn coeff_pauli_weight(&self) -> f64 {
         self.pauli_weight() as f64
     }
 }
 
+/// Operators for second quantisation.
+///
+/// These are primarily used in the signatures of fermionic operators, e.g. ['FermionProduct`].
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum LadderOperator {
+    /// Particle creation operator.
     Creation,
+    /// Particle annihilation operator.
     Annihilation,
 }
 
+/// Error for failure to parse ladder operators from strings.
 #[derive(Debug, PartialEq, Clone)]
 pub struct ParseLadderError;
 
 impl FromStr for LadderOperator {
     type Err = ParseLadderError;
-
+    /// Parse a string as a ladfder operator.
+    ///
+    ///
     fn from_str(string: &str) -> Result<Self, Self::Err> {
         if string == "+" {
             Ok(LadderOperator::Creation)
@@ -203,7 +230,13 @@ impl FromStr for LadderOperator {
 }
 
 impl LadderOperator {
-    pub fn fermion_coeff(&self) -> Array1<Complex64> {
+    /// Returns the coefficients of a fermionic ladder operator in terms of Majorana operators.
+    ///
+    /// While ladder operators are general, the fermionic ladder operators can be expressed exactly as
+    /// a combination of two majorana operators.
+    ///
+    /// This function is used when converting from fermionic operators with arbitrary signature, to a mjorana operator.
+    pub fn majorana_coefficients(&self) -> Array1<Complex64> {
         match &self {
             LadderOperator::Creation => arr1(&[c64(0.5, 0.0), c64(0., -0.5)]),
             LadderOperator::Annihilation => arr1(&[c64(0.5, 0.0), c64(0., 0.5)]),
@@ -246,7 +279,10 @@ mod ladder_tests {
 /*
 Fermion
 */
-
+/// A single fermionic ladder operator with index.
+///
+/// For operators which can only be on single indices, no coefficient is provided.
+/// to create a linear combination of annihilation and creation operators, use a [`FermionProduct`]
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct FermionOperator {
     op: LadderOperator,
@@ -254,11 +290,17 @@ struct FermionOperator {
 }
 
 impl FermionOperator {
+    /// Constructor for [`FermionOperator`]
     fn new(op: LadderOperator, index: u32) -> Self {
         Self { op, index }
     }
 }
-
+/// A product of fermionic ladder operators.
+///
+/// # Example
+/// ```
+/// FermionProduct::new(vec![LadderOperator:Creation, LadderOperator::Annihilation], vec![0,1], c64(1.,0.))
+/// ```
 #[derive(Debug, PartialEq, Clone)]
 struct FermionProduct {
     ops: Vec<LadderOperator>,
@@ -266,10 +308,12 @@ struct FermionProduct {
     coefficient: Complex64,
 }
 
+/// Error type for failure to construct [`FermionProduct`]
 #[derive(Debug, PartialEq, Clone)]
 struct FermionProductError;
 
 impl FermionProduct {
+    /// Constructor for [`FermionProduct`]
     pub fn new(
         ops: Vec<LadderOperator>,
         indices: Vec<u32>,
@@ -287,15 +331,24 @@ impl FermionProduct {
     }
 }
 
+/// Fermion operator with coefficients in matrix form.
+///
+/// <div class="warning">
+/// Coeffients are in Spin-orbit format.
+/// For spatial orbital index "i", the spin-up mode is at $2i$ and the spin down mode is at $2i+1$
+/// </div>
+///
 pub struct FermionMatrix {
     ops: Vec<LadderOperator>,
     coefficients: ArrayD<f64>,
 }
 
+/// Error raised by failure to contruct [`FermionMatrix`]
 #[derive(Debug, PartialEq, Clone)]
 pub struct FermionMatrixError;
 
 impl FermionMatrix {
+    /// Constructor for [`FermionMatrix`]
     pub fn new(
         ops: Vec<LadderOperator>,
         coefficients: ArrayD<f64>,
@@ -305,7 +358,7 @@ impl FermionMatrix {
         if ops.len() != coefficients.ndim()
             || !coefficients
                 .shape()
-                .into_iter()
+                .iter()
                 .all(|s| *s == coefficients.shape()[0])
         {
             return Err(FermionMatrixError);
@@ -313,6 +366,10 @@ impl FermionMatrix {
         Ok(Self { ops, coefficients })
     }
 }
+
+/// Fermion operator in sparse form.
+///
+/// Each index is non-empty and each coefficient is non-zero.
 #[derive(Debug, PartialEq)]
 pub struct FermionSparse {
     ops: Vec<LadderOperator>,
@@ -320,10 +377,12 @@ pub struct FermionSparse {
     coefficients: Array1<Complex64>,
 }
 
+/// Error type for failure in [`FermionSparse`] constructor.
 #[derive(Debug, PartialEq, Clone)]
 pub struct FermionSparseError;
 
 impl FermionSparse {
+    /// Constructor for [`FermionSparse`]
     pub fn new(
         ops: Vec<LadderOperator>,
         indices: Array2<usize>,
@@ -407,10 +466,10 @@ mod fermion_tests {
 
     #[test]
     fn test_ops_conversion() {
-        let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let ops = [LadderOperator::Creation, LadderOperator::Annihilation];
         let im_coeffs: Array1<Complex64> = ops
             .iter()
-            .map(|s| s.fermion_coeff())
+            .map(|s| s.majorana_coefficients())
             .reduce(|acc, s| vector_kron(&acc, &s))
             .unwrap();
         assert_eq!(
@@ -462,25 +521,35 @@ mod fermion_tests {
 // /*
 // Majorana
 // */
-//
-
+/// Product of Majorana operators, with a complex coefficient.
+///
+/// # Example
+/// ```
+/// let mp = MajoranaProduct::new(vec![0,1,2,3], c64(0.5,0.5))
+/// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaProduct {
-    pub indices: Vec<usize>,
-    pub coefficient: Complex64,
+    pub(super) indices: Vec<usize>,
+    pub(super) coefficient: Complex64,
 }
 
 impl MajoranaProduct {
+    /// Constructor for [`MajoranaProduct`]
     pub fn new(indices: Vec<usize>, coefficient: Complex64) -> Self {
-        let mut out = Self {
+        // out.majorise();
+        Self {
             indices,
             coefficient,
-        };
-        // out.majorise();
-        out
+        }
     }
+    /// Sorts indices, applying a -1 coefficient for each swap of unequal indices.
+    ///
+    /// Majorana operators obey the commutation relation:
+    /// $$\{\gamma_i,\gamma_j} = 2\delta_{i,j$$
+    ///
+    /// So we can combine terms for products of majorana operators composed with the same indices.
     fn majorise(&mut self) {
-        if self.indices.len() == 0 {
+        if self.indices.is_empty() {
             return;
         }
         let mut counter: usize = 0;
@@ -507,7 +576,7 @@ impl MajoranaProduct {
                     counter += 1;
                 }
                 ind += 1;
-                if self.indices.len() == 0 {
+                if self.indices.is_empty() {
                     break 'outer;
                 }
             }
@@ -550,6 +619,9 @@ impl MajoranaProduct {
     }
 }
 
+/// Order-preserving map from indices to complex coefficients.
+///
+/// This is used as an intermetiate step when constructing or combining majorana operators.
 #[derive(Debug)]
 pub(super) struct MajoranaBTree {
     operators: BTreeMap<Vec<usize>, Complex64>,
@@ -574,7 +646,7 @@ impl MajoranaBTree {
                         .iter()
                         .zip(fsparse.ops.iter())
                         .fold(c64(1., 0.), |acc, (&offset, op)| {
-                            acc * op.fermion_coeff()[offset]
+                            acc * op.majorana_coefficients()[offset]
                         });
                     let mut majorana_term = Array1::zeros(term_length);
                     majorana_term += &ind;
@@ -596,16 +668,27 @@ impl MajoranaBTree {
     }
 }
 
+/// Sparse represtnation of a set of [`MajoranaProduct`] operators.
+///
+/// # Panics
+/// <div class="warning">
+/// This type internally represents indices as stack-allocated ArrayVecs.
+/// The maximum size of these is currently restricted to [`MAX_MAJORANAS`].
+/// Attempting to create an index of length greater than this will cause a panic.
+/// </div>
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparse {
-    pub indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
-    pub coefficients: Vec<Complex64>,
-    pub constant: f64,
+    pub(super) indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+    pub(super) coefficients: Vec<Complex64>,
+    pub(super) constant: f64,
 }
 
+/// Error type for failed construction of [`MajoranaSparse`]
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparseError;
+
 impl MajoranaSparse {
+    /// Constructor for [`MajoranaSparse`]
     pub fn new(
         indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
         coefficients: Vec<Complex64>,
@@ -624,8 +707,77 @@ impl MajoranaSparse {
         Ok(Self {
             indices: i,
             coefficients: c,
-            constant: constant,
+            constant,
         })
+    }
+
+    /// Constructor which takes two vectors, one for operator signatures and another for coefficient matrices.
+    ///
+    /// This is primarily used in the PyO3 interop functions, as the FermionHamiltonian python class
+    /// outputs data in this format.
+    ///
+    /// <div class="warning">
+    /// Coeffients should be given in Spin-orbit format.
+    /// For spatial orbital index "i", the spin-up mode is at $2i$ and the spin down mode is at $2i+1$
+    /// </div>
+    ///
+    pub fn from_signatures_and_coeffs(
+        signatures: Vec<String>,
+        coeffs: Vec<ArrayViewD<f64>>,
+        constant_energy: f64,
+    ) -> MajoranaSparse {
+        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
+        for (sig, coeff) in std::iter::zip(signatures, coeffs) {
+            let vec_sig: Vec<LadderOperator> = sig
+                .chars()
+                .map(|v| {
+                    LadderOperator::try_from(v).expect("Signature components should be + or -")
+                })
+                .collect();
+            let term_coef = coeff.to_owned();
+            fsparse_vec.push(
+                FermionMatrix::new(vec_sig, term_coef)
+                    .expect("Signature lengths and coeff dimensions must match")
+                    .into(),
+            );
+        }
+        debug!("FSparse {:?}", &fsparse_vec);
+        debug!("Getting MSparse");
+        let mut hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+        hamiltonian.constant += constant_energy;
+        debug!("Got MSparse");
+        hamiltonian
+    }
+}
+
+impl From<MajoranaBTree> for MajoranaSparse {
+    fn from(mbt: MajoranaBTree) -> MajoranaSparse {
+        // debug!("Majoranas {:#?}", majoranas);
+        let mut sparse_values: Vec<Complex64> =
+            Vec::with_capacity(mbt.operators.values().filter(|&v| v.abs() >= 1e-16).count());
+        let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
+            Vec::with_capacity(sparse_values.len());
+        // debug!("{:#?}", sparse_values.clone());
+        let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
+        mbt.operators
+            .iter()
+            .filter(|(_, &v)| v.abs() >= 1e-16)
+            .for_each(|(k, &v)| {
+                let mut op: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+                if k.is_empty() {
+                    sparse_constant += v;
+                } else {
+                    for ind in k {
+                        op.push(*ind as u16);
+                    }
+                    sparse_indices.push(op);
+                    sparse_values.push(v);
+                }
+            });
+        debug!("Sparse Majorana Indices {:?}", &sparse_indices);
+        debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
+        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
+            .expect("Indices and coefficients should be same length.")
     }
 }
 
@@ -635,39 +787,7 @@ impl From<FermionSparse> for MajoranaSparse {
         // to each majorana term
         let mut majoranas: MajoranaBTree = MajoranaBTree::new();
         majoranas.append_fermion_sparse(sft);
-
-        // debug!("Majoranas {:#?}", majoranas);
-        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
-            majoranas
-                .operators
-                .values()
-                .filter(|&v| v.abs() >= 1e-16)
-                .count(),
-        );
-        let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
-            Vec::with_capacity(sparse_values.len());
-        // debug!("{:#?}", sparse_values.clone());
-        let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
-        majoranas
-            .operators
-            .iter()
-            .filter(|(_, &v)| v.abs() >= 1e-16)
-            .for_each(|(k, &v)| {
-                let mut op: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-                if k.len() == 0 {
-                    sparse_constant += v;
-                } else {
-                    for ind in k {
-                        op.push(*ind as u16);
-                    }
-                    sparse_indices.push(op);
-                    sparse_values.push(v);
-                }
-            });
-        debug!("Sparse Majorana Indices {:?}", &sparse_indices);
-        debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
-        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
-            .expect("Indices and coefficients should be same length.")
+        majoranas.into()
     }
 }
 
@@ -677,38 +797,7 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
         sft.into_iter().for_each(|term| {
             majoranas.append_fermion_sparse(term);
         });
-
-        let mut sparse_values: Vec<Complex64> = Vec::with_capacity(
-            majoranas
-                .operators
-                .values()
-                .filter(|&v| v.abs() >= 1e-16)
-                .count(),
-        );
-        let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
-            Vec::with_capacity(sparse_values.len());
-        // debug!("{:#?}", sparse_values.clone());
-        let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
-        majoranas
-            .operators
-            .iter()
-            .filter(|(_, &v)| v.abs() >= 1e-16)
-            .for_each(|(k, &v)| {
-                let mut op: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-                if k.len() == 0 {
-                    sparse_constant += v;
-                } else {
-                    for ind in k {
-                        op.push(*ind as u16);
-                    }
-                    sparse_indices.push(op);
-                    sparse_values.push(v);
-                }
-            });
-        debug!("Sparse Majorana Indices {:?}", &sparse_indices);
-        debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
-        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
-            .expect("Indices and coefficients should be same length.")
+        majoranas.into()
     }
 }
 
@@ -725,10 +814,10 @@ mod majorana_tests {
     fn test_ladder_to_complex() {
         // Output should look like
         // [left_0 right_0, left_0 right_1, left_1 right_0, left_1 right_1]
-        let ladder_vec = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let ladder_vec = [LadderOperator::Creation, LadderOperator::Annihilation];
         let two_ops: Vec<Complex64> = ladder_vec
             .iter()
-            .map(|signature| signature.fermion_coeff())
+            .map(|signature| signature.majorana_coefficients())
             .reduce(|acc, s| vector_kron(&acc, &s))
             .unwrap()
             .to_vec();
@@ -737,14 +826,14 @@ mod majorana_tests {
             vec![c64(0.25, 0.), c64(0., -0.25), c64(0., 0.25), c64(0.25, 0.)]
         );
 
-        let ladder_vec = vec![
+        let ladder_vec = [
             LadderOperator::Creation,
             LadderOperator::Annihilation,
             LadderOperator::Creation,
         ];
         let three_ops: Vec<Complex64> = ladder_vec
             .iter()
-            .map(|signature| signature.fermion_coeff())
+            .map(|signature| signature.majorana_coefficients())
             .reduce(|acc, s| vector_kron(&acc, &s))
             .unwrap()
             .to_vec();
@@ -767,7 +856,7 @@ mod majorana_tests {
     fn test_majorise_do_nothing() {
         let indices = vec![0, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         assert_eq!(mp.indices, indices.clone());
         assert_eq!(mp.coefficient, coefficient.clone());
@@ -777,7 +866,7 @@ mod majorana_tests {
     fn test_majorise_single_swap() {
         let indices = vec![1, 0];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0, 1]);
@@ -788,7 +877,7 @@ mod majorana_tests {
     fn test_majorise_simplify() {
         let indices = vec![0, 0, 0];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0]);
@@ -799,7 +888,7 @@ mod majorana_tests {
     fn test_majorise_simplify_to_empty() {
         let indices = vec![0, 0];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, Vec::<usize>::new());
@@ -807,7 +896,7 @@ mod majorana_tests {
 
         let indices = vec![0, 1, 0, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, Vec::<usize>::new());
@@ -815,7 +904,7 @@ mod majorana_tests {
 
         let indices = vec![1, 0, 0, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, Vec::<usize>::new());
@@ -826,7 +915,7 @@ mod majorana_tests {
     fn test_majorise_reverse() {
         let indices = vec![3, 2, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![1, 2, 3]);
@@ -834,7 +923,7 @@ mod majorana_tests {
 
         let indices = vec![4, 3, 2, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![1, 2, 3, 4]);
@@ -845,7 +934,7 @@ mod majorana_tests {
     fn test_majorise() {
         let indices = vec![1, 1, 1, 1, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![1]);
@@ -853,7 +942,7 @@ mod majorana_tests {
 
         let indices = vec![1, 1, 1, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, Vec::<usize>::new());
@@ -861,7 +950,7 @@ mod majorana_tests {
 
         let indices = vec![1, 1, 1, 0];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0, 1]);
@@ -869,7 +958,7 @@ mod majorana_tests {
 
         let indices = vec![1, 1, 0, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0, 1]);
@@ -877,7 +966,7 @@ mod majorana_tests {
 
         let indices = vec![1, 0, 1, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0, 1]);
@@ -885,7 +974,7 @@ mod majorana_tests {
 
         let indices = vec![0, 1, 1, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient.clone());
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0, 1]);

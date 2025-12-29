@@ -39,7 +39,7 @@ impl Restriction {
             Restriction::EvenLeaf => unassigned.iter().map(|v| (2 * v) as u16).collect(),
             Restriction::OddLeaf => unassigned.iter().map(|v| ((2 * v) + 1) as u16).collect(),
             Restriction::ChildNode(child_index) => {
-                vec![(*child_index as u16 + 2 * n_nodes as u16 + 1) as u16]
+                vec![(*child_index as u16 + 2 * n_nodes as u16 + 1)]
             }
             Restriction::Any => {
                 let mut allowed: Vec<u16> = unassigned
@@ -92,7 +92,7 @@ impl TreeRetrictions {
         let all_z_index = tree
             .z_child_of
             .iter()
-            .position(|&v| v == None)
+            .position(|&v| v.is_none())
             .expect("Input tree should not have all-z leaf assigned.");
         self.z[all_z_index] = Restriction::Empty;
     }
@@ -142,7 +142,6 @@ impl TreeRetrictions {
 
     fn find_leaf_pairs(&mut self, tree: &TernaryTree) {
         let mut leaf_pairs: Vec<LeafPair> = (0..tree.n_nodes)
-            .into_iter()
             .map(|v| LeafPair {
                 x: (v, Edge::X),
                 y: (v, Edge::Y),
@@ -192,7 +191,7 @@ impl TreeRetrictions {
 }
 
 impl TreeRetrictions {
-    fn update_tree<'t>(self, tree: &'t mut TernaryTree) -> Result<(), ToppHattError> {
+    fn update_tree(self, tree: &mut TernaryTree) -> Result<(), ToppHattError> {
         let n_nodes = &self.x.len();
         debug!("Updatign tree {self:?}");
         assert_eq!(
@@ -230,7 +229,7 @@ impl TreeRetrictions {
                         assert!(matches!(c, Some(Child::Node(_))));
                     }
                     Restriction::Empty => {
-                        assert!(matches!(c, None))
+                        assert!(c.is_none())
                     }
                     _ => return Err(ToppHattError::RestrictionError(*r)),
                 }
@@ -549,7 +548,6 @@ pub fn topphatt(
 
         // Check for nods which are now complete thanks to assigning leaf pairs.
         let complete_nodes: Vec<usize> = (0..tree.n_nodes)
-            .into_iter()
             .filter(|&ind| {
                 matches!(
                     restrictions.x[ind],
@@ -574,7 +572,7 @@ pub fn topphatt(
             reduce_hamiltonian(hamiltonian.indices, parent_majorana_index as u16, selection);
         debug!("Reduced Hamiltonian {:?}", hamiltonian.indices);
         debug!("Finished loop\n\n\n");
-        if unassigned_modes.len() == 0 {
+        if unassigned_modes.is_empty() {
             break 'assign;
         }
     }

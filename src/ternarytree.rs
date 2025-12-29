@@ -1,6 +1,6 @@
-/*
-Ternary tree encodings and methods.
-*/
+//! Ternary tree encodings and methods.
+//!
+//! The ['TernaryTree`] struct is made up of a set of vectors.
 use crate::{encoding::MajoranaEncoding, operators::Pauli};
 use log::{debug, error, info};
 use numpy::ndarray::{s, Array1, Array2, Zip};
@@ -10,8 +10,13 @@ use std::result::Result;
 use std::{fmt, usize};
 use thiserror::Error;
 
+/// Flattened structure of a [`TernaryTree`].
+///
+/// Beginning with the root node at index 0, each node's children
+/// are given as a tuple (X,Y,Z).
 pub type TTFlatPack = Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>;
 
+/// Possible outward edges of nodes.
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum Edge {
     X,
@@ -20,6 +25,7 @@ pub enum Edge {
 }
 
 impl Edge {
+    /// Convert an edge to a char.
     fn as_char(&self) -> char {
         match &self {
             Edge::X => 'X',
@@ -35,6 +41,18 @@ impl fmt::Display for Edge {
     }
 }
 
+/// Parity of the total number of Y edges which must be taken to reach a given node.
+///
+/// When creating Majorana encodings, each fermionic operator is mapped to two majorana operators:
+/// $f_i \to 0.5(\gamma_{2i} \pm i \gamma_{2i+1})$
+///
+/// To ensure that every term in the hamiltonian has a real coefficient,
+/// when assigning indices to majorana operators, each pair should contain
+/// one operator (2i) with an even number of Pauli-Y operators and the other (2i+1)
+/// should contain an odd number of Pauli-Y operators.
+///
+/// We keep track of this in the [`TernaryTree`] by keeping track of
+/// the Y-parity of a node, adding 1 for any child it has on the Y-Edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum YParity {
     Odd,
@@ -42,6 +60,9 @@ pub enum YParity {
 }
 
 impl YParity {
+    /// Used to define the offset of Majorana indices in [`TernaryTree::majorana_index`].
+    /// The pair of majorana indices for fermionic mode "i" are:
+    /// 2*i(+0) and 2*i+1.
     fn as_u8(&self) -> u8 {
         match self {
             Self::Even => 0,
@@ -50,6 +71,13 @@ impl YParity {
     }
 }
 
+/// Swaps between each [`YParity`].
+///
+/// # Example
+/// ```
+/// let yp= YParity::Even;
+/// assert_eq!(!yp, YParity::Odd);
+/// ```
 impl Not for YParity {
     type Output = Self;
     fn not(self) -> Self::Output {
@@ -60,11 +88,14 @@ impl Not for YParity {
     }
 }
 
-// As parent_of is stored for eachof the N
-// nodes, a single node can be the parent_of in three
-// different ways.
-// Storing the edge with the parent means that we can
-// traverse from the leaves to the root more easily.
+///A Parent node.
+///
+/// As parent_of is stored for eachof the N
+/// nodes, a single node can be the parent_of in three
+/// different ways.
+/// Storing the edge with the parent means that we can
+/// build pauli strings by traversing from the leaves to the root
+/// without having to look at a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Parent {
     edge: Edge,
@@ -80,6 +111,10 @@ impl Parent {
     }
 }
 
+/// Possible children of a node.
+///
+/// A child can either be another node, with a node index,
+/// or a leaf with an associated majorana operator index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Child {
     Node(u8),
@@ -87,8 +122,9 @@ pub enum Child {
     YLeaf(u8),
 }
 
+/// Returns the index of a Child as a usize for indexing into arrays.
 impl Child {
-    fn node_index(&self) -> usize {
+    fn usize_index(&self) -> usize {
         match self {
             Child::Node(index) => *index as usize,
             Child::XLeaf(index) => *index as usize,
@@ -135,7 +171,7 @@ impl TernaryTree {
             y_child_of: vec![None; n_nodes],
             z_child_of: vec![None; n_nodes],
             y_parity_of: vec![YParity::Even; n_nodes],
-            n_nodes: n_nodes,
+            n_nodes,
             qubit_index_of: None,
         }
     }
@@ -147,7 +183,7 @@ impl TernaryTree {
             y_child_of: (0..n_nodes).map(|v| Some(Child::YLeaf(v as u8))).collect(),
             z_child_of: vec![None; n_nodes],
             y_parity_of: vec![YParity::Even; n_nodes],
-            n_nodes: n_nodes,
+            n_nodes,
             qubit_index_of: None,
         }
     }
@@ -292,9 +328,9 @@ impl TernaryTree {
                 self.qubit_index_of.clone(),
             ));
         }
-        let mut ipowers: Array1<u8> = Array1::zeros(2 * self.n_nodes as usize);
+        let mut ipowers: Array1<u8> = Array1::zeros(2 * self.n_nodes);
         let mut symplectics: Array2<bool> =
-            Array2::from_elem((2 * self.n_nodes as usize, 2 * self.n_nodes), false);
+            Array2::from_elem((2 * self.n_nodes, 2 * self.n_nodes), false);
         for final_edge in [Edge::X, Edge::Y, Edge::Z] {
             debug!("\nFinal Edge {:?}", final_edge);
             let child_of = match final_edge {
@@ -303,10 +339,10 @@ impl TernaryTree {
                 Edge::Z => &self.z_child_of,
             };
             let leaf_locations: Vec<usize> = child_of
-                .into_iter()
+                .iter()
                 .enumerate()
                 .filter(|(_, v)| matches!(v, Some(Child::XLeaf(_)) | Some(Child::YLeaf(_))))
-                .map(|(ind, _)| ind as usize)
+                .map(|(ind, _)| ind)
                 .collect();
             debug!("Leaf locations on edge {:?}", leaf_locations);
             leaf_locations.iter().for_each(|&ind| {
@@ -323,13 +359,13 @@ impl TernaryTree {
             });
             debug!("symplectics {:?}", symplectics);
         }
-        if matches!(self.qubit_index_of, Some(_)) {
+        if self.qubit_index_of.is_some() {
             let column_indices: Array1<usize> = self
                 .qubit_index_of
                 .as_ref()
                 .unwrap()
                 .iter()
-                .map(|&v| v)
+                .copied()
                 .chain(
                     self.qubit_index_of
                         .as_ref()
@@ -372,8 +408,8 @@ impl TernaryTree {
 impl TernaryTree {
     fn majorana_index(&self, child: Child) -> u8 {
         match child {
-            Child::XLeaf(ind) => 2 * ind + self.y_parity_of[child.node_index()].as_u8(),
-            Child::YLeaf(ind) => 2 * ind + (!self.y_parity_of[child.node_index()]).as_u8(),
+            Child::XLeaf(ind) => 2 * ind + self.y_parity_of[child.usize_index()].as_u8(),
+            Child::YLeaf(ind) => 2 * ind + (!self.y_parity_of[child.usize_index()]).as_u8(),
             Child::Node(ind) => 2 * self.n_nodes as u8 + 1 + ind,
         }
     }
@@ -398,7 +434,8 @@ impl TernaryTree {
     // // set child_of[parent] = child
 
     fn add_child(&mut self, new_parent: Parent, new_child: Child) -> Result<(), TernaryTreeError> {
-        if (new_parent.node_index() == new_child.node_index()) & matches!(new_child, Child::Node(_))
+        if (new_parent.node_index() == new_child.usize_index())
+            & matches!(new_child, Child::Node(_))
         {
             return Err(TernaryTreeError::SelfChildError(new_parent, new_child));
         }
@@ -417,17 +454,17 @@ impl TernaryTree {
                 }
                 // If parent has a leaf we give it to the z_ancestor of the child.
                 Child::XLeaf(_) | Child::YLeaf(_) => {
-                    let z_anc = self.get_z_descendant_of(new_child.node_index());
-                    self.z_child_of[z_anc as usize] = Some(existing_child);
+                    let z_anc = self.get_z_descendant_of(new_child.usize_index());
+                    self.z_child_of[z_anc] = Some(existing_child);
                 }
             }
             // return Err(TernaryTreeError::AddChildError(new_parent, new_child));
         }
 
         if matches!(new_child, Child::Node(_)) {
-            let current_parent = self.parent_of[new_child.node_index()];
+            let current_parent = self.parent_of[new_child.usize_index()];
 
-            if let Some(_) = current_parent {
+            if current_parent.is_some() {
                 return Err(TernaryTreeError::InvalidParentError(new_parent, new_child));
             }
         }
@@ -446,12 +483,12 @@ impl TernaryTree {
 
         // Update the Parent and Yparity of the child.
         if matches!(new_child, Child::Node(_)) {
-            self.parent_of[new_child.node_index()] = Some(new_parent);
-            self.y_parity_of[new_child.node_index()] = self.y_parity_of[new_parent.node_index()];
+            self.parent_of[new_child.usize_index()] = Some(new_parent);
+            self.y_parity_of[new_child.usize_index()] = self.y_parity_of[new_parent.node_index()];
 
             if matches!(new_parent.edge, Edge::Y) {
                 debug!("Swapping parity of child.");
-                self.y_parity_of[new_child.node_index()] =
+                self.y_parity_of[new_child.usize_index()] =
                     !self.y_parity_of[new_parent.node_index()];
                 debug!("{:?}", self.y_parity_of);
             }
@@ -493,7 +530,7 @@ impl TernaryTree {
         let mut xz_array: Array1<bool> = Array1::from_elem(2 * self.n_nodes, false);
         let majorana_index: u8;
         debug!("Parent index {parent_index}");
-        if let Some(child) = child_of[usize::from(parent_index)] {
+        if let Some(child) = child_of[parent_index] {
             debug!("Child {child:?}");
             match child {
                 Child::XLeaf(_) | Child::YLeaf(_) => {
@@ -501,14 +538,14 @@ impl TernaryTree {
                 }
                 Child::Node(_) => {
                     return Err(TernaryTreeError::LeafSymplecticError(
-                        leaf_edge.clone(),
+                        *leaf_edge,
                         parent_index,
                     ))
                 }
             }
         } else {
             return Err(TernaryTreeError::LeafSymplecticError(
-                leaf_edge.clone(),
+                *leaf_edge,
                 parent_index,
             ));
         }
@@ -553,7 +590,6 @@ mod tt_tests {
     use numpy::ndarray::{arr1, arr2};
     use Child::{Node, XLeaf, YLeaf};
     use Edge::{X, Y, Z};
-    use Parent;
 
     #[test]
     fn test_new() {
@@ -975,13 +1011,13 @@ mod integration_tests {
     use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
     use ahash::HashMapExt;
     use num_complex::c64;
-    use numpy::ndarray::{arr2, ArrayD};
+    use numpy::ndarray::arr2;
     #[test]
     fn test_encode_identity_with_jw() {
         let encoding = TernaryTree::naive_jordan_wigner(2)
             .build_encoding(2)
             .unwrap();
-        let mut coeffs = arr2(&[[1f64, 0f64], [0f64, 1f64]]).into_dyn();
+        let coeffs = arr2(&[[1f64, 0f64], [0f64, 1f64]]).into_dyn();
         let fmat = FermionMatrix::new(
             vec![LadderOperator::Creation, LadderOperator::Annihilation],
             coeffs,
@@ -1000,7 +1036,7 @@ mod integration_tests {
         let encoding = TernaryTree::naive_jordan_wigner(2)
             .build_encoding(2)
             .unwrap();
-        let mut coeffs = arr2(&[[0f64, 0f64], [1f64, 0f64]]).into_dyn();
+        let coeffs = arr2(&[[0f64, 0f64], [1f64, 0f64]]).into_dyn();
         let fmat = FermionMatrix::new(
             vec![LadderOperator::Creation, LadderOperator::Annihilation],
             coeffs,

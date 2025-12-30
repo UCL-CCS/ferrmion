@@ -12,17 +12,27 @@ from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
 from pytest import fixture
 import logging
+from hypothesis import given, settings, strategies as st
+from .conftest import diagonalise_pauli_hamiltonian
+
+rng = np.random.default_rng(46392034)
 logger = logging.getLogger(__name__)
 
+def test_molecular_hamiltonian_equivalent_explicit_fermion_hamiltonian(n_modes: int = 5):
+    print(n_modes)
+    ones = rng.random((n_modes,n_modes))
+    twos = rng.random((n_modes,n_modes,n_modes,n_modes))
+    constant_energy = rng.random()
 
-def test_molecular_hamiltonian_equivalent_explicit_fermion_hamiltonian():
-    ones = np.eye(4)
-    twos = np.ones((4,4,4,4))
-    constant_energy = 10.
     molh = molecular_hamiltonian(one_e_coeffs=ones, two_e_coeffs=twos, constant_energy=constant_energy)
+
+    assert ones.shape == (n_modes,n_modes)
+    assert twos.shape == (n_modes,n_modes, n_modes,n_modes)
     explicit_molh = FermionHamiltonian()
     explicit_molh.creation().annihilation().with_coefficients(ones)
     explicit_molh.creation().creation().annihilation().annihilation().with_coefficients(twos)
+    # explicit_molh.add_constant(constant_energy)
+
     assert molh._terms.keys() == explicit_molh._terms.keys()
     assert np.all(molh._terms["+-"] == explicit_molh._terms["+-"])
     assert np.all(molh._terms["++--"] == explicit_molh._terms["++--"])
@@ -36,19 +46,9 @@ def test_encode_standard_water_eigvals_equal_expected(encoding, water_data):
     qham = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos], e_nuc)
     assert np.isclose(qham["I"*14], -46.465600781952176)
 
-    ofop = QubitOperator()
-    for k, v in qham.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop+= QubitOperator(term=string, coefficient=v)
-    print(expected:=water_data["eigvals"])
-    diag, _ = eigsh(get_sparse_operator(ofop), k=2, which="SA")
-    print(diag)
-    assert np.allclose(np.sort(diag), np.sort(expected)[:2])
+    diag = diagonalise_pauli_hamiltonian(qham, 2)
+
+    assert np.allclose(np.sort(diag), np.sort(water_data["eigvals"])[:2])
 
 @pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
 def test_encode_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
@@ -58,16 +58,21 @@ def test_encode_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
     n_modes = ones.shape[0]
     qham = encode_standard(encoding, n_modes, n_modes, ["+-","++--"], [ones, twos], e_nuc)
 
-    ofop = QubitOperator()
-    for k, v in qham.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop+= QubitOperator(term=string, coefficient=v)
-    print(expected:=h2_mol_data_sets["eigvals"])
-    diag, _ = eigsh(get_sparse_operator(ofop), k=2*n_modes, which="SA")
-    print(diag)
+    diag = diagonalise_pauli_hamiltonian(qham, 2*n_modes)
     assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
+
+
+@given(n_modes=st.integers(2,5))
+@settings(max_examples=10, deadline=None)
+def test_encode_standard_eigenalues_constant(n_modes):
+    ones = rng.random((n_modes,n_modes))
+    twos = rng.random((n_modes,n_modes,n_modes,n_modes))
+    e_nuc = rng.random()
+
+    diags = []
+    for encoding in ["JW", "BK", "PE", "JKMN"]:
+        qham = encode_standard(encoding, n_modes, n_modes, ["+-","++--"], [ones, twos], e_nuc)
+        diags.append(diagonalise_pauli_hamiltonian(qham, n_modes))
+
+    for d in diags[1:]:
+        assert np.allclose(np.sort(diags[0]), np.sort(d))

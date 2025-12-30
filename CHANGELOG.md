@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3]
+### Added
+- Initial property based testing with `hypothesis` for python and `proptest` for rust.
+- Inline documentation for `core.operators`.
+
+### Fixed
+- `TernaryTree.encode_annealed` now updates encoding ipowers and coeffients after running.
+
 ## [0.5.2]
 ### Fixed
 - Removed `norm()` from constant energy, giving incorrect sign.

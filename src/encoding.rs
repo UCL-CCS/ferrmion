@@ -3,7 +3,7 @@ use crate::hamiltonians::QubitHamiltonian;
 Functions relating to the FermionQubitEncoding base class.
 */
 
-use crate::operators::{FermionMatrix, MajoranaProduct, MajoranaSparse, Pauli};
+use crate::operators::{MajoranaProduct, MajoranaSparse, Pauli};
 use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
 use log::debug;
@@ -91,7 +91,7 @@ impl MajoranaEncoding {
             let right = self.symplectics.slice(s![r,..]);
             let (term, imaginary) = MajoranaEncoding::symplectic_product(left, right, 0);
 
-            *pow += &((imaginary as u8 + self.ipowers[[l]] + self.ipowers[[r]]) % 4);
+            *pow += &((imaginary + self.ipowers[[l]] + self.ipowers[[r]]) % 4);
             product_map.slice_mut(s![l,r,..]).assign(&term);
         });
 
@@ -183,8 +183,7 @@ impl MajoranaEncoding {
         assert_eq!(2 * mode_op_map.len(), self.symplectics.nrows());
         let majorana_rows: Vec<usize> = mode_op_map
             .iter()
-            .map(|v| [2 * v, 2 * v + 1])
-            .flatten()
+            .flat_map(|v| [2 * v, 2 * v + 1])
             .collect();
         let ipowers: Array1<u8> = self.ipowers.select(Axis(0), &majorana_rows);
         let symplectics: Array2<bool> = self.symplectics.select(Axis(0), &majorana_rows);
@@ -275,7 +274,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
 
 #[cfg(test)]
 mod owned_tests {
-    use crate::operators::{FermionMatrix, LadderOperator};
+    
 
     use super::*;
     use ndarray::{arr2, Array1, ArrayView1};
@@ -508,7 +507,7 @@ mod owned_tests {
         let result2 = encoding.hartree_fock_state(
             vacuum_state,
             ArrayView1::from(&[true, true, true, true, false, false]),
-            mode_op_map.clone(),
+            mode_op_map,
         );
         assert!(result2.0 == ndarray::arr1(&[c1]));
         assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));

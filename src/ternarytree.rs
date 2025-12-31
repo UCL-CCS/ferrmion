@@ -188,21 +188,24 @@ impl TernaryTree {
         }
     }
 
-    pub fn from_flatpack(flatpack: TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
+    pub fn from_flatpack(flatpack: &TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new(n_nodes);
         tree.add_children_from_flatpack(flatpack)?;
         Ok(tree)
     }
 
-    pub fn from_flatpack_naive(flatpack: TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
+    pub fn from_flatpack_naive(flatpack: &TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new_naive(n_nodes);
         tree.add_children_from_flatpack(flatpack)?;
         Ok(tree)
     }
 
-    fn add_children_from_flatpack(&mut self, flatpack: TTFlatPack) -> Result<(), TernaryTreeError> {
+    fn add_children_from_flatpack(
+        &mut self,
+        flatpack: &TTFlatPack,
+    ) -> Result<(), TernaryTreeError> {
         let n_nodes = self.n_nodes;
         let qubit_index_of: Vec<usize> = flatpack.iter().map(|v| v.0).collect();
         self.set_qubit_indices(qubit_index_of)?;
@@ -622,7 +625,7 @@ mod tt_tests {
             (1, (None, None, None)),
             (2, (None, None, None)),
         ];
-        let tt = TernaryTree::from_flatpack(flatpack).unwrap();
+        let tt = TernaryTree::from_flatpack(&flatpack).unwrap();
         assert_eq!(tt.parent_of, vec![None, None, None]);
         assert_eq!(tt.x_child_of, vec![None, None, None]);
         assert_eq!(tt.y_child_of, vec![None, None, None]);
@@ -636,7 +639,7 @@ mod tt_tests {
             (1, (None, None, None)),
             (2, (None, None, None)),
         ];
-        let tt = TernaryTree::from_flatpack_naive(flatpack).unwrap();
+        let tt = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
         assert_eq!(tt.parent_of, vec![None, None, None]);
         assert_eq!(
             tt.x_child_of,
@@ -659,7 +662,7 @@ mod tt_tests {
         let mut expected: TernaryTree = TernaryTree::naive_jordan_wigner(3);
         expected.set_qubit_indices(vec![0, 1, 2]).unwrap();
         assert_eq!(
-            TernaryTree::from_flatpack_naive(jw_flatpack).unwrap(),
+            TernaryTree::from_flatpack_naive(&jw_flatpack).unwrap(),
             expected
         );
         let pe_flatpack: TTFlatPack = vec![
@@ -670,7 +673,7 @@ mod tt_tests {
         let mut expected: TernaryTree = TernaryTree::naive_parity(3);
         expected.set_qubit_indices(vec![0, 1, 2]).unwrap();
         assert_eq!(
-            TernaryTree::from_flatpack_naive(pe_flatpack).unwrap(),
+            TernaryTree::from_flatpack_naive(&pe_flatpack).unwrap(),
             expected
         );
         let bk_flatpack: TTFlatPack = vec![
@@ -682,7 +685,7 @@ mod tt_tests {
         let mut expected: TernaryTree = TernaryTree::naive_bravyi_kitaev(4);
         expected.set_qubit_indices(vec![0, 1, 2, 3]).unwrap();
         assert_eq!(
-            TernaryTree::from_flatpack_naive(bk_flatpack).unwrap(),
+            TernaryTree::from_flatpack_naive(&bk_flatpack).unwrap(),
             expected
         );
         let jkmn_flatpack: TTFlatPack = vec![
@@ -694,7 +697,7 @@ mod tt_tests {
         let mut expected: TernaryTree = TernaryTree::naive_jkmn(4);
         expected.set_qubit_indices(vec![0, 1, 2, 3]).unwrap();
         assert_eq!(
-            TernaryTree::from_flatpack_naive(jkmn_flatpack).unwrap(),
+            TernaryTree::from_flatpack_naive(&jkmn_flatpack).unwrap(),
             expected
         );
     }
@@ -706,7 +709,7 @@ mod tt_tests {
         flatpack.push((10, (None, None, None)));
         flatpack.push((11, (None, None, None)));
         flatpack.push((12, (None, None, None)));
-        let tree = TernaryTree::from_flatpack_naive(flatpack).unwrap();
+        let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
 
         let mut expected: TernaryTree = TernaryTree::naive_jkmn(4);
         expected.set_qubit_indices(vec![9, 10, 11, 12]).unwrap();
@@ -917,7 +920,7 @@ mod tt_tests {
             (1, (None, None, Some(2))),
             (2, (None, None, None)),
         ]);
-        let tt = TernaryTree::from_flatpack_naive(flatpack).unwrap();
+        let tt = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
         assert_eq!(tt.qubit_index_of, Some(vec![0, 1, 2]));
         let n_qubits = tt.n_nodes;
         let encoding = tt.build_encoding(n_qubits).unwrap();

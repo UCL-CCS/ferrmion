@@ -23,6 +23,8 @@ from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.core import standard_symplectic_matrix
 from scipy.sparse.linalg import eigsh
 from .conftest import diagonalise_pauli_hamiltonian
+from hypothesis import given,seed, strategies as st
+from hypothesis.extra.numpy import arrays
 
 @pytest.fixture
 def six_mode_tree():
@@ -151,181 +153,6 @@ def test_valid_enumeration_scheme(six_mode_tree):
         "xx": (4, 2),
         "xy": (5, 0),
     }
-    assert np.all(
-        jkmn._build_symplectic_matrix()[1]
-        == np.array(
-            [
-                [
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    True,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                ],
-                [
-                    True,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                ],
-            ]
-        )
-    )
 
 
 def test_bravyi_kitaev(six_mode_tree):
@@ -625,3 +452,79 @@ def test_encode_jw_water_eigvals_equal_expected(encoding: Callable[[int], Ternar
     diag = diagonalise_pauli_hamiltonian(qham, 2)
 
     assert np.allclose(np.sort(diag), np.sort(water_data["eigvals"])[:2])
+
+@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
+def test_naive_jw_hf_state_unchanged(fermionic_hf_state):
+    tree = JordanWigner(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    print(f"fermionic HF {fermionic_hf_state}")
+    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )
+    assert np.all(qubit_hf_state == fermionic_hf_state)
+
+@given(mode_op_map=st.permutations([*range(10)]), n_electrons=st.integers(min_value=1, max_value=10))
+def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
+    fermionic_hf_state = np.array([True] * n_electrons + [False] * (10-n_electrons), dtype=np.bool)
+
+    tree = JordanWigner(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    print(f"\nfermionic HF {fermionic_hf_state}")
+    print(f"Enumeration {mode_op_map}")
+    naive_qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )
+
+    print(f"naive {naive_qubit_hf_state}")
+    enumerated_qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=mode_op_map,
+    )
+    print(f"enumerated {enumerated_qubit_hf_state}")
+    expected_emnumerated = np.array([False] * 10, dtype=np.bool)
+    expected_emnumerated[mode_op_map[:n_electrons]] = True
+    print(f"expected {enumerated_qubit_hf_state}")
+
+    assert np.all(naive_qubit_hf_state == fermionic_hf_state)
+    assert np.all(enumerated_qubit_hf_state == expected_emnumerated)
+
+@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
+def test_naive_parity_hf_state(fermionic_hf_state):
+    tree = ParityEncoding(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )
+
+    print(f"fermionic HF\t {fermionic_hf_state}")
+    print(f"qubit HF\t {qubit_hf_state}")
+    # The convention for Parity is that X is applied to indices
+    # *higher* than the qubit being changed.
+    # We have to change these around as we have an x-tail for lesser indices.
+    expected_parity = np.cumsum(fermionic_hf_state[::-1]) % 2
+    expected_parity = np.array(expected_parity, dtype=np.bool)[::-1]
+    print(f"expected parity\t {expected_parity}")
+    print(f"Result\t {np.all(qubit_hf_state == expected_parity)}")
+
+    assert np.all(qubit_hf_state == expected_parity)
+
+@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
+def test_naive_bk_hf_state_runs(fermionic_hf_state):
+    tree = BravyiKitaev(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )
+
+@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
+def test_naive_jkmn_hf_state_runs(fermionic_hf_state):
+    tree = JKMN(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )

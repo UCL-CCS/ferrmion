@@ -3,15 +3,18 @@ use crate::hamiltonians::QubitHamiltonian;
 Functions relating to the FermionQubitEncoding base class.
 */
 
-use crate::operators::{MajoranaProduct, MajoranaSparse, Pauli};
+use crate::operators::{MajoranaProduct, MajoranaSparse, Pauli, PauliMatrix};
 use crate::utils::{self, icount_to_sign, vector_kron};
 use ahash::RandomState;
+use itertools::izip;
 use log::debug;
 use ndarray::{Axis, Zip};
 use num_complex::c64;
 use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1};
 use numpy::Complex64;
 use std::collections::HashMap;
+use std::env::current_exe;
+use thiserror::Error;
 
 pub trait Encode<T> {
     fn encode(&self, input: T) -> QubitHamiltonian;
@@ -22,6 +25,12 @@ pub struct MajoranaEncoding {
     pub ipowers: Array1<u8>,
     pub symplectics: Array2<bool>,
     pub n_modes: usize,
+}
+
+#[derive(Debug, Error)]
+pub enum MajoranaEncodingError {
+    #[error("Cannot construct Hartree-Fock state with Pauli operators {0:?}-i{1:?}.")]
+    HartreeFockError(Pauli, Pauli),
 }
 
 // This caches symplectic products so that we don't have to calculate them
@@ -99,16 +108,24 @@ impl MajoranaEncoding {
         (product_powers, product_map)
     }
 
-    pub fn hartree_fock_state(
+    /// Transforms a given fermionic Hartree-Fock to its computational-basis state.
+    ///
+    /// This will only work for vacuum preserving ['TernaryTree'] encodings.
+    /// It assumes that:
+    /// - The vacuum state is
+    /// - two majorana operators forming a fermionic operator
+    ///     have non-trivial-overlap on exactly one qubit,
+    /// - that one applies Pauli X and the other applies Y
+    /// - they are ordered so that X is found on even rows and Y on odd rows
+    /// - No entangling operators exist, so we can ignore global phase.
+    pub fn ternary_tree_hartree_fock_state(
         &self,
-        vacuum_state: ArrayView1<f64>,
         fermionic_hf_state: ArrayView1<bool>,
         mode_op_map: ArrayView1<usize>,
-    ) -> (Array1<Complex64>, Array2<bool>) {
+    ) -> Result<Array1<bool>, MajoranaEncodingError> {
         debug!("Calculating Hartree-fock state");
 
-        let mut current_state =
-            vec![Array1::from(vec![c64(1., 0.), c64(0., 0.)]); vacuum_state.len_of(Axis(0))];
+        let mut current_state: Array1<bool> = Array1::from_elem(fermionic_hf_state.len(), false);
 
         let half_length = self.symplectics.len_of(ndarray::Axis(1)) / 2;
         let (x_block, z_block) = self.symplectics.view().split_at(Axis(1), half_length);
@@ -119,62 +136,132 @@ impl MajoranaEncoding {
             }
             let mode_index = mode_op_map[[mode]];
 
+            // split the left and right operators into x and z sections
             let left_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index);
             let right_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
             let left_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index);
             let right_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
 
-            // split the left and righ operators into x and z sections
-            Zip::from(&mut current_state)
-                .and(&left_x)
-                .and(&left_z)
-                .and(&right_x)
-                .and(&right_z)
-                .for_each(|s, &lx, &lz, &rx, &rz| {
-                    // Create an operator to act on the state with
-                    let left_op: Array2<Complex64> = Pauli::from((lx, lz)).into();
-                    let right_op: Array2<Complex64> = Pauli::from((rx, rz)).into();
-                    let total_op = left_op - right_op.map(|op| op * Complex64::new(0., 1.));
-                    *s = total_op.dot(s);
-                });
-        }
+            let left_ops: Vec<Pauli> = left_x
+                .iter()
+                .zip(left_z.iter())
+                .map(|(&x, &z)| Pauli::from((x, z)))
+                .collect();
+            let right_ops: Vec<Pauli> = right_x
+                .iter()
+                .zip(right_z.iter())
+                .map(|(&x, &z)| Pauli::from((x, z)))
+                .collect();
 
-        let mut vector_state: Array1<Complex64> = Zip::from(&current_state)
-            .fold(Array1::from_elem(1, c64(1., 0.)), |acc, c| {
-                vector_kron(&acc, c)
-            });
-
-        let mut zero_coeffs = Vec::new();
-        let mut hf_components: Vec<bool> = Vec::new();
-        // According to ndarray docs, when we don't know the final size
-        // of a multidimensional array we want to build iteratively
-        // the best thing to do is create a flat array and then reshape
-        for index in 0..vector_state.len() {
-            let coeff = vector_state[index];
-            if !(coeff == c64(0., 0.)) {
-                let binary = format!("{:0<width$}", format!("{index:b}"), width = (half_length));
-                for val in binary.chars() {
-                    hf_components.push(val.to_digit(10).unwrap() == 1)
+            for (s, &left, &right) in izip!(&mut current_state, &left_ops, &right_ops) {
+                // Create an operator to act on the state with
+                match (left, right) {
+                    (Pauli::X, Pauli::Y) => {
+                        if s == &false {
+                            *s = true;
+                        } else {
+                            return Err(MajoranaEncodingError::HartreeFockError(left, right));
+                        }
+                    }
+                    // If the parent is an Odd Y-parity node
+                    // The order of these can be swapped.
+                    (Pauli::Y, Pauli::X) => {
+                        if s == &false {
+                            *s = true;
+                        } else {
+                            return Err(MajoranaEncodingError::HartreeFockError(left, right));
+                        }
+                    }
+                    (Pauli::Z, Pauli::I) => continue,
+                    (Pauli::I, Pauli::Z) => continue,
+                    (Pauli::X, Pauli::X) => *s = if s == &true { false } else { true },
+                    (Pauli::Y, Pauli::Y) => *s = if s == &true { false } else { true },
+                    (Pauli::Z, Pauli::Z) => continue,
+                    (Pauli::I, Pauli::I) => continue,
+                    _ => return Err(MajoranaEncodingError::HartreeFockError(left, right)),
                 }
-            } else {
-                zero_coeffs.push(index);
             }
         }
-        for index in zero_coeffs.iter().rev() {
-            vector_state.remove_index(Axis(0), *index);
-        }
-
-        let coeffs = vector_state.mapv(|c| c / (vector_state[0]));
-
-        let hf_components: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 2]>> =
-            Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)
-                .expect("Should be able to make hf components array from vec.");
-        debug!(
-            "Found Hartree-Fock state: coeffs={:?}, hf_components={:#?}",
-            coeffs, hf_components
-        );
-        (coeffs, hf_components)
+        Ok(current_state)
     }
+
+    // pub fn ternary_tree_hartree_fock_state(
+    //     &self,
+    //     vacuum_state: ArrayView1<f64>,
+    //     fermionic_hf_state: ArrayView1<bool>,
+    //     mode_op_map: ArrayView1<usize>,
+    // ) -> (Array1<Complex64>, Array2<bool>) {
+    //     debug!("Calculating Hartree-fock state");
+
+    //     let mut current_state =
+    //         vec![Array1::from(vec![c64(1., 0.), c64(0., 0.)]); vacuum_state.len_of(Axis(0))];
+
+    //     let half_length = self.symplectics.len_of(ndarray::Axis(1)) / 2;
+    //     let (x_block, z_block) = self.symplectics.view().split_at(Axis(1), half_length);
+
+    //     for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
+    //         if !occ {
+    //             continue;
+    //         }
+    //         let mode_index = mode_op_map[[mode]];
+
+    //         // split the left and right operators into x and z sections
+    //         let left_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index);
+    //         let right_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
+    //         let left_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index);
+    //         let right_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
+
+    //         Zip::from(&mut current_state)
+    //             .and(&left_x)
+    //             .and(&left_z)
+    //             .and(&right_x)
+    //             .and(&right_z)
+    //             .for_each(|s, &lx, &lz, &rx, &rz| {
+    //                 // Create an operator to act on the state with
+    //                 let left_op: PauliMatrix = Pauli::from((lx, lz)).into();
+    //                 let right_op: PauliMatrix = Pauli::from((rx, rz)).into();
+    //                 /// Ladder::Creation in terms of majoranas
+    //                 let total_op = left_op - right_op.map(|op| op * Complex64::new(0., 1.));
+    //                 *s = total_op.dot(s);
+    //             });
+    //     }
+
+    //     let mut vector_state: Array1<Complex64> = Zip::from(&current_state)
+    //         .fold(Array1::from_elem(1, c64(1., 0.)), |acc, c| {
+    //             vector_kron(&acc, c)
+    //         });
+
+    //     let mut zero_coeffs = Vec::new();
+    //     let mut hf_components: Vec<bool> = Vec::new();
+    //     // According to ndarray docs, when we don't know the final size
+    //     // of a multidimensional array we want to build iteratively
+    //     // the best thing to do is create a flat array and then reshape
+    //     for index in 0..vector_state.len() {
+    //         let coeff = vector_state[index];
+    //         if !(coeff == c64(0., 0.)) {
+    //             let binary = format!("{:0<width$}", format!("{index:b}"), width = (half_length));
+    //             for val in binary.chars() {
+    //                 hf_components.push(val.to_digit(10).unwrap() == 1)
+    //             }
+    //         } else {
+    //             zero_coeffs.push(index);
+    //         }
+    //     }
+    //     for index in zero_coeffs.iter().rev() {
+    //         vector_state.remove_index(Axis(0), *index);
+    //     }
+
+    //     let coeffs = vector_state.mapv(|c| c / (vector_state[0]));
+
+    //     let hf_components: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 2]>> =
+    //         Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)
+    //             .expect("Should be able to make hf components array from vec.");
+    //     debug!(
+    //         "Found Hartree-Fock state: coeffs={:?}, hf_components={:#?}",
+    //         coeffs, hf_components
+    //     );
+    //     (coeffs, hf_components)
+    // }
 }
 
 impl MajoranaEncoding {
@@ -274,10 +361,8 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
 
 #[cfg(test)]
 mod owned_tests {
-    
-
     use super::*;
-    use ndarray::{arr2, Array1, ArrayView1};
+    use ndarray::{arr1, arr2, Array1, ArrayView1};
     use num_complex::c64;
     use numpy::Complex64;
     use tinyvec::array_vec;
@@ -499,17 +584,18 @@ mod owned_tests {
             ],
         ]);
         let encoding = MajoranaEncoding::new(ipowers, symplectics);
-        let result = encoding.hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map);
+        let result = encoding
+            .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
+            .unwrap();
         let c1 = c64(1., 0.);
-        assert!(result.0 == ndarray::arr1(&[c1]));
-        assert!(result.1 == arr2(&[[true, true, true, false, false, false]]));
+        assert!(result == arr1(&[true, true, true, false, false, false]));
 
-        let result2 = encoding.hartree_fock_state(
-            vacuum_state,
-            ArrayView1::from(&[true, true, true, true, false, false]),
-            mode_op_map,
-        );
-        assert!(result2.0 == ndarray::arr1(&[c1]));
-        assert!(result2.1 == arr2(&[[true, true, true, true, false, false]]));
+        let result2 = encoding
+            .ternary_tree_hartree_fock_state(
+                ArrayView1::from(&[true, true, true, true, false, false]),
+                mode_op_map,
+            )
+            .unwrap();
+        assert!(result2 == arr1(&[true, true, true, true, false, false]));
     }
 }

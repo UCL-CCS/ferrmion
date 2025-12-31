@@ -11,7 +11,6 @@ from numpy.typing import NDArray
 from ferrmion.core import (
     anneal_enumerations,
     encode,
-    hartree_fock_state,
     symplectic_product_map,
 )
 from ferrmion.hamiltonians import FermionHamiltonian, QubitHamiltonian
@@ -38,7 +37,7 @@ class FermionQubitEncoding(ABC):
     Methods:
         default_mode_op_map: Get the default mode operator map.
         _build_symplectic_matrix: Build a symplectic matrix representing terms for each operator in the Hamiltonian.
-        hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
+        ternary_tree_hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
         _symplectic_to_pauli: Convert a symplectic matrix to a Pauli string.
         _pauli_to_symplectic: Convert a Pauli string to a symplectic matrix.
         fill_template: Fill a template with Hamiltonian coefficients.
@@ -94,7 +93,7 @@ class FermionQubitEncoding(ABC):
             return False
 
     @property
-    def default_mode_op_map(self):
+    def default_mode_op_map(self) -> NDArray[np.uint]:
         """Create a default mode operator map for the tree."""
         return self._default_mode_op_map
 
@@ -168,7 +167,7 @@ class FermionQubitEncoding(ABC):
             initial_guess: NDArray[np.uint] = np.array(initial_guess, dtype=np.uint)
         else:
             initial_guess: NDArray[np.uint] = np.array(
-                [*range(fham.n_modes)], dtype=np.uint
+                [*range(self.n_modes)], dtype=np.uint
             )
 
         ipow, sym = anneal_enumerations(
@@ -202,35 +201,6 @@ class FermionQubitEncoding(ABC):
             signatures=signatures,
             coeffs=coeffs,
             constant_energy=fham.constant_energy,
-        )
-
-    def hartree_fock_state(
-        self,
-        fermionic_hf_state: NDArray[bool],
-        mode_op_map: list[int] | None = None,
-    ):
-        """Find the Hartree-Fock state of a majorana string encoding.
-
-        This function calls to the rust implementatin in `src/lib.rs`.
-        It assumes that the vacuum state is a single state vector, though the HF state may not be
-        The global phase so that the first component state has 0 phase.
-
-        Args:
-            fermionic_hf_state (NDArray[int]): An array of mode occupations.
-            mode_op_map (dict[int, int]): A dictionary mapping modes to sets of majorana strings i->(j,j+1).
-
-        Returns:
-            NDArray: The Hartree-Fock ground state in computational basis.
-        """
-        if mode_op_map is None:
-            mode_op_map = self.default_mode_op_map
-
-        return hartree_fock_state(
-            self.vacuum_state,
-            fermionic_hf_state,
-            mode_op_map,
-            self._build_symplectic_matrix()[0],
-            self._build_symplectic_matrix()[1],
         )
 
     @staticmethod

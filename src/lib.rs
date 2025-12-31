@@ -65,15 +65,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     #[pyfn(m)]
-    #[pyo3(name = "hartree_fock_state")]
-    fn wrap_hartree_fock_state_py<'py>(
+    #[pyo3(name = "ternary_tree_hartree_fock_state")]
+    fn wrap_ternary_tree_hartree_fock_state<'py>(
         py: Python<'py>,
-        vacuum_state: PyReadonlyArray1<f64>,
         fermionic_hf_state: PyReadonlyArray1<bool>,
         mode_op_map: PyReadonlyArray1<usize>,
         ipowers: PyReadonlyArray1<u8>,
         symplectic_matrix: PyReadonlyArray2<bool>,
-    ) -> (Bound<'py, PyArray1<Complex64>>, Bound<'py, PyArray2<bool>>) {
+    ) -> Bound<'py, PyArray1<bool>> {
         /*
         Computes the Hartree-Fock state from Python using numpy arrays.
 
@@ -85,21 +84,18 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         hf = np.array([True, True, False, False, False, False])
         mode_op_map = np.array([0,1,2,3,4,5])
         symplectic = np.eye(6, 12, dtype=bool)
-        coeffs, states = ferrmion.hartree_fock_state(vacuum, hf, mode_op_map, symplectic)
+        coeffs, states = ferrmion.ternary_tree_hartree_fock_state(vacuum, hf, mode_op_map, symplectic)
         ```
         */
-        let vacuum_state = vacuum_state.as_array();
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let mode_op_map = mode_op_map.as_array();
         let ipowers = ipowers.as_array().to_owned();
         let symplectic_matrix = symplectic_matrix.as_array().to_owned();
         let encoding = MajoranaEncoding::new(ipowers, symplectic_matrix);
-        let (coeffs, states) =
-            encoding.hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map);
-        (
-            PyArray1::from_owned_array(py, coeffs),
-            PyArray2::from_owned_array(py, states),
-        )
+        let state = encoding
+            .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
+            .expect("Should be able to get HF state.");
+        PyArray1::from_owned_array(py, state)
     }
 
     #[pyfn(m)]
@@ -266,6 +262,36 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     #[pyfn(m)]
+    #[pyo3(name = "flatpack_symplectic_matrix")]
+    fn wrap_flatpack_symplectic_matrix(
+        py: Python<'_>,
+        flatpack: TTFlatPack,
+    ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
+        // ) -> PyResult<()> {
+        let n_qubits: &usize = flatpack
+            .iter()
+            .map(|(v, _)| v)
+            .max()
+            .expect("Flatpack should have maxiumum qubit index.");
+
+        debug!("Starting TOPPHATT");
+        let tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)
+            .expect("Should be able to build tree from flatpack.");
+
+        debug!("Got Tree");
+        let encoding = tree
+            .build_encoding(*n_qubits + 1)
+            .expect("Should be able to crrate encoding from tree.");
+        debug!("Got encoding");
+
+        debug!("Got qham");
+        Ok((
+            encoding.ipowers.into_pyarray(py),
+            encoding.symplectics.into_pyarray(py),
+        ))
+    }
+
+    #[pyfn(m)]
     #[pyo3(name = "standard_symplectic_matrix")]
     fn wrap_standard_symplectic_matrix(
         py: Python<'_>,
@@ -274,7 +300,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
         // ) -> PyResult<()> {
         debug!("Starting TOPPHATT");
-        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
 
         let tree: TernaryTree = match encoding.as_str() {
             "Jordan-Wigner" | "JW" => TernaryTree::naive_jordan_wigner(n_modes),
@@ -293,6 +318,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             encoding.symplectics.into_pyarray(py),
         ))
     }
+
     #[pyfn(m)]
     #[pyo3(name = "encode")]
     fn wrap_encode<'py>(
@@ -400,7 +426,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
         // ) -> PyResult<()> {
         debug!("Starting TOPPHATT");
-        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
         let flatpack: TTFlatPack = flatpack;
         debug!("Got flatpack");
 
@@ -412,7 +437,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
-        let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(flatpack)
+        let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)
             .expect("Ternary tree should build from flatpack");
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);

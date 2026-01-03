@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4]
+### Added
+- `core.flatpack_symplectic_matrix`
+
+### Changed
+- Required python version changed to `>=3.12`
+- `TernaryTree._build_symplectic_matrix` now calls to `core.flatpack_symplectic_matrix`
+- `hartree_fock_state` function narrowed to `ternary_tree_hartree_fock_state` to simplify implementation.
+
 ## [0.5.3]
 ### Added
 - Initial property based testing with `hypothesis` for python and `proptest` for rust.

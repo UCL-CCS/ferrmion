@@ -113,7 +113,7 @@ impl PauliWeight for Pauli {
     }
 }
 
-type PauliMatrix = Array2<Complex64>;
+pub(super) type PauliMatrix = Array2<Complex64>;
 
 impl From<Pauli> for PauliMatrix {
     fn from(p: Pauli) -> PauliMatrix {

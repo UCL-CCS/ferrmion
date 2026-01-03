@@ -277,7 +277,7 @@ def _standard_annealed(
             [*range(fham.n_modes)], dtype=np.uint
         )
 
-    anneal_enumerations(
+    ipow, sym = anneal_enumerations(
         ipowers=ipow,
         symplectics=sym,
         signatures=sigs,

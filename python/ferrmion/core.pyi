@@ -1,31 +1,34 @@
 import numpy as np
 import numpy.typing as npt
 
+from .encode.ternary_tree import TTFlatpack
+
 # Rust-accelerated functions exposed to Python
 
 def symplectic_product(
-    left: npt.NDArray[bool], right: npt.NDArray[bool]
-) -> tuple[int, npt.NDArray[bool]]: ...
-def hartree_fock_state(
-    vacuum_state: npt.NDArray[np.float64],
-    fermionic_hf_state: npt.NDArray[bool],
-    mode_op_map: list[int],
+    left: npt.NDArray[np.bool], right: npt.NDArray[np.bool]
+) -> tuple[int, npt.NDArray[np.bool]]: ...
+def ternary_tree_hartree_fock_state(
+    fermionic_hf_state: npt.NDArray[np.bool],
+    mode_op_map: npt.NDArray[np.uint],
     ipowers: npt.NDArray[np.uint8],
-    symplectic_matrix: npt.NDArray[bool],
-) -> tuple[npt.NDArray[np.complex128], npt.NDArray[bool]]: ...
-def symplectic_to_pauli(symplectic: npt.NDArray[bool], int) -> tuple[str, int]: ...
-def pauli_to_symplectic(pauli: str, ipower: int) -> tuple[npt.NDArray[bool], int]: ...
+    symplectic_matrix: npt.NDArray[np.bool],
+) -> tuple[npt.NDArray[np.complex128], npt.NDArray[np.bool]]: ...
+def symplectic_to_pauli(symplectic: npt.NDArray[np.bool], int) -> tuple[str, int]: ...
+def pauli_to_symplectic(
+    pauli: str, ipower: int
+) -> tuple[npt.NDArray[np.bool], int]: ...
 def symplectic_product_map(
-    symplectics: npt.NDArray[bool],
+    symplectics: npt.NDArray[np.bool],
     ipowers: npt.NDArray[np.uint8],
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[bool]]: ...
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
 def symplectic_to_sparse(
-    symplectic: npt.NDArray[bool],
+    symplectic: npt.NDArray[np.bool],
     ipower: int,
-) -> tuple[str, npt.NDArray[np.uintp], np.complex]: ...
+) -> tuple[str, npt.NDArray[np.uintp], np.complex64]: ...
 def molecular_hamiltonian_template(
     ipowers: npt.NDArray[np.uint8],
-    symplectics: npt.NDArray[bool],
+    symplectics: npt.NDArray[np.bool],
     physicist_notation: bool,
 ) -> dict: ...
 def hubbard_hamiltonian_template(
@@ -68,6 +71,9 @@ def topphatt_standard(
     n_qubits: int,
     signatures: list[str],
     coeffs: list[np.ndarray],
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+def flatpack_symplectic_matrix(
+    flatpack: TTFlatpack,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
 def standard_symplectic_matrix(
     encoding: str, n_modes: int

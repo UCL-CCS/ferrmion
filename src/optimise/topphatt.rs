@@ -342,7 +342,15 @@ fn reduce_hamiltonian(
     majorana_terms
         .iter_mut()
         .map(|&mut term| {
-                term.iter().map(|&ind| if selection.contains(&ind) {parent_majorana_index} else {ind}).collect()
+            term.iter()
+                .map(|&ind| {
+                    if selection.contains(&ind) {
+                        parent_majorana_index
+                    } else {
+                        ind
+                    }
+                })
+                .collect()
         })
         .filter(|&term| term != ArrayVec::<[u16; MAJORANA_MAX]>::new())
         .collect::<BTreeSet<ArrayVec<[u16; MAJORANA_MAX]>>>()
@@ -439,9 +447,13 @@ pub fn topphatt(
                     .indices
                     .iter()
                     .fold_while(0, |acc, inds| {
-                        let inds_max = inds.iter().max().expect("Hamiltonian terms should not be empty.");
+                        let inds_max = inds
+                            .iter()
+                            .max()
+                            .expect("Hamiltonian terms should not be empty.");
                         let inds_min = inds
-                            .iter().min()
+                            .iter()
+                            .min()
                             .expect("Hamiltonian terms should not be empty.");
 
                         let comb_min = comb.iter().min().expect("Combination should not be empty.");
@@ -458,7 +470,7 @@ pub fn topphatt(
                     .into_inner();
                 // For most trees, using < gives the best results.
                 // counter example: JKMN(14), benefits from setting <=
-                // This part interacts with the ordering of active nodes, 
+                // This part interacts with the ordering of active nodes,
                 // which is X-most to Z-Most
                 if weight < min_weight {
                     min_weight = weight;
@@ -850,7 +862,7 @@ mod test_topphatt {
         flatpack.push((2, (None, None, Some(3))));
         flatpack.push((3, (None, None, None)));
 
-        let tree = TernaryTree::from_flatpack_naive(flatpack).unwrap();
+        let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
         let jw_topphatt = topphatt(hamiltonian, tree).unwrap();
         let encoding = jw_topphatt.build_encoding(4).unwrap();
         assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));

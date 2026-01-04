@@ -9,6 +9,7 @@ from openfermion import InteractionOperator, jordan_wigner, get_sparse_operator,
 from scipy.sparse.linalg import eigsh
 from ferrmion.utils import fermionic_to_sparse_majorana
 from ferrmion.hamiltonians import FermionHamiltonian
+from symmer import QuantumState, PauliwordOp
 
 
 @fixture(scope="module")

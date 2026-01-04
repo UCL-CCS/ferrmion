@@ -30,7 +30,7 @@ def test_core_topphatt_standard_h2_eigvals_equal_expected(encoding, coeff_weight
 
     ipow, sym = encoding(n_modes)._build_symplectic_matrix()
     anneal_enumerations(ipow, sym, ["+-","++--"], [ones, twos], n_modes, np.array([*range(n_modes)], dtype=np.uint), coeff_weight)
-    qham = encode(ipow, sym, ["+-","++--"],[ones, twos], e_nuc)
+    qham = encode(ipow, sym, ["+-","++--"],[ones, twos], e_nuc, [*range(ones.shape[0])])
 
 
     ofop = QubitOperator()

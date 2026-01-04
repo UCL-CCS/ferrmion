@@ -94,6 +94,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let encoding = MajoranaEncoding::new(ipowers, symplectic_matrix);
         let state = encoding
             .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
+            // .hartree_fock_state(fermionic_hf_state, mode_op_map)
             .expect("Should be able to get HF state.");
         PyArray1::from_owned_array(py, state)
     }
@@ -328,6 +329,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
+        mode_op_map: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         // ) -> PyResult<()> {
         assert_eq!(
@@ -350,7 +352,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.iter().map(|v| v.as_array()).collect(),
             constant_energy,
         );
-        let encoding = MajoranaEncoding::new(ipowers, symplectics);
+        let encoding =
+            MajoranaEncoding::new(ipowers, symplectics).apply_mode_enumeration(mode_op_map);
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         debug!("Got Hamiltonian");

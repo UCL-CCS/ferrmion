@@ -35,7 +35,6 @@ class FermionQubitEncoding(ABC):
         n_qubits (int): The number of qubits.
 
     Methods:
-        default_mode_op_map: Get the default mode operator map.
         _build_symplectic_matrix: Build a symplectic matrix representing terms for each operator in the Hamiltonian.
         ternary_tree_hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
         _symplectic_to_pauli: Convert a symplectic matrix to a Pauli string.
@@ -71,7 +70,6 @@ class FermionQubitEncoding(ABC):
         """
         self.n_modes = n_modes
         self.n_qubits = n_qubits
-        self.default_mode_op_map = np.array([*range(self.n_modes)], dtype=np.uint)
 
     def __eq__(self, other: object) -> bool:
         """Checks if two encodings are exactly equivalent."""
@@ -92,13 +90,7 @@ class FermionQubitEncoding(ABC):
         else:
             return False
 
-    @property
-    def default_mode_op_map(self) -> NDArray[np.uint]:
-        """Create a default mode operator map for the tree."""
-        return self._default_mode_op_map
-
-    @default_mode_op_map.setter
-    def default_mode_op_map(self, permutation: list[int]):
+    def validate_mode_op_map(self, permutation: NDArray[np.uint] | list[int]):
         """Set the default mode operator map.
 
         Args:
@@ -114,7 +106,7 @@ class FermionQubitEncoding(ABC):
             logger.error(permutation)
             raise ValueError(error_string)
 
-        self._default_mode_op_map = np.array(permutation, dtype=np.uint)
+        return np.array(permutation, dtype=np.uint)
 
     @property
     def vacuum_state(self):
@@ -181,7 +173,6 @@ class FermionQubitEncoding(ABC):
         )
 
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
-        self.default_mode_op_map = [*range(self.n_modes)]
 
         return encode(
             ipowers=ipow,
@@ -189,18 +180,26 @@ class FermionQubitEncoding(ABC):
             signatures=sigs,
             coeffs=coeffs,
             constant_energy=fham.constant_energy,
+            mode_op_map=[*range(self.n_modes)],
         )
 
-    def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+    def encode(
+        self, fham: FermionHamiltonian, mode_op_map: list[int] | None = None
+    ) -> QubitHamiltonian:
         logger.debug("Encoding fermionic Hamiltonian.")
         ipowers, symplectic = self._build_symplectic_matrix()
         signatures, coeffs = fham.signatures_and_coefficients
+
+        if mode_op_map is None:
+            mode_op_map = [*range(self.n_modes)]
+
         return encode(
             ipowers=ipowers,
             symplectics=symplectic,
             signatures=signatures,
             coeffs=coeffs,
             constant_energy=fham.constant_energy,
+            mode_op_map=self.validate_mode_op_map(mode_op_map),
         )
 
     @staticmethod
@@ -352,7 +351,10 @@ def edge_operator(
 
 
 def double_fermionic_operator(
-    encoding: FermionQubitEncoding, mode_indices: tuple[int, int], signature: str
+    encoding: FermionQubitEncoding,
+    mode_indices: tuple[int, int],
+    signature: str,
+    mode_op_map: NDArray[np.uint] | list[int] | None = None,
 ) -> list[tuple[str, NDArray, np.complexfloating]]:
     """Returns the sparse pauli form of a double fermionic operator.
 
@@ -387,6 +389,10 @@ def double_fermionic_operator(
                 "Operator signature can only contain + or -, %s not valid", signature
             )
 
+    if mode_op_map is None:
+        mode_op_map = [*range(encoding.n_modes)]
+    mode_op_map = encoding.validate_mode_op_map(mode_op_map)
+
     logger.debug("Finding double fermionic operator %s, %s", signature, mode_indices)
     if not set(mode_indices).issubset(set(range(encoding.n_modes))):
         logger.error("Edge operator indices invalid %s", mode_indices)
@@ -394,9 +400,9 @@ def double_fermionic_operator(
 
     icount, sym_products = encoding.symplectic_product_map
     m, n = mode_indices
-    m = int(encoding.default_mode_op_map[m])
-    n = int(encoding.default_mode_op_map[n])
-    terms: list[tuple[str, NDArray, np.complex]] = [
+    m = int(mode_op_map[m])
+    n = int(mode_op_map[n])
+    terms: list[tuple[str, NDArray, np.complex64]] = [
         symplectic_to_sparse(
             sym_products[2 * m + l, 2 * n + r], icount[2 * m + l, 2 * n + r]
         )

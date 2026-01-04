@@ -328,6 +328,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
+        mode_op_map: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         // ) -> PyResult<()> {
         assert_eq!(
@@ -350,7 +351,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.iter().map(|v| v.as_array()).collect(),
             constant_energy,
         );
-        let encoding = MajoranaEncoding::new(ipowers, symplectics);
+        let encoding =
+            MajoranaEncoding::new(ipowers, symplectics).apply_mode_enumeration(mode_op_map);
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         debug!("Got Hamiltonian");

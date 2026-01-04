@@ -28,7 +28,6 @@ class TernaryTree(FermionQubitEncoding):
         enumeration_scheme (dict[str, tuple[int, int]] | None): The enumeration scheme.
 
     Methods:
-        default_mode_op_map(): Create a default mode operator map for the tree.
         default_enumeration_scheme(): Create a default enumeration scheme for the tree.
         as_dict(): Return the tree structure as a dictionary.
         add_node(node_string: str): Add a node to the tree.
@@ -145,7 +144,6 @@ class TernaryTree(FermionQubitEncoding):
             logger.error(error_string)
             raise ValueError(error_string)
 
-        self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
     def encode_topphatt(self, fham: FermionHamiltonian) -> QubitHamiltonian:
@@ -157,7 +155,6 @@ class TernaryTree(FermionQubitEncoding):
             coeffs=deepcopy(coeffs),
         )
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
-        self.default_mode_op_map = [*range(self.n_modes)]
 
         return core.encode(
             ipowers=ipow,
@@ -165,9 +162,10 @@ class TernaryTree(FermionQubitEncoding):
             signatures=sigs,
             coeffs=coeffs,
             constant_energy=fham.constant_energy,
+            mode_op_map=[*range(self.n_modes)],
         )
 
-    def ternary_tree_hartree_fock_state(
+    def hartree_fock_state(
         self,
         fermionic_hf_state: NDArray[bool],
         mode_op_map: NDArray[np.uint] | list[int] | None = None,
@@ -186,7 +184,7 @@ class TernaryTree(FermionQubitEncoding):
             NDArray: The Hartree-Fock ground state in computational basis.
         """
         if mode_op_map is None:
-            mode_op_map = self.default_mode_op_map
+            mode_op_map = [*range(self.n_modes)]
 
         if isinstance(mode_op_map, list):
             mode_op_map = np.array(mode_op_map, dtype=np.uint)

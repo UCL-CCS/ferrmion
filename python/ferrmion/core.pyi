@@ -92,4 +92,5 @@ def encode(
     signatures: list[str],
     coeffs: list[np.ndarray],
     constant_energy: float,
+    mode_op_map: list[int],
 ) -> dict: ...

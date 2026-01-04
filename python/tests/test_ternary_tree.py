@@ -1,3 +1,4 @@
+from numba.np.numpy_support import FROM_DTYPE
 from copy import deepcopy
 from fontTools.misc.etree import TreeBuilder
 from typing import Callable
@@ -13,7 +14,7 @@ from ferrmion.encode.ternary_tree import (
     BK,
     BravyiKitaev,
     JKMN,
-    ParityEncoding,
+    ParityEncoding, PE,
 )
 from ferrmion.utils import symplectic_hash, symplectic_unhash, symplectic_to_pauli
 from openfermion import QubitOperator, get_sparse_operator
@@ -23,8 +24,10 @@ from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.core import standard_symplectic_matrix
 from scipy.sparse.linalg import eigsh
 from .conftest import diagonalise_pauli_hamiltonian
+import hypothesis
 from hypothesis import given,seed, strategies as st
 from hypothesis.extra.numpy import arrays
+from symmer import PauliwordOp, QuantumState
 
 @pytest.fixture
 def six_mode_tree():
@@ -394,9 +397,6 @@ def tests_bonsai_paper_tree(bonsai_paper_tree):
     for line in tt._build_symplectic_matrix()[1]:
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
-def test_default_mode_op_map(water_tt):
-    assert np.all(water_tt.default_mode_op_map == [*range(water_tt.n_qubits)])
-
 @pytest.mark.parametrize("n_modes", [1,5,10,20])
 @pytest.mark.parametrize("encoding,name", [(JordanWigner, "JW"), (ParityEncoding, "PE"), (BravyiKitaev, "BK"), (JKMN, "JKMN")])
 def test_core_standard_encodings(n_modes,encoding,name):
@@ -458,7 +458,7 @@ def test_naive_jw_hf_state_unchanged(fermionic_hf_state):
     tree = JordanWigner(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     print(f"fermionic HF {fermionic_hf_state}")
-    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
@@ -472,13 +472,13 @@ def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     print(f"\nfermionic HF {fermionic_hf_state}")
     print(f"Enumeration {mode_op_map}")
-    naive_qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    naive_qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
 
     print(f"naive {naive_qubit_hf_state}")
-    enumerated_qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    enumerated_qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=mode_op_map,
     )
@@ -490,11 +490,44 @@ def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
     assert np.all(naive_qubit_hf_state == fermionic_hf_state)
     assert np.all(enumerated_qubit_hf_state == expected_emnumerated)
 
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+def test_naive_water_hf_energy_correct(encoding, water_data):
+    fermionic_hf_state = np.array([True]*10 + [False] * 4, dtype=np.bool)
+
+    tree = encoding(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+
+    fham = molecular_hamiltonian(water_data["ones"], water_data["twos"], constant_energy=water_data["constant_energy"])
+    qham = tree.encode(fham)
+    enumerated_qubit_hf_state = tree.hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+    )
+    assert np.isclose(PauliwordOp.from_dictionary(qham).expval(QuantumState([int(v) for v in enumerated_qubit_hf_state])), water_data["e_hf"])
+
+
+@given(mode_op_map=st.permutations([*range(14)]))
+@hypothesis.settings(max_examples=25, deadline=None)
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+def test_enumerated_water_hf_energy_correct(encoding, water_data, mode_op_map):
+    fermionic_hf_state = np.array([True]*10 + [False] * 4, dtype=np.bool)
+
+    tree = encoding(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+
+    fham = molecular_hamiltonian(water_data["ones"], water_data["twos"], constant_energy=water_data["constant_energy"])
+    qham = tree.encode(fham, mode_op_map)
+    enumerated_qubit_hf_state = tree.hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=mode_op_map,
+    )
+    assert np.isclose(PauliwordOp.from_dictionary(qham).expval(QuantumState([int(v) for v in enumerated_qubit_hf_state])), water_data["e_hf"])
+
+
 @given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
-def test_naive_parity_hf_state(fermionic_hf_state):
+def test_naive_parity_hf_state_is_occupation_parity(fermionic_hf_state):
     tree = ParityEncoding(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
@@ -510,21 +543,3 @@ def test_naive_parity_hf_state(fermionic_hf_state):
     print(f"Result\t {np.all(qubit_hf_state == expected_parity)}")
 
     assert np.all(qubit_hf_state == expected_parity)
-
-@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
-def test_naive_bk_hf_state_runs(fermionic_hf_state):
-    tree = BravyiKitaev(len(fermionic_hf_state))
-    tree.enumeration_scheme = tree.default_enumeration_scheme()
-    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
-        fermionic_hf_state=fermionic_hf_state,
-        mode_op_map=[*range(len(fermionic_hf_state))],
-    )
-
-@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
-def test_naive_jkmn_hf_state_runs(fermionic_hf_state):
-    tree = JKMN(len(fermionic_hf_state))
-    tree.enumeration_scheme = tree.default_enumeration_scheme()
-    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
-        fermionic_hf_state=fermionic_hf_state,
-        mode_op_map=[*range(len(fermionic_hf_state))],
-    )

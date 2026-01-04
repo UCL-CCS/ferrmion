@@ -39,23 +39,6 @@ def test_valid_vacuum_state(four_mode_tt):
     assert "dimension" in str(excinfo.value)
 
 
-def test_hartree_fock_state(sixteen_mode_tt):
-    jw = sixteen_mode_tt.JW()
-    ternary_tree_hartree_fock_state = jw.ternary_tree_hartree_fock_state
-    nq = jw.n_qubits // 2
-    print(ternary_tree_hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool)))
-    assert np.all(
-        ternary_tree_hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool))
-        == np.array([[True] * nq + [False] * nq], dtype=bool)
-    )
-    assert np.all(
-        ternary_tree_hartree_fock_state(
-            np.array([True] * (nq + 1) + [False] * (nq - 1), dtype=bool)
-        )
-        == np.array([[True] * (nq + 1) + [False] * (nq - 1)], dtype=bool)
-    )
-
-
 def test_number_operator(four_mode_tt):
     tree = four_mode_tt.JW()
     tree.enumeration_scheme = tree.default_enumeration_scheme()

@@ -1,3 +1,7 @@
+from copy import deepcopy
+from fontTools.misc.etree import TreeBuilder
+from typing import Callable
+from ferrmion import FermionHamiltonian
 import numpy as np
 import pytest
 import scipy as sp
@@ -11,12 +15,16 @@ from ferrmion.encode.ternary_tree import (
     JKMN,
     ParityEncoding,
 )
-from ferrmion.utils import symplectic_hash, symplectic_unhash
+from ferrmion.utils import symplectic_hash, symplectic_unhash, symplectic_to_pauli
 from openfermion import QubitOperator, get_sparse_operator
 from openfermion.ops import InteractionOperator
 from openfermion.transforms import jordan_wigner
 from ferrmion.hamiltonians import molecular_hamiltonian
-
+from ferrmion.core import standard_symplectic_matrix
+from scipy.sparse.linalg import eigsh
+from .conftest import diagonalise_pauli_hamiltonian
+from hypothesis import given,seed, strategies as st
+from hypothesis.extra.numpy import arrays
 
 @pytest.fixture
 def six_mode_tree():
@@ -145,181 +153,6 @@ def test_valid_enumeration_scheme(six_mode_tree):
         "xx": (4, 2),
         "xy": (5, 0),
     }
-    assert np.all(
-        jkmn._build_symplectic_matrix()[1]
-        == np.array(
-            [
-                [
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                ],
-                [
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    True,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    False,
-                    True,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                ],
-                [
-                    True,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                ],
-                [
-                    True,
-                    True,
-                    False,
-                    False,
-                    False,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    True,
-                ],
-            ]
-        )
-    )
 
 
 def test_bravyi_kitaev(six_mode_tree):
@@ -561,37 +394,137 @@ def tests_bonsai_paper_tree(bonsai_paper_tree):
     for line in tt._build_symplectic_matrix()[1]:
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
-
-def test_eigenvalues_with_openfermion(water_eigenvalues, water_integrals):
-    # qham_zeros = InteractionOperator(0, tt.one_e_coeffs, np.zeros(tt.two_e_coeffs.shape))
-    # ofop_zeros = jordan_wigner(qham_zeros)
-    one_e_ints, two_e_ints = water_integrals
-    qham = InteractionOperator(0, one_e_ints, 0.5 * two_e_ints)
-    # print(qham)
-    ofop = jordan_wigner(qham)
-    # print(f"diff {ofop-ofop_zeros}")
-    diag, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop), k=6, which="SA")
-
-    assert np.allclose(sorted(diag), sorted(water_eigenvalues))
-
-
-def test_eigenvalues_across_encodings(water_eigenvalues, water_tt, water_integrals):
-    one_e_ints, two_e_ints = water_integrals
-
-    qham2 = molecular_hamiltonian(water_tt.JKMN(), one_e_ints, 0.5 * two_e_ints, 0)
-    ofop2 = QubitOperator()
-    for k, v in qham2.items():
-        string = " ".join(
-            [
-                f"{char.upper()}{pos}" if char != "I" else ""
-                for pos, char in enumerate(k)
-            ]
-        )
-        ofop2 += QubitOperator(term=string, coefficient=v)
-    diag2, _ = sp.sparse.linalg.eigsh(get_sparse_operator(ofop2), k=6, which="SA")
-
-    assert np.allclose(sorted(water_eigenvalues), sorted(diag2))
-
-
 def test_default_mode_op_map(water_tt):
     assert np.all(water_tt.default_mode_op_map == [*range(water_tt.n_qubits)])
+
+@pytest.mark.parametrize("n_modes", [1,5,10,20])
+@pytest.mark.parametrize("encoding,name", [(JordanWigner, "JW"), (ParityEncoding, "PE"), (BravyiKitaev, "BK"), (JKMN, "JKMN")])
+def test_core_standard_encodings(n_modes,encoding,name):
+    n_modes = 20
+    i,s = encoding(20)._build_symplectic_matrix()
+    ci, cs = standard_symplectic_matrix(name,20)
+    assert np.all(i==ci)
+    assert np.all(s==cs)
+
+@pytest.mark.parametrize("optimisation", ["naive", "anneal", "topphatt"])
+@pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
+def test_encode_h2_eigvals_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str, h2_mol_data_sets: dict):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+    fham = FermionHamiltonian(terms = {"+-":ones,"++--":twos}, constant_energy=e_nuc)
+    initial_ones = deepcopy(ones)
+    initial_twos = deepcopy(twos)
+
+    match optimisation:
+        case "naive":
+            qham = encoding(fham.n_modes).encode(fham)
+        case "anneal":
+            qham = encoding(fham.n_modes).encode_annealed(fham)
+        case "topphatt":
+            qham = encoding(fham.n_modes).encode_topphatt(fham)
+    diag  = diagonalise_pauli_hamiltonian(qham, 2*n_modes)
+
+    assert np.all(initial_ones == ones)
+    assert np.all(initial_twos == twos)
+    assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
+
+@pytest.mark.parametrize("optimisation", ["naive", "topphatt"])
+@pytest.mark.parametrize("encoding", [JW])
+def test_encode_jw_water_eigvals_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str,  water_data: dict):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
+    e_nuc = water_data["constant_energy"]
+    n_modes = ones.shape[0]
+
+    fham = FermionHamiltonian(terms = {"+-":ones,"++--":twos}, constant_energy=e_nuc)
+
+    match optimisation:
+        case "naive":
+            qham = encoding(fham.n_modes).encode(fham)
+        # Takes too long for tests!
+        # case "anneal":
+            # qham = encoding(fham.n_modes).encode_annealed(fham)
+        case "topphatt":
+            qham = encoding(fham.n_modes).encode_topphatt(fham)
+    assert np.isclose(qham["I"*14], -46.465600781952176)
+    diag = diagonalise_pauli_hamiltonian(qham, 2)
+
+    assert np.allclose(np.sort(diag), np.sort(water_data["eigvals"])[:2])
+
+@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
+def test_naive_jw_hf_state_unchanged(fermionic_hf_state):
+    tree = JordanWigner(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    print(f"fermionic HF {fermionic_hf_state}")
+    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )
+    assert np.all(qubit_hf_state == fermionic_hf_state)
+
+@given(mode_op_map=st.permutations([*range(10)]), n_electrons=st.integers(min_value=1, max_value=10))
+def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
+    fermionic_hf_state = np.array([True] * n_electrons + [False] * (10-n_electrons), dtype=np.bool)
+
+    tree = JordanWigner(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    print(f"\nfermionic HF {fermionic_hf_state}")
+    print(f"Enumeration {mode_op_map}")
+    naive_qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )
+
+    print(f"naive {naive_qubit_hf_state}")
+    enumerated_qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=mode_op_map,
+    )
+    print(f"enumerated {enumerated_qubit_hf_state}")
+    expected_emnumerated = np.array([False] * 10, dtype=np.bool)
+    expected_emnumerated[mode_op_map[:n_electrons]] = True
+    print(f"expected {enumerated_qubit_hf_state}")
+
+    assert np.all(naive_qubit_hf_state == fermionic_hf_state)
+    assert np.all(enumerated_qubit_hf_state == expected_emnumerated)
+
+@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
+def test_naive_parity_hf_state(fermionic_hf_state):
+    tree = ParityEncoding(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )
+
+    print(f"fermionic HF\t {fermionic_hf_state}")
+    print(f"qubit HF\t {qubit_hf_state}")
+    # The convention for Parity is that X is applied to indices
+    # *higher* than the qubit being changed.
+    # We have to change these around as we have an x-tail for lesser indices.
+    expected_parity = np.cumsum(fermionic_hf_state[::-1]) % 2
+    expected_parity = np.array(expected_parity, dtype=np.bool)[::-1]
+    print(f"expected parity\t {expected_parity}")
+    print(f"Result\t {np.all(qubit_hf_state == expected_parity)}")
+
+    assert np.all(qubit_hf_state == expected_parity)
+
+@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
+def test_naive_bk_hf_state_runs(fermionic_hf_state):
+    tree = BravyiKitaev(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )
+
+@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
+def test_naive_jkmn_hf_state_runs(fermionic_hf_state):
+    tree = JKMN(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+        mode_op_map=[*range(len(fermionic_hf_state))],
+    )

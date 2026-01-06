@@ -8,6 +8,10 @@ import numpy as np
 from ferrmion.encode import TernaryTree
 from ferrmion.encode.ternary_tree_node import TTNode
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _qubit_term_weight(term: Iterable, comb: tuple[int, int, int]) -> int:
     """Find the single-qubit Pauli-weight of majorana terms.
@@ -54,7 +58,7 @@ def _reduce_hamiltonian(
         new_term = tuple(i for i in term if i not in selection) + tuple(
             parent_index for i in term if i in selection
         )
-        if len(set(new_term)) > 1:
+        if len(set(new_term)) >= 1:
             new_ham[new_term] = new_ham.get(new_term, 0) + coeff
     return new_ham
 

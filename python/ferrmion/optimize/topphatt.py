@@ -268,31 +268,32 @@ def topphatt(
     Returns:
         TernaryTree: Optimised Ternary Tree encoding.
     """
+    logger.debug(f"Number of Hamiltonian terms {len(majorana_ham)}")
     n_modes = tree.n_modes
     n_leaves = 2 * n_modes + 1
     # We need 2*M +1 leaves and M nodes.
     nodes: dict[int, TTNode | None] = {i: None for i in range(n_leaves - 1)}
-    node_dependencies = _initialise_node_dependencies(tree)
+    node_dependencies = _initialise_node_dependencies(tree)  # O(N)
     logging.debug(f"Initial Dependencies:\n{node_dependencies}")
 
-    string_index_map = _get_string_index_map(tree)
+    string_index_map = _get_string_index_map(tree)  # O(N)
     index_string_map = {v: k for k, v in string_index_map.items()}
 
-    node_objects_map = _get_node_objects_map(tree, string_index_map)
+    node_objects_map = _get_node_objects_map(tree, string_index_map)  # O(N)
 
-    for node in node_objects_map.values():
+    for node in node_objects_map.values():  # O(N)
         for char in ["x", "y", "z"]:
             node.branch_majorana_map[char] = None
 
     nodes.update(_get_node_objects_map(tree, string_index_map))
 
-    active_nodes: dict[int, set[TTNode]] = _initialise_active_nodes(
+    active_nodes: dict[int, set[TTNode]] = _initialise_active_nodes(  # O(N)
         index_string_map=index_string_map, node_dependencies=node_dependencies
     )
 
     # active_nodes:set[int] = {node for node, deps in node_dependencies.items() if deps == []}
     completed_nodes = set()
-    restrictions = _initialise_restrictions(tree)
+    restrictions = _initialise_restrictions(tree)  # O(N)
 
     logger.debug(f"Initial Restrictions:\n{restrictions}")
     # Start with all the leaves unassigned
@@ -304,13 +305,13 @@ def topphatt(
     descendant_map = {i: i for i in range(n_leaves + n_modes)}
 
     total_weight = 0
-    for i in range(n_modes + 1):
+    for i in range(n_modes + 1):  # O(N)
         logging.debug(f"\nLoop {i}")
         # # Update the restrictions with the new information about the tree.
         # # Any nodes that are required to be in a certain position
         # # have to be removed from unassigned!
         to_remove = []
-        for restriction in restrictions.values():
+        for restriction in restrictions.values():  # O(N2)
             for term in restriction:
                 if isinstance(term, int):
                     to_remove.append(term)
@@ -330,7 +331,7 @@ def topphatt(
         logging.debug(f"{max_len_active=}")
         unique_restrictions = set()
         max_len_active = sorted([index_string_map[i] for i in max_len_active])
-        for parent_string in max_len_active:
+        for parent_string in max_len_active:  # O ()
             parent_index = string_index_map[parent_string]
 
             logging.debug(f"\n{parent_index=}")
@@ -349,6 +350,7 @@ def topphatt(
                 continue
             else:
                 unique_restrictions.add(tuple(parent_restrictions))
+
             logger.debug(f"{unique_restrictions=}")
 
             allowed_x = _unpack_single_restriction(
@@ -379,7 +381,7 @@ def topphatt(
             # if x is set and y is none, just use x
 
             logging.debug(f"{parent_restrictions=}")
-            for comb in allowed_product:
+            for comb in allowed_product:  # O(n choose 2)
                 match len(comb):
                     case 2:
                         comb = _build_valid_combination(
@@ -394,14 +396,15 @@ def topphatt(
                         raise ValueError("Length of combination should be 2 or 3.")
 
                 weight = 0
-                for key in majorana_ham.keys():
+                for key in majorana_ham.keys():  # O(M terms)
                     if min(comb) > max(key):
                         continue
                     elif max(comb) < min(key):
                         continue
                     else:
                         odd_parity_paulis = [
-                            sum([t == c for t in key]) % 2 for c in comb
+                            sum([t == c for t in key]) % 2
+                            for c in comb  # O(k term length)
                         ]
                         non_commuting = sum(odd_parity_paulis) % 3
                         weight += int(non_commuting != 0)
@@ -422,7 +425,6 @@ def topphatt(
                 # min_parent = parent_index
             logging.debug(f"{parent_index=}, {selection=}")
         total_weight += min_weight
-
         logging.debug(f"{min_parent=}")
         # Now find the Y pair of the x-node
         unassigned_leaves = [u for u in unassigned_leaves if u not in selection]
@@ -467,6 +469,7 @@ def topphatt(
         ancestor_map[z_desc] = parent_index
 
         majorana_ham = _reduce_hamiltonian(majorana_ham, parent_index, selection)
+        logger.debug(f"{majorana_ham=}")
 
     if len(active_nodes) != 1:
         raise ValueError(f"Not all nodes assigned by HATT. {active_nodes=}")

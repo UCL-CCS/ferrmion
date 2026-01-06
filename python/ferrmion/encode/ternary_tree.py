@@ -1,14 +1,21 @@
 """Ternary Tree fermion to qubit mappings."""
 
 import logging
+from copy import deepcopy
+from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
+
+from ferrmion import core
+from ferrmion.hamiltonians import FermionHamiltonian, QubitHamiltonian
 
 from .base import FermionQubitEncoding
 from .ternary_tree_node import TTNode, node_sorter
 
 logger = logging.getLogger(__name__)
+
+type TTFlatpack = list[tuple[int, tuple[int | None, int | None, int | None]]]
 
 
 class TernaryTree(FermionQubitEncoding):
@@ -140,6 +147,89 @@ class TernaryTree(FermionQubitEncoding):
 
         self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
+
+    def encode_topphatt(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+        sigs, coeffs = fham.signatures_and_coefficients
+        ipow, sym = core.topphatt(
+            flatpack=self.flatpack(),
+            n_qubits=self.n_qubits,
+            signatures=deepcopy(sigs),
+            coeffs=deepcopy(coeffs),
+        )
+        self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
+        self.default_mode_op_map = [*range(self.n_modes)]
+
+        return core.encode(
+            ipowers=ipow,
+            symplectics=sym,
+            signatures=sigs,
+            coeffs=coeffs,
+            constant_energy=fham.constant_energy,
+        )
+
+    def ternary_tree_hartree_fock_state(
+        self,
+        fermionic_hf_state: NDArray[bool],
+        mode_op_map: NDArray[np.uint] | list[int] | None = None,
+    ):
+        """Find the Hartree-Fock state of a majorana string encoding.
+
+        This function calls to the rust implementatin in `src/lib.rs`.
+        It assumes that the vacuum state is a single state vector, though the HF state may not be
+        The global phase so that the first component state has 0 phase.
+
+        Args:
+            fermionic_hf_state (NDArray[int]): An array of mode occupations.
+            mode_op_map (dict[int, int]): An array mapping modes to pairs of majorana strings mode_op_map[i]=j => i -> (2j,2j+1)
+
+        Returns:
+            NDArray: The Hartree-Fock ground state in computational basis.
+        """
+        if mode_op_map is None:
+            mode_op_map = self.default_mode_op_map
+
+        if isinstance(mode_op_map, list):
+            mode_op_map = np.array(mode_op_map, dtype=np.uint)
+
+        ipow, sym = self._build_symplectic_matrix()
+
+        return core.ternary_tree_hartree_fock_state(
+            fermionic_hf_state,
+            mode_op_map,
+            ipow,
+            sym,
+        )
+
+    def flatpack(self) -> TTFlatpack:
+        """Create a TTFlatpack from the tree, which can be passed to rust functions.
+
+        Returns:
+            list[tuple[int, tuple[int,int,int]]]
+        """
+        flatpack: TTFlatpack = []
+
+        to_flatten: list[TTNode] = [self.root_node]
+        while len(to_flatten) > 0:
+            node: TTNode = to_flatten.pop(0)
+            children: list[int | None] = [None, None, None]
+            if isinstance(node.x, TTNode):
+                to_flatten.append(node.x)
+                children[0] = self.enumeration_scheme[node.x.root_path][1]
+            if isinstance(node.y, TTNode):
+                to_flatten.append(node.y)
+                children[1] = self.enumeration_scheme[node.y.root_path][1]
+            if isinstance(node.z, TTNode):
+                to_flatten.append(node.z)
+                children[2] = self.enumeration_scheme[node.z.root_path][1]
+
+            flatpack.append(
+                (
+                    int(self.enumeration_scheme[node.root_path][1]),
+                    (children[0], children[1], children[2]),
+                )
+            )
+
+        return flatpack
 
     def default_enumeration_scheme(self) -> dict[str, tuple[int, int]]:
         """Create a default enumeration scheme for the tree.
@@ -304,41 +394,7 @@ class TernaryTree(FermionQubitEncoding):
                     [ True, False,  True, False,  True, False],
                     [ True, False,  True, False,  True,  True]]))
         """
-        logger.debug("Building symplectic matrix for TernaryTree.")
-        if self.enumeration_scheme is None or self.enumeration_scheme == {}:
-            logger.warning("No enumeration scheme provided, using default.")
-            self.enumeration_scheme = self.default_enumeration_scheme()
-        logger.debug(f"{self.enumeration_scheme=}")
-
-        branch_majorana_map = self.root_node.branch_majorana_map
-        logger.debug(f"{branch_majorana_map=}")
-        if None in [
-            *branch_majorana_map.values()
-        ] or self.root_node.branch_strings.symmetric_difference(
-            branch_majorana_map.keys()
-        ):
-            logger.info("Branches do not have majorana indices assigned for all modes.")
-            logger.info(
-                "Using string-pairing algorithm to assign majorana indices to branches."
-            )
-            branch_majorana_map = string_pairing_algorithm(self)
-
-        pauli_string_map = self.branch_pauli_map
-
-        symplectic = np.zeros((2 * self.n_modes, 2 * self.n_qubits), dtype=bool)
-        ipowers = np.zeros((2 * self.n_modes), dtype=np.uint8)
-        for operator, majorana_index in branch_majorana_map.items():
-            if "x" not in operator and "y" not in operator:
-                continue
-
-            operator = pauli_string_map[operator]
-            operator = np.array(list(operator), dtype=str)
-            # If the string is X or Y then assign 1
-            symplectic_term, term_ipower = self._pauli_to_symplectic(operator, 0)
-
-            ipowers[majorana_index] = term_ipower
-            symplectic[majorana_index] = symplectic_term
-        return ipowers, symplectic
+        return core.flatpack_symplectic_matrix(self.flatpack())
 
     def JordanWigner(self) -> "TernaryTree":
         """Create a new tree with the Jordan-Wigner encoding.
@@ -510,6 +566,11 @@ def ParityEncoding(n_modes: int) -> TernaryTree:
     new_tree.add_node("x" * (n_modes - 1))
     new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
     return new_tree
+
+
+def PE(n_modes: int) -> TernaryTree:
+    """Alias for ParityEncoding"""
+    return ParityEncoding(n_modes)
 
 
 def BravyiKitaev(n_modes: int) -> "TernaryTree":

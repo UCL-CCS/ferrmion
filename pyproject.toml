@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ferrmion"
-requires-python = ">=3.11, <3.14"
+requires-python = ">=3.12, <3.14"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -12,7 +12,6 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "deap>=1.4.3",
-    "pydantic>=2.10.6",
     "rustworkx>=0.16.0",
     "numpy>=2",
     "tn4qa>=0.0.4",
@@ -42,8 +41,10 @@ dev = [
     "nb-clean>=4.0.1",
     "openfermionpyscf>=0.5",
     "matplotlib>=3.10.7",
+    "ty>=0.0.2",
 ]
 test = [
+    "hypothesis[numpy]>=6.148.8",
     "pytest>=8.3.5",
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.1.1",

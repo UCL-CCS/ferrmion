@@ -6,6 +6,7 @@
 :caption: Encoding Examples
 :tooltip:
 
+notebooks/topp_hatt
 notebooks/growing_trees
 notebooks/rett
 notebooks/huffman
@@ -18,10 +19,9 @@ notebooks/hatt
 :caption: Hamiltonian Examples
 :tooltip:
 
-notebooks/molecular_hamiltonian
-notebooks/hubbard_hamiltonian
+notebooks/encoding_hamiltonians
 ```
-s
+
 ## Optimization
 ```{base-gallery}
 :caption: Optimization Examples

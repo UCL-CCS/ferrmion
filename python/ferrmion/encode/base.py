@@ -3,11 +3,17 @@
 import logging
 from abc import ABC, abstractmethod
 from itertools import product
+from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion.core import hartree_fock_state, symplectic_product_map
+from ferrmion.core import (
+    anneal_enumerations,
+    encode,
+    symplectic_product_map,
+)
+from ferrmion.hamiltonians import FermionHamiltonian, QubitHamiltonian
 from ferrmion.utils import (
     icount_to_sign,
     pauli_to_symplectic,
@@ -31,7 +37,7 @@ class FermionQubitEncoding(ABC):
     Methods:
         default_mode_op_map: Get the default mode operator map.
         _build_symplectic_matrix: Build a symplectic matrix representing terms for each operator in the Hamiltonian.
-        hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
+        ternary_tree_hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
         _symplectic_to_pauli: Convert a symplectic matrix to a Pauli string.
         _pauli_to_symplectic: Convert a Pauli string to a symplectic matrix.
         fill_template: Fill a template with Hamiltonian coefficients.
@@ -87,7 +93,7 @@ class FermionQubitEncoding(ABC):
             return False
 
     @property
-    def default_mode_op_map(self):
+    def default_mode_op_map(self) -> NDArray[np.uint]:
         """Create a default mode operator map for the tree."""
         return self._default_mode_op_map
 
@@ -144,33 +150,57 @@ class FermionQubitEncoding(ABC):
         """Build a symplectic matrix representing terms for each operator in the Hamitonian."""
         pass
 
-    def hartree_fock_state(
+    def encode_annealed(
         self,
-        fermionic_hf_state: NDArray[bool],
-        mode_op_map: list[int] | None = None,
+        fham: FermionHamiltonian,
+        temperature: int | None = None,
+        initial_guess: list[int] | None = None,
+        coefficient_weighted: bool = True,
     ):
-        """Find the Hartree-Fock state of a majorana string encoding.
+        sigs, coeffs = fham.signatures_and_coefficients
+        ipow, sym = self._build_symplectic_matrix()
 
-        This function calls to the rust implementatin in `src/lib.rs`.
-        It assumes that the vacuum state is a single state vector, though the HF state may not be
-        The global phase so that the first component state has 0 phase.
+        if temperature is None:
+            temperature = fham.n_modes
 
-        Args:
-            fermionic_hf_state (NDArray[int]): An array of mode occupations.
-            mode_op_map (dict[int, int]): A dictionary mapping modes to sets of majorana strings i->(j,j+1).
+        if isinstance(initial_guess, list):
+            initial_guess: NDArray[np.uint] = np.array(initial_guess, dtype=np.uint)
+        else:
+            initial_guess: NDArray[np.uint] = np.array(
+                [*range(self.n_modes)], dtype=np.uint
+            )
 
-        Returns:
-            NDArray: The Hartree-Fock ground state in computational basis.
-        """
-        if mode_op_map is None:
-            mode_op_map = self.default_mode_op_map
+        ipow, sym = anneal_enumerations(
+            ipowers=ipow,
+            symplectics=sym,
+            signatures=sigs,
+            coeffs=coeffs,
+            temperature=temperature,
+            initial_guess=initial_guess,
+            coefficient_weighted=coefficient_weighted,
+        )
 
-        return hartree_fock_state(
-            self.vacuum_state,
-            fermionic_hf_state,
-            mode_op_map,
-            self._build_symplectic_matrix()[0],
-            self._build_symplectic_matrix()[1],
+        self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
+        self.default_mode_op_map = [*range(self.n_modes)]
+
+        return encode(
+            ipowers=ipow,
+            symplectics=sym,
+            signatures=sigs,
+            coeffs=coeffs,
+            constant_energy=fham.constant_energy,
+        )
+
+    def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+        logger.debug("Encoding fermionic Hamiltonian.")
+        ipowers, symplectic = self._build_symplectic_matrix()
+        signatures, coeffs = fham.signatures_and_coefficients
+        return encode(
+            ipowers=ipowers,
+            symplectics=symplectic,
+            signatures=signatures,
+            coeffs=coeffs,
+            constant_energy=fham.constant_energy,
         )
 
     @staticmethod

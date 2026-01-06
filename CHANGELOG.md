@@ -5,10 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unrealeased]
+## [0.5.4]
 ### Added
-- Topology-preserving Hamiltonian Adaptive Ternary Tree (TOPP-HATT) in `ferrmion.optimize.topphatt`.
+- `core.flatpack_symplectic_matrix`
+
+### Changed
+- Required python version changed to `>=3.12`
+- `TernaryTree._build_symplectic_matrix` now calls to `core.flatpack_symplectic_matrix`
+- `hartree_fock_state` function narrowed to `ternary_tree_hartree_fock_state` to simplify implementation.
+
+## [0.5.3]
+### Added
+- Initial property based testing with `hypothesis` for python and `proptest` for rust.
+- Inline documentation for `core.operators`.
+
+### Fixed
+- `TernaryTree.encode_annealed` now updates encoding ipowers and coeffients after running.
+
+## [0.5.2]
+### Fixed
+- Removed `norm()` from constant energy, giving incorrect sign.
+
+## [0.5.0]
+### Added
+- `FermionHamiltonian` class in `hamiltonians.py` for building general hamiltonians with matrix coefficients.
+  - `creation` and `annihilation` functions for building term coefficients
+  - `with_coefficients` to add coefficients and end term building.
+- `encode.FermionQubitEncoding`
+  - `encode`, `encode_annealed` which accept a `FermionHamiltonian`
+- `encode.TernaryTree` now has methods:
+  - `topphatt` which returns a new encoding optimised using TOPP-HATT
+  - `encode_topphatt`
+- `encode.standard` with wrappers on the `core` functions for enocoding Jordan-Wigner, Bravyi-Kitaev, Parity and JKMN. Each of naive, topphatt and annealed.
+- `PauliWeight` and `CoefficientPauliWeight` traits in `core`.
+- `optimise.enumeration.anneal` has wrapper functions `anneal_pauli_weight` and `anneal_coefficient_pauli_weight` to simplify interface.
+
+### Removed
+- There are now no functions relating to hamiltonian templates. The SparseMajorana type in core is used instead.
+
+### Fixed
+- Energy of hamiltonians was incorrect owing to a bug with `MajoranaSparse.majorise`. For now this isn't used.
+
+### Changed
+- Example notebooks relating to hamiltonians now condensed into `hamiltonians`
+- Annealing uses `SparseMajorana` rather than `HamiltonianTemplate`.
+
+## [0.4.1]
+### Fixed
+- `Encode<&MajoranaSparse>` now correctly handles constant term.
+
+## [0.4.0]
+### Added
+- Topology-preserving Hamiltonian Adaptive Ternary Tree (TOPP-HATT) in `src/topphatt`.
+- `MajoranaEncodingOwned` in `src/encoding`
+- `TernaryTree` in `src/ternarytree`
+- `FermionMatrix`, `FermionSparse`, `FermionProduct`, `MajoranaProduct`, `MajoranaSparse` in `src/types`
 - `max_nodes` option in `bonsai_algorithm` to build trees without using all the nodes of a device.
+- New functions exposed to python api of `core`: `topphatt`, `topphatt_standard`, `encode`, `encode_standard`, `standard_symplectic_matrix`.
+- `TernaryTree.to_flatpack` to serialise TT structure.
 
 ### Changed
 - `TernaryTree.default_enumeration_scheme` allows arbitrary qubit labels but enforces mode labels from `range(n_modes)`.

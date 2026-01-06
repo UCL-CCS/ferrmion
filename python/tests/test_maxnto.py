@@ -5,7 +5,7 @@ from ferrmion.utils import check_trivial_overlap
 import numpy as np
 
 
-def test_max_nto(water_integrals):
+def test_max_nto():
     mnto = MaxNTO(14)
     ipowers, symplectics = mnto._build_symplectic_matrix()
     valid, nto = check_trivial_overlap(symplectics)

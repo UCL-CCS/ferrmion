@@ -2,7 +2,8 @@
 
 import numpy as np
 import pytest
-from ferrmion.encode import TernaryTree, MaxNTO, JordanWigner, BravyiKitaev, JKMN
+from ferrmion.encode import TernaryTree, MaxNTO
+from ferrmion.encode.ternary_tree import JordanWigner, BravyiKitaev, JKMN, ParityEncoding
 from ferrmion.encode.base import double_fermionic_operator, FermionQubitEncoding
 
 np.random.seed(1710)
@@ -40,20 +41,17 @@ def test_valid_vacuum_state(four_mode_tt):
 
 def test_hartree_fock_state(sixteen_mode_tt):
     jw = sixteen_mode_tt.JW()
-    hartree_fock_state = jw.hartree_fock_state
+    ternary_tree_hartree_fock_state = jw.ternary_tree_hartree_fock_state
     nq = jw.n_qubits // 2
-    print(hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool)))
-    assert (
-        hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool))[0]
-    ) == [1.0]
+    print(ternary_tree_hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool)))
     assert np.all(
-        hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool))[1]
+        ternary_tree_hartree_fock_state(np.array([True] * nq + [False] * nq, dtype=bool))
         == np.array([[True] * nq + [False] * nq], dtype=bool)
     )
     assert np.all(
-        hartree_fock_state(
+        ternary_tree_hartree_fock_state(
             np.array([True] * (nq + 1) + [False] * (nq - 1), dtype=bool)
-        )[1]
+        )
         == np.array([[True] * (nq + 1) + [False] * (nq - 1)], dtype=bool)
     )
 
@@ -162,7 +160,7 @@ def test_double_fermionic_operator(four_mode_tt):
     assert np.all(l == r for l, r in zip(maxnot_num_zero[2], maxnto_expected[2]))
 
 
-@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
+@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN, ParityEncoding])
 def test_majorana_product_doubles_to_idenity(encoding_func):
     encoding: FermionQubitEncoding = encoding_func(5)
     for i in range(5):
@@ -179,8 +177,8 @@ def test_majorana_product_doubles_to_idenity(encoding_func):
         )
 
 
-@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
-def test_majorana_product_exchange_antusymmetry(encoding_func):
+@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN, ParityEncoding])
+def test_majorana_product_exchange_antisymmetry(encoding_func):
     encoding: FermionQubitEncoding = encoding_func(5)
     for i in range(1, 5):
         assert np.all(
@@ -192,7 +190,7 @@ def test_majorana_product_exchange_antusymmetry(encoding_func):
         )
 
 
-@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN])
+@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN, ParityEncoding])
 def test_majorana_product_empty(encoding_func):
     encoding: FermionQubitEncoding = encoding_func(5)
     assert np.all(encoding.majorana_product(())[0] == np.zeros(10, dtype=bool))

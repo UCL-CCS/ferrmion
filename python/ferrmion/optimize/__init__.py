@@ -1,6 +1,6 @@
 """Init Optimize Submodule."""
 
-from ..core import anneal_enumerations
+from ..core import anneal_enumerations, topphatt_standard
 from .bonsai import bonsai_algorithm
 from .cost_functions import (
     coefficient_pauli_weight,

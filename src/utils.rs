@@ -1,9 +1,9 @@
 /*
 Utility functions for core functionality.
 */
-use ndarray::{concatenate, Axis, Zip};
-use numpy::ndarray::{Array1, ArrayView1};
+use ndarray::{Axis, Zip, concatenate};
 use numpy::Complex64;
+use numpy::ndarray::{Array1, ArrayView1};
 
 pub fn icount_to_sign(icount: usize) -> Complex64 {
     match icount % 4 {

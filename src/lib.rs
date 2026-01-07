@@ -10,24 +10,22 @@
 
 use ::core::panic;
 use log::{debug, info};
-use numpy::ndarray::Array1;
+use numpy::ndarray::{Array1, ArrayView1};
 use numpy::{
-    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
 };
+use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
-use pyo3::{prelude::*, pymodule, Bound};
+use pyo3::{Bound, pymodule};
 pub mod operators;
 mod utils;
 use crate::operators::MajoranaSparse;
-use crate::optimise::topphatt;
-use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::QubitHamiltonian;
 mod encoding;
 use crate::encoding::{Encode, MajoranaEncoding};
 mod optimise;
-use crate::optimise::anneal_enumerations;
 pub mod ternarytree;
 use crate::ternarytree::{TTFlatPack, TernaryTree};
 
@@ -38,9 +36,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
     info!("Initializing Python module 'core'");
 
-    #[pyfn(m)]
-    #[pyo3(name = "symplectic_product")]
-    fn wrap_symplectic_product_py<'py>(
+    // #[pyfunction]
+    #[pyfunction]
+    fn symplectic_product<'py>(
         py: Python<'py>,
         left: PyReadonlyArray1<bool>,
         right: PyReadonlyArray1<bool>,
@@ -63,10 +61,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let pyproduct = PyArray1::from_owned_array(py, product);
         (ipower as usize, pyproduct)
     }
+    m.add_function(wrap_pyfunction!(symplectic_product, m)?)?;
 
-    #[pyfn(m)]
-    #[pyo3(name = "ternary_tree_hartree_fock_state")]
-    fn wrap_ternary_tree_hartree_fock_state<'py>(
+    #[pyfunction]
+    fn ternary_tree_hartree_fock_state<'py>(
         py: Python<'py>,
         fermionic_hf_state: PyReadonlyArray1<bool>,
         mode_op_map: PyReadonlyArray1<usize>,
@@ -98,9 +96,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         PyArray1::from_owned_array(py, state)
     }
 
-    #[pyfn(m)]
-    #[pyo3(name = "symplectic_to_pauli")]
-    fn wrap_symplectic_to_pauli<'py>(
+    m.add_function(wrap_pyfunction!(ternary_tree_hartree_fock_state, m)?)?;
+
+    #[pyfunction]
+    fn symplectic_to_pauli<'py>(
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
         ipower: u8,
@@ -109,10 +108,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let (pauli, ipower) = MajoranaEncoding::symplectic_to_pauli(symplectic, ipower);
         (PyString::new(py, &pauli), PyInt::new(py, ipower))
     }
+    m.add_function(wrap_pyfunction!(symplectic_to_pauli, m)?)?;
 
-    #[pyfn(m)]
-    #[pyo3(name = "pauli_to_symplectic")]
-    fn wrap_pauli_to_symplectic(
+    #[pyfunction]
+    fn pauli_to_symplectic(
         py: Python<'_>,
         pauli: String,
         ipower: usize,
@@ -124,10 +123,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             PyInt::new(py, ipower),
         )
     }
+    m.add_function(wrap_pyfunction!(pauli_to_symplectic, m)?)?;
 
-    #[pyfn(m)]
-    #[pyo3(name = "symplectic_product_map")]
-    fn wrap_symplectic_product_map<'py>(
+    #[pyfunction]
+    fn symplectic_product_map<'py>(
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
@@ -143,10 +142,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             PyArray3::from_owned_array(py, product_map),
         )
     }
+    m.add_function(wrap_pyfunction!(symplectic_product_map, m)?)?;
 
-    #[pyfn(m)]
-    #[pyo3(name = "symplectic_to_sparse")]
-    fn wrap_symplectic_to_sparse<'py>(
+    #[pyfunction]
+    fn symplectic_to_sparse<'py>(
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
         ipower: usize,
@@ -156,7 +155,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Bound<'py, PyComplex>,
     ) {
         let symplectic = symplectic.as_array();
-        let (pauli_string, position_vec, coeff) = symplectic_to_sparse(symplectic, ipower);
+        let (pauli_string, position_vec, coeff) =
+            crate::utils::symplectic_to_sparse(symplectic, ipower);
         (
             PyString::new(py, &pauli_string),
             PyArray1::from_owned_array(py, position_vec),
@@ -164,61 +164,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
     }
 
-    // #[pyfn(m)]
-    // #[pyo3(name = "molecular_hamiltonian_template")]
-    // fn wrap_molecular_hamiltonian_template<'py>(
-    //     py: Python<'py>,
-    //     ipowers: PyReadonlyArray1<u8>,
-    //     symplectics: PyReadonlyArray2<bool>,
-    //     physicist_notation: bool,
-    // ) -> Bound<'py, PyDict> {
-    //     let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
-    //     let hamiltonian: QubitHamiltonianTemplate = match physicist_notation {
-    //         true => molecular(encoding, Notation::Physicist),
-    //         false => molecular(encoding, Notation::Chemist),
-    //     };
-    //     hamiltonian
-    //         .into_py_dict(py)
-    //         .expect("Cannot parse Hamiltonian Template dict.")
-    // }
+    m.add_function(wrap_pyfunction!(symplectic_to_sparse, m)?)?;
 
-    // #[pyfn(m)]
-    // #[pyo3(name = "hubbard_hamiltonian_template")]
-    // fn wrap_hubbard_hamiltonian_template<'py>(
-    //     py: Python<'py>,
-    //     ipowers: PyReadonlyArray1<u8>,
-    //     symplectics: PyReadonlyArray2<bool>,
-    // ) -> Bound<'py, PyDict> {
-    //     let encoding = MajoranaEncoding::new(
-    //         ipowers.as_array().to_owned(),
-    //         symplectics.as_array().to_owned(),
-    //     );
-
-    //     let hamiltonian = hubbard(encoding);
-    //     hamiltonian
-    //         .into_py_dict(py)
-    //         .expect("Cannot parse Hamiltonian Template dict.")
-    // }
-
-    // #[pyfn(m)]
-    // #[pyo3(name = "pauli_weight_distribution")]
-    // fn wrap_pauli_weight_distribution<'py>(
-    //     py: Python<'py>,
-    //     constant_energy: f64,
-    //     one_e_coeffs: PyReadonlyArray2<f64>,
-    //     two_e_coeffs: PyReadonlyArray4<f64>,
-    //     n_permutations: usize,
-    // ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
-    //     // let constant_energy = constant_energy.extract(py)?;
-    //     let one_e_coeffs = one_e_coeffs.as_array();
-    //     let two_e_coeffs = two_e_coeffs.as_array();
-
-    //     Ok((weight.0.into_pyarray(py), weight.1.into_pyarray(py)))
-    // }
-
-    #[pyfn(m)]
-    #[pyo3(name = "anneal_enumerations")]
-    fn wrap_anneal_enumerations<'py>(
+    #[pyfunction]
+    fn anneal_enumerations<'py>(
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
@@ -228,7 +177,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         initial_guess: PyReadonlyArray1<usize>,
         coefficient_weighted: bool,
     ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
-        let initial_guess = initial_guess.as_array();
+        let initial_guess: ArrayView1<usize> = initial_guess.as_array();
 
         let msparse = MajoranaSparse::from_signatures_and_coeffs(
             signatures,
@@ -240,7 +189,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             symplectics.as_array().to_owned(),
         );
         let best_mode_enumeration: Array1<usize>;
-        (_, best_mode_enumeration) = anneal_enumerations(
+        (_, best_mode_enumeration) = crate::optimise::anneal_enumerations(
             msparse,
             encoding,
             temperature,
@@ -261,9 +210,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
-    #[pyfn(m)]
-    #[pyo3(name = "flatpack_symplectic_matrix")]
-    fn wrap_flatpack_symplectic_matrix(
+    m.add_function(wrap_pyfunction!(anneal_enumerations, m)?)?;
+
+    #[pyfunction]
+    fn flatpack_symplectic_matrix(
         py: Python<'_>,
         flatpack: TTFlatPack,
     ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
@@ -291,9 +241,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
-    #[pyfn(m)]
-    #[pyo3(name = "standard_symplectic_matrix")]
-    fn wrap_standard_symplectic_matrix(
+    m.add_function(wrap_pyfunction!(flatpack_symplectic_matrix, m)?)?;
+    #[pyfunction]
+    fn standard_symplectic_matrix(
         py: Python<'_>,
         encoding: String,
         n_modes: usize,
@@ -319,9 +269,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
-    #[pyfn(m)]
-    #[pyo3(name = "encode")]
-    fn wrap_encode<'py>(
+    m.add_function(wrap_pyfunction!(standard_symplectic_matrix, m)?)?;
+    #[pyfunction]
+    fn encode<'py>(
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
@@ -358,15 +308,13 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got Hamiltonian");
 
         debug!("Got qham");
-        Ok(qham
-            .into_py_dict(py)
-            .expect("Should be able to convert QubitHamiltonian to PyDict."))
+        Ok(qham.expect("Should be able to convert QubitHamiltonian to PyDict."))
         // Ok(())
     }
 
-    #[pyfn(m)]
-    #[pyo3(name = "encode_standard")]
-    fn wrap_encode_standard<'py>(
+    m.add_function(wrap_pyfunction!(encode, m)?)?;
+    #[pyfunction]
+    fn encode_standard<'py>(
         py: Python<'py>,
         encoding: String,
         n_modes: usize,
@@ -417,9 +365,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         // Ok(())
     }
 
-    #[pyfn(m)]
-    #[pyo3(name = "topphatt")]
-    fn wrap_topphatt<'py>(
+    m.add_function(wrap_pyfunction!(encode_stnadard, m)?)?;
+
+    #[pyfunction]
+    fn topphatt<'py>(
         py: Python<'py>,
         flatpack: Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>,
         n_qubits: usize,
@@ -443,7 +392,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .expect("Ternary tree should build from flatpack");
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian.clone(), tree).expect("TOPPHATT should have failed by now.");
+        tree = crate::optimise::topphatt(hamiltonian.clone(), tree)
+            .expect("TOPPHATT should have failed by now.");
 
         let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
@@ -459,9 +409,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         // Ok(())
     }
 
-    #[pyfn(m)]
-    #[pyo3(name = "topphatt_standard")]
-    fn wrap_topphatt_standard<'py>(
+    m.add_function(wrap_pyfunction!(topphatt, m)?)?;
+    #[pyfunction]
+    fn topphatt_standard<'py>(
         py: Python<'py>,
         encoding: String,
         n_modes: usize,
@@ -512,5 +462,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         //     .expect("Should be able to convert QubitHamiltonian to PyDict."))
         // Ok(())
     }
+    m.add_function(wrap_pyfunction!(topphatt_standard, m)?)?;
     Ok(())
 }

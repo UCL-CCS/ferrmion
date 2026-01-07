@@ -14,6 +14,7 @@ dependencies = [
     "deap>=1.4.3",
     "rustworkx>=0.16.0",
     "numpy>=2",
+    "pyarrow>=22.0.0",
 ]
 
 [project.optional-dependencies]

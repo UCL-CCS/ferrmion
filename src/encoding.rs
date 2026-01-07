@@ -3,17 +3,15 @@ use crate::hamiltonians::QubitHamiltonian;
 Functions relating to the FermionQubitEncoding base class.
 */
 
-use crate::operators::{MajoranaProduct, MajoranaSparse, MajoranaSparseError, Pauli, PauliMatrix};
-use crate::utils::{self, icount_to_sign, vector_kron};
+use crate::operators::{MajoranaProduct, MajoranaSparse, Pauli, PauliMatrix};
+use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
 use itertools::izip;
 use log::debug;
-use ndarray::{Axis, Zip};
 use num_complex::c64;
-use numpy::ndarray::{arr1, arr2, azip, s, Array1, Array2, Array3, ArrayView1};
 use numpy::Complex64;
+use numpy::ndarray::{Array1, Array2, Array3, ArrayView1, Axis, Zip, arr1, azip, s};
 use std::collections::HashMap;
-use std::env::current_exe;
 use thiserror::Error;
 
 pub trait Encode<T> {
@@ -129,7 +127,7 @@ impl MajoranaEncoding {
 
         let mut current_state: Array1<bool> = Array1::from_elem(fermionic_hf_state.len(), false);
 
-        let half_length = self.symplectics.len_of(ndarray::Axis(1)) / 2;
+        let half_length = self.symplectics.len_of(Axis(1)) / 2;
         let (x_block, z_block) = self.symplectics.view().split_at(Axis(1), half_length);
 
         for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
@@ -139,10 +137,10 @@ impl MajoranaEncoding {
             let mode_index = mode_op_map[[mode]];
 
             // split the left and right operators into x and z sections
-            let left_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index);
-            let right_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
-            let left_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index);
-            let right_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
+            let left_x = x_block.index_axis(Axis(0), 2 * mode_index);
+            let right_x = x_block.index_axis(Axis(0), 2 * mode_index + 1);
+            let left_z = z_block.index_axis(Axis(0), 2 * mode_index);
+            let right_z = z_block.index_axis(Axis(0), 2 * mode_index + 1);
 
             let left_ops: Vec<Pauli> = left_x
                 .iter()
@@ -174,15 +172,15 @@ impl MajoranaEncoding {
                             return Err(MajoranaEncodingError::TTHartreeFockError(left, right));
                         }
                     }
-                    ///[[1-i, 0],[0,-1-i]]
+                    //[[1-i, 0],[0,-1-i]]
                     (Pauli::Z, Pauli::I) => continue,
                     (Pauli::I, Pauli::Z) => continue,
-                    ///(1-i)X
+                    //(1-i)X
                     (Pauli::X, Pauli::X) => *s = if s == &true { false } else { true },
-                    /// (1-i)Y
-                    /// (1-i) (-i)XZ
+                    // (1-i)Y
+                    // (1-i) (-i)XZ
                     (Pauli::Y, Pauli::Y) => *s = if s == &true { false } else { true },
-                    /// (1-i)Z
+                    // (1-i)Z
                     (Pauli::Z, Pauli::Z) => continue,
                     (Pauli::I, Pauli::I) => continue,
                     _ => return Err(MajoranaEncodingError::TTHartreeFockError(left, right)),
@@ -192,15 +190,14 @@ impl MajoranaEncoding {
         Ok(current_state)
     }
 
-    pub fn hartree_fock_state(
+    pub fn vacuum_preserved_hartree_fock_state(
         &self,
-        vacuum_state: ArrayView1<f64>,
         fermionic_hf_state: ArrayView1<bool>,
         mode_op_map: ArrayView1<usize>,
     ) -> Result<Array1<bool>, MajoranaEncodingError> {
         debug!("Calculating Hartree-fock state");
         let n_modes = mode_op_map.len();
-        let half_length = self.symplectics.len_of(ndarray::Axis(1)) / 2;
+        let half_length = self.symplectics.len_of(Axis(1)) / 2;
 
         let mut current_state: Vec<Array1<Complex64>> = (0..half_length)
             .into_iter()
@@ -217,10 +214,10 @@ impl MajoranaEncoding {
             let mode_index = mode_op_map[[mode]];
 
             // split the left and right operators into x and z sections
-            let left_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index);
-            let right_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
-            let left_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index);
-            let right_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
+            let left_x = x_block.index_axis(Axis(0), 2 * mode_index);
+            let right_x = x_block.index_axis(Axis(0), 2 * mode_index + 1);
+            let left_z = z_block.index_axis(Axis(0), 2 * mode_index);
+            let right_z = z_block.index_axis(Axis(0), 2 * mode_index + 1);
 
             Zip::from(&mut current_state)
                 .and(&left_x)
@@ -355,7 +352,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
 #[cfg(test)]
 mod owned_tests {
     use super::*;
-    use ndarray::{arr1, arr2, Array1, ArrayView1};
+    use ndarray::{Array1, ArrayView1, arr1, arr2};
     use num_complex::c64;
     use numpy::Complex64;
     use tinyvec::array_vec;
@@ -637,13 +634,13 @@ mod owned_tests {
         ]);
         let encoding = MajoranaEncoding::new(ipowers, symplectics);
         let result = encoding
-            .hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map)
+            .vacuum_preserved_hartree_fock_state(vacuum_state, fermionic_hf_state, mode_op_map)
             .unwrap();
         let c1 = c64(1., 0.);
         assert!(result == arr1(&[true, true, true, false, false, false]));
 
         let result2 = encoding
-            .hartree_fock_state(
+            .vacuum_preserved_hartree_fock_state(
                 vacuum_state,
                 ArrayView1::from(&[true, true, true, true, false, false]),
                 mode_op_map,

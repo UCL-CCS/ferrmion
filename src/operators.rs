@@ -13,11 +13,11 @@ use crate::ternarytree::Edge;
 use itertools::Itertools;
 use log::debug;
 use ndarray::Dimension;
-use num_complex::{c64, ComplexFloat};
-use numpy::ndarray::{
-    arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis, IntoDimension, Zip,
-};
+use num_complex::{ComplexFloat, c64};
 use numpy::Complex64;
+use numpy::ndarray::{
+    Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis, IntoDimension, Zip, arr1, arr2,
+};
 use std::collections::BTreeMap;
 use std::iter::repeat_n;
 use std::{result::Result, str::FromStr};
@@ -701,7 +701,7 @@ impl MajoranaSparse {
         let (i, c) = indices
             .iter()
             .zip(&coefficients)
-            .filter(|&(_, &coeff)| (coeff != Complex64::ZERO))
+            .filter(|&(_, &coeff)| coeff != Complex64::ZERO)
             .unzip();
 
         Ok(Self {

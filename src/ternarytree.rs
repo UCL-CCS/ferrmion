@@ -3,7 +3,7 @@
 //! The ['TernaryTree`] struct is made up of a set of vectors.
 use crate::{encoding::MajoranaEncoding, operators::Pauli};
 use log::{debug, error, info};
-use numpy::ndarray::{s, Array1, Array2, Zip};
+use numpy::ndarray::{Array1, Array2, Zip, s};
 use std::collections::HashMap;
 use std::ops::Not;
 use std::result::Result;
@@ -543,7 +543,7 @@ impl TernaryTree {
                     return Err(TernaryTreeError::LeafSymplecticError(
                         *leaf_edge,
                         parent_index,
-                    ))
+                    ));
                 }
             }
         } else {
@@ -590,9 +590,9 @@ impl TernaryTree {
 #[cfg(test)]
 mod tt_tests {
     use super::*;
-    use numpy::ndarray::{arr1, arr2};
     use Child::{Node, XLeaf, YLeaf};
     use Edge::{X, Y, Z};
+    use numpy::ndarray::{arr1, arr2};
 
     #[test]
     fn test_new() {

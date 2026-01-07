@@ -265,9 +265,11 @@ impl NodeDependencies {
             debug!("RD {:?}", root_distances);
             debug!("UC {:?}", children_without_leaves);
             if let Some(node) = nodes_to_check.pop_front() {
-                assert!(children_without_leaves
-                    .insert(node, ArrayVec::new())
-                    .is_none());
+                assert!(
+                    children_without_leaves
+                        .insert(node, ArrayVec::new())
+                        .is_none()
+                );
                 match tree.parent_of[node] {
                     Some(parent) => {
                         root_distances.insert(
@@ -325,11 +327,7 @@ fn qubit_term_weight(term: &ArrayVec<[u16; MAJORANA_MAX]>, children: &[u16; 3]) 
             odd_parity_paulis += 1;
         }
     }
-    if odd_parity_paulis % 3 != 0 {
-        1
-    } else {
-        0
-    }
+    if odd_parity_paulis % 3 != 0 { 1 } else { 0 }
 }
 
 fn reduce_hamiltonian(
@@ -488,7 +486,7 @@ pub fn topphatt(
         debug!("Min Parent {:?}", min_parent);
         match selection {
             [u16::MAX, u16::MAX, u16::MAX] => {
-                return Err(ToppHattError::NoSelectionError(loop_index))
+                return Err(ToppHattError::NoSelectionError(loop_index));
             }
             _ => {
                 debug!("Removing selection from unassigned");
@@ -611,8 +609,8 @@ mod test_topphatt {
     use crate::ternarytree::TTFlatPack;
     use crate::{optimise::topphatt::TreeRetrictions, ternarytree::TernaryTree};
     use log::debug;
-    use ndarray::arr1;
     use numpy::Complex64;
+    use numpy::ndarray::arr1;
     use tinyvec::array_vec;
 
     #[test]

@@ -76,3 +76,6 @@ select = [
     "I", #isort
 ]
 ignore = ["E741"]
+
+[tool.pytest]
+addopts = ["--benchmark-autosave", "--log-level=WARNING"]

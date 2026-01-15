@@ -3,7 +3,6 @@ from typing import Callable
 from ferrmion import FermionHamiltonian
 import numpy as np
 import pytest
-import scipy as sp
 from ferrmion.encode.ternary_tree import (
     TernaryTree,
     TTNode,
@@ -533,15 +532,6 @@ def test_naive_parity_hf_state(fermionic_hf_state):
     assert np.all(qubit_hf_state == expected_parity)
 
 @given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
-def test_naive_bk_hf_state_runs(fermionic_hf_state):
-    tree = BravyiKitaev(len(fermionic_hf_state))
-    tree.enumeration_scheme = tree.default_enumeration_scheme()
-    qubit_hf_state = tree.hartree_fock_state(
-        fermionic_hf_state=fermionic_hf_state,
-        mode_op_map=[*range(len(fermionic_hf_state))],
-    )
-
-@given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
 def test_naive_jkmn_hf_state_runs(fermionic_hf_state):
     tree = JKMN(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
@@ -549,3 +539,40 @@ def test_naive_jkmn_hf_state_runs(fermionic_hf_state):
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
+
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+def test_benchmark_encode_naive(benchmark,encoding, mol_data_sets):
+    ones = mol_data_sets["ones"]
+    twos = mol_data_sets["twos"]
+    e_nuc = mol_data_sets["constant_energy"]
+    fham = FermionHamiltonian(terms={"+-": ones, "++--": twos}, constant_energy=e_nuc)
+    encoding = encoding(fham.n_modes)
+    benchmark(lambda: encoding.encode(fham))
+
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+def test_benchmark_encode_topphatt(benchmark,encoding, mol_data_sets):
+    ones = mol_data_sets["ones"]
+    twos = mol_data_sets["twos"]
+    e_nuc = mol_data_sets["constant_energy"]
+    fham = FermionHamiltonian(terms={"+-": ones, "++--": twos}, constant_energy=e_nuc)
+    encoding:TernaryTree= encoding(fham.n_modes)
+    benchmark(lambda: encoding.encode_topphatt(fham))
+
+
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+def test_benchmark_encode_annealed(benchmark,encoding, h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    fham = FermionHamiltonian(terms={"+-": ones, "++--": twos}, constant_energy=e_nuc)
+    encoding:TernaryTree = encoding(fham.n_modes)
+    benchmark(lambda: encoding.encode_annealed(fham))
+
+
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize("n_modes", [32,64,128])
+def test_benchmark_hartree_fock_state(benchmark, encoding,n_modes):
+    fermionic_hf_state = np.array([True]*n_modes, dtype=np.bool)
+    tree:TernaryTree = encoding(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    benchmark(lambda: tree.hartree_fock_state(fermionic_hf_state=fermionic_hf_state))

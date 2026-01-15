@@ -7,15 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- Code coverage reporting in CI/CD pipeline using pytest-cov.
-- Automatic coverage badge update in README.md via coverage-badge-action.
-
+- Benchmarking tests of `TernaryTree.encode...()` functions.
 ### Changed
 - CI workflow now generates coverage reports and syncs badge on pushes to main branch.
 
-*Changes generated with assistance from GitHub Copilot.*
-
-## [0.5.4]
 ### Added
 - `core.flatpack_symplectic_matrix`
 

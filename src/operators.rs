@@ -170,6 +170,17 @@ mod test_pauli {
             assert_eq!(tbool, tbool_again);
         }
     }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn test_pauli_bool_roundtrip_prop(x in proptest::bool::ANY, z in proptest::bool::ANY) {
+            let pauli: Pauli = (x, z).into();
+            let (x2, z2): (bool, bool) = pauli.into();
+            prop_assert_eq!((x, z), (x2, z2));
+        }
+    }
 }
 
 /// Pauli operator encoded in symplectic (XZ) form.
@@ -273,6 +284,20 @@ mod ladder_tests {
         );
         assert_eq!(LadderOperator::from_str("+-"), Err(ParseLadderError));
         assert_eq!(LadderOperator::from_str("-+"), Err(ParseLadderError));
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn test_ladder_try_from_char(c in proptest::sample::select(&['+', '-'])) {
+            let op = LadderOperator::try_from(c);
+            if c == '+' {
+                prop_assert_eq!(op, Ok(LadderOperator::Creation));
+            } else {
+                prop_assert_eq!(op, Ok(LadderOperator::Annihilation));
+            }
+        }
     }
 }
 

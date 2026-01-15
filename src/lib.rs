@@ -1,4 +1,3 @@
-#![warn(missing_docs)]
 //! Fast, reliable and easy optimisation of fermion-qubit encodings.
 //!
 //! To simulate fermionic Hamiltonians with gate-based quantum computers,

@@ -37,7 +37,7 @@ class FermionQubitEncoding(ABC):
     Methods:
         default_mode_op_map: Get the default mode operator map.
         _build_symplectic_matrix: Build a symplectic matrix representing terms for each operator in the Hamiltonian.
-        ternary_tree_hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
+        hartree_fock_state: Find the Hartree-Fock state of a majorana string encoding.
         _symplectic_to_pauli: Convert a symplectic matrix to a Pauli string.
         _pauli_to_symplectic: Convert a Pauli string to a symplectic matrix.
         fill_template: Fill a template with Hamiltonian coefficients.

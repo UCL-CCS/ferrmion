@@ -1,5 +1,4 @@
 from copy import deepcopy
-from fontTools.misc.etree import TreeBuilder
 from typing import Callable
 from ferrmion import FermionHamiltonian
 import numpy as np
@@ -14,17 +13,24 @@ from ferrmion.encode.ternary_tree import (
     BravyiKitaev,
     JKMN,
     ParityEncoding,
+    PE,
 )
 from ferrmion.utils import symplectic_hash, symplectic_unhash, symplectic_to_pauli
-from openfermion import QubitOperator, get_sparse_operator
-from openfermion.ops import InteractionOperator
-from openfermion.transforms import jordan_wigner
 from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.core import standard_symplectic_matrix
-from scipy.sparse.linalg import eigsh
 from .conftest import diagonalise_pauli_hamiltonian
-from hypothesis import given,seed, strategies as st
+import hypothesis
+from hypothesis import given,strategies as st 
 from hypothesis.extra.numpy import arrays
+import logging
+logger = logging.getLogger(__name__)
+
+try:
+    import symmer
+    from symmer import PauliwordOp, QuantumState
+except ImportError:
+    logger.warning("Could not import symmer.")
+    symmer = None
 
 @pytest.fixture
 def six_mode_tree():
@@ -458,7 +464,7 @@ def test_naive_jw_hf_state_unchanged(fermionic_hf_state):
     tree = JordanWigner(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     print(f"fermionic HF {fermionic_hf_state}")
-    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
@@ -472,13 +478,13 @@ def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     print(f"\nfermionic HF {fermionic_hf_state}")
     print(f"Enumeration {mode_op_map}")
-    naive_qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    naive_qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
 
     print(f"naive {naive_qubit_hf_state}")
-    enumerated_qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    enumerated_qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=mode_op_map,
     )
@@ -490,11 +496,26 @@ def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
     assert np.all(naive_qubit_hf_state == fermionic_hf_state)
     assert np.all(enumerated_qubit_hf_state == expected_emnumerated)
 
+@pytest.mark.skipif(symmer is None, reason="Dependency group test not installed.")
+@pytest.mark.parametrize("encoding", [JW, PE, BK])
+def test_naive_water_hf_energy_correct(encoding, water_data):
+    fermionic_hf_state = np.array([True]*10 + [False] * 4, dtype=np.bool)
+ 
+    tree = encoding(len(fermionic_hf_state))
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+ 
+    fham = molecular_hamiltonian(water_data["ones"], water_data["twos"], constant_energy=water_data["constant_energy"])
+    qham = tree.encode(fham)
+    enumerated_qubit_hf_state = tree.hartree_fock_state(
+        fermionic_hf_state=fermionic_hf_state,
+    )
+    assert np.isclose(PauliwordOp.from_dictionary(qham).expval(QuantumState([int(v) for v in enumerated_qubit_hf_state])), water_data["e_hf"])
+
 @given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
 def test_naive_parity_hf_state(fermionic_hf_state):
     tree = ParityEncoding(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
@@ -515,7 +536,7 @@ def test_naive_parity_hf_state(fermionic_hf_state):
 def test_naive_bk_hf_state_runs(fermionic_hf_state):
     tree = BravyiKitaev(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
@@ -524,7 +545,7 @@ def test_naive_bk_hf_state_runs(fermionic_hf_state):
 def test_naive_jkmn_hf_state_runs(fermionic_hf_state):
     tree = JKMN(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    qubit_hf_state = tree.ternary_tree_hartree_fock_state(
+    qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )

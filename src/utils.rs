@@ -5,6 +5,15 @@ use ndarray::{concatenate, Axis, Zip};
 use numpy::ndarray::{Array1, ArrayView1};
 use numpy::Complex64;
 
+/// Converts an imaginary count to a complex sign.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::utils::icount_to_sign;
+/// use num_complex::Complex64;
+/// assert_eq!(icount_to_sign(0), Complex64::new(1.0, 0.0));
+/// ```
 pub fn icount_to_sign(icount: usize) -> Complex64 {
     match icount % 4 {
         0 => Complex64::new(1., 0.),
@@ -15,6 +24,18 @@ pub fn icount_to_sign(icount: usize) -> Complex64 {
     }
 }
 
+/// Computes the Kronecker product of two vectors.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::utils::vector_kron;
+/// use ndarray::arr1;
+/// use num_complex::Complex64;
+/// let left = arr1(&[Complex64::new(1.0, 0.0)]);
+/// let right = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
+/// let result = vector_kron(&left, &right);
+/// ```
 pub fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array1<Complex64> {
     concatenate![
         Axis(0),
@@ -23,6 +44,16 @@ pub fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array
     ]
 }
 
+/// Converts symplectic representation to sparse form.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::utils::symplectic_to_sparse;
+/// use ndarray::arr1;
+/// let symplectic = arr1(&[true, false, false, true]);
+/// let (pauli, indices, coeff) = symplectic_to_sparse(symplectic.view(), 0);
+/// ```
 pub fn symplectic_to_sparse(
     symplectic: ArrayView1<bool>,
     ipower: usize,
@@ -85,6 +116,14 @@ fn test_valid_pauli_string() {
     assert!(!_valid_pauli_string("XYZA"));
 }
 
+/// Converts a Pauli string to symplectic representation.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::utils::pauli_to_symplectic;
+/// let (symplectic, ipower) = pauli_to_symplectic("XY".to_string(), 0);
+/// ```
 pub fn pauli_to_symplectic(pauli: String, ipower: usize) -> (Array1<bool>, usize) {
     let string_len = pauli.len();
     assert!(_valid_pauli_string(&pauli));

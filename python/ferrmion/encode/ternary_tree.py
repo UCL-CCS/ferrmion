@@ -167,7 +167,7 @@ class TernaryTree(FermionQubitEncoding):
             constant_energy=fham.constant_energy,
         )
 
-    def ternary_tree_hartree_fock_state(
+    def hartree_fock_state(
         self,
         fermionic_hf_state: NDArray[bool],
         mode_op_map: NDArray[np.uint] | list[int] | None = None,

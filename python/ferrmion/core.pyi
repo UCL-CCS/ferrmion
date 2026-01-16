@@ -93,3 +93,8 @@ def encode(
     coeffs: list[np.ndarray],
     constant_energy: float,
 ) -> dict: ...
+def fermionic_to_sparse_majorana(
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+    constant_energy: float,
+) -> dict: ...

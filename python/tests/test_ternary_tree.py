@@ -20,7 +20,7 @@ from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.core import standard_symplectic_matrix, flatpack_symplectic_matrix
 from .conftest import diagonalise_pauli_hamiltonian
 import hypothesis
-from hypothesis import given,strategies as st 
+from hypothesis import given,strategies as st
 from hypothesis.extra.numpy import arrays
 import logging
 logger = logging.getLogger(__name__)
@@ -500,10 +500,10 @@ def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
 @pytest.mark.parametrize("encoding", [JW, PE, BK])
 def test_naive_water_hf_energy_correct(encoding, water_data):
     fermionic_hf_state = np.array([True]*10 + [False] * 4, dtype=np.bool)
- 
+
     tree = encoding(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
- 
+
     fham = molecular_hamiltonian(water_data["ones"], water_data["twos"], constant_energy=water_data["constant_energy"])
     qham = tree.encode(fham)
     enumerated_qubit_hf_state = tree.hartree_fock_state(
@@ -584,35 +584,38 @@ def tt_flatpack_strategy(draw, n_nodes_strategy):
     n_nodes = draw(n_nodes_strategy)
     if n_nodes == 0:
         return []
-    nodes = [{'x': None, 'y': None, 'z': None}]
-    while len(nodes) < n_nodes:
-        parent = draw(st.integers(0, len(nodes) - 1))
-        slot = draw(st.sampled_from(['x', 'y', 'z']))
-        if nodes[parent][slot] is None:
-            nodes.append({'x': None, 'y': None, 'z': None})
-            nodes[parent][slot] = len(nodes) - 1
-    flatpack = []
-    for node_id in range(n_nodes):
-        children = []
-        for child in ['x', 'y', 'z']:
-            child_node = nodes[node_id][child]
-            if child_node is not None:
-                children.append(child_node)
-            else:
-                children.append(None)
-        flatpack.append((node_id, tuple(children)))
-    return flatpack
+    nodes = draw(st.permutations([*range(n_nodes)]))
+    flatpack = {n: {'x':None, 'y':None, 'z':None} for n in nodes}
+    parents = [nodes[0]]
+    for child in nodes[1:]:
+        parent = draw(st.sampled_from(parents))
+        assert isinstance(parent, int)
+        parents.append(child)
+
+        edges = [e for e, v in flatpack[parent].items() if v == None]
+        flatpack[parent][draw(st.sampled_from(edges))] = child
+        if len(edges) == 1:
+            parents.remove(parent)
+    # flatpack = [(k , tuple(val for val in v.values())) for k, v in flatpack.items()]
+    to_add = [nodes[0]]
+    output = []
+    for node in to_add:
+        output.append((node, tuple(v for v in flatpack[node].values())))
+        for child in flatpack[node].values():
+            if child is not None:
+                to_add.append(child)
+    return output
 
 
-@given(flatpack=tt_flatpack_strategy(st.integers(1, 10)))
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
 def test_validate_tt_flatpack_strategy(flatpack):
     used_qubit_indices = [flatpack[0][0]]
     for item in flatpack:
-        assert item[0] in used_qubit_indices 
+        assert item[0] in used_qubit_indices
         children = item[1]
         assert len(children) == 3
         for child in children:
-            assert isinstance(child,  int | None) 
+            assert isinstance(child,  int | None)
             if isinstance(child, int):
                 used_qubit_indices.append(child)
 
@@ -624,52 +627,54 @@ def test_encoding_flatpack_validate(encoding, n_modes):
     flatpack = tree.flatpack()
     used_qubit_indices = [flatpack[0][0]]
     for item in flatpack:
-        assert item[0] in used_qubit_indices 
+        assert item[0] in used_qubit_indices
         children = item[1]
         assert len(children) == 3
         for child in children:
-            assert isinstance(child,  int | None) 
+            assert isinstance(child,  int | None)
             if isinstance(child, int):
                 used_qubit_indices.append(child)
 
-@given(flatpack=tt_flatpack_strategy(st.integers(1, 10)))
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
 def test_from_flatpack_roundtrip(flatpack):
     reconstructed = TernaryTree.from_flatpack(flatpack)
     assert sorted(reconstructed.flatpack()) == sorted(flatpack)
 
 
-@given(flatpack=tt_flatpack_strategy(st.integers(1, 10)))
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
 def test_from_flatpack_properties(flatpack):
     reconstructed = TernaryTree.from_flatpack(flatpack)
-    
+
     # Check n_modes equals the number of nodes
     assert reconstructed.n_modes == len(flatpack)
-    
+
     # Check n_qubits equals the number of nodes
     assert reconstructed.n_qubits == len(flatpack)
-    
+
     # Check enumeration_scheme has correct length
     assert len(reconstructed.enumeration_scheme) == len(flatpack)
-    
+
     # Check all qubit indices are unique and match flatpack ids
     qubit_indices = {mode_qubit[1] for mode_qubit in reconstructed.enumeration_scheme.values()}
     flatpack_ids = {item[0] for item in flatpack}
     assert qubit_indices == flatpack_ids
 
 
-@given(flatpack=tt_flatpack_strategy(st.integers(1, 10)))
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
 def test_symplectic_matrix_roundtrip(flatpack):
     original_tree = TernaryTree.from_flatpack(flatpack)
+    print(f"Original flatpack {flatpack}")
     flatpack = original_tree.flatpack()
     reconstructed_tree = TernaryTree.from_flatpack(flatpack)
-    
+    print(f"Reconstructed flatpack {flatpack}")
+
     original_ipow, original_sym = original_tree._build_symplectic_matrix()
     reconstructed_ipow, reconstructed_sym = reconstructed_tree._build_symplectic_matrix()
-    
+
     assert np.array_equal(original_ipow, reconstructed_ipow)
     assert np.array_equal(original_sym, reconstructed_sym)
-    
-@given(flatpack=tt_flatpack_strategy(st.integers(1, 10)))
+
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
 def test_core_python_symplectics_from_flatpack_equal(flatpack):
     python_tree = TernaryTree.from_flatpack(flatpack)
     py_ipow, py_sym = python_tree._build_symplectic_matrix()
@@ -677,4 +682,3 @@ def test_core_python_symplectics_from_flatpack_equal(flatpack):
 
     assert np.array_equal(py_ipow, rust_ipow)
     assert np.array_equal(py_sym, rust_sym)
-    

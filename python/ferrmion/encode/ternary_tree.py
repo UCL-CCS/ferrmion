@@ -1,5 +1,4 @@
 """Ternary Tree fermion to qubit mappings."""
-import queue
 import logging
 from copy import deepcopy
 from typing import Callable
@@ -86,7 +85,7 @@ class TernaryTree(FermionQubitEncoding):
             }
 
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
-        # self._enumeration_scheme = {}
+        self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
@@ -252,6 +251,8 @@ class TernaryTree(FermionQubitEncoding):
         Raises:
             TypeError: If the flatpack is invalid.
         """
+        if not flatpack:
+            raise ValueError("Flatpack cannot be empty")
         used_qubit_indices = [flatpack[0][0]]
         for item in flatpack:
             if item[0] not in used_qubit_indices:
@@ -267,8 +268,6 @@ class TernaryTree(FermionQubitEncoding):
                 else:
                     raise TypeError("TTFlatpack contains child node which is not int | None.")
 
-        if not flatpack:
-            raise ValueError("Flatpack cannot be empty")
         ipow, sym = core.flatpack_symplectic_matrix(flatpack)
         max_id = max(item[0] for item in flatpack)
         nodes = [TTNode() for _ in range(max_id + 1)]

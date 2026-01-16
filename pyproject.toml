@@ -40,6 +40,7 @@ dev = [
     "openfermionpyscf>=0.5",
     "matplotlib>=3.10.7",
     "ty>=0.0.2",
+    "pyperf>=2.9.0",
 ]
 test = [
     "hypothesis[numpy]>=6.148.8",

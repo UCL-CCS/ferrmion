@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `core.flatpack_symplectic_matrix`
+- `core.fermionic_to_sparse_majorana`
 
 ### Changed
 - Required python version changed to `>=3.12`

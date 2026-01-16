@@ -8,14 +8,19 @@
 //! these to a python API.
 
 use ::core::panic;
+use itertools::Itertools;
 use log::{debug, info};
+use ndarray::iter;
 use numpy::ndarray::Array1;
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
 };
-use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
+use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyList, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
+use tinyvec::ArrayVec;
+use std::collections::HashMap;
+use std::process::Output;
 pub mod operators;
 mod utils;
 use crate::operators::MajoranaSparse;
@@ -316,6 +321,43 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             encoding.ipowers.into_pyarray(py),
             encoding.symplectics.into_pyarray(py),
         ))
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "fermionic_to_sparse_majorana")]
+    fn fermionic_to_sparse_majorana<'py>(
+        py: Python<'py>,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+        constant_energy: f64,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        // ) -> PyResult<()> {
+        assert_eq!(
+            signatures.len(),
+            coeffs.len(),
+            "Signatures and coefficients should be same length"
+        );
+
+        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            constant_energy,
+        );
+
+        let mut output: HashMap<[Option<u16>; 4], numpy::Complex64> = HashMap::new();
+        for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
+            let key_with_options = key
+                .into_inner()
+                .iter()
+                .enumerate()
+                .map(|(ind, &v)| if ind < key.len() { Some(v) } else { None })
+                .collect::ArrayVec<[Option<u16>; 4]>().into_inner();
+            output
+                .entry(key_with_options)
+                .and_modify(|v| *v += val)
+                .or_insert(val);
+        }
+        output.into_py_dict(py)
     }
 
     #[pyfn(m)]

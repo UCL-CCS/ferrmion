@@ -533,27 +533,27 @@ def _hamiltonian_term_to_majorana(
         for left_right in product(*left_right_indices):
             majorana_ind = [int(2 * i + lr) for i, lr in zip(inds, left_right)]
 
-            swaps = 0
-            n = len(majorana_ind)
-            for i in range(n - 1):
-                swapped = False
-                for j in range(n - i - 1):
-                    if majorana_ind[j] > majorana_ind[j + 1]:
-                        majorana_ind[j], majorana_ind[j + 1] = (
-                            majorana_ind[j + 1],
-                            majorana_ind[j],
-                        )
-                        swapped = True
-                        swaps += 1
-                if not swapped:
-                    break
-            no_duplicates = []
-            for ind in range(0, len(majorana_ind)):
-                if majorana_ind.count(majorana_ind[ind]) % 2 == 1:
-                    no_duplicates.append(majorana_ind[ind])
+            # swaps = 0
+            # n = len(majorana_ind)
+            # for i in range(n - 1):
+            #     swapped = False
+            #     for j in range(n - i - 1):
+            #         if majorana_ind[j] > majorana_ind[j + 1]:
+            #             majorana_ind[j], majorana_ind[j + 1] = (
+            #                 majorana_ind[j + 1],
+            #                 majorana_ind[j],
+            #             )
+            #             swapped = True
+            #             swaps += 1
+            #     if not swapped:
+            #         break
+            # no_duplicates = []
+            # for ind in range(0, len(majorana_ind)):
+            #     if majorana_ind.count(majorana_ind[ind]) % 2 == 1:
+            #         no_duplicates.append(majorana_ind[ind])
 
-            if no_duplicates == []:
-                continue
+            # if no_duplicates == []:
+            #     continue
 
             majoranas = tuple(no_duplicates)
             term_ipowers = np.prod([ipow[lr] for ipow, lr in zip(ipowers, left_right)])

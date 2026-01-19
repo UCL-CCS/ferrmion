@@ -1,6 +1,6 @@
 //! Ternary tree encodings and methods.
 //!
-//! The ['TernaryTree`] struct is made up of a set of vectors.
+//! The [`TernaryTree`] struct is made up of a set of vectors.
 use crate::{encoding::MajoranaEncoding, operators::Pauli};
 use log::{debug, error, info};
 use numpy::ndarray::{s, Array1, Array2, Zip};
@@ -98,14 +98,34 @@ impl Not for YParity {
 /// without having to look at a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Parent {
+    /// The edge from parent to child.
     edge: Edge,
+    /// The index of the parent node.
     index: u8,
 }
 
 impl Parent {
+    /// Creates a new Parent.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::{Parent, Edge};
+    /// let parent = Parent::new(Edge::X, 0);
+    /// ```
     pub fn new(edge: Edge, index: u8) -> Self {
         Parent { edge, index }
     }
+
+    /// Returns the node index of the parent.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::{Parent, Edge};
+    /// let parent = Parent::new(Edge::X, 5);
+    /// assert_eq!(parent.node_index(), 5);
+    /// ```
     pub fn node_index(&self) -> usize {
         self.index as usize
     }
@@ -117,8 +137,11 @@ impl Parent {
 /// or a leaf with an associated majorana operator index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Child {
+    /// Another node with index.
     Node(u8),
+    /// X leaf with majorana index.
     XLeaf(u8),
+    /// Y leaf with majorana index.
     YLeaf(u8),
 }
 
@@ -133,6 +156,7 @@ impl Child {
     }
 }
 
+/// Represents a ternary tree structure for fermion-to-qubit encodings.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TernaryTree {
     pub(super) parent_of: Vec<Option<Parent>>,
@@ -144,6 +168,7 @@ pub struct TernaryTree {
     qubit_index_of: Option<Vec<usize>>,
 }
 
+/// Errors that can occur when working with TernaryTree.
 #[derive(Debug, Error)]
 pub enum TernaryTreeError {
     #[error("Could not build Ternary Tree from Node Map: {0:?}")]
@@ -164,6 +189,14 @@ pub enum TernaryTreeError {
 
 // Constructors and input
 impl TernaryTree {
+    /// Creates a new empty TernaryTree with the specified number of nodes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::TernaryTree;
+    /// let tree = TernaryTree::new(5);
+    /// ```
     pub fn new(n_nodes: usize) -> Self {
         Self {
             parent_of: vec![None; n_nodes],
@@ -176,6 +209,14 @@ impl TernaryTree {
         }
     }
 
+    /// Creates a new naive TernaryTree with the specified number of nodes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::TernaryTree;
+    /// let tree = TernaryTree::new_naive(5);
+    /// ```
     pub fn new_naive(n_nodes: usize) -> Self {
         Self {
             parent_of: vec![None; n_nodes],
@@ -188,6 +229,15 @@ impl TernaryTree {
         }
     }
 
+    /// Builds a TernaryTree from a flatpack representation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::{TernaryTree, TTFlatPack};
+    /// let flatpack: TTFlatPack = vec![];
+    /// let tree = TernaryTree::from_flatpack(&flatpack).unwrap();
+    /// ```
     pub fn from_flatpack(flatpack: &TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new(n_nodes);
@@ -195,6 +245,15 @@ impl TernaryTree {
         Ok(tree)
     }
 
+    /// Builds a naive enumeration TernaryTree from a flatpack representation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::{TernaryTree, TTFlatPack};
+    /// let flatpack: TTFlatPack = vec![];
+    /// let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
+    /// ```
     pub fn from_flatpack_naive(flatpack: &TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new_naive(n_nodes);
@@ -258,6 +317,14 @@ impl TernaryTree {
 
 // Standard Encodings
 impl TernaryTree {
+    /// Creates a naive Jordan-Wigner TernaryTree.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::TernaryTree;
+    /// let tree = TernaryTree::naive_jordan_wigner(4);
+    /// ```
     pub fn naive_jordan_wigner(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
         let branch: Vec<(Edge, usize)> = (0..n_nodes - 1).map(|v| (Edge::Z, v + 1)).collect();
@@ -268,6 +335,14 @@ impl TernaryTree {
         tree
     }
 
+    /// Creates a naive Parity TernaryTree.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::TernaryTree;
+    /// let tree = TernaryTree::naive_parity(4);
+    /// ```
     pub fn naive_parity(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
         debug!("{:?}", tree);
@@ -277,6 +352,14 @@ impl TernaryTree {
         tree
     }
 
+    /// Creates a naive Bravyi-Kitaev TernaryTree.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::TernaryTree;
+    /// let tree = TernaryTree::naive_bravyi_kitaev(4);
+    /// ```
     pub fn naive_bravyi_kitaev(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
         if n_nodes >= 2 {
@@ -297,6 +380,14 @@ impl TernaryTree {
         tree
     }
 
+    /// Creates a naive JKMN TernaryTree.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::TernaryTree;
+    /// let tree = TernaryTree::naive_jkmn(4);
+    /// ```
     pub fn naive_jkmn(n_nodes: usize) -> TernaryTree {
         let mut tree = TernaryTree::new_naive(n_nodes);
 
@@ -319,6 +410,15 @@ impl TernaryTree {
 
 // Output
 impl TernaryTree {
+    /// Builds a MajoranaEncoding from the TernaryTree.
+    /// 
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::ternarytree::TernaryTree;
+    /// let tree = TernaryTree::naive_jordan_wigner(4);
+    /// let encoding = tree.build_encoding(4).unwrap();
+    /// ```
     pub fn build_encoding(
         &self,
         n_qubits: usize,
@@ -1003,6 +1103,25 @@ mod tt_tests {
         assert_eq!(branch_tt.y_child_of.iter().flatten().count(), 0);
 
         assert!(branch_tt.add_branch(1, vec![(Edge::X, 2)]).is_err());
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn test_new_naive_properties(n in 1..10usize) {
+            let tt = TernaryTree::new_naive(n);
+            prop_assert_eq!(tt.parent_of.len(), n);
+            prop_assert_eq!(tt.x_child_of.len(), n);
+            prop_assert_eq!(tt.y_child_of.len(), n);
+            prop_assert_eq!(tt.z_child_of.len(), n);
+            // Check that x_child_of has XLeaf(i) for i in 0..n
+            for i in 0..n {
+                prop_assert_eq!(tt.x_child_of[i], Some(XLeaf(i as u8)));
+                prop_assert_eq!(tt.y_child_of[i], Some(YLeaf(i as u8)));
+                prop_assert_eq!(tt.z_child_of[i], None);
+            }
+        }
     }
 }
 

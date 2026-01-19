@@ -3,8 +3,8 @@ use crate::hamiltonians::QubitHamiltonian;
 Functions relating to the FermionQubitEncoding base class.
 */
 
-use crate::operators::{MajoranaProduct, MajoranaSparse, Pauli, PauliMatrix};
-use crate::utils::{self, icount_to_sign, vector_kron};
+use crate::operators::{MajoranaProduct, MajoranaSparse, Pauli};
+use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
 use itertools::izip;
 use log::debug;
@@ -13,10 +13,17 @@ use num_complex::c64;
 use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1};
 use numpy::Complex64;
 use std::collections::HashMap;
-use std::env::current_exe;
 use thiserror::Error;
 
 pub trait Encode<T> {
+    /// Encodes the input into a QubitHamiltonian.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::encoding::Encode;
+    /// // Example usage would depend on the implementor
+    /// ```
     fn encode(&self, input: T) -> QubitHamiltonian;
 }
 
@@ -184,84 +191,6 @@ impl MajoranaEncoding {
         }
         Ok(current_state)
     }
-
-    // pub fn ternary_tree_hartree_fock_state(
-    //     &self,
-    //     vacuum_state: ArrayView1<f64>,
-    //     fermionic_hf_state: ArrayView1<bool>,
-    //     mode_op_map: ArrayView1<usize>,
-    // ) -> (Array1<Complex64>, Array2<bool>) {
-    //     debug!("Calculating Hartree-fock state");
-
-    //     let mut current_state =
-    //         vec![Array1::from(vec![c64(1., 0.), c64(0., 0.)]); vacuum_state.len_of(Axis(0))];
-
-    //     let half_length = self.symplectics.len_of(ndarray::Axis(1)) / 2;
-    //     let (x_block, z_block) = self.symplectics.view().split_at(Axis(1), half_length);
-
-    //     for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
-    //         if !occ {
-    //             continue;
-    //         }
-    //         let mode_index = mode_op_map[[mode]];
-
-    //         // split the left and right operators into x and z sections
-    //         let left_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index);
-    //         let right_x = x_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
-    //         let left_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index);
-    //         let right_z = z_block.index_axis(ndarray::Axis(0), 2 * mode_index + 1);
-
-    //         Zip::from(&mut current_state)
-    //             .and(&left_x)
-    //             .and(&left_z)
-    //             .and(&right_x)
-    //             .and(&right_z)
-    //             .for_each(|s, &lx, &lz, &rx, &rz| {
-    //                 // Create an operator to act on the state with
-    //                 let left_op: PauliMatrix = Pauli::from((lx, lz)).into();
-    //                 let right_op: PauliMatrix = Pauli::from((rx, rz)).into();
-    //                 /// Ladder::Creation in terms of majoranas
-    //                 let total_op = left_op - right_op.map(|op| op * Complex64::new(0., 1.));
-    //                 *s = total_op.dot(s);
-    //             });
-    //     }
-
-    //     let mut vector_state: Array1<Complex64> = Zip::from(&current_state)
-    //         .fold(Array1::from_elem(1, c64(1., 0.)), |acc, c| {
-    //             vector_kron(&acc, c)
-    //         });
-
-    //     let mut zero_coeffs = Vec::new();
-    //     let mut hf_components: Vec<bool> = Vec::new();
-    //     // According to ndarray docs, when we don't know the final size
-    //     // of a multidimensional array we want to build iteratively
-    //     // the best thing to do is create a flat array and then reshape
-    //     for index in 0..vector_state.len() {
-    //         let coeff = vector_state[index];
-    //         if !(coeff == c64(0., 0.)) {
-    //             let binary = format!("{:0<width$}", format!("{index:b}"), width = (half_length));
-    //             for val in binary.chars() {
-    //                 hf_components.push(val.to_digit(10).unwrap() == 1)
-    //             }
-    //         } else {
-    //             zero_coeffs.push(index);
-    //         }
-    //     }
-    //     for index in zero_coeffs.iter().rev() {
-    //         vector_state.remove_index(Axis(0), *index);
-    //     }
-
-    //     let coeffs = vector_state.mapv(|c| c / (vector_state[0]));
-
-    //     let hf_components: ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 2]>> =
-    //         Array2::from_shape_vec((coeffs.len(), vacuum_state.len()), hf_components)
-    //             .expect("Should be able to make hf components array from vec.");
-    //     debug!(
-    //         "Found Hartree-Fock state: coeffs={:?}, hf_components={:#?}",
-    //         coeffs, hf_components
-    //     );
-    //     (coeffs, hf_components)
-    // }
 }
 
 impl MajoranaEncoding {
@@ -362,7 +291,9 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
 #[cfg(test)]
 mod owned_tests {
     use super::*;
+
     use ndarray::{arr1, arr2, Array1, ArrayView1};
+    use crate::ternarytree::TernaryTree;
     use num_complex::c64;
     use numpy::Complex64;
     use tinyvec::array_vec;
@@ -539,55 +470,37 @@ mod owned_tests {
     }
 
     #[test]
-    fn test_hartree_fock() {
-        let vacuum_state: ArrayView1<f64> = ArrayView1::from(&[0., 0., 0., 0., 0., 0.]);
+    fn test_tt_hartree_fock() {
         let fermionic_hf_state: ArrayView1<bool> =
             ArrayView1::from(&[true, true, true, false, false, false]);
-        let mode_op_map: ArrayView1<usize> = ArrayView1::from(&[0, 1, 2, 3, 4, 5, 6]);
-        let ipowers = ndarray::arr1(&[0, 0, 0, 0, 0, 0, 0]);
-        let symplectics: Array2<bool> = arr2(&[
-            [
-                true, false, false, false, false, false, false, false, false, false, false, false,
-            ],
-            [
-                true, false, false, false, false, false, true, false, false, false, false, false,
-            ],
-            [
-                false, true, false, false, false, false, true, false, false, false, false, false,
-            ],
-            [
-                false, true, false, false, false, false, true, true, false, false, false, false,
-            ],
-            [
-                false, false, true, false, false, false, true, true, false, false, false, false,
-            ],
-            [
-                false, false, true, false, false, false, true, true, true, false, false, false,
-            ],
-            [
-                false, false, false, true, false, false, true, true, true, false, false, false,
-            ],
-            [
-                false, false, false, true, false, false, true, true, true, true, false, false,
-            ],
-            [
-                false, false, false, false, true, false, true, true, true, true, false, false,
-            ],
-            [
-                false, false, false, false, true, false, true, true, true, true, true, false,
-            ],
-            [
-                false, false, false, false, false, true, true, true, true, true, true, false,
-            ],
-            [
-                false, false, false, false, false, true, true, true, true, true, true, true,
-            ],
-        ]);
-        let encoding = MajoranaEncoding::new(ipowers, symplectics);
+        let mode_op_map: ArrayView1<usize> = ArrayView1::from(&[0, 1, 2, 3, 4, 5]);
+        let tree = TernaryTree::naive_jordan_wigner(6);
+        let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
+        let result = encoding
+             .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
+             .unwrap();
+         let c1 = c64(1., 0.);
+         assert!(result == arr1(&[true, true, true, false, false, false]));
+ 
+         let result2 = encoding
+             .ternary_tree_hartree_fock_state(
+                 ArrayView1::from(&[true, true, true, true, false, false]),
+                 mode_op_map,
+             )
+             .unwrap();
+         assert!(result2 == arr1(&[true, true, true, true, false, false]));
+     }
+
+    fn test_hartree_fock() {
+        let fermionic_hf_state: ArrayView1<bool> =
+            ArrayView1::from(&[true, true, true, false, false, false]);
+        let mode_op_map: ArrayView1<usize> = ArrayView1::from(&[0, 1, 2, 3, 4, 5]);
+        let tree = TernaryTree::naive_jordan_wigner(6);
+        let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
         let result = encoding
             .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
             .unwrap();
-        let c1 = c64(1., 0.);
+
         assert!(result == arr1(&[true, true, true, false, false, false]));
 
         let result2 = encoding
@@ -597,5 +510,106 @@ mod owned_tests {
             )
             .unwrap();
         assert!(result2 == arr1(&[true, true, true, true, false, false]));
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn test_naive_jw_hf_state_unchanged(hf_state in proptest::collection::vec(proptest::bool::ANY, 1..10)) {
+            let n = hf_state.len();
+            let tree = TernaryTree::naive_jordan_wigner(n);
+            let encoding = tree.build_encoding(n).unwrap();
+            let mode_op_map: Array1<usize> = (0..n).collect();
+            let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
+            let expected: Array1<bool> = hf_state.into_iter().collect();
+            prop_assert_eq!(qubit_hf, expected);
+        }
+
+        #[test]
+        fn test_naive_parity_hf_state_is_occupation_parity(hf_state in proptest::collection::vec(proptest::bool::ANY, 1..10)) {
+            let n = hf_state.len();
+            let tree = TernaryTree::naive_parity(n);
+            let encoding = tree.build_encoding(n).unwrap();
+            let mode_op_map: Array1<usize> = (0..n).collect();
+            let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
+            // expected_parity = cumsum(reversed) % 2, then reverse back
+            let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
+            let mut cumsum = 0;
+            for i in 0..reversed.len() {
+                if reversed[i] { cumsum += 1; }
+                reversed[i] = (cumsum % 2) == 1;
+            }
+            let expected: Array1<bool> = reversed.into_iter().rev().collect();
+            prop_assert_eq!(qubit_hf, expected);
+        }
+
+        #[test]
+        fn test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map in proptest::sample::subsequence((0..10).collect::<Vec<usize>>(), 10), n_electrons in 1..11usize) {
+            let n = 10;
+            let mut hf_state: Vec<bool> = vec![true; n_electrons];
+            hf_state.extend(vec![false; n - n_electrons]);
+            let tree = TernaryTree::naive_jordan_wigner(n);
+            let encoding = tree.build_encoding(n).unwrap();
+            let naive_mode_op_map: Array1<usize> = (0..n).collect();
+            let naive_qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), naive_mode_op_map.view()).unwrap();
+            prop_assert_eq!(naive_qubit_hf, Array1::from(hf_state.clone()));
+            let enumerated_qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), Array1::from(mode_op_map.clone()).view()).unwrap();
+            let mut expected = vec![false; n];
+            for &i in &mode_op_map[..n_electrons] {
+                if i < n {
+                    expected[i] = true;
+                }
+            }
+            prop_assert_eq!(enumerated_qubit_hf, Array1::from(expected));
+        }
+        #[test]
+        fn test_naive_jw_tt_hf_state_unchanged(hf_state in proptest::collection::vec(proptest::bool::ANY, 1..10)) {
+            let n = hf_state.len();
+            let tree = TernaryTree::naive_jordan_wigner(n);
+            let encoding = tree.build_encoding(n).unwrap();
+            let mode_op_map: Array1<usize> = (0..n).collect();
+            let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
+            let expected: Array1<bool> = hf_state.into_iter().collect();
+            prop_assert_eq!(qubit_hf, expected);
+        }
+
+        #[test]
+        fn test_naive_parity_tt_hf_state_is_occupation_parity(hf_state in proptest::collection::vec(proptest::bool::ANY, 1..10)) {
+            let n = hf_state.len();
+            let tree = TernaryTree::naive_parity(n);
+            let encoding = tree.build_encoding(n).unwrap();
+            let mode_op_map: Array1<usize> = (0..n).collect();
+            let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
+            // expected_parity = cumsum(reversed) % 2, then reverse back
+            let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
+            let mut cumsum = 0;
+            for i in 0..reversed.len() {
+                if reversed[i] { cumsum += 1; }
+                reversed[i] = (cumsum % 2) == 1;
+            }
+            let expected: Array1<bool> = reversed.into_iter().rev().collect();
+            prop_assert_eq!(qubit_hf, expected);
+        }
+
+        #[test]
+        fn test_enumerated_jw_tt_hf_state_match_reordered_naive(mode_op_map in proptest::sample::subsequence((0..10).collect::<Vec<usize>>(), 10), n_electrons in 1..11usize) {
+            let n = 10;
+            let mut hf_state: Vec<bool> = vec![true; n_electrons];
+            hf_state.extend(vec![false; n - n_electrons]);
+            let tree = TernaryTree::naive_jordan_wigner(n);
+            let encoding = tree.build_encoding(n).unwrap();
+            let naive_mode_op_map: Array1<usize> = (0..n).collect();
+            let naive_qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), naive_mode_op_map.view()).unwrap();
+            prop_assert_eq!(naive_qubit_hf, Array1::from(hf_state.clone()));
+            let enumerated_qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), Array1::from(mode_op_map.clone()).view()).unwrap();
+            let mut expected = vec![false; n];
+            for &i in &mode_op_map[..n_electrons] {
+                if i < n {
+                    expected[i] = true;
+                }
+            }
+            prop_assert_eq!(enumerated_qubit_hf, Array1::from(expected));
+        }
     }
 }

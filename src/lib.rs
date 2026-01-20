@@ -16,6 +16,9 @@ use numpy::{
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
+use std::collections::HashMap;
+use std::process::Output;
+use tinyvec::ArrayVec;
 pub mod operators;
 mod utils;
 use crate::operators::MajoranaSparse;

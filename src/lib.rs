@@ -351,7 +351,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 .iter()
                 .enumerate()
                 .map(|(ind, &v)| if ind < key.len() { Some(v) } else { None })
-                .collect::ArrayVec<[Option<u16>; 4]>().into_inner();
+                .collect::<ArrayVec<[Option<u16>; 4]>>().into_inner();
             output
                 .entry(key_with_options)
                 .and_modify(|v| *v += val)

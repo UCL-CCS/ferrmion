@@ -79,4 +79,4 @@ select = [
 ignore = ["E741"]
 
 [tool.pytest]
-addopts = ["--benchmark-autosave", "--benchmark-skip", "--log-level=WARNING"]
+addopts = ["--log-level=WARNING"]

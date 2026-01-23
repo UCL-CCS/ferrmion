@@ -14,8 +14,6 @@ dependencies = [
     "deap>=1.4.3",
     "rustworkx>=0.16.0",
     "numpy>=2",
-    "tn4qa>=0.0.4",
-    "nbed>=0.0.9",
 ]
 
 [project.optional-dependencies]

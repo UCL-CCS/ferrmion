@@ -1,20 +1,20 @@
 # Examples
 (Examples)=
 
-## Encodings
-```{base-gallery}
-:caption: Encoding Examples
-:tooltip:
-
-notebooks/growing_trees
-```
-
 ## Hamiltonians
 ```{base-gallery}
 :caption: Hamiltonian Examples
 :tooltip:
 
 notebooks/encoding_hamiltonians
+```
+
+## Encodings
+```{base-gallery}
+:caption: Encoding Examples
+:tooltip:
+
+notebooks/growing_trees
 notebooks/bonsai
 ```
 
@@ -28,9 +28,4 @@ notebooks/topp_hatt
 notebooks/rett
 notebooks/huffman
 notebooks/hatt
-```
-
-## Algorithms
-```
-notebooks/qdrift
 ```

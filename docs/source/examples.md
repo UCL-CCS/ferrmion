@@ -6,12 +6,7 @@
 :caption: Encoding Examples
 :tooltip:
 
-notebooks/topp_hatt
 notebooks/growing_trees
-notebooks/rett
-notebooks/huffman
-notebooks/bonsai
-notebooks/hatt
 ```
 
 ## Hamiltonians
@@ -20,6 +15,7 @@ notebooks/hatt
 :tooltip:
 
 notebooks/encoding_hamiltonians
+notebooks/bonsai
 ```
 
 ## Optimization
@@ -28,4 +24,13 @@ notebooks/encoding_hamiltonians
 :tooltip:
 
 notebooks/pauli_weight
+notebooks/topp_hatt
+notebooks/rett
+notebooks/huffman
+notebooks/hatt
+```
+
+## Algorithms
+```
+notebooks/qdrift
 ```

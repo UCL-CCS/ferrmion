@@ -3,15 +3,15 @@ Functions relating to encoding optimisation.
 */
 
 use crate::encoding::Encode;
-use crate::{encoding::MajoranaEncoding};
+use crate::encoding::MajoranaEncoding;
 
 use crate::operators::{CoefficientPauliWeight, MajoranaSparse, PauliWeight};
 use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
 };
-use ndarray::{ArrayView1};
-use numpy::ndarray::{Array1};
+use ndarray::ArrayView1;
+use numpy::ndarray::Array1;
 use rand::{distr::Uniform, prelude::*};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::sync::{Arc, Mutex};
@@ -124,8 +124,8 @@ pub fn anneal_enumerations<'coeff>(
                 .param(initial_guess.to_owned())
                 // Optional: Set maximum number of iterations (defaults to `std::u64::MAX`)
                 .max_iters(1_000)
-                // Optional: Set target cost function value (defaults to `std::f64::NEG_INFINITY`)
-                // .target_cost(0.0)
+            // Optional: Set target cost function value (defaults to `std::f64::NEG_INFINITY`)
+            // .target_cost(0.0)
         })
         // Optional: Attach a observer
         // .add_observer(SlogLogger::term(), ObserverMode::Never)

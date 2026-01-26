@@ -19,7 +19,7 @@ from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.core import standard_symplectic_matrix
 from .conftest import diagonalise_pauli_hamiltonian
 import hypothesis
-from hypothesis import given,strategies as st 
+from hypothesis import given,strategies as st
 from hypothesis.extra.numpy import arrays
 import logging
 logger = logging.getLogger(__name__)
@@ -499,10 +499,10 @@ def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
 @pytest.mark.parametrize("encoding", [JW, PE, BK])
 def test_naive_water_hf_energy_correct(encoding, water_data):
     fermionic_hf_state = np.array([True]*10 + [False] * 4, dtype=np.bool)
- 
+
     tree = encoding(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
- 
+
     fham = molecular_hamiltonian(water_data["ones"], water_data["twos"], constant_energy=water_data["constant_energy"])
     qham = tree.encode(fham)
     enumerated_qubit_hf_state = tree.hartree_fock_state(

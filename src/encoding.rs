@@ -292,8 +292,8 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
 mod owned_tests {
     use super::*;
 
-    use ndarray::{arr1, arr2, Array1, ArrayView1};
     use crate::ternarytree::TernaryTree;
+    use ndarray::{arr1, arr2, Array1, ArrayView1};
     use num_complex::c64;
     use numpy::Complex64;
     use tinyvec::array_vec;
@@ -477,19 +477,19 @@ mod owned_tests {
         let tree = TernaryTree::naive_jordan_wigner(6);
         let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
         let result = encoding
-             .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
-             .unwrap();
-         let c1 = c64(1., 0.);
-         assert!(result == arr1(&[true, true, true, false, false, false]));
- 
-         let result2 = encoding
-             .ternary_tree_hartree_fock_state(
-                 ArrayView1::from(&[true, true, true, true, false, false]),
-                 mode_op_map,
-             )
-             .unwrap();
-         assert!(result2 == arr1(&[true, true, true, true, false, false]));
-     }
+            .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
+            .unwrap();
+        let c1 = c64(1., 0.);
+        assert!(result == arr1(&[true, true, true, false, false, false]));
+
+        let result2 = encoding
+            .ternary_tree_hartree_fock_state(
+                ArrayView1::from(&[true, true, true, true, false, false]),
+                mode_op_map,
+            )
+            .unwrap();
+        assert!(result2 == arr1(&[true, true, true, true, false, false]));
+    }
 
     fn test_hartree_fock() {
         let fermionic_hf_state: ArrayView1<bool> =

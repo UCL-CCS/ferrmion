@@ -77,3 +77,13 @@ def diagonalise_pauli_hamiltonian(qham, neigvals:int):
         ofop+= QubitOperator(term=string, coefficient=v)
     diag, _ = eigsh(get_sparse_operator(ofop), k=neigvals, which="SA")
     return diag
+
+@fixture(scope="module")
+def topphatt_weight_snapshot(water_data) -> dict:
+    folder = Path(__file__).parent
+    filename = "./data/topphatt_weight_snapshot.json"
+
+    with open(folder.joinpath(filename), "rb") as file:
+        data = json.load(file)
+
+    return data

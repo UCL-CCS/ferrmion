@@ -461,7 +461,11 @@ class TernaryTree(FermionQubitEncoding):
                     [ True, False,  True, False,  True, False],
                     [ True, False,  True, False,  True,  True]]))
         """
-        return core.flatpack_symplectic_matrix(self.flatpack())
+        ipow, sym = core.flatpack_symplectic_matrix(self.flatpack())
+        reordering_index = np.kron(self.default_mode_op_map, np.array([2,2], dtype=np.uint))
+        reordering_index += np.arange(reordering_index.size, dtype=np.uint) % 2
+        return ipow[reordering_index], sym[reordering_index,:]
+
 
     def JordanWigner(self) -> "TernaryTree":
         """Create a new tree with the Jordan-Wigner encoding.

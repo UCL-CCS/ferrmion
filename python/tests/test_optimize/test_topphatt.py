@@ -1,5 +1,9 @@
 """Tests for TOPP-HATT Algorithm."""
+from autoray import e
 
+import json
+import ferrmion as fr
+from ferrmion.optimize.cost_functions import pauli_weight, coefficient_pauli_weight
 from ferrmion.optimize.topphatt import topphatt
 from ferrmion.utils import fermionic_to_sparse_majorana
 from ferrmion.encode.ternary_tree import (
@@ -56,14 +60,22 @@ def test_topphatt_bonsai(water_sparse_majorana):
 
 
 @pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
-def test_core_topphatt_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
+def test_topphatt_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]
-    n_modes = ones.shape[0]
-    ipow, sym = topphatt_standard(encoding, n_modes, n_modes, ["+-","++--"], [ones, twos])
-    qham = encode(ipow, sym, ["+-","++--"],[ones, twos], e_nuc)
-
+    fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
+    tree = fr.TernaryTree(fham.n_modes)
+    match encoding:
+        case "JW":
+            tree = tree.JW()
+        case "BK":
+            tree = tree.BK()
+        case "PE":
+            tree = tree.ParityEncoding()
+        case "JKMN":
+            tree = tree.JKMN()
+    qham = tree.encode_topphatt(fham)
 
     ofop = QubitOperator()
     for k, v in qham.items():
@@ -74,7 +86,29 @@ def test_core_topphatt_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_
             ]
         )
         ofop+= QubitOperator(term=string, coefficient=v)
+
     print(expected:=h2_mol_data_sets["eigvals"])
-    diag, _ = eigsh(get_sparse_operator(ofop), k=2*n_modes, which="SA")
+    diag, _ = eigsh(get_sparse_operator(ofop), k=2*fham.n_modes, which="SA")
     print(diag)
     assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
+
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+def test_topphatt_standard_h2o_weights_not_increased(encoding, water_data, topphatt_weight_snapshot):
+    ones = water_data["ones"]
+    twos = water_data["twos"]
+    e_nuc = water_data["constant_energy"]
+    fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
+    tree = fr.TernaryTree(fham.n_modes)
+    match encoding:
+        case "JW":
+            tree = tree.JW()
+        case "BK":
+            tree = tree.BK()
+        case "PE":
+            tree = tree.ParityEncoding()
+        case "JKMN":
+            tree = tree.JKMN()
+    qham = tree.encode_topphatt(fham)
+
+    assert np.isclose(pauli_weight(qham), topphatt_weight_snapshot[encoding]["pauli_weight"])
+    assert np.isclose(coefficient_pauli_weight(qham), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"])

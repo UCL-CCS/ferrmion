@@ -153,7 +153,4 @@ def huffman_ternary_tree(
         mode_op_map[mode_index] = sorted_operators[operator_index]
 
     huffman_ternary_tree.default_mode_op_map = mode_op_map
-    huffman_ternary_tree.enumeration_scheme = (
-        huffman_ternary_tree.default_enumeration_scheme()
-    )
     return huffman_ternary_tree

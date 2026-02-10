@@ -8,6 +8,7 @@
 //! these to a python API.
 
 use ::core::panic;
+use itertools::Itertools;
 use log::{debug, info};
 use numpy::ndarray::Array1;
 use numpy::{
@@ -289,7 +290,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             constant_energy,
         );
 
-        let mut output: HashMap<[Option<u16>; 4], numpy::Complex64> = HashMap::new();
+        let mut output: HashMap<(Option<u16>,Option<u16>, Option<u16>, Option<u16>), numpy::Complex64> = HashMap::new();
         for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
             let key_with_options = key
                 .into_inner()
@@ -298,7 +299,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 .map(|(ind, &v)| if ind < key.len() { Some(v) } else { None })
                 .collect::<ArrayVec<[Option<u16>; 4]>>().into_inner();
             output
-                .entry(key_with_options)
+                .entry((key_with_options[0],key_with_options[1],key_with_options[2],key_with_options[3]))
                 .and_modify(|v| *v += val)
                 .or_insert(val);
         }

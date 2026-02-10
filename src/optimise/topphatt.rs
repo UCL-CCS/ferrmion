@@ -409,9 +409,9 @@ impl NodeDependencies {
 /// if three Majorana operators appear in both the term and _children_ with odd parity,
 /// together, they act with the identity as XYZ=-iI
 #[inline(always)]
-fn qubit_term_weight(term: &ArrayVec<[u16; MAJORANA_MAX]>, children: &[u16; 3]) -> usize {
+fn qubit_term_weight(term: &ArrayVec<[u16; MAJORANA_MAX]>, sorted_children: &[u16; 3]) -> usize {
     let mut odd_parity_paulis: u8 = 0;
-    for c in children {
+    for c in sorted_children {
         let occurances: usize = term.iter().filter(|&t| t == c).count();
         if occurances % 2 == 1 {
             odd_parity_paulis += 1;
@@ -552,6 +552,15 @@ pub fn topphatt(
                 if comb[0] == comb[2] {
                     continue;
                 }
+                let mut sorted_comb: [u16; 3] = comb.clone();
+                sorted_comb.sort();
+
+                let comb_min = sorted_comb
+                    .get(0)
+                    .expect("Combination should not be empty.");
+                let comb_max = sorted_comb
+                    .get(2)
+                    .expect("Combination should have 3 indices..");
                 // We expect that the hamiltonian terms are sorted!
                 let weight = hamiltonian
                     .indices
@@ -566,15 +575,12 @@ pub fn topphatt(
                             .min()
                             .expect("Hamiltonian terms should not be empty.");
 
-                        let comb_min = comb.iter().min().expect("Combination should not be empty.");
-                        let comb_max = comb.iter().max().expect("Combination should not be empty.");
-
                         if (comb_min > inds_max) | (comb_max < inds_min) {
                             Continue(acc)
                         } else if acc > min_weight {
                             Done(acc)
                         } else {
-                            Continue(acc + qubit_term_weight(inds, &comb))
+                            Continue(acc + qubit_term_weight(inds, &sorted_comb))
                         }
                     })
                     .into_inner();

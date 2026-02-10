@@ -578,66 +578,18 @@ impl MajoranaProduct {
             return;
         }
         let mut counter: usize = 0;
-        let mut ind = 0;
-        let mut safety = 0;
-        'outer: while safety < 10 {
-            while ind < (self.indices.len() - 1) && safety < 10 {
-                safety += 1;
-                let left = &self.indices[ind];
-                let right = &self.indices[ind + 1];
-                if left == right {
-                    self.indices.remove(ind);
-                    self.indices.remove(ind);
-                    if self.indices.len() <= 1 {
-                        break 'outer;
-                    };
-                    if ind > (self.indices.len() - 1) {
-                        ind = self.indices.len() - 1;
-                        break;
-                    }
-                    continue;
-                } else if left > right {
-                    self.indices.swap(ind, ind + 1);
+        let mut n = self.indices.len();
+        while n > 0 {
+            let mut new_n = 0;
+            for index in 1..n {
+                if self.indices[index-1] > self.indices[index] {
+                    self.indices.swap(index-1, index);
                     counter += 1;
-                }
-                ind += 1;
-                if self.indices.is_empty() {
-                    break 'outer;
+                    new_n = index;
                 }
             }
-            // ind = if ind >= self.indices.len() {
-            //     self.indices.len() - 1
-            // } else {
-            //     ind
-            // };
-            ind = if ind > (self.indices.len() - 1) {
-                self.indices.len() - 1
-            } else {
-                ind
-            };
-            if ind == 0 {
-                break 'outer;
-            }
-            while (ind >= 1) && (ind < self.indices.len()) && (safety < 10) {
-                safety += 1;
-                let left = &self.indices[ind.checked_sub(1).unwrap()];
-                let right = &self.indices[ind];
-                if left == right {
-                    // things get moved left
-                    self.indices.remove(ind - 1);
-                    self.indices.remove(ind - 1);
-                    if self.indices.len() <= 1 {
-                        break 'outer;
-                    };
-                    ind -= 1;
-                    continue;
-                } else if left > right {
-                    self.indices.swap(ind, ind - 1);
-                    counter += 1;
-                }
-                ind -= 1;
-            }
-        }
+            n = new_n;
+        } 
         if counter % 2 == 1 {
             self.coefficient *= -1.
         }
@@ -680,7 +632,8 @@ impl MajoranaBTree {
 
                     debug!("M Term {:?}", &majorana_term.to_vec());
                     debug!("M Scaler {:?}", &scaler);
-                    let mp = MajoranaProduct::new(majorana_term.to_vec(), *coeff * scaler);
+                    let mut mp = MajoranaProduct::new(majorana_term.to_vec(), *coeff * scaler);
+                    mp.majorise();
                     debug!("MP {:?}", &mp);
                     *self
                         .operators

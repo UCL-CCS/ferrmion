@@ -6,6 +6,20 @@
 
 This codebase contains methods to generate optimised qubit Hamiltonians from fermionic Hamiltonians.
 
+## Why use ferrmion?
+
+### Reduced Circuit Depth
+By reducing the average Pauli-weight of operators in the output hamiltonian, circuit depth can be improved without changing the underlying encoding.
+
+<img width="512" height="384" alt="Transpiled circuit depth for the qDRIFT algorithm, showing reductions of 25-30% for various qubit encodings." src="https://github.com/user-attachments/assets/b367a19f-c0a5-47fd-b910-9214d3158914" />
+
+### It's fast!
+Hamiltonians up to 40 qubits currently take less than 1 second to optimise.
+
+<img width="470" height="470" alt="TOPP-HATT runtime vs number of fermionic modes. " src="https://github.com/user-attachments/assets/621a49e3-5b1c-4af4-91bc-0f65a5e32db5" />
+
+for more detail see our [paper](https://arxiv.org/abs/2512.13580).
+
 ## Interop
 
 Most quantum SDKs will have methods to convert common python types to native objects, so it's usually possible to create an operator using the `.edge_operator` and `number_operator` functions of a `FermionQubitEncoding`.

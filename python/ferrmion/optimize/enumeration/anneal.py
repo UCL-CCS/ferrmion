@@ -16,7 +16,7 @@ def anneal_pauli_weight(
 
     if initial_guess is None:
         initial_guess_array = np.arange(hamiltonian.n_modes, dtype=np.uint)
-    elif isinstance(initial_guess, list)
+    elif isinstance(initial_guess, list):
         initial_guess_array = np.array([*initial_guess], dtype=np.uint)
 
     if temperature is None:
@@ -44,7 +44,7 @@ def anneal_coefficient_pauli_weight(
 
     if initial_guess is None:
         initial_guess_array = np.arange(hamiltonian.n_modes, dtype=np.uint)
-    elif isinstance(initial_guess, list)
+    elif isinstance(initial_guess, list):
         initial_guess_array = np.array([*initial_guess], dtype=np.uint)
 
     if temperature is None:

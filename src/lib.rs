@@ -8,19 +8,16 @@
 //! these to a python API.
 
 use ::core::panic;
-use itertools::Itertools;
 use log::{debug, info};
-use ndarray::iter;
 use numpy::ndarray::Array1;
 use numpy::{
-    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyList, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
-use tinyvec::ArrayVec;
 use std::collections::HashMap;
-use std::process::Output;
+use tinyvec::ArrayVec;
 pub mod operators;
 mod utils;
 use crate::operators::MajoranaSparse;
@@ -167,58 +164,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             PyComplex::from_complex_bound(py, coeff),
         )
     }
-
-    // #[pyfn(m)]
-    // #[pyo3(name = "molecular_hamiltonian_template")]
-    // fn wrap_molecular_hamiltonian_template<'py>(
-    //     py: Python<'py>,
-    //     ipowers: PyReadonlyArray1<u8>,
-    //     symplectics: PyReadonlyArray2<bool>,
-    //     physicist_notation: bool,
-    // ) -> Bound<'py, PyDict> {
-    //     let encoding = MajoranaEncoding::new(ipowers.as_array(), symplectics.as_array());
-    //     let hamiltonian: QubitHamiltonianTemplate = match physicist_notation {
-    //         true => molecular(encoding, Notation::Physicist),
-    //         false => molecular(encoding, Notation::Chemist),
-    //     };
-    //     hamiltonian
-    //         .into_py_dict(py)
-    //         .expect("Cannot parse Hamiltonian Template dict.")
-    // }
-
-    // #[pyfn(m)]
-    // #[pyo3(name = "hubbard_hamiltonian_template")]
-    // fn wrap_hubbard_hamiltonian_template<'py>(
-    //     py: Python<'py>,
-    //     ipowers: PyReadonlyArray1<u8>,
-    //     symplectics: PyReadonlyArray2<bool>,
-    // ) -> Bound<'py, PyDict> {
-    //     let encoding = MajoranaEncoding::new(
-    //         ipowers.as_array().to_owned(),
-    //         symplectics.as_array().to_owned(),
-    //     );
-
-    //     let hamiltonian = hubbard(encoding);
-    //     hamiltonian
-    //         .into_py_dict(py)
-    //         .expect("Cannot parse Hamiltonian Template dict.")
-    // }
-
-    // #[pyfn(m)]
-    // #[pyo3(name = "pauli_weight_distribution")]
-    // fn wrap_pauli_weight_distribution<'py>(
-    //     py: Python<'py>,
-    //     constant_energy: f64,
-    //     one_e_coeffs: PyReadonlyArray2<f64>,
-    //     two_e_coeffs: PyReadonlyArray4<f64>,
-    //     n_permutations: usize,
-    // ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
-    //     // let constant_energy = constant_energy.extract(py)?;
-    //     let one_e_coeffs = one_e_coeffs.as_array();
-    //     let two_e_coeffs = two_e_coeffs.as_array();
-
-    //     Ok((weight.0.into_pyarray(py), weight.1.into_pyarray(py)))
-    // }
 
     #[pyfn(m)]
     #[pyo3(name = "anneal_enumerations")]

@@ -1,5 +1,6 @@
 """Code to Geneate Hamiltonian Adaptive Ternary Tree from Majorana Hamiltonian."""
 
+import logging
 from itertools import permutations
 from typing import Iterable
 
@@ -7,8 +8,6 @@ import numpy as np
 
 from ferrmion.encode import TernaryTree
 from ferrmion.encode.ternary_tree_node import TTNode
-
-import logging
 
 logger = logging.getLogger(__name__)
 

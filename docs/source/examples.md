@@ -1,19 +1,6 @@
 # Examples
 (Examples)=
 
-## Encodings
-```{base-gallery}
-:caption: Encoding Examples
-:tooltip:
-
-notebooks/topp_hatt
-notebooks/growing_trees
-notebooks/rett
-notebooks/huffman
-notebooks/bonsai
-notebooks/hatt
-```
-
 ## Hamiltonians
 ```{base-gallery}
 :caption: Hamiltonian Examples
@@ -22,10 +9,23 @@ notebooks/hatt
 notebooks/encoding_hamiltonians
 ```
 
+## Encodings
+```{base-gallery}
+:caption: Encoding Examples
+:tooltip:
+
+notebooks/growing_trees
+notebooks/bonsai
+```
+
 ## Optimization
 ```{base-gallery}
 :caption: Optimization Examples
 :tooltip:
 
 notebooks/pauli_weight
+notebooks/topp_hatt
+notebooks/rett
+notebooks/huffman
+notebooks/hatt
 ```

@@ -94,7 +94,7 @@ def minimise_mi_distance(
 
 
 def coefficient_pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]:
-    """The Pauli-weight of a template scaled by the term coefficients.
+    """The Pauli-weight of a qubit hamiltonian,scaled by the term coefficients.
 
     Args:
         pauli_hamiltonian (dict[bytes, float]): A filled template hamiltonian with byte-hashed keys.
@@ -103,10 +103,12 @@ def coefficient_pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]
         list[float]: A single value in a list (needed for deap) giving the cost.
 
     Example:
-        >>> from ferrmion.optimize.enumeration.cost_functions import coefficient_pauli_weight
-        >>> from ferrmion.utils import symplectic_hash
-        >>> hashed_vec = symplectic_hash(np.array([True, False, False, True]))
-        >>> coefficient_pauli_weight({hashed_vec:1}, [0,1,2])
+        >>> from ferrmion.optimize.enumeration.cost_functions import pauli_weight
+        >>> from ferrmion.hamiltonians import molecular_hamiltonian
+        >>> ones = np.random.random((2,2))
+        >>> twos = np.random.random((2,2,2,2))
+        >>> nuclear_energy =  0.
+        >>> pauli_weight(molecular_hamiltonian(ones, twos, nuclear_energy))
     """
     logger.debug("Calculating Pauli-weighted Norm")
     logger.debug(pauli_hamiltonian)
@@ -119,7 +121,7 @@ def coefficient_pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]
 
 
 def pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]:
-    """The Pauli-weight of a template scaled by the term coefficients.
+    """The Pauli-weight of a qubit hamiltonianscaled by the term coefficients.
 
     Args:
         pauli_hamiltonian (dict[bytes, float]): A filled template hamiltonian with byte-hashed keys.
@@ -129,9 +131,11 @@ def pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]:
 
     Example:
         >>> from ferrmion.optimize.enumeration.cost_functions import coefficient_pauli_weight
-        >>> from ferrmion.utils import symplectic_hash
-        >>> hashed_vec = symplectic_hash(np.array([True, False, False, True]))
-        >>> coefficient_pauli_weight({hashed_vec:1}, [0,1,2])
+        >>> from ferrmion.hamiltonians import molecular_hamiltonian
+        >>> ones = np.random.random((2,2))
+        >>> twos = np.random.random((2,2,2,2))
+        >>> nuclear_energy =  0.
+        >>> coefficient_pauli_weight(molecular_hamiltonian(ones, twos, nuclear_energy))
     """
     logger.debug("Calculating Pauli-weighted Norm")
     logger.debug(pauli_hamiltonian)

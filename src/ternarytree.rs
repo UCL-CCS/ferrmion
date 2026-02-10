@@ -411,7 +411,7 @@ impl TernaryTree {
 // Output
 impl TernaryTree {
     /// Builds a MajoranaEncoding from the TernaryTree.
-    /// 
+    ///
     /// # Examples
     ///
     /// ```

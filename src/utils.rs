@@ -36,6 +36,8 @@ pub fn icount_to_sign(icount: usize) -> Complex64 {
 /// let right = arr1(&[Complex64::new(1.0, 0.0), Complex64::new(0.0, 1.0)]);
 /// let result = vector_kron(&left, &right);
 /// ```
+///
+#[ignore = "dead_code"]
 pub fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array1<Complex64> {
     concatenate![
         Axis(0),

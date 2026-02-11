@@ -1,9 +1,10 @@
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use log::debug;
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::zip;
-use std::usize;
+use std::ops::BitXorAssign;
 use thiserror::Error;
 use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 4;
@@ -15,13 +16,13 @@ use crate::ternarytree::{Child, Edge, TernaryTree, YParity};
 #[derive(Debug, Error)]
 pub enum ToppHattError {
     #[error("Found invalid restriction: {0:?}.")]
-    RestrictionError(Restriction),
+    InvalidRestriction(Restriction),
     #[error("Combination {0:?} cannot be used.")]
-    InvalidCombinationError(Vec<u16>),
+    InvalidCombination(Vec<u16>),
     #[error("No selection made for loop index {0}.")]
-    NoSelectionError(usize),
+    NoSelectionMade(usize),
     #[error("No min parent for loop index {0}.")]
-    NoMinParentError(usize),
+    NoMinParentFound(usize),
 }
 
 /// Restrictons on which Majorana operator can be assigned
@@ -30,7 +31,7 @@ pub enum ToppHattError {
 /// - a node
 /// - a leaf, with  or without an assiged Majorana.
 /// - nothing
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Restriction {
     /// The edge can have any assignment.
     Any,
@@ -291,7 +292,7 @@ impl TreeRetrictions {
                     Restriction::Empty => {
                         debug_assert!(c.is_none())
                     }
-                    _ => return Err(ToppHattError::RestrictionError(*r)),
+                    _ => return Err(ToppHattError::InvalidRestriction(*r)),
                 }
             }
         }
@@ -410,18 +411,25 @@ impl NodeDependencies {
 /// together, they act with the identity as XYZ=-iI
 #[inline(always)]
 fn qubit_term_weight(term: &ArrayVec<[u16; MAJORANA_MAX]>, sorted_children: &[u16; 3]) -> usize {
-    let mut odd_parity_paulis: u8 = 0;
-    for c in sorted_children {
-        let occurances: usize = term.iter().filter(|&t| t == c).count();
-        if occurances % 2 == 1 {
-            odd_parity_paulis += 1;
+    let mut even_parity_paulis = [true, true, true];
+    unsafe {
+        for t in term {
+            even_parity_paulis
+                .get_unchecked_mut(0)
+                .bitxor_assign(t == sorted_children.get_unchecked(0));
+            even_parity_paulis
+                .get_unchecked_mut(1)
+                .bitxor_assign(t == sorted_children.get_unchecked(1));
+            even_parity_paulis
+                .get_unchecked_mut(2)
+                .bitxor_assign(t == sorted_children.get_unchecked(2));
         }
     }
-    if odd_parity_paulis % 3 != 0 {
-        1
-    } else {
-        0
-    }
+    ((3 - (even_parity_paulis[0] as usize
+        + even_parity_paulis[1] as usize
+        + even_parity_paulis[2] as usize))
+        % 3
+        != 0) as usize
 }
 
 /// Simplify the Majorana operator Hamiltonian
@@ -442,20 +450,16 @@ fn reduce_hamiltonian(
 ) -> Vec<ArrayVec<[u16; MAJORANA_MAX]>> {
     // could also filter here by terms that
     // only contain indices in pairs.
+    let parent_filler = ArrayVec::from([parent_majorana_index; MAJORANA_MAX]);
     majorana_terms
         .iter_mut()
-        .map(|&mut term| {
-            term.iter()
-                .map(|&ind| {
-                    if selection.contains(&ind) {
-                        parent_majorana_index
-                    } else {
-                        ind
-                    }
-                })
-                .collect()
+        .map(|term| {
+            term.retain(|&ind| !selection.contains(&ind));
+            term.fill(parent_filler);
+            term.sort();
+            *term
         })
-        .filter(|&term| term != ArrayVec::<[u16; MAJORANA_MAX]>::new())
+        .filter(|&term| term != parent_filler)
         .collect::<BTreeSet<ArrayVec<[u16; MAJORANA_MAX]>>>()
         .into_iter()
         .collect::<Vec<ArrayVec<[u16; MAJORANA_MAX]>>>()
@@ -505,9 +509,33 @@ pub fn topphatt(
             .map(|((&ind, _), _)| ind)
             .collect();
 
+        // This is a bit of an optimisation for the case when there are multiple terminal
+        // nodes at the same length.
+        // Since they can only have one of each of EvenLeaf and Oddleaf on the x and y branches,
+        // while the z branch can be either EvenLeaf or OddLeaf.
+        let mut unique_choices = HashSet::new();
         debug!("Active Nodes {:?}", active_nodes);
         for active in active_nodes {
             debug!("Active {:?}", active);
+            if unique_choices.contains(&(
+                &restrictions.x[active],
+                &restrictions.y[active],
+                &restrictions.z[active],
+            )) {
+                continue;
+            } else if unique_choices.contains(&(
+                &restrictions.y[active],
+                &restrictions.x[active],
+                &restrictions.z[active],
+            )) {
+                continue;
+            } else {
+                unique_choices.insert((
+                    &restrictions.x[active],
+                    &restrictions.y[active],
+                    &restrictions.z[active],
+                ));
+            }
 
             let mut allowed_x =
                 restrictions.x[active].get_index_subset(&unassigned_modes, tree.n_nodes);
@@ -547,7 +575,7 @@ pub fn topphatt(
                         [comb[0], pair, comb[1]]
                     }
                     3 => [comb[0], comb[1], comb[2]],
-                    _ => return Err(ToppHattError::InvalidCombinationError(comb)),
+                    _ => return Err(ToppHattError::InvalidCombination(comb)),
                 };
                 if comb[0] == comb[2] {
                     continue;
@@ -566,13 +594,10 @@ pub fn topphatt(
                     .indices
                     .iter()
                     .fold_while(0, |acc, inds| {
-                        let inds_max = inds
-                            .iter()
-                            .max()
-                            .expect("Hamiltonian terms should not be empty.");
+                        debug_assert!(inds.is_sorted());
+                        let inds_max = inds.last().expect("Hamiltonian terms should not be empty.");
                         let inds_min = inds
-                            .iter()
-                            .min()
+                            .first()
                             .expect("Hamiltonian terms should not be empty.");
 
                         if (comb_min > inds_max) | (comb_max < inds_min) {
@@ -604,7 +629,7 @@ pub fn topphatt(
         debug!("Min Parent {:?}", min_parent);
         match selection {
             [u16::MAX, u16::MAX, u16::MAX] => {
-                return Err(ToppHattError::NoSelectionError(loop_index))
+                return Err(ToppHattError::NoSelectionMade(loop_index))
             }
             _ => {
                 debug!("Removing selection from unassigned");
@@ -628,7 +653,7 @@ pub fn topphatt(
         debug!("Total weight {:?}", total_weight);
 
         match min_parent {
-            usize::MAX => return Err(ToppHattError::NoMinParentError(loop_index)),
+            usize::MAX => return Err(ToppHattError::NoMinParentFound(loop_index)),
             _ => node_dependencies.drop_node(min_parent),
         }
 
@@ -1006,7 +1031,7 @@ mod test_topphatt {
 
         let expected = vec![
             array_vec!([u16;4] => 0,1,999,999),
-            array_vec!([u16;4] => 0,999,999, 4),
+            array_vec!([u16;4] => 0,4, 999,999),
         ];
 
         assert_eq!(hamiltonian, expected);

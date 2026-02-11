@@ -1,0 +1,1190 @@
+[
+  {
+    "molname": "H2",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 4,
+    "n_terms": 82,
+    "naive_weights": [32, 6.619797748253959, 15],
+    "topphatt_weights": [32, 6.6197977482539585, 15]
+  },
+  {
+    "molname": "H2",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 4,
+    "n_terms": 82,
+    "naive_weights": [34, 7.965376464217923, 15],
+    "topphatt_weights": [32, 7.965376464217924, 15]
+  },
+  {
+    "molname": "H2",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 4,
+    "n_terms": 82,
+    "naive_weights": [34, 7.709210612538906, 15],
+    "topphatt_weights": [36, 8.358957631188863, 15]
+  },
+  {
+    "molname": "H2",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 4,
+    "n_terms": 82,
+    "naive_weights": [36, 7.80368577377342, 15],
+    "topphatt_weights": [36, 7.606895190287949, 15]
+  },
+  {
+    "molname": "H2",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 8,
+    "n_terms": 544,
+    "naive_weights": [848, 63.77744229496227, 185],
+    "topphatt_weights": [720, 53.184953051038036, 185]
+  },
+  {
+    "molname": "H2",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 8,
+    "n_terms": 544,
+    "naive_weights": [868, 79.1090912267606, 185],
+    "topphatt_weights": [744, 70.3462957162858, 185]
+  },
+  {
+    "molname": "H2",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 8,
+    "n_terms": 544,
+    "naive_weights": [826, 74.08723106460684, 185],
+    "topphatt_weights": [756, 68.60372374518465, 185]
+  },
+  {
+    "molname": "H2",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 8,
+    "n_terms": 544,
+    "naive_weights": [832, 72.61294633927389, 185],
+    "topphatt_weights": [812, 69.20537727700767, 185]
+  },
+  {
+    "molname": "H2",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 20,
+    "n_terms": 5522,
+    "naive_weights": [28404, 717.4594001721729, 2955],
+    "topphatt_weights": [20940, 543.419429721922, 2955]
+  },
+  {
+    "molname": "H2",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 20,
+    "n_terms": 5522,
+    "naive_weights": [28706, 887.2069613742633, 2955],
+    "topphatt_weights": [21283, 715.9572077507748, 2955]
+  },
+  {
+    "molname": "H2",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 20,
+    "n_terms": 5522,
+    "naive_weights": [22828, 779.6678660432377, 2955],
+    "topphatt_weights": [20705, 768.4331490079298, 2955]
+  },
+  {
+    "molname": "H2",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 20,
+    "n_terms": 5522,
+    "naive_weights": [21694, 741.8279241987075, 2955],
+    "topphatt_weights": [20708, 724.414163111895, 2955]
+  },
+  {
+    "molname": "LiH",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 12,
+    "n_terms": 1698,
+    "naive_weights": [3888, 76.05566826143044, 631],
+    "topphatt_weights": [2784, 61.072932219527345, 631]
+  },
+  {
+    "molname": "LiH",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 12,
+    "n_terms": 1698,
+    "naive_weights": [4030, 102.41434575846709, 631],
+    "topphatt_weights": [2988, 91.1908100502268, 631]
+  },
+  {
+    "molname": "LiH",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 12,
+    "n_terms": 1698,
+    "naive_weights": [3384, 97.9980455359818, 631],
+    "topphatt_weights": [3232, 95.00031756865948, 631]
+  },
+  {
+    "molname": "LiH",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 12,
+    "n_terms": 1698,
+    "naive_weights": [3582, 96.10753775709958, 631],
+    "topphatt_weights": [3284, 91.5674254336066, 631]
+  },
+  {
+    "molname": "LiH",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 22,
+    "n_terms": 14923,
+    "naive_weights": [93796, 505.07042770406116, 8794],
+    "topphatt_weights": [65564, 310.3695136082775, 8794]
+  },
+  {
+    "molname": "LiH",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 22,
+    "n_terms": 14923,
+    "naive_weights": [94673, 592.836228853434, 8794],
+    "topphatt_weights": [66702, 406.3734813369307, 8794]
+  },
+  {
+    "molname": "LiH",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 22,
+    "n_terms": 14923,
+    "naive_weights": [70804, 459.7587416769972, 8794],
+    "topphatt_weights": [65709, 437.97524701161166, 8794]
+  },
+  {
+    "molname": "LiH",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 22,
+    "n_terms": 14923,
+    "naive_weights": [67802, 460.47190337141956, 8794],
+    "topphatt_weights": [63514, 410.83283489236226, 8794]
+  },
+  {
+    "molname": "LiH",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 38,
+    "n_terms": 103913,
+    "naive_weights": [1340884, 3334.7868103841497, 78030],
+    "topphatt_weights": [1117516, 2062.689619658414, 78030]
+  },
+  {
+    "molname": "LiH",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 38,
+    "n_terms": 103913,
+    "naive_weights": [1344722, 3683.158019188789, 78030],
+    "topphatt_weights": [1121535, 2436.2114829056695, 78030]
+  },
+  {
+    "molname": "LiH",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 38,
+    "n_terms": 103913,
+    "naive_weights": [842235, 2425.859286362633, 78030],
+    "topphatt_weights": [761464, 2158.54983158912, 78030]
+  },
+  {
+    "molname": "LiH",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 38,
+    "n_terms": 103913,
+    "naive_weights": [755834, 2279.94604207219, 78030],
+    "topphatt_weights": [738022, 2130.4147404720234, 78030]
+  },
+  {
+    "molname": "H2O",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 14,
+    "n_terms": 4263,
+    "naive_weights": [14764, 272.1874143499042, 2042],
+    "topphatt_weights": [10954, 207.1347468505187, 2042]
+  },
+  {
+    "molname": "H2O",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 14,
+    "n_terms": 4263,
+    "naive_weights": [15054, 353.78885095960186, 2042],
+    "topphatt_weights": [11438, 298.0912922626595, 2042]
+  },
+  {
+    "molname": "H2O",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 14,
+    "n_terms": 4263,
+    "naive_weights": [12703, 374.5284742305147, 2042],
+    "topphatt_weights": [12489, 284.1832510666196, 2042]
+  },
+  {
+    "molname": "H2O",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 14,
+    "n_terms": 4263,
+    "naive_weights": [12734, 357.1076058502293, 2042],
+    "topphatt_weights": [12044, 303.0994891720459, 2042]
+  },
+  {
+    "molname": "H2O",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 26,
+    "n_terms": 36641,
+    "naive_weights": [285512, 2342.116727060445, 23328],
+    "topphatt_weights": [213892, 1513.957818232674, 23328]
+  },
+  {
+    "molname": "H2O",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 26,
+    "n_terms": 36641,
+    "naive_weights": [287756, 2629.636652911664, 23328],
+    "topphatt_weights": [216918, 1816.7590471034364, 23328]
+  },
+  {
+    "molname": "H2O",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 26,
+    "n_terms": 36641,
+    "naive_weights": [203787, 1997.5099410975386, 23328],
+    "topphatt_weights": [199577, 1798.5772950678413, 23328]
+  },
+  {
+    "molname": "H2O",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 26,
+    "n_terms": 36641,
+    "naive_weights": [193850, 1899.474027429358, 23328],
+    "topphatt_weights": [189090, 1748.4448245718193, 23328]
+  },
+  {
+    "molname": "H2O",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 48,
+    "n_terms": 305748,
+    "naive_weights": [4982572, 16762.734724434413, 236333],
+    "topphatt_weights": [3446842, 9932.226099432215, 236333]
+  },
+  {
+    "molname": "H2O",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 48,
+    "n_terms": 305748,
+    "naive_weights": [4994776, 17889.04214175846, 236333],
+    "topphatt_weights": [3462959, 11090.18319339429, 236333]
+  },
+  {
+    "molname": "H2O",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 48,
+    "n_terms": 305748,
+    "naive_weights": [2778687, 10907.383425180577, 236333],
+    "topphatt_weights": [2661190, 10197.603848558745, 236333]
+  },
+  {
+    "molname": "H2O",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 48,
+    "n_terms": 305748,
+    "naive_weights": [2450218, 9898.241123703838, 236333],
+    "topphatt_weights": [2287700, 9040.382782277858, 236333]
+  },
+  {
+    "molname": "BH3",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 16,
+    "n_terms": 7348,
+    "naive_weights": [31248, 294.9808535957309, 3821],
+    "topphatt_weights": [23000, 250.3911920604217, 3821]
+  },
+  {
+    "molname": "BH3",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 16,
+    "n_terms": 7348,
+    "naive_weights": [31680, 378.25910672441773, 3821],
+    "topphatt_weights": [23776, 338.94340502780653, 3821]
+  },
+  {
+    "molname": "BH3",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 16,
+    "n_terms": 7348,
+    "naive_weights": [25871, 359.9677523429508, 3821],
+    "topphatt_weights": [25669, 349.38718796274424, 3821]
+  },
+  {
+    "molname": "BH3",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 16,
+    "n_terms": 7348,
+    "naive_weights": [25333, 348.2503914024336, 3821],
+    "topphatt_weights": [25072, 334.987258522686, 3821]
+  },
+  {
+    "molname": "BH3",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 30,
+    "n_terms": 69163,
+    "naive_weights": [659904, 2526.552598383212, 47022],
+    "topphatt_weights": [458704, 1656.6813269031163, 47022]
+  },
+  {
+    "molname": "BH3",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 30,
+    "n_terms": 69163,
+    "naive_weights": [663132, 2820.979360643605, 47022],
+    "topphatt_weights": [464144, 1967.0801261827544, 47022]
+  },
+  {
+    "molname": "BH3",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 30,
+    "n_terms": 69163,
+    "naive_weights": [451518, 2057.0315005709917, 47022],
+    "topphatt_weights": [438079, 1914.7481449961624, 47022]
+  },
+  {
+    "molname": "BH3",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 30,
+    "n_terms": 69163,
+    "naive_weights": [412486, 1948.6527002048242, 47022],
+    "topphatt_weights": [400738, 1803.1391067875654, 47022]
+  },
+  {
+    "molname": "BH3",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 58,
+    "n_terms": 679541,
+    "naive_weights": [13952272, 28997.531122800025, 551660],
+    "topphatt_weights": [9640088, 17927.896149355653, 551660]
+  },
+  {
+    "molname": "BH3",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 58,
+    "n_terms": 679541,
+    "naive_weights": [13972130, 30341.64746221363, 551660],
+    "topphatt_weights": [9669244, 19144.70064399009, 551660]
+  },
+  {
+    "molname": "BH3",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 58,
+    "n_terms": 679541,
+    "naive_weights": [7024504, 16556.30350476849, 551660],
+    "topphatt_weights": [6696481, 15213.698540201744, 551660]
+  },
+  {
+    "molname": "BH3",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 58,
+    "n_terms": 679541,
+    "naive_weights": [6069704, 14691.186458728309, 551660],
+    "topphatt_weights": [5820114, 13679.431941885521, 551660]
+  },
+  {
+    "molname": "CH4",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 18,
+    "n_terms": 15293,
+    "naive_weights": [84308, 574.0951867073998, 9364],
+    "topphatt_weights": [66596, 458.7087553444591, 9364]
+  },
+  {
+    "molname": "CH4",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 18,
+    "n_terms": 15293,
+    "naive_weights": [84929, 676.4632754293013, 9364],
+    "topphatt_weights": [67345, 571.9806887247566, 9364]
+  },
+  {
+    "molname": "CH4",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 18,
+    "n_terms": 15293,
+    "naive_weights": [70641, 614.2325494689271, 9364],
+    "topphatt_weights": [70466, 578.8984866252288, 9364]
+  },
+  {
+    "molname": "CH4",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 18,
+    "n_terms": 15293,
+    "naive_weights": [67723, 589.908465276579, 9364],
+    "topphatt_weights": [64597, 546.1594598095986, 9364]
+  },
+  {
+    "molname": "CH4",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 34,
+    "n_terms": 160941,
+    "naive_weights": [1880972, 5661.0097382231625, 121156],
+    "topphatt_weights": [1436172, 4138.485052203965, 121156]
+  },
+  {
+    "molname": "CH4",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 34,
+    "n_terms": 160941,
+    "naive_weights": [1885893, 6055.098738977588, 121156],
+    "topphatt_weights": [1441610, 4545.833348975525, 121156]
+  },
+  {
+    "molname": "CH4",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 34,
+    "n_terms": 160941,
+    "naive_weights": [1249117, 4186.532029406248, 121156],
+    "topphatt_weights": [1248009, 3997.10991628635, 121156]
+  },
+  {
+    "molname": "CH4",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 34,
+    "n_terms": 160941,
+    "naive_weights": [1129848, 3803.144829893021, 121156],
+    "topphatt_weights": [1117963, 3731.332051074663, 121156]
+  },
+  {
+    "molname": "CH4",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 68,
+    "n_terms": 2265550,
+    "naive_weights": [57006700, 69077.46430944474, 1952343],
+    "topphatt_weights": [44381112, 50689.39884075346, 1952343]
+  },
+  {
+    "molname": "CH4",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 68,
+    "n_terms": 2265550,
+    "naive_weights": [57048526, 70897.1171647414, 1952343],
+    "topphatt_weights": [44423954, 52438.60688212061, 1952343]
+  },
+  {
+    "molname": "CH4",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 68,
+    "n_terms": 2265550,
+    "naive_weights": [26633515, 37083.25076801168, 1952343],
+    "topphatt_weights": [26632929, 36302.797756697044, 1952343]
+  },
+  {
+    "molname": "CH4",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 68,
+    "n_terms": 2265550,
+    "naive_weights": [22672939, 32049.543849540947, 1952343],
+    "topphatt_weights": [21958907, 30618.971131691094, 1952343]
+  },
+  {
+    "molname": "N2",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 20,
+    "n_terms": 5510,
+    "naive_weights": [28484, 605.5690698352041, 2963],
+    "topphatt_weights": [20944, 480.10157411028365, 2963]
+  },
+  {
+    "molname": "N2",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 20,
+    "n_terms": 5510,
+    "naive_weights": [28785, 743.1578494299617, 2963],
+    "topphatt_weights": [21287, 628.6995302567652, 2963]
+  },
+  {
+    "molname": "N2",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 20,
+    "n_terms": 5510,
+    "naive_weights": [22873, 747.0025016437368, 2963],
+    "topphatt_weights": [20701, 616.9444214554155, 2963]
+  },
+  {
+    "molname": "N2",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 20,
+    "n_terms": 5510,
+    "naive_weights": [21734, 733.0016805025464, 2963],
+    "topphatt_weights": [20706, 612.4321665083164, 2963]
+  },
+  {
+    "molname": "N2",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 36,
+    "n_terms": 48022,
+    "naive_weights": [566500, 5666.642485110698, 34739],
+    "topphatt_weights": [406048, 3320.8566188948325, 34739]
+  },
+  {
+    "molname": "N2",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 36,
+    "n_terms": 48022,
+    "naive_weights": [568242, 6134.44581545318, 34739],
+    "topphatt_weights": [408410, 3806.6915344091976, 34739]
+  },
+  {
+    "molname": "N2",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 36,
+    "n_terms": 48022,
+    "naive_weights": [362910, 4241.503884589746, 34739],
+    "topphatt_weights": [340153, 3755.148737541518, 34739]
+  },
+  {
+    "molname": "N2",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 36,
+    "n_terms": 48022,
+    "naive_weights": [332131, 4062.742715660994, 34739],
+    "topphatt_weights": [321573, 3664.3649866271803, 34739]
+  },
+  {
+    "molname": "N2",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 56,
+    "n_terms": 233156,
+    "naive_weights": [4665611, 22495.883765241804, 191542],
+    "topphatt_weights": [3801902, 14417.333832780045, 191542]
+  },
+  {
+    "molname": "N2",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 56,
+    "n_terms": 233156,
+    "naive_weights": [4671170, 23833.85814561838, 191542],
+    "topphatt_weights": [3807980, 15786.996431698042, 191542]
+  },
+  {
+    "molname": "N2",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 56,
+    "n_terms": 233156,
+    "naive_weights": [2427163, 14251.33554189912, 191542],
+    "topphatt_weights": [2219147, 12724.901130051707, 191542]
+  },
+  {
+    "molname": "N2",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 56,
+    "n_terms": 233156,
+    "naive_weights": [2117547, 12999.47961855061, 191542],
+    "topphatt_weights": [2060916, 12178.57248803544, 191542]
+  },
+  {
+    "molname": "HCN",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 22,
+    "n_terms": 14827,
+    "naive_weights": [92204, 888.0941207494062, 8810],
+    "topphatt_weights": [65624, 598.4658674424172, 8810]
+  },
+  {
+    "molname": "HCN",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 22,
+    "n_terms": 14827,
+    "naive_weights": [93093, 1060.6854192384105, 8810],
+    "topphatt_weights": [66761, 785.4101596706427, 8810]
+  },
+  {
+    "molname": "HCN",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 22,
+    "n_terms": 14827,
+    "naive_weights": [72033, 993.147165289954, 8810],
+    "topphatt_weights": [65739, 817.6313803200732, 8810]
+  },
+  {
+    "molname": "HCN",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 22,
+    "n_terms": 14827,
+    "naive_weights": [67421, 936.8365469415816, 8810],
+    "topphatt_weights": [63608, 771.945762605591, 8810]
+  },
+  {
+    "molname": "HCN",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 40,
+    "n_terms": 141192,
+    "naive_weights": [1916424, 8432.798292713904, 106601],
+    "topphatt_weights": [1343356, 4787.780103524457, 106601]
+  },
+  {
+    "molname": "HCN",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 40,
+    "n_terms": 141192,
+    "naive_weights": [1921635, 9036.85858056353, 106601],
+    "topphatt_weights": [1350327, 5292.732380238149, 106601]
+  },
+  {
+    "molname": "HCN",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 40,
+    "n_terms": 141192,
+    "naive_weights": [1162736, 5831.886465968908, 106601],
+    "topphatt_weights": [1076252, 4971.4407446930445, 106601]
+  },
+  {
+    "molname": "HCN",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 40,
+    "n_terms": 141192,
+    "naive_weights": [1047530, 5389.679255505927, 106601],
+    "topphatt_weights": [982502, 4736.145943986446, 106601]
+  },
+  {
+    "molname": "HCN",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 66,
+    "n_terms": 880365,
+    "naive_weights": [21165224, 45542.444819382865, 748628],
+    "topphatt_weights": [16791826, 27679.175992865585, 748628]
+  },
+  {
+    "molname": "HCN",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 66,
+    "n_terms": 880365,
+    "naive_weights": [21185546, 47414.26834851306, 748628],
+    "topphatt_weights": [16814803, 29591.097145546308, 748628]
+  },
+  {
+    "molname": "HCN",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 66,
+    "n_terms": 880365,
+    "naive_weights": [10107170, 25013.287353325304, 748628],
+    "topphatt_weights": [9583290, 22568.46422658641, 748628]
+  },
+  {
+    "molname": "HCN",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 66,
+    "n_terms": 880365,
+    "naive_weights": [8633122, 22014.095854109964, 748628],
+    "topphatt_weights": [8287994, 19845.15258892811, 748628]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 24,
+    "n_terms": 15360,
+    "naive_weights": [107760, 1034.1876729562953, 9449],
+    "topphatt_weights": [78132, 827.4551936203737, 9449]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 24,
+    "n_terms": 15360,
+    "naive_weights": [108525, 1202.7348080802658, 9449],
+    "topphatt_weights": [79340, 991.8067941204386, 9449]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 24,
+    "n_terms": 15360,
+    "naive_weights": [81891, 1070.0557369071755, 9449],
+    "topphatt_weights": [77954, 966.8831720431731, 9449]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 24,
+    "n_terms": 15360,
+    "naive_weights": [75701, 1020.8601232820539, 9449],
+    "topphatt_weights": [74016, 940.0613455062223, 9449]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 44,
+    "n_terms": 142218,
+    "naive_weights": [2128684, 8220.7161909334, 108371],
+    "topphatt_weights": [1473958, 5083.375628286995, 108371]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 44,
+    "n_terms": 142218,
+    "naive_weights": [2133754, 8814.569301152505, 108371],
+    "topphatt_weights": [1488393, 5750.11085110929, 108371]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 44,
+    "n_terms": 142218,
+    "naive_weights": [1232437, 5530.818301707749, 108371],
+    "topphatt_weights": [1194557, 5098.9480311516445, 108371]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 44,
+    "n_terms": 142218,
+    "naive_weights": [1100554, 5291.093734812793, 108371],
+    "topphatt_weights": [1052262, 4640.028991899963, 108371]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 76,
+    "n_terms": 903494,
+    "naive_weights": [24849520, 46499.47513850671, 766219],
+    "topphatt_weights": [16755770, 27196.71728689434, 766219]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 76,
+    "n_terms": 903494,
+    "naive_weights": [24871545, 48492.14262158954, 766219],
+    "topphatt_weights": [16802424, 29387.26024563635, 766219]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 76,
+    "n_terms": 903494,
+    "naive_weights": [10800245, 24829.40351775513, 766219],
+    "topphatt_weights": [10260519, 21505.590335184774, 766219]
+  },
+  {
+    "molname": "C2H2",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 76,
+    "n_terms": 903494,
+    "naive_weights": [9180287, 21858.265386052986, 766219],
+    "topphatt_weights": [8826245, 19202.455370137097, 766219]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 26,
+    "n_terms": 57381,
+    "naive_weights": [489064, 1638.176837166961, 39724],
+    "topphatt_weights": [409714, 1341.0375428288094, 39724]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 26,
+    "n_terms": 57381,
+    "naive_weights": [491235, 1878.126883276832, 39724],
+    "topphatt_weights": [411927, 1549.0105854496653, 39724]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 26,
+    "n_terms": 57381,
+    "naive_weights": [362237, 1706.6678667609765, 39724],
+    "topphatt_weights": [360655, 1410.8011372109213, 39724]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 26,
+    "n_terms": 57381,
+    "naive_weights": [334198, 1619.469302988919, 39724],
+    "topphatt_weights": [325047, 1361.840074012834, 39724]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 48,
+    "n_terms": 589652,
+    "naive_weights": [10122996, 16150.55340370743, 478413],
+    "topphatt_weights": [8072796, 10929.445793670388, 478413]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 48,
+    "n_terms": 589652,
+    "naive_weights": [10138053, 17019.554419914482, 478413],
+    "topphatt_weights": [8087542, 11896.135794835282, 478413]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 48,
+    "n_terms": 589652,
+    "naive_weights": [5692989, 10466.543447124239, 478413],
+    "topphatt_weights": [5691654, 9883.923691670532, 478413]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 48,
+    "n_terms": 589652,
+    "naive_weights": [5020112, 9499.254700697873, 478413],
+    "topphatt_weights": [4904704, 8712.021938937918, 478413]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 86,
+    "n_terms": 5615703,
+    "naive_weights": [181330900, 144391.87822425214, 4983614],
+    "topphatt_weights": [143716952, 104541.2839322588, 4983614]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 86,
+    "n_terms": 5615703,
+    "naive_weights": [181420396, 147631.14905881023, 4983614],
+    "topphatt_weights": [143803545, 107795.00676032968, 4983614]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 86,
+    "n_terms": 5615703,
+    "naive_weights": [73953124, 69177.31427045184, 4983614],
+    "topphatt_weights": [73973308, 66216.62743873622, 4983614]
+  },
+  {
+    "molname": "CH3F",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 86,
+    "n_terms": 5615703,
+    "naive_weights": [62137689, 59256.10904360983, 4983614],
+    "topphatt_weights": [60774608, 56364.051160459596, 4983614]
+  },
+  {
+    "molname": "ethene",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 28,
+    "n_terms": 51762,
+    "naive_weights": [458484, 1656.2477019992466, 34687],
+    "topphatt_weights": [319170, 1259.0462273813323, 34687]
+  },
+  {
+    "molname": "ethene",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 28,
+    "n_terms": 51762,
+    "naive_weights": [460861, 1871.513583947021, 34687],
+    "topphatt_weights": [323428, 1473.904574162531, 34687]
+  },
+  {
+    "molname": "ethene",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 28,
+    "n_terms": 51762,
+    "naive_weights": [318240, 1482.3632536403654, 34687],
+    "topphatt_weights": [311226, 1472.8802641904779, 34687]
+  },
+  {
+    "molname": "ethene",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 28,
+    "n_terms": 51762,
+    "naive_weights": [295109, 1480.3031855461518, 34687],
+    "topphatt_weights": [289553, 1392.800754479554, 34687]
+  },
+  {
+    "molname": "ethene",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 52,
+    "n_terms": 514762,
+    "naive_weights": [9401592, 13913.043425273467, 408103],
+    "topphatt_weights": [6273228, 8566.850477260843, 408103]
+  },
+  {
+    "molname": "ethene",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 52,
+    "n_terms": 514762,
+    "naive_weights": [9418634, 14698.32712958071, 408103],
+    "topphatt_weights": [6300831, 9289.042250011076, 408103]
+  },
+  {
+    "molname": "ethene",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 52,
+    "n_terms": 514762,
+    "naive_weights": [4920854, 8515.26778784148, 408103],
+    "topphatt_weights": [4786210, 8009.56345230074, 408103]
+  },
+  {
+    "molname": "ethene",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 52,
+    "n_terms": 514762,
+    "naive_weights": [4378029, 8013.252436673664, 408103],
+    "topphatt_weights": [4175675, 7312.229323192723, 408103]
+  },
+  {
+    "molname": "ethene",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 96,
+    "n_terms": 4693676,
+    "naive_weights": [167814148, 117346.26112045556, 4131525],
+    "topphatt_weights": [109539948, 70036.93376382136, 4131525]
+  },
+  {
+    "molname": "ethene",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 96,
+    "n_terms": 4693676,
+    "naive_weights": [167907901, 120369.1026266905, 4131525],
+    "topphatt_weights": [109673266, 72961.97259136284, 4131525]
+  },
+  {
+    "molname": "ethene",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 96,
+    "n_terms": 4693676,
+    "naive_weights": [62815652, 53560.6789162885, 4131525],
+    "topphatt_weights": [60390582, 50518.009311485155, 4131525]
+  },
+  {
+    "molname": "ethene",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 96,
+    "n_terms": 4693676,
+    "naive_weights": [52879636, 46265.04681933669, 4131525],
+    "topphatt_weights": [50330924, 42477.16091371199, 4131525]
+  },
+  {
+    "molname": "ozone",
+    "basis": "sto-3g",
+    "encoding": "JordanWigner",
+    "n_modes": 30,
+    "n_terms": 60223,
+    "naive_weights": [567244, 2763.217005636062, 41138],
+    "topphatt_weights": [396404, 1868.4238129383175, 41138]
+  },
+  {
+    "molname": "ozone",
+    "basis": "sto-3g",
+    "encoding": "ParityEncoding",
+    "n_modes": 30,
+    "n_terms": 60223,
+    "naive_weights": [570120, 3109.8658562464498, 41138],
+    "topphatt_weights": [400750, 2242.6088101089586, 41138]
+  },
+  {
+    "molname": "ozone",
+    "basis": "sto-3g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 30,
+    "n_terms": 60223,
+    "naive_weights": [391705, 2848.8785021674476, 41138],
+    "topphatt_weights": [377167, 2427.68573866655, 41138]
+  },
+  {
+    "molname": "ozone",
+    "basis": "sto-3g",
+    "encoding": "JKMN",
+    "n_modes": 30,
+    "n_terms": 60223,
+    "naive_weights": [358878, 2648.6809697723675, 41138],
+    "topphatt_weights": [347471, 2308.9315158350805, 41138]
+  },
+  {
+    "molname": "ozone",
+    "basis": "6-31g",
+    "encoding": "JordanWigner",
+    "n_modes": 54,
+    "n_terms": 531319,
+    "naive_weights": [10107228, 30467.782392516372, 425650],
+    "topphatt_weights": [6725120, 19799.52671420655, 425650]
+  },
+  {
+    "molname": "ozone",
+    "basis": "6-31g",
+    "encoding": "ParityEncoding",
+    "n_modes": 54,
+    "n_terms": 531319,
+    "naive_weights": [10124273, 31707.774253105385, 425650],
+    "topphatt_weights": [6750093, 21074.9881534198, 425650]
+  },
+  {
+    "molname": "ozone",
+    "basis": "6-31g",
+    "encoding": "BravyiKitaev",
+    "n_modes": 54,
+    "n_terms": 531319,
+    "naive_weights": [5246405, 19366.590310858704, 425650],
+    "topphatt_weights": [5042331, 17669.29014878521, 425650]
+  },
+  {
+    "molname": "ozone",
+    "basis": "6-31g",
+    "encoding": "JKMN",
+    "n_modes": 54,
+    "n_terms": 531319,
+    "naive_weights": [4612275, 17266.54735344619, 425650],
+    "topphatt_weights": [4446519, 15772.711557691142, 425650]
+  },
+  {
+    "molname": "ozone",
+    "basis": "cc-pVDZ",
+    "encoding": "JordanWigner",
+    "n_modes": 84,
+    "n_terms": 2730578,
+    "naive_weights": [84665824, 138280.88622262175, 2372959],
+    "topphatt_weights": [56404334, 87200.73788903454, 2372959]
+  },
+  {
+    "molname": "ozone",
+    "basis": "cc-pVDZ",
+    "encoding": "ParityEncoding",
+    "n_modes": 84,
+    "n_terms": 2730578,
+    "naive_weights": [84724127, 141737.55017347613, 2372959],
+    "topphatt_weights": [56485985, 90767.48922877293, 2372959]
+  },
+  {
+    "molname": "ozone",
+    "basis": "cc-pVDZ",
+    "encoding": "BravyiKitaev",
+    "n_modes": 84,
+    "n_terms": 2730578,
+    "naive_weights": [34755187, 70595.81496305008, 2372959],
+    "topphatt_weights": [33216474, 65779.21012101519, 2372959]
+  },
+  {
+    "molname": "ozone",
+    "basis": "cc-pVDZ",
+    "encoding": "JKMN",
+    "n_modes": 84,
+    "n_terms": 2730578,
+    "naive_weights": [29311970, 60557.45139923498, 2372959],
+    "topphatt_weights": [28062414, 56048.671826666294, 2372959]
+  }
+]

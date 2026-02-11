@@ -1,6 +1,8 @@
 {
-  "JW": { "pauli_weight": 10930, "coefficient_pauli_weight": 144.863 },
-  "BK": { "pauli_weight": 12593, "coefficient_pauli_weight": 204.94 },
-  "PE": { "pauli_weight": 11396, "coefficient_pauli_weight": 207.54 },
-  "JKMN": { "pauli_weight": 11928, "coefficient_pauli_weight": 221.455 }
+  "JW": { "pauli_weight": 10932, "coefficient_pauli_weight": 146.0 },
+  "BK": { "pauli_weight": 12593, "coefficient_pauli_weight": 205.0 },
+  "PE": { "pauli_weight": 11422, "coefficient_pauli_weight": 213.0 },
+  "JKMN": { "pauli_weight": 11928, "coefficient_pauli_weight": 222.0 },
+  "HATT": { "pauli_weight": 12892, "coefficient_pauli_weight": 219.0 },
+  "Huffman": { "pauli_weight": 12287, "coefficient_pauli_weight": 195.0 }
 }

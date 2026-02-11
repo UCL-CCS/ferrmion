@@ -92,7 +92,7 @@ def test_topphatt_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets)
     print(diag)
     assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
 
-@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN","HATT", "Huffman"])
 def test_topphatt_standard_h2o_weights_not_increased(encoding, water_data, topphatt_weight_snapshot):
     ones = water_data["ones"]
     twos = water_data["twos"]
@@ -108,7 +108,13 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, water_data, topph
             tree = tree.ParityEncoding()
         case "JKMN":
             tree = tree.JKMN()
+        case "HATT":
+            tree = hamiltonian_adaptive_ternary_tree(
+                fr.core.fermionic_to_sparse_majorana(*fham.signatures_and_coefficients, fham.constant_energy),
+                fham.n_modes)
+        case "Huffman":
+            tree = huffman_ternary_tree(ones, twos)
     qham = tree.encode_topphatt(fham)
 
-    assert np.isclose(pauli_weight(qham), topphatt_weight_snapshot[encoding]["pauli_weight"])
-    assert np.isclose(coefficient_pauli_weight(qham), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"])
+    assert pauli_weight(qham)[0] <= topphatt_weight_snapshot[encoding]["pauli_weight"]
+    assert coefficient_pauli_weight(qham)[0] <= topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"]

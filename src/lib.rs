@@ -8,14 +8,13 @@
 //! these to a python API.
 
 use ::core::panic;
-use itertools::Itertools;
 use log::{debug, info};
 use numpy::ndarray::Array1;
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
 };
-use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyList, PyString};
+use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
 use tinyvec::ArrayVec;
@@ -290,16 +289,25 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             constant_energy,
         );
 
-        let mut output: HashMap<(Option<u16>,Option<u16>, Option<u16>, Option<u16>), numpy::Complex64> = HashMap::new();
+        let mut output: HashMap<
+            (Option<u16>, Option<u16>, Option<u16>, Option<u16>),
+            numpy::Complex64,
+        > = HashMap::new();
         for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
             let key_with_options = key
                 .into_inner()
                 .iter()
                 .enumerate()
                 .map(|(ind, &v)| if ind < key.len() { Some(v) } else { None })
-                .collect::<ArrayVec<[Option<u16>; 4]>>().into_inner();
+                .collect::<ArrayVec<[Option<u16>; 4]>>()
+                .into_inner();
             output
-                .entry((key_with_options[0],key_with_options[1],key_with_options[2],key_with_options[3]))
+                .entry((
+                    key_with_options[0],
+                    key_with_options[1],
+                    key_with_options[2],
+                    key_with_options[3],
+                ))
                 .and_modify(|v| *v += val)
                 .or_insert(val);
         }
@@ -406,7 +414,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "topphatt")]
     fn wrap_topphatt<'py>(
         py: Python<'py>,
-        flatpack: Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>,
+        flatpack: TTFlatPack,
         n_qubits: usize,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,

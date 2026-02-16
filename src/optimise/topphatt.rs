@@ -584,10 +584,10 @@ pub fn topphatt(
                 sorted_comb.sort();
 
                 let comb_min = sorted_comb
-                    .get(0)
+                    .first()
                     .expect("Combination should not be empty.");
                 let comb_max = sorted_comb
-                    .get(2)
+                    .last()
                     .expect("Combination should have 3 indices..");
                 // We expect that the hamiltonian terms are sorted!
                 let weight = hamiltonian
@@ -636,13 +636,7 @@ pub fn topphatt(
                 selection
                     .into_iter()
                     .filter(|&v| n_leaves > v as usize)
-                    .inspect(|v| {
-                        debug!("1st inspect {:?}", v);
-                    })
                     .map(|v| if v % 2 == 0 { v / 2 } else { (v - 1) / 2 })
-                    .inspect(|v| {
-                        debug!("2nd inspect {:?}", v);
-                    })
                     .for_each(|v| {
                         unassigned_modes.remove(&(v as usize));
                     });
@@ -678,7 +672,7 @@ pub fn topphatt(
         // which is set at index 2*n_nodes doesn't look for a pair.
         // Be careful about zero indexing here too.
         if (selection[2] as usize) < n_leaves - 1 {
-            let pair_index: u16 = if selection[2] % 2 == 0 {
+            let pair_index: u16 = if selection[2].is_multiple_of(2) {
                 selection[2] + 1
             } else {
                 selection[2] - 1

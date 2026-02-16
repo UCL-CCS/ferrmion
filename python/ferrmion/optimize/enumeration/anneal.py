@@ -1,5 +1,8 @@
+"""Optimisation with simulated annealing."""
+
 import numpy as np
 import numpy.typing as npt
+
 from ferrmion.core import anneal_enumerations
 from ferrmion.encode import FermionQubitEncoding
 from ferrmion.hamiltonians import FermionHamiltonian
@@ -11,6 +14,17 @@ def anneal_pauli_weight(
     initial_guess: list[int] | None = None,
     temperature: int | None = None,
 ) -> tuple[float, npt.NDArray[np.uint]]:
+    """Optimise over mode enumeration with Pauli-weight as cost function.
+
+    Args:
+        encoding (FermionQubitEncoding): Encoding to optimise.
+        hamiltonian (FermionHamiltonian): A hamiltonian of fermionic operators.
+        initial_guess (list[int] | None): Optional inital enumeration for simulated annealing.
+        temperature (int | None): Optional annealing temperature.
+
+    Returns:
+        tuple[float, npt.NDArray[np.uint]]: Weight, mode enumeration.
+    """
     ipow, sym = encoding._build_symplectic_matrix()
     sigs, coeffs = hamiltonian.signatures_and_coefficients
 
@@ -39,6 +53,17 @@ def anneal_coefficient_pauli_weight(
     initial_guess: list[int] | None = None,
     temperature: int | None = None,
 ) -> tuple[float, npt.NDArray[np.uint]]:
+    """Optimise over mode enumeration with Pauli-weight as cost function.
+
+    Args:
+        encoding (FermionQubitEncoding): Encoding to optimise.
+        hamiltonian (FermionHamiltonian): A hamiltonian of fermionic operators.
+        initial_guess (list[int] | None): Optional inital enumeration for simulated annealing.
+        temperature (int | None): Optional annealing temperature.
+
+    Returns:
+        tuple[float, npt.NDArray[np.uint]]: Weight, mode enumeration.
+    """
     ipow, sym = encoding._build_symplectic_matrix()
     sigs, coeffs = hamiltonian.signatures_and_coefficients
 

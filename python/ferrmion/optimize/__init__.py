@@ -26,4 +26,5 @@ __all__ = [
     "reduced_entanglement_ternary_tree",
     "hamiltonian_adaptive_ternary_tree",
     "topphatt",
+    "topphatt_standard",
 ]

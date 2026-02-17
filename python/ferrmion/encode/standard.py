@@ -1,7 +1,5 @@
 """Functions for running naive and optimised encodings."""
 
-from enum import Enum
-
 import numpy as np
 from numpy.typing import NDArray
 
@@ -14,13 +12,6 @@ from ferrmion.core import (
 )
 
 from ..hamiltonians import FermionHamiltonian, QubitHamiltonian
-
-
-class CoreEncodingTypes(Enum):
-    JordanWigner = "JW"
-    BravyiKitaev = "BK"
-    ParityEncoding = "PE"
-    JKMN = "JKMN"
 
 
 def jordan_wigner(fham: FermionHamiltonian) -> QubitHamiltonian:

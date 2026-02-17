@@ -8,16 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Benchmarking tests of `TernaryTree.encode...()` functions.
-### Changed
-- CI workflow now generates coverage reports and syncs badge on pushes to main branch.
-
-### Added
 - `core.flatpack_symplectic_matrix`
+- `core.fermionic_to_sparse_majorana`
 
 ### Changed
 - Required python version changed to `>=3.12`
 - `TernaryTree._build_symplectic_matrix` now calls to `core.flatpack_symplectic_matrix`
 - `hartree_fock_state` function narrowed to `ternary_tree_hartree_fock_state` to simplify implementation.
+
+### Fixed
+- `MajoranaSparse::majorise` reintroduced, resulting in smaller hamiltonians and faster optimisation.
 
 ## [0.5.3]
 ### Added

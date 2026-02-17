@@ -13,10 +13,11 @@ from ferrmion.encode.ternary_tree import (
     JKMN,
     ParityEncoding,
     PE,
+    TTFlatpack,
 )
 from ferrmion.utils import symplectic_hash, symplectic_unhash, symplectic_to_pauli
 from ferrmion.hamiltonians import molecular_hamiltonian
-from ferrmion.core import standard_symplectic_matrix
+from ferrmion.core import standard_symplectic_matrix, flatpack_symplectic_matrix
 from .conftest import diagonalise_pauli_hamiltonian
 import hypothesis
 from hypothesis import given,strategies as st
@@ -576,3 +577,108 @@ def test_benchmark_hartree_fock_state(benchmark, encoding,n_modes):
     tree:TernaryTree = encoding(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     benchmark(lambda: tree.hartree_fock_state(fermionic_hf_state=fermionic_hf_state))
+
+
+@st.composite
+def tt_flatpack_strategy(draw, n_nodes_strategy):
+    n_nodes = draw(n_nodes_strategy)
+    if n_nodes == 0:
+        return []
+    nodes = draw(st.permutations([*range(n_nodes)]))
+    flatpack = {n: {'x':None, 'y':None, 'z':None} for n in nodes}
+    parents = [nodes[0]]
+    for child in nodes[1:]:
+        parent = draw(st.sampled_from(parents))
+        assert isinstance(parent, int)
+        parents.append(child)
+
+        edges = [e for e, v in flatpack[parent].items() if v == None]
+        flatpack[parent][draw(st.sampled_from(edges))] = child
+        if len(edges) == 1:
+            parents.remove(parent)
+    # flatpack = [(k , tuple(val for val in v.values())) for k, v in flatpack.items()]
+    to_add = [nodes[0]]
+    output = []
+    for node in to_add:
+        output.append((node, tuple(v for v in flatpack[node].values())))
+        for child in flatpack[node].values():
+            if child is not None:
+                to_add.append(child)
+    return output
+
+
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
+def test_validate_tt_flatpack_strategy(flatpack):
+    used_qubit_indices = [flatpack[0][0]]
+    for item in flatpack:
+        assert item[0] in used_qubit_indices
+        children = item[1]
+        assert len(children) == 3
+        for child in children:
+            assert isinstance(child,  int | None)
+            if isinstance(child, int):
+                used_qubit_indices.append(child)
+
+
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize("n_modes", [1, 5, 10])
+def test_encoding_flatpack_validate(encoding, n_modes):
+    tree = encoding(n_modes)
+    flatpack = tree.flatpack()
+    used_qubit_indices = [flatpack[0][0]]
+    for item in flatpack:
+        assert item[0] in used_qubit_indices
+        children = item[1]
+        assert len(children) == 3
+        for child in children:
+            assert isinstance(child,  int | None)
+            if isinstance(child, int):
+                used_qubit_indices.append(child)
+
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
+def test_from_flatpack_roundtrip(flatpack):
+    reconstructed = TernaryTree.from_flatpack(flatpack)
+    assert sorted(reconstructed.flatpack()) == sorted(flatpack)
+
+
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
+def test_from_flatpack_properties(flatpack):
+    reconstructed = TernaryTree.from_flatpack(flatpack)
+
+    # Check n_modes equals the number of nodes
+    assert reconstructed.n_modes == len(flatpack)
+
+    # Check n_qubits equals the number of nodes
+    assert reconstructed.n_qubits == len(flatpack)
+
+    # Check enumeration_scheme has correct length
+    assert len(reconstructed.enumeration_scheme) == len(flatpack)
+
+    # Check all qubit indices are unique and match flatpack ids
+    qubit_indices = {mode_qubit[1] for mode_qubit in reconstructed.enumeration_scheme.values()}
+    flatpack_ids = {item[0] for item in flatpack}
+    assert qubit_indices == flatpack_ids
+
+
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
+def test_symplectic_matrix_roundtrip(flatpack):
+    original_tree = TernaryTree.from_flatpack(flatpack)
+    print(f"Original flatpack {flatpack}")
+    flatpack = original_tree.flatpack()
+    reconstructed_tree = TernaryTree.from_flatpack(flatpack)
+    print(f"Reconstructed flatpack {flatpack}")
+
+    original_ipow, original_sym = original_tree._build_symplectic_matrix()
+    reconstructed_ipow, reconstructed_sym = reconstructed_tree._build_symplectic_matrix()
+
+    assert np.array_equal(original_ipow, reconstructed_ipow)
+    assert np.array_equal(original_sym, reconstructed_sym)
+
+@given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
+def test_core_python_symplectics_from_flatpack_equal(flatpack):
+    python_tree = TernaryTree.from_flatpack(flatpack)
+    py_ipow, py_sym = python_tree._build_symplectic_matrix()
+    rust_ipow, rust_sym = flatpack_symplectic_matrix(flatpack)
+
+    assert np.array_equal(py_ipow, rust_ipow)
+    assert np.array_equal(py_sym, rust_sym)

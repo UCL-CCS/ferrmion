@@ -40,12 +40,13 @@ dev = [
     "openfermionpyscf>=0.5",
     "matplotlib>=3.10.7",
     "ty>=0.0.2",
+    "pyperf>=2.9.0",
 ]
 test = [
     "hypothesis[numpy]>=6.148.8",
-    "pytest>=8.3.5",
-    "pytest-benchmark>=4.0.0",
-    "pytest-cov>=6.1.1",
+    "pytest>=9.0.0",
+    "pytest-benchmark>=5.0.0",
+    "pytest-cov>=7.0.0",
     "pytest-xdist>=3.8.0",
     "openfermion>=1.7.1",
     "symmer>=0.0.10",

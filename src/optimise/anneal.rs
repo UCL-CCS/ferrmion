@@ -81,7 +81,7 @@ impl Anneal for OptimalEnumeration {
     }
 }
 
-pub fn anneal_enumerations<'coeff>(
+pub fn anneal_enumerations(
     msparse: MajoranaSparse,
     encoding: MajoranaEncoding,
     temperature: f64,

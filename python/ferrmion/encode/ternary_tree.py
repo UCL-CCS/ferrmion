@@ -15,6 +15,12 @@ from .ternary_tree_node import TTNode, node_sorter
 
 logger = logging.getLogger(__name__)
 
+"""Instructions to build a TernaryTree.
+
+The first item in the list gives the qubit-index of the  root node,
+followed by the qubit indices of its child nodes (ordered X, Y, Z).
+If no child exists, None is used.
+"""
 type TTFlatpack = list[tuple[int, tuple[int | None, int | None, int | None]]]
 
 
@@ -78,7 +84,7 @@ class TernaryTree(FermionQubitEncoding):
             }
 
         self.vacuum_state = np.array([0] * self.n_qubits, dtype=np.uint8)
-        # self._enumeration_scheme = {}
+        self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
     @classmethod
@@ -149,6 +155,7 @@ class TernaryTree(FermionQubitEncoding):
         self._enumeration_scheme = enumeration_dict
 
     def encode_topphatt(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+        """Encode a Hamiltonian, using TOPP-HATT optimisation."""
         sigs, coeffs = fham.signatures_and_coefficients
         ipow, sym = core.topphatt(
             flatpack=self.flatpack(),
@@ -230,6 +237,69 @@ class TernaryTree(FermionQubitEncoding):
             )
 
         return flatpack
+
+    @classmethod
+    def from_flatpack(cls, flatpack: TTFlatpack) -> "TernaryTree":
+        """Construct a TernaryTree from a TTFlatpack.
+
+        Args:
+            flatpack: The flatpack representation of the tree.
+
+        Returns:
+            A new TernaryTree instance.
+
+        Raises:
+            TypeError: If the flatpack is invalid.
+        """
+        if not flatpack:
+            raise ValueError("Flatpack cannot be empty")
+        used_qubit_indices = [flatpack[0][0]]
+        for item in flatpack:
+            if item[0] not in used_qubit_indices:
+                raise TypeError("Cannot construct TTFlatpack from disconnected nodes.")
+            children = item[1]
+            if len(children) != 3:
+                raise TypeError("TTFlatpack nodes must have three optional children.")
+            for child in children:
+                if isinstance(child, int):
+                    used_qubit_indices.append(child)
+                elif child is None:
+                    continue
+                else:
+                    raise TypeError(
+                        "TTFlatpack contains child node which is not int | None."
+                    )
+
+        ipow, sym = core.flatpack_symplectic_matrix(flatpack)
+        max_id = max(item[0] for item in flatpack)
+        nodes = [TTNode() for _ in range(max_id + 1)]
+        for qubit_index, children in flatpack:
+            node = nodes[qubit_index]
+            node.qubit_index = qubit_index
+            node.x = nodes[children[0]] if children[0] is not None else None
+            node.y = nodes[children[1]] if children[1] is not None else None
+            node.z = nodes[children[2]] if children[2] is not None else None
+        root = nodes[flatpack[0][0]]
+        enumeration_scheme = {}
+        mode_counter = [0]
+
+        def assign_modes(node, path):
+            node.root_path = path
+            enumeration_scheme[path] = (mode_counter[0], node.qubit_index)
+            mode_counter[0] += 1
+            if node.x:
+                assign_modes(node.x, path + "x")
+            if node.y:
+                assign_modes(node.y, path + "y")
+            if node.z:
+                assign_modes(node.z, path + "z")
+
+        assign_modes(root, "")
+        n_modes = len(enumeration_scheme)
+        tree = cls(n_modes=n_modes, root_node=root)
+        tree.enumeration_scheme = enumeration_scheme
+        tree._build_symplectic_matrix = lambda: (ipow, sym)
+        return tree
 
     def default_enumeration_scheme(self) -> dict[str, tuple[int, int]]:
         """Create a default enumeration scheme for the tree.
@@ -394,7 +464,12 @@ class TernaryTree(FermionQubitEncoding):
                     [ True, False,  True, False,  True, False],
                     [ True, False,  True, False,  True,  True]]))
         """
-        return core.flatpack_symplectic_matrix(self.flatpack())
+        ipow, sym = core.flatpack_symplectic_matrix(self.flatpack())
+        reordering_index = np.kron(
+            self.default_mode_op_map, np.array([2, 2], dtype=np.uint)
+        )
+        reordering_index += np.arange(reordering_index.size, dtype=np.uint) % 2
+        return ipow[reordering_index], sym[reordering_index, :]
 
     def JordanWigner(self) -> "TernaryTree":
         """Create a new tree with the Jordan-Wigner encoding.
@@ -569,7 +644,7 @@ def ParityEncoding(n_modes: int) -> TernaryTree:
 
 
 def PE(n_modes: int) -> TernaryTree:
-    """Alias for ParityEncoding"""
+    """Alias for ParityEncoding."""
     return ParityEncoding(n_modes)
 
 

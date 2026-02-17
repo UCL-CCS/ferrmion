@@ -37,7 +37,7 @@ pub struct MajoranaEncoding {
 #[derive(Debug, Error)]
 pub enum MajoranaEncodingError {
     #[error("Cannot construct Hartree-Fock state with Pauli operators {0:?}-i{1:?}.")]
-    HartreeFockError(Pauli, Pauli),
+    HartreeFockError(char, char),
 }
 
 // This caches symplectic products so that we don't have to calculate them
@@ -120,8 +120,7 @@ impl MajoranaEncoding {
     /// This will only work for vacuum preserving ['TernaryTree'] encodings.
     /// It assumes that:
     /// - The vacuum state is
-    /// - two majorana operators forming a fermionic operator
-    ///     have non-trivial-overlap on exactly one qubit,
+    /// - two majorana operators forming a fermionic operator have non-trivial-overlap on exactly one qubit,
     /// - that one applies Pauli X and the other applies Y
     /// - they are ordered so that X is found on even rows and Y on odd rows
     /// - No entangling operators exist, so we can ignore global phase.
@@ -167,7 +166,10 @@ impl MajoranaEncoding {
                         if s == &false {
                             *s = true;
                         } else {
-                            return Err(MajoranaEncodingError::HartreeFockError(left, right));
+                            return Err(MajoranaEncodingError::HartreeFockError(
+                                left.into(),
+                                right.into(),
+                            ));
                         }
                     }
                     // If the parent is an Odd Y-parity node
@@ -176,16 +178,24 @@ impl MajoranaEncoding {
                         if s == &false {
                             *s = true;
                         } else {
-                            return Err(MajoranaEncodingError::HartreeFockError(left, right));
+                            return Err(MajoranaEncodingError::HartreeFockError(
+                                left.into(),
+                                right.into(),
+                            ));
                         }
                     }
                     (Pauli::Z, Pauli::I) => continue,
                     (Pauli::I, Pauli::Z) => continue,
-                    (Pauli::X, Pauli::X) => *s = if s == &true { false } else { true },
-                    (Pauli::Y, Pauli::Y) => *s = if s == &true { false } else { true },
+                    (Pauli::X, Pauli::X) => *s = !*s,
+                    (Pauli::Y, Pauli::Y) => *s = !*s,
                     (Pauli::Z, Pauli::Z) => continue,
                     (Pauli::I, Pauli::I) => continue,
-                    _ => return Err(MajoranaEncodingError::HartreeFockError(left, right)),
+                    _ => {
+                        return Err(MajoranaEncodingError::HartreeFockError(
+                            left.into(),
+                            right.into(),
+                        ))
+                    }
                 }
             }
         }
@@ -215,7 +225,7 @@ impl Encode<MajoranaProduct> for MajoranaEncoding {
         let mut ipower: u8 = input
             .indices
             .iter()
-            .fold(0_u8, |acc, &ind| acc + &self.ipowers[ind])
+            .fold(0_u8, |acc, &ind| acc + self.ipowers[ind])
             % 4;
         let (operator, product_ipower) = input.indices.iter().fold(
             (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
@@ -263,9 +273,10 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
                 );
                 debug!("Operator {:?}", operator);
                 debug!("Product Ipower {:?}", product_ipower);
-                let ipower: u8 = indices.iter().fold(product_ipower, |acc, &ind| {
-                    acc + &self.ipowers[ind as usize]
-                }) % 4;
+                let ipower: u8 = indices
+                    .iter()
+                    .fold(product_ipower, |acc, &ind| acc + self.ipowers[ind as usize])
+                    % 4;
                 // let ipower = product_ipower;
                 debug!("Total Ipower {:?}", ipower);
                 let (pauli, ipower) =
@@ -293,8 +304,7 @@ mod owned_tests {
     use super::*;
 
     use crate::ternarytree::TernaryTree;
-    use ndarray::{arr1, arr2, Array1, ArrayView1};
-    use num_complex::c64;
+    use ndarray::{arr1, Array1, ArrayView1};
     use numpy::Complex64;
     use tinyvec::array_vec;
 
@@ -395,7 +405,7 @@ mod owned_tests {
             0.,
         )
         .unwrap();
-        let qham = encoding.encode(&ms);
+        let _qham = encoding.encode(&ms);
     }
 
     #[test]
@@ -479,7 +489,6 @@ mod owned_tests {
         let result = encoding
             .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
             .unwrap();
-        let c1 = c64(1., 0.);
         assert!(result == arr1(&[true, true, true, false, false, false]));
 
         let result2 = encoding
@@ -491,6 +500,7 @@ mod owned_tests {
         assert!(result2 == arr1(&[true, true, true, true, false, false]));
     }
 
+    #[test]
     fn test_hartree_fock() {
         let fermionic_hf_state: ArrayView1<bool> =
             ArrayView1::from(&[true, true, true, false, false, false]);

@@ -157,6 +157,7 @@ class FermionQubitEncoding(ABC):
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
     ):
+        """Encode a Hamiltonian, using simulated annealing optimisation."""
         sigs, coeffs = fham.signatures_and_coefficients
         ipow, sym = self._build_symplectic_matrix()
 
@@ -192,6 +193,7 @@ class FermionQubitEncoding(ABC):
         )
 
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+        """Encode a Hamiltonian."""
         logger.debug("Encoding fermionic Hamiltonian.")
         ipowers, symplectic = self._build_symplectic_matrix()
         signatures, coeffs = fham.signatures_and_coefficients

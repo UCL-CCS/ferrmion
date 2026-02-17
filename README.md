@@ -16,7 +16,8 @@ By reducing the average Pauli-weight of operators in the output hamiltonian, cir
 ### It's fast!
 Hamiltonians up to 40 qubits currently take less than 1 second to optimise.
 
-<img width="470" height="470" alt="TOPP-HATT runtime vs number of fermionic modes. " src="https://github.com/user-attachments/assets/621a49e3-5b1c-4af4-91bc-0f65a5e32db5" />
+<img width="578" height="455" alt="runtime" src="https://github.com/user-attachments/assets/743f9aa8-8864-403d-941d-e89fbcc6813d" />
+
 
 for more detail see our [paper](https://arxiv.org/abs/2512.13580).
 

@@ -2,7 +2,6 @@
 
 import logging
 from abc import ABC, abstractmethod
-from itertools import product
 from typing import Callable
 
 import numpy as np
@@ -11,15 +10,13 @@ from numpy.typing import NDArray
 from ferrmion.core import (
     anneal_enumerations,
     encode,
+    encode_fermion_product,
     symplectic_product_map,
 )
 from ferrmion.hamiltonians import FermionHamiltonian, QubitHamiltonian
 from ferrmion.utils import (
-    icount_to_sign,
     pauli_to_symplectic,
-    symplectic_product,
     symplectic_to_pauli,
-    symplectic_to_sparse,
 )
 
 logger = logging.getLogger(__name__)
@@ -237,174 +234,92 @@ class FermionQubitEncoding(ABC):
         return symplectic_product_map(ipowers, symplectics)
 
     def number_operator(
-        self, mode: int
-    ) -> list[tuple[str, NDArray, np.complexfloating]]:
+        self,
+        mode: int,
+        coeff: float | np.complex64 = np.complex64(1.0, 0.0),
+    ) -> QubitHamiltonian:
         """Return the number operator of a mode for this encoding.
 
         Args:
             mode (int): The mode index to obtain a number operator for.
+            coeff (float): Optional complex coeffient
 
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
             >>> tree = TernaryTee(4)
             >>> tree.number_operator(0)
         """
-        return number_operator(self, mode)
+        return self._encode_fermion_product(
+            signature="+-",
+            mode_indices=[mode, mode],
+            coeff=coeff,
+        )
 
     def edge_operator(
-        self, edge_indices: tuple[int, int]
-    ) -> list[tuple[str, NDArray, np.complexfloating]]:
+        self,
+        edge_indices: tuple[int, int],
+        coeff: float | np.complex64 = np.complex64(1.0, 0.0),
+    ) -> QubitHamiltonian:
         """Return the edge operator of a pair of modes for this encoding.
 
         Args:
             edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
+            coeff (float): Optional complex coeffient
 
             >>> from ferrmion.encode.ternary_tree import TernaryTree
             >>> tree = TernaryTee(4)
-            >>> tree.edge_operator(0, 1)
+            >>> tree.edge_operator((0, 1))
         """
-        return edge_operator(self, edge_indices)
+        return self._encode_fermion_product(
+            signature="+-",
+            mode_indices=list(edge_indices),
+            coeff=coeff,
+        )
 
-    def majorana_product(
-        self, product_indices: tuple[int, ...]
-    ) -> tuple[np.ndarray[bool], np.complex64]:
-        """Outputs the XZ-Matrix form of a product of majorana operators in an encoding.
+    def interaction_operator(
+        self,
+        mode_indices: tuple[int, int, int, int],
+        coeff: float | np.complex64 = np.complex64(1.0, 0.0),
+        physicist_notation=True,
+    ) -> QubitHamiltonian:
+        """Return an interaction operator of four modes for this encoding.
 
         Args:
-            product_indices (tuple[int,...]): A tuple of indices of majorana operators to apply.
+            mode_indices (tuple[int, int, int, int]): The mode index to obtain an interaction operator for.
+            coeff (float): Optional complex coeffient
+            physicist_notation (bool): Use Physicist's notation, Chemist's if False.
 
-        Return:
-            np.ndarray[bool]: An XZ-encoded Pauli Operator.
-            np.complex64: A complex float coefficient for the operator.
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTee(4)
+            >>> tree.interaction_operator((0, 1, 2, 3))
         """
-        return majorana_product(self, product_indices)
+        if physicist_notation:
+            return self._encode_fermion_product("++--", list(mode_indices), coeff=coeff)
+        else:
+            return self._encode_fermion_product("+-+-", list(mode_indices), coeff=coeff)
 
+    def _encode_fermion_product(
+        self,
+        signature: str,
+        mode_indices: list[int],
+        coeff: np.complex64 | float,
+    ) -> QubitHamiltonian:
+        """Returns the sparse pauli form of a double fermionic operator.
 
-def majorana_product(
-    encoding: FermionQubitEncoding, product_indices: tuple[int, ...]
-) -> tuple[np.ndarray[bool], np.complex64]:
-    """Outputs the XZ-Matrix form of a product of majorana operators in an encoding.
+        Args:
+            signature (str): The fermionic operator signature, composed of "+" and "-".
+            mode_indices (list[int]): The mode indices to obtain a number operator for.
+            coeff (float): The operator coefficient.
 
-    Args:
-        encoding (FermionQubitEncoding): A valid encoding.
-        product_indices (tuple[int,...]): A tuple of indices of majorana operators to apply.
-
-    Return:
-        np.ndarray[bool]: An XZ-encoded Pauli Operator.
-        np.complex64: A complex float coefficient for the operator.
-
-    Example:
-    >>> jw = JordanWigner(4)
-    >>> op, coeff = majorana_product(jw, (0,1,2,3))
-    """
-    ipowers, symplectics = encoding._build_symplectic_matrix()
-
-    # all the majoranas have in imaginary factor which multiply
-    # so they sum since we use powers
-    ipower = sum(ipowers[m] for m in product_indices)
-
-    # initial operator
-    left = np.zeros(symplectics.shape[1], dtype=bool)
-
-    logger.debug(f"{product_indices=},{ipower=}, {left=}")
-    for m_index in product_indices:
-        right = symplectics[m_index]
-        iprod, left = symplectic_product(left, right)
-        ipower += iprod
-        logger.debug(f"{m_index=}, {ipower=}, {left=}")
-    return left, icount_to_sign(ipower)
-
-
-def number_operator(
-    encoding: FermionQubitEncoding, mode: int
-) -> list[tuple[str, NDArray, np.complexfloating]]:
-    """Return the number operator for a given encoding and mode.
-
-    Args:
-        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
-        mode (int): The mode index to obtain a number operator for.
-
-    Example:
-            >>> from ferrmion.encode.ternary_tree import TernaryTree
-            >>> tree = TernaryTee(4)
-            >>> tree.number_operator(0)
-    """
-    return edge_operator(encoding, (mode, mode))
-
-
-def edge_operator(
-    encoding: FermionQubitEncoding, edge_indices: tuple[int, int]
-) -> list[tuple[str, NDArray, np.complexfloating]]:
-    """Return the edge operator for a given encoding and pair of modes.
-
-    Args:
-        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
-        edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
-
-    Example:
-            >>> from ferrmion.encode.ternary_tree import TernaryTree
-            >>> tree = TernaryTee(4)
-            >>> tree.edge_operator(0,1)
-    """
-    return double_fermionic_operator(
-        encoding=encoding, mode_indices=edge_indices, signature="+-"
-    )
-
-
-def double_fermionic_operator(
-    encoding: FermionQubitEncoding, mode_indices: tuple[int, int], signature: str
-) -> list[tuple[str, NDArray, np.complexfloating]]:
-    """Returns the sparse pauli form of a double fermionic operator.
-
-    Args:
-        encoding (FermionQubitEncoding): A Fermion to qubit encoding object.
-        mode_indices (tuple[int, int]): The mode indices to obtain a number operator for.
-        signature (str): The fermionic operator signature, one of "++", "+-", "-+", "--".
-
-    Returns:
-        list[tuple[str, NDArray, np.complexfloating]]: A list of tuples each containing a Pauli string, its qubit indices and a complex coefficient.
-
-    Example:
-        >>> from ferrmion import TernaryTree
-        >>> tree = TernaryTree(4)
-        >>> tree.double_fermionic_operator((0,1), "+-")
-        [('ZZ', array([0, 1]), 0.25+0j), ('YX', array([0, 1]), 0.25j), ('XY', array([0, 1]), -0.25j), ('II', array([0, 1]), 0.25+0j)]
-    """
-    match signature:
-        case "++":
-            signature_iterm = [1, -1j, -1j, -1]
-        case "+-":
-            signature_iterm = [1, 1j, -1j, 1]
-        case "-+":
-            signature_iterm = [1, -1j, 1j, 1]
-        case "--":
-            signature_iterm = [1, 1j, 1j, -1]
-        case _:
-            logger.error(
-                "Operator signature can only contain + or -, %s not valid", signature
-            )
-            raise ValueError(
-                "Operator signature can only contain + or -, %s not valid", signature
-            )
-
-    logger.debug("Finding double fermionic operator %s, %s", signature, mode_indices)
-    if not set(mode_indices).issubset(set(range(encoding.n_modes))):
-        logger.error("Edge operator indices invalid %s", mode_indices)
-        raise ValueError("Edge operator indices invalid %s", mode_indices)
-
-    icount, sym_products = encoding.symplectic_product_map
-    m, n = mode_indices
-    m = int(encoding.default_mode_op_map[m])
-    n = int(encoding.default_mode_op_map[n])
-    terms: list[tuple[str, NDArray, np.complex]] = [
-        symplectic_to_sparse(
-            sym_products[2 * m + l, 2 * n + r], icount[2 * m + l, 2 * n + r]
+        Returns:
+            list[tuple[str, NDArray, np.complexfloating]]: A list of tuples each containing a Pauli string, its qubit indices and a complex coefficient.
+        """
+        if not all([ind in range(self.n_modes) for ind in mode_indices]):
+            raise ValueError("Indices invalid.")
+        if len(signature) != len(mode_indices):
+            raise ValueError("Signature and indices must be same length.")
+        if isinstance(coeff, float | int):
+            coeff = np.complex64(coeff, 0.0)
+        return encode_fermion_product(
+            *self._build_symplectic_matrix(), signature, mode_indices, coeff
         )
-        for l, r in product([0, 1], [0, 1])
-    ]
-
-    sparse_op = [
-        (t[0], t[1], 0.25 * t[2] * si) for t, si in zip(terms, signature_iterm)
-    ]
-    logger.debug(f"Found operator {sparse_op}")
-    return sparse_op

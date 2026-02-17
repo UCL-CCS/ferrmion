@@ -3,7 +3,7 @@ use crate::hamiltonians::QubitHamiltonian;
 Functions relating to the FermionQubitEncoding base class.
 */
 
-use crate::operators::{MajoranaProduct, MajoranaSparse, Pauli};
+use crate::operators::{FermionProduct, MajoranaProduct, MajoranaSparse, Pauli};
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
 use itertools::izip;
@@ -299,11 +299,19 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
     }
 }
 
+impl Encode<FermionProduct> for MajoranaEncoding {
+    fn encode(&self, input: FermionProduct) -> QubitHamiltonian {
+        let msparse = MajoranaSparse::from(input);
+        self.encode(&msparse)
+    }
+}
+
 #[cfg(test)]
 mod owned_tests {
     use super::*;
 
-    use crate::ternarytree::TernaryTree;
+    use crate::{operators::LadderOperator, ternarytree::TernaryTree};
+    use argmin::core::test_utils;
     use ndarray::{arr1, Array1, ArrayView1};
     use numpy::Complex64;
     use tinyvec::array_vec;
@@ -356,7 +364,29 @@ mod owned_tests {
     }
 
     #[test]
-    fn test_encode_product() {
+    fn test_encode_fermion_product() {
+        let fprod = FermionProduct::new(
+            vec![LadderOperator::Creation, LadderOperator::Annihilation],
+            vec![1, 0],
+            c64(1., 0.),
+        )
+        .unwrap();
+        let encoding = TernaryTree::naive_jordan_wigner(2)
+            .build_encoding(2)
+            .unwrap();
+
+        let qham = encoding.encode(fprod);
+
+        let mut expected = QubitHamiltonian::with_hasher(RandomState::new());
+        expected.insert("YX".to_string(), c64(0., 0.25));
+        expected.insert("XY".to_string(), c64(0., -0.25));
+        expected.insert("XX".to_string(), c64(0.25, 0.));
+        expected.insert("YY".to_string(), c64(0.25, 0.));
+        assert_eq!(qham, expected);
+    }
+
+    #[test]
+    fn test_encode_majorana_product() {
         let ipowers = ndarray::arr1(&[0, 1, 0, 0]);
         let symplectics = ndarray::arr2(&[
             [false, false, false, false, false, false],

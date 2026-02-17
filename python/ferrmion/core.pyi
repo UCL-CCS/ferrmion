@@ -86,6 +86,13 @@ def encode_standard(
     coeffs: list[np.ndarray],
     constant_energy: float,
 ) -> dict: ...
+def encode_fermion_product(
+    ipowers: npt.NDArray[np.uint8],
+    symplectics: npt.NDArray[np.bool],
+    signatures: str,
+    indices: list[int],
+    coeff: np.complex64,
+) -> dict: ...
 def encode(
     ipowers: npt.NDArray[np.uint8],
     symplectics: npt.NDArray[np.bool],

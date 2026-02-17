@@ -1,7 +1,6 @@
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use log::debug;
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::zip;
 use std::ops::BitXorAssign;

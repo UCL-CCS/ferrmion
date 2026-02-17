@@ -11,7 +11,7 @@ use ::core::panic;
 use log::{debug, info};
 use numpy::ndarray::Array1;
 use numpy::{
-    IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use tinyvec::ArrayVec;
 pub mod operators;
 mod utils;
-use crate::operators::MajoranaSparse;
+use crate::operators::{FermionProduct, LadderOperator, MajoranaSparse};
 use crate::optimise::topphatt;
 use crate::utils::*;
 mod hamiltonians;
@@ -312,6 +312,50 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 .or_insert(val);
         }
         output.into_py_dict(py)
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "encode_fermion_product")]
+    fn wrap_encode_product<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+        signatures: String,
+        indices: Vec<usize>,
+        coefficient: Complex64,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        // ) -> PyResult<()> {
+        assert_eq!(
+            signatures.len(),
+            indices.len(),
+            "Signatures and indices should be same length"
+        );
+        let ipowers = ipowers.as_array().to_owned();
+        let symplectics = symplectics.as_array().to_owned();
+        let n_qubits = symplectics.ncols() / 2;
+        let n_modes = symplectics.nrows() / 2;
+        let vec_sig: Vec<LadderOperator> = signatures
+            .chars()
+            .map(|v| LadderOperator::try_from(v).expect("Signature components should be + or -"))
+            .collect();
+
+        assert!(
+            n_qubits >= n_modes,
+            "Must have at least as many qubits as modes."
+        );
+
+        let fproduct = FermionProduct::new(vec_sig, indices, coefficient)
+            .expect("Should be able to create FermionProduct.");
+        let encoding = MajoranaEncoding::new(ipowers, symplectics);
+        debug!("Got encoding");
+        let qham: QubitHamiltonian = encoding.encode(fproduct);
+        debug!("Got Hamiltonian");
+
+        debug!("Got qham");
+        Ok(qham
+            .into_py_dict(py)
+            .expect("Should be able to convert QubitHamiltonian to PyDict."))
+        // Ok(())
     }
 
     #[pyfn(m)]

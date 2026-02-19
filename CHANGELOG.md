@@ -9,14 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
   - base `FermionQubitEncoding` uses `_encode_fermion_product` to encode number, edge and interaction operators.
   - `TernaryTree.from_flatpack` to allow re-use of flattened trees.
-  - `publications/` folder in repo to keep track of notebooks used to produce published results.
+  - `docs/publications/` folder to keep track of notebooks used to produce published results.
 
 ### Changed
   - `FermionQubitEncoding` functions now using `_encode_fermion_product`:
     - `.number_operator()`
     - `.edge_operator()`
     - `.interaction_operator()`
-
 
 ## [0.6.0]
 ### Added

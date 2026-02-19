@@ -166,6 +166,9 @@ impl TreeRetrictions {
             [&tree.x_child_of, &tree.y_child_of, &tree.z_child_of],
         ) {
             for (r, c) in zip(restriction, children) {
+                // Late init is helpful here as we
+                // want to be able to continue.
+                #[allow(clippy::needless_late_init)]
                 let parity: YParity;
                 match c {
                     Some(Child::XLeaf(leaf_index)) => {
@@ -424,11 +427,12 @@ fn qubit_term_weight(term: &ArrayVec<[u16; MAJORANA_MAX]>, sorted_children: &[u1
                 .bitxor_assign(t == sorted_children.get_unchecked(2));
         }
     }
-    ((3 - (even_parity_paulis[0] as usize
-        + even_parity_paulis[1] as usize
-        + even_parity_paulis[2] as usize))
-        % 3
-        != 0) as usize
+    let odd_parity_paulis = 3
+        - (even_parity_paulis[0] as usize
+            + even_parity_paulis[1] as usize
+            + even_parity_paulis[2] as usize);
+
+    !odd_parity_paulis.is_multiple_of(3) as usize
 }
 
 /// Simplify the Majorana operator Hamiltonian
@@ -500,7 +504,7 @@ pub fn topphatt(
             .expect("Root distances should not be empty.");
         debug!("Max root distance {:?}", max_root_distance);
 
-        let active_nodes: Vec<usize> = node_dependencies
+        let mut active_nodes: Vec<usize> = node_dependencies
             .root_distances
             .iter()
             .zip(node_dependencies.children_without_leaves.values())
@@ -508,34 +512,34 @@ pub fn topphatt(
             .map(|((&ind, _), _)| ind)
             .collect();
 
-        // This is a bit of an optimisation for the case when there are multiple terminal
+        // This is an optimisation for the case when there are multiple terminal
         // nodes at the same length.
         // Since they can only have one of each of EvenLeaf and Oddleaf on the x and y branches,
         // while the z branch can be either EvenLeaf or OddLeaf.
-        let mut unique_choices = HashSet::new();
+        if active_nodes.len() > 1 {
+            let mut unique_choices: HashSet<(&Restriction, &Restriction, &Restriction)> =
+                HashSet::with_capacity(active_nodes.len());
+
+            active_nodes = active_nodes
+                .into_iter()
+                .filter(|&active| {
+                    let xyz = unique_choices.insert((
+                        &restrictions.x[active],
+                        &restrictions.y[active],
+                        &restrictions.z[active],
+                    ));
+                    let yxz = unique_choices.insert((
+                        &restrictions.y[active],
+                        &restrictions.x[active],
+                        &restrictions.z[active],
+                    ));
+                    xyz && yxz
+                })
+                .collect::<Vec<usize>>();
+        }
+
         debug!("Active Nodes {:?}", active_nodes);
         for active in active_nodes {
-            debug!("Active {:?}", active);
-            if unique_choices.contains(&(
-                &restrictions.x[active],
-                &restrictions.y[active],
-                &restrictions.z[active],
-            )) {
-                continue;
-            } else if unique_choices.contains(&(
-                &restrictions.y[active],
-                &restrictions.x[active],
-                &restrictions.z[active],
-            )) {
-                continue;
-            } else {
-                unique_choices.insert((
-                    &restrictions.x[active],
-                    &restrictions.y[active],
-                    &restrictions.z[active],
-                ));
-            }
-
             let mut allowed_x =
                 restrictions.x[active].get_index_subset(&unassigned_modes, tree.n_nodes);
             allowed_x.reverse();
@@ -579,15 +583,11 @@ pub fn topphatt(
                 if comb[0] == comb[2] {
                     continue;
                 }
-                let mut sorted_comb: [u16; 3] = comb.clone();
+                let mut sorted_comb: [u16; 3] = comb;
                 sorted_comb.sort();
 
-                let comb_min = sorted_comb
-                    .get(0)
-                    .expect("Combination should not be empty.");
-                let comb_max = sorted_comb
-                    .get(2)
-                    .expect("Combination should have 3 indices..");
+                let comb_min = unsafe { sorted_comb.get_unchecked(0) };
+                let comb_max = unsafe { sorted_comb.get_unchecked(2) };
                 // We expect that the hamiltonian terms are sorted!
                 let weight = hamiltonian
                     .indices
@@ -635,13 +635,7 @@ pub fn topphatt(
                 selection
                     .into_iter()
                     .filter(|&v| n_leaves > v as usize)
-                    .inspect(|v| {
-                        debug!("1st inspect {:?}", v);
-                    })
                     .map(|v| if v % 2 == 0 { v / 2 } else { (v - 1) / 2 })
-                    .inspect(|v| {
-                        debug!("2nd inspect {:?}", v);
-                    })
                     .for_each(|v| {
                         unassigned_modes.remove(&(v as usize));
                     });
@@ -677,7 +671,7 @@ pub fn topphatt(
         // which is set at index 2*n_nodes doesn't look for a pair.
         // Be careful about zero indexing here too.
         if (selection[2] as usize) < n_leaves - 1 {
-            let pair_index: u16 = if selection[2] % 2 == 0 {
+            let pair_index: u16 = if selection[2].is_multiple_of(2) {
                 selection[2] + 1
             } else {
                 selection[2] - 1

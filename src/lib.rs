@@ -5,7 +5,7 @@
 //! which obey commutation fermionic relations.
 //!
 //! This file contains the PyO3 interop layer which wraps rust functions and exposes
-//! these to a python API.
+//! these to a python API
 
 use ::core::panic;
 use log::{debug, info};
@@ -33,6 +33,7 @@ pub mod ternarytree;
 use crate::ternarytree::{TTFlatPack, TernaryTree};
 
 /// A Python module implemented in Rust.
+#[allow(clippy::type_complexity)]
 #[pymodule]
 #[pyo3(name = "core")]
 fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {

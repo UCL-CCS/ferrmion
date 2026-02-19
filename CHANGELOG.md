@@ -8,14 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.1]
 ### Added
   - base `FermionQubitEncoding` uses `_encode_fermion_product` to encode number, edge and interaction operators.
+  - `TernaryTree.from_flatpack` to allow re-use of flattened trees.
+  - `publications/` folder in repo to keep track of notebooks used to produce published results.
+
+### Changed
+  - `FermionQubitEncoding` functions now using `_encode_fermion_product`:
+    - `.number_operator()`
+    - `.edge_operator()`
+    - `.interaction_operator()`
+
 
 ## [0.6.0]
 ### Added
 - Benchmarking tests of `TernaryTree.encode...()` functions.
-### Changed
-- CI workflow now generates coverage reports and syncs badge on pushes to main branch.
-
-### Added
 - `core.flatpack_symplectic_matrix`
 - `core.fermionic_to_sparse_majorana`
 
@@ -23,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Required python version changed to `>=3.12`
 - `TernaryTree._build_symplectic_matrix` now calls to `core.flatpack_symplectic_matrix`
 - `hartree_fock_state` function narrowed to `ternary_tree_hartree_fock_state` to simplify implementation.
+
+### Fixed
+- `MajoranaSparse::majorise` reintroduced, resulting in smaller hamiltonians and faster optimisation.
 
 ## [0.5.3]
 ### Added

@@ -18,6 +18,7 @@ class FermionHamiltonian:
     """Class for building Fermionic Hamiltonians."""
 
     def __init__(self, *, terms: dict[str, NDArray] = {}, constant_energy: float = 0.0):
+        """Initialiser for FermionHamiltonian."""
         logger.debug("Initialising FermionHamiltonian")
         self._terms: dict[str, NDArray] = terms
         self.constant_energy = constant_energy
@@ -42,11 +43,13 @@ class FermionHamiltonian:
                     )
 
     def __repr__(self):
+        """String representation of FermionHamiltonian."""
         terms = ", ".join([*self._terms])
         return f"FermionHamiltonian({terms}, {self.n_modes} modes, constant {self.constant_energy})"
 
     @property
     def signatures_and_coefficients(self) -> tuple[list[str], list[NDArray]]:
+        """Return the signature and coefficient of all terms."""
         sigs: list[str] = []
         coeffs: list[NDArray] = []
         for k, v in self._terms.items():
@@ -56,14 +59,17 @@ class FermionHamiltonian:
         return (sigs, coeffs)
 
     def creation(self) -> "FermionHamiltonian":
+        """Add a creation term."""
         self._next_term += "+"
         return self
 
     def annihilation(self) -> "FermionHamiltonian":
+        """Add an annihilation term."""
         self._next_term += "-"
         return self
 
     def with_coefficients(self, coefficients: NDArray) -> "FermionHamiltonian":
+        """Add coefficients to the Hamiltonian terms."""
         if coefficients.ndim != len(self._next_term):
             logger.error(f"Cannot apply coefficents to term {self._next_term}")
         else:
@@ -73,6 +79,7 @@ class FermionHamiltonian:
         return self
 
     def add_constant(self, constant_energy: float) -> "FermionHamiltonian":
+        """Add a constant term to the Hamiltonian."""
         self.constant_energy += constant_energy
         return self
 

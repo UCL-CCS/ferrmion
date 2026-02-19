@@ -154,6 +154,7 @@ class FermionQubitEncoding(ABC):
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
     ):
+        """Encode a Hamiltonian, using simulated annealing optimisation."""
         sigs, coeffs = fham.signatures_and_coefficients
         ipow, sym = self._build_symplectic_matrix()
 
@@ -189,6 +190,7 @@ class FermionQubitEncoding(ABC):
         )
 
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+        """Encode a Hamiltonian."""
         logger.debug("Encoding fermionic Hamiltonian.")
         ipowers, symplectic = self._build_symplectic_matrix()
         signatures, coeffs = fham.signatures_and_coefficients
@@ -246,8 +248,8 @@ class FermionQubitEncoding(ABC):
 
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
-            >>> tree = TernaryTee(4)
-            >>> tree.number_operator(0)
+            >>> tree = TernaryTree(4)
+            >>> n_zero = tree.number_operator(0)
         """
         return self._encode_fermion_product(
             signature="+-",
@@ -266,8 +268,9 @@ class FermionQubitEncoding(ABC):
             edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
             coeff (float): Optional complex coeffient
 
+        Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
-            >>> tree = TernaryTee(4)
+            >>> tree = TernaryTree(4)
             >>> tree.edge_operator((0, 1))
         """
         return self._encode_fermion_product(
@@ -289,8 +292,9 @@ class FermionQubitEncoding(ABC):
             coeff (float): Optional complex coeffient
             physicist_notation (bool): Use Physicist's notation, Chemist's if False.
 
+        Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
-            >>> tree = TernaryTee(4)
+            >>> tree = TernaryTree(4)
             >>> tree.interaction_operator((0, 1, 2, 3))
         """
         if physicist_notation:
@@ -313,6 +317,11 @@ class FermionQubitEncoding(ABC):
 
         Returns:
             list[tuple[str, NDArray, np.complexfloating]]: A list of tuples each containing a Pauli string, its qubit indices and a complex coefficient.
+
+        Example:
+            >>> from ferrmion.encode.ternary_tree import TernaryTree
+            >>> tree = TernaryTree(4)
+            >>> _encode_fermion_product(tree, "++--", (0, 1, 2, 3), 1.0)
         """
         if not all([ind in range(self.n_modes) for ind in mode_indices]):
             raise ValueError("Indices invalid.")

@@ -5,9 +5,9 @@ use crate::{encoding::MajoranaEncoding, operators::Pauli};
 use log::{debug, error, info};
 use numpy::ndarray::{s, Array1, Array2, Zip};
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Not;
 use std::result::Result;
-use std::{fmt, usize};
 use thiserror::Error;
 
 /// Flattened structure of a [`TernaryTree`].
@@ -462,20 +462,11 @@ impl TernaryTree {
             });
             debug!("symplectics {:?}", symplectics);
         }
-        if self.qubit_index_of.is_some() {
-            let column_indices: Array1<usize> = self
-                .qubit_index_of
-                .as_ref()
-                .unwrap()
+        if let Some(index) = &self.qubit_index_of {
+            let column_indices: Array1<usize> = index
                 .iter()
                 .copied()
-                .chain(
-                    self.qubit_index_of
-                        .as_ref()
-                        .unwrap()
-                        .iter()
-                        .map(|&v| v + n_qubits),
-                )
+                .chain(index.iter().map(|&v| v + n_qubits))
                 .collect();
             debug!("Column indices {:?}", &column_indices);
             if let Some(max_column_label) = column_indices.flatten().iter().max() {

@@ -311,8 +311,8 @@ mod owned_tests {
     use super::*;
 
     use crate::{operators::LadderOperator, ternarytree::TernaryTree};
-    use argmin::core::test_utils;
     use ndarray::{arr1, Array1, ArrayView1};
+    use num_complex::c64;
     use numpy::Complex64;
     use tinyvec::array_vec;
 
@@ -575,10 +575,10 @@ mod owned_tests {
             let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
             // expected_parity = cumsum(reversed) % 2, then reverse back
             let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
-            let mut cumsum = 0;
-            for i in 0..reversed.len() {
-                if reversed[i] { cumsum += 1; }
-                reversed[i] = (cumsum % 2) == 1;
+            let mut cumsum: usize = 0;
+            for rev in reversed.iter_mut() {
+                if *rev { cumsum += 1; }
+                *rev = !cumsum.is_multiple_of(2);
             }
             let expected: Array1<bool> = reversed.into_iter().rev().collect();
             prop_assert_eq!(qubit_hf, expected);
@@ -623,10 +623,10 @@ mod owned_tests {
             let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
             // expected_parity = cumsum(reversed) % 2, then reverse back
             let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
-            let mut cumsum = 0;
-            for i in 0..reversed.len() {
-                if reversed[i] { cumsum += 1; }
-                reversed[i] = (cumsum % 2) == 1;
+            let mut cumsum:usize = 0;
+            for rev in reversed.iter_mut() {
+                if *rev { cumsum += 1; }
+                *rev = !cumsum.is_multiple_of(2);
             }
             let expected: Array1<bool> = reversed.into_iter().rev().collect();
             prop_assert_eq!(qubit_hf, expected);

@@ -20,7 +20,6 @@ use numpy::ndarray::{
 use numpy::Complex64;
 use std::collections::BTreeMap;
 use std::iter::repeat_n;
-use std::os::unix::fs;
 use std::{result::Result, str::FromStr};
 use tinyvec::ArrayVec;
 

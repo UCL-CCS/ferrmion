@@ -189,6 +189,14 @@ class FermionQubitEncoding(ABC):
             constant_energy=fham.constant_energy,
         )
 
+    def to_json(self) -> dict:
+        """Store the encoding as a JSON-readable dict."""
+        ipow, sym = self._build_symplectic_matrix()
+        dict_output = {}
+        dict_output["ipowers"]=ipow.tolist()
+        dict_output["symplectics"]=sym.tolist()
+        return dict_output
+
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
         """Encode a Hamiltonian."""
         logger.debug("Encoding fermionic Hamiltonian.")
@@ -351,8 +359,8 @@ class MajoranaStringEncoding(FermionQubitEncoding):
 
         if len(self._ipowers) != len(self._symplectics):
             raise ValueError("ipowers and symplectics must be same length.")
-        self.n_modes = self._ipowers.shape[0] // 2
-        self.n_qubits = self._ipowers.shape[1] // 2
+        self.n_modes = self._symplectics.shape[0] // 2
+        self.n_qubits = self._symplectics.shape[1] // 2
         super().__init__(self.n_modes, self.n_qubits)
 
     def _build_symplectic_matrix(

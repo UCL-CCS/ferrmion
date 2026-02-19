@@ -2,7 +2,7 @@
 //!
 //! The [`TernaryTree`] struct is made up of a set of vectors.
 use crate::{encoding::MajoranaEncoding, operators::Pauli};
-use log::{debug, error, info};
+use log::{debug, error};
 use numpy::ndarray::{s, Array1, Array2, Zip};
 use std::collections::HashMap;
 use std::fmt;

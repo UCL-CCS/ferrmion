@@ -304,7 +304,41 @@ mod ladder_tests {
 /*
 Fermion
 */
+/// A product of fermionic ladder operators.
+///
+/// # Example
+/// ```
+/// FermionProduct::new(vec![LadderOperator:Creation, LadderOperator::Annihilation], vec![0,1], c64(1.,0.))
+/// ```
+#[derive(Debug, PartialEq, Clone)]
+pub struct FermionProduct {
+    ops: Vec<LadderOperator>,
+    indices: Vec<usize>,
+    coefficient: Complex64,
+}
 
+/// Error type for failure to construct [`FermionProduct`]
+#[derive(Debug, PartialEq, Clone)]
+pub struct FermionProductError;
+
+impl FermionProduct {
+    /// Constructor for [`FermionProduct`]
+    pub fn new(
+        ops: Vec<LadderOperator>,
+        indices: Vec<usize>,
+        coefficient: Complex64,
+    ) -> Result<Self, FermionProductError> {
+        if ops.len() != indices.len() {
+            Err(FermionProductError)
+        } else {
+            Ok(Self {
+                ops,
+                indices,
+                coefficient,
+            })
+        }
+    }
+}
 /// Fermion operator with coefficients in matrix form.
 ///
 /// <div class="warning">
@@ -531,13 +565,39 @@ impl MajoranaBTree {
         Self { operators }
     }
 
+    /// Append a single product of Fermionic operators to the [`MajoranaBTree`].
+    fn append_fermion_product(&mut self, fproduct: FermionProduct) {
+        let term_length = fproduct.ops.len();
+        let offsets = repeat_n(0usize..=1usize, term_length).multi_cartesian_product();
+        for offset in offsets {
+            let scaler = offset
+                .iter()
+                .zip(fproduct.ops.iter())
+                .fold(c64(1., 0.), |acc, (&offset, op)| {
+                    acc * op.majorana_coefficients()[offset]
+                });
+            let mut majorana_term = Array1::zeros(term_length);
+            majorana_term += &arr1(fproduct.indices.as_slice());
+            majorana_term *= 2;
+            majorana_term = majorana_term + Array1::from_vec(offset);
+
+            let mut mp =
+                MajoranaProduct::new(majorana_term.to_vec(), fproduct.coefficient * scaler);
+            mp.majorise();
+            *self
+                .operators
+                .entry(mp.indices)
+                .or_insert(Complex64 { re: 0.0, im: 0.0 }) += mp.coefficient;
+        }
+    }
+
+    /// Append a Fermionic Hamiltonian in sparse form to the [`MajoranaBTree`].
     fn append_fermion_sparse(&mut self, fsparse: FermionSparse) {
-        let term_length = fsparse.indices.ncols();
         debug!("FSparse Indices {:?}", &fsparse.indices);
+        let term_length = fsparse.ops.len();
         Zip::from(fsparse.indices.rows())
             .and(fsparse.coefficients.view())
             .for_each(|ind, coeff| {
-                // debug!("{:#?}", ops_coeffs);
                 let offsets = repeat_n(0usize..=1usize, term_length).multi_cartesian_product();
                 for offset in offsets {
                     let scaler = offset
@@ -551,22 +611,17 @@ impl MajoranaBTree {
                     majorana_term *= 2;
                     majorana_term = majorana_term + Array1::from_vec(offset);
 
-                    debug!("M Term {:?}", &majorana_term.to_vec());
-                    debug!("M Scaler {:?}", &scaler);
                     let mut mp = MajoranaProduct::new(majorana_term.to_vec(), *coeff * scaler);
                     mp.majorise();
-                    debug!("MP {:?}", &mp);
                     *self
                         .operators
                         .entry(mp.indices)
                         .or_insert(Complex64 { re: 0.0, im: 0.0 }) += mp.coefficient;
-                    debug!("Mid update MBTree {:?}\n", &self);
                 }
             });
         debug!("MBTree {:?}\n", &self);
     }
 }
-
 /// Sparse represtnation of a set of [`MajoranaProduct`] operators.
 ///
 /// # Panics
@@ -677,6 +732,16 @@ impl From<MajoranaBTree> for MajoranaSparse {
         debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
         MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
             .expect("Indices and coefficients should be same length.")
+    }
+}
+
+impl From<FermionProduct> for MajoranaSparse {
+    fn from(fproduct: FermionProduct) -> Self {
+        // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
+        // to each majorana term
+        let mut majoranas: MajoranaBTree = MajoranaBTree::new();
+        majoranas.append_fermion_product(fproduct);
+        majoranas.into()
     }
 }
 

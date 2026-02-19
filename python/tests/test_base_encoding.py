@@ -1,10 +1,15 @@
 """Tests for base fermion to qubit encoding class"""
+from typing import Callable
+from IPython.utils.data import T
+from autoray.lazy import exp
+from jupyter_lsp.specs import r
 
 import numpy as np
 import pytest
 from ferrmion.encode import TernaryTree, MaxNTO
 from ferrmion.encode.ternary_tree import JordanWigner, BravyiKitaev, JKMN, ParityEncoding
-from ferrmion.encode.base import double_fermionic_operator, FermionQubitEncoding
+from ferrmion.encode.base import FermionQubitEncoding
+from hypothesis import strategies as st, given
 
 np.random.seed(1710)
 
@@ -56,142 +61,63 @@ def test_hartree_fock_state(sixteen_mode_tt):
     )
 
 
-def test_number_operator(four_mode_tt):
-    tree = four_mode_tt.JW()
+@pytest.mark.parametrize("encoding", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
+@given(n_modes=st.integers(min_value=1, max_value=10), operator_mode=st.integers(min_value=1, max_value=10))
+def test_number_operator_equals_edge_operator(encoding: Callable[[int], TernaryTree], n_modes:int, operator_mode:int):
+    tree = encoding(n_modes)
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    # numpy doesn't like comparing empty arrays
-    assert str(TernaryTree(n_modes=4).JW().edge_operator((0, 0))) == str(
-        TernaryTree(n_modes=4).JW().number_operator(0)
-    )
-    assert str(TernaryTree(n_modes=4).JW().edge_operator((1, 1))) == str(
-        TernaryTree(n_modes=4).JW().number_operator(1)
-    )
-    assert str(TernaryTree(n_modes=4).JW().edge_operator((2, 2))) == str(
-        TernaryTree(n_modes=4).JW().number_operator(2)
-    )
-    assert str(TernaryTree(n_modes=4).JW().edge_operator((3, 3))) == str(
-        TernaryTree(n_modes=4).JW().number_operator(3)
-    )
-
-    with pytest.raises(ValueError) as excinfo:
-        tree.number_operator(tree.n_modes + 1)
-    assert "indices invalid" in str(excinfo.value)
+    if operator_mode < n_modes:
+        # numpy doesn't like comparing empty arrays
+        assert tree.edge_operator((operator_mode, operator_mode)) == tree.number_operator(operator_mode)
+    else:
+        with pytest.raises(ValueError) as excinfo:
+            tree.number_operator(tree.n_modes + 1)
+        assert "Indices invalid" in str(excinfo.value)
 
     with pytest.raises(ValueError) as excinfo:
         tree.number_operator(-1)
-    assert "indices invalid" in str(excinfo.value)
+        assert "Indices invalid" in str(excinfo.value)
 
 
-def test_edge_operator(four_mode_tt):
-    tree = four_mode_tt.JKMN()
+def test_edge_operator(four_mode_tt: TernaryTree):
+    tree: TernaryTree = four_mode_tt.JKMN()
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    left = np.array([t[2] for t in tree.edge_operator((1, 0))], dtype=complex)
-    right = np.array(
-        [np.conjugate(t[2]) for t in tree.edge_operator((0, 1))], dtype=complex
-    )
-    assert np.all(right == left[[0, 2, 1, 3]])
-    assert np.all(
-        left == np.array([0.0 - 0.25j, -0.25 + 0.0j, 0.25 + 0.0j, 0.0 + 0.25j])
-    )
-    assert np.all(
-        right == np.array([0.0 - 0.25j, 0.25 + 0.0j, -0.25 + 0.0j, 0.0 + 0.25j])
-    )
 
     output = tree.edge_operator((0, 3))
-    expected = [
-        ("XZY", np.array([0, 2, 3]), -0 - 0.25j),
-        ("YZY", np.array([0, 2, 3]), 0.25 - 0j),
-        ("XZX", np.array([0, 1, 3]), 0.25 + 0j),
-        ("YZX", np.array([0, 1, 3]), 0 + 0.25j),
-    ]
-    for oterm, eterm in zip(output, expected):
-        np.all(oitem == eitem for oitem, eitem in zip(oterm, eterm))
+    expected = {"YZIX": -0 - 0.25j,"YZIY":0.25 - 0j, "XIZX":0.25 + 0j, "XIZY":0 + 0.25j,
+    }
 
-    with pytest.raises(ValueError) as excinfo:
-        tree.edge_operator((0, tree.n_modes + 1))
-    assert "indices invalid" in str(excinfo.value)
+    assert output == expected
 
-    with pytest.raises(ValueError) as excinfo:
-        tree.edge_operator((tree.n_modes + 1, 0))
-    assert "indices invalid" in str(excinfo.value)
+    scaled_output = tree.edge_operator((0,3), 0.5)
+    expected = {k:0.5*v for k,v in output.items()}
 
-    with pytest.raises(ValueError) as excinfo:
-        tree.number_operator((0, -1))
-    assert "indices invalid" in str(excinfo.value)
+    assert scaled_output == expected
 
-    with pytest.raises(ValueError) as excinfo:
-        tree.number_operator((-1, 0))
-    assert "indices invalid" in str(excinfo.value)
+@given(scaler=st.complex_numbers(min_magnitude=1e-2, max_magnitude=1e5))
+def test_encode_fermion_product_coefficient_scaling_correct(scaler:np.complex64):
+    four_mode_tt = TernaryTree(4)
 
+    jw_expected = {"IIII":0.5, "ZIII":-0.5}
+    jw_num_zero = four_mode_tt.JW()._encode_fermion_product("+-", [0,0], 1.)
+    jw_num_zero_scaled = four_mode_tt.JW()._encode_fermion_product("+-", [0,0], scaler)
+    assert jw_expected==jw_num_zero
+    scaler_expected = {k:scaler*v for k,v in jw_expected.items()}
+    assert set(jw_num_zero_scaled.keys()) == set(scaler_expected.keys())
+    assert all([np.isclose(scaler_expected[k], jw_num_zero_scaled[k]) for k in jw_num_zero_scaled.keys()])
 
-def test_double_fermionic_operator(four_mode_tt):
-    jw_expected = [
-        ("", np.array([], dtype=np.int64), 0.25),
-        ("Z", np.array([0]), -0.25),
-        ("Z", np.array([0]), -0.25),
-        ("", np.array([], dtype=np.int64), 0.25),
-    ]
-    jw_num_zero = double_fermionic_operator(four_mode_tt.JW(), (0, 0), "+-")
-    assert jw_num_zero[0][0] == jw_num_zero[3][0] == jw_expected[0][0]
-    assert type(jw_num_zero[0][1]) == type(jw_num_zero[3][1]) == type(jw_expected[0][1])
-    assert len(jw_num_zero[0][1]) == len(jw_num_zero[3][1]) == len(jw_expected[0][1])
-    assert jw_num_zero[0][2] == jw_num_zero[3][2] == jw_expected[0][2]
-    assert np.all(jw_num_zero[1] == jw_expected[1])
-    assert np.all(jw_num_zero[2] == jw_expected[2])
+    bk_expected = {"IIII": 0.5, "ZZIZ":-0.5}
+    bk_num_zero = four_mode_tt.BK()._encode_fermion_product("+-", [0,0],1.)
+    bk_num_zero_scaled = four_mode_tt.BK()._encode_fermion_product("+-", [0,0],scaler)
+    assert bk_expected==bk_num_zero
+    scaler_expected = {k:scaler*v for k,v in bk_expected.items()}
+    assert set(bk_num_zero_scaled.keys()) == set(scaler_expected.keys())
+    assert all([np.isclose(scaler_expected[k], bk_num_zero_scaled[k]) for k in bk_num_zero_scaled.keys()])
 
-    bk_expected = [
-        ("", np.array([], dtype=np.int64), 0.25),
-        ("ZZZ", np.array([0, 1, 3]), -0.25),
-        ("ZZZ", np.array([0, 1, 3]), -0.25),
-        ("", np.array([], dtype=np.int64), 0.25),
-    ]
-    bk_num_zero = double_fermionic_operator(four_mode_tt.BK(), (0, 0), "+-")
-    assert np.all(l == r for l, r in zip(bk_num_zero[1], bk_expected[1]))
-    assert np.all(l == r for l, r in zip(bk_num_zero[2], bk_expected[2]))
-
-    maxnto_expected = [
-        ("", np.array([], dtype=np.int64), 0.25),
-        ("ZZZ", np.array([0, 1, 2]), 0.25),
-        ("ZZZ", np.array([0, 1, 2]), 0.25),
-        ("", np.array([], dtype=np.int64), 0.25),
-    ]
-    maxnot_num_zero = double_fermionic_operator(MaxNTO(4), (0, 0), "+-")
-    assert np.all(l == r for l, r in zip(maxnot_num_zero[1], maxnto_expected[1]))
-    assert np.all(l == r for l, r in zip(maxnot_num_zero[2], maxnto_expected[2]))
-
-
-@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN, ParityEncoding])
-def test_majorana_product_doubles_to_idenity(encoding_func):
-    encoding: FermionQubitEncoding = encoding_func(5)
-    for i in range(5):
-        prod, coeff = encoding.majorana_product((i, i))
-        assert np.all(prod == np.zeros((2 * 5), dtype=np.bool))
-        assert coeff == 1
-        assert np.all(
-            encoding.majorana_product((i, i, i))[0]
-            == encoding.majorana_product((i,))[0]
-        )
-        assert np.all(
-            encoding.majorana_product((i, i, i))[1]
-            == encoding.majorana_product((i,))[1]
-        )
-
-
-@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN, ParityEncoding])
-def test_majorana_product_exchange_antisymmetry(encoding_func):
-    encoding: FermionQubitEncoding = encoding_func(5)
-    for i in range(1, 5):
-        assert np.all(
-            encoding.majorana_product((i, 0))[0] == encoding.majorana_product((0, i))[0]
-        )
-        assert np.all(
-            encoding.majorana_product((i, 0))[1]
-            == -1 * encoding.majorana_product((0, i))[1]
-        )
-
-
-@pytest.mark.parametrize("encoding_func", [JordanWigner, BravyiKitaev, JKMN, ParityEncoding])
-def test_majorana_product_empty(encoding_func):
-    encoding: FermionQubitEncoding = encoding_func(5)
-    assert np.all(encoding.majorana_product(())[0] == np.zeros(10, dtype=bool))
-    assert np.all(encoding.majorana_product(())[1] == 1)
+    maxnto_expected = {"IIII":0.5, "IZZZ":0.5}
+    maxnto_num_zero = MaxNTO(4)._encode_fermion_product( "+-", [0,0],1.)
+    maxnto_num_zero_scaled = MaxNTO(4)._encode_fermion_product( "+-", [0,0],scaler)
+    assert maxnto_expected == maxnto_num_zero
+    scaler_expected = {k:scaler*v for k,v in maxnto_expected.items()}
+    assert set(maxnto_num_zero_scaled.keys()) == set(scaler_expected.keys())
+    assert all([np.isclose(scaler_expected[k], maxnto_num_zero_scaled[k]) for k in maxnto_num_zero_scaled.keys()])

@@ -38,7 +38,7 @@ use crate::ternarytree::{TTFlatPack, TernaryTree};
 #[pyo3(name = "core")]
 fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
-    info!("Initializing Python module 'core'");
+    debug!("Initializing Python module 'core'");
 
     #[pyfn(m)]
     #[pyo3(name = "symplectic_product")]

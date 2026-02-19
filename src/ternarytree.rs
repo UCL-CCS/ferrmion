@@ -307,7 +307,7 @@ impl TernaryTree {
                 return Err(TernaryTreeError::QubitReassignmentError);
             }
             None => {
-                info!("Setting qubit indices {:?}", qubit_indices);
+                debug!("Setting qubit indices {:?}", qubit_indices);
                 self.qubit_index_of = Some(qubit_indices);
             }
         }

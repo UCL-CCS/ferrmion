@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Callable
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from ferrmion.core import (
     anneal_enumerations,
@@ -332,3 +332,35 @@ class FermionQubitEncoding(ABC):
         return encode_fermion_product(
             *self._build_symplectic_matrix(), signature, mode_indices, coeff
         )
+
+
+class MajoranaStringEncoding(FermionQubitEncoding):
+    """Majorana string encoding defined by input."""
+
+    def __init__(self, ipowers: ArrayLike, symplectics: ArrayLike):
+        """Initialize MajoranaStringEncoding.
+
+        Args:
+            ipowers (ArrayLike): Array of integers representing powers of the imaginary unit (i).
+            symplectics (ArrayLike): Array of booleans representing Pauli strings in XZ format.
+        """
+        self._ipowers = np.array(ipowers, dtype=np.uint8)
+        self._ipowers %= 4
+
+        self._symplectics = np.array(symplectics, dtype=np.bool)
+
+        if len(self._ipowers) != len(self._symplectics):
+            raise ValueError("ipowers and symplectics must be same length.")
+        self.n_modes = self._ipowers.shape[0] // 2
+        self.n_qubits = self._ipowers.shape[1] // 2
+        super().__init__(self.n_modes, self.n_qubits)
+
+    def _build_symplectic_matrix(
+        self,
+    ) -> tuple[NDArray[np.uint8], NDArray[np.bool]]:
+        """Build the symplectic matrix for the Majorana string encoding.
+
+        Returns:
+            Tuple[ArrayLike, ArrayLike]: The symplectic matrix in XZ format.
+        """
+        return self._ipowers, self._symplectics

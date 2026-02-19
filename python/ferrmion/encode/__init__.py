@@ -1,6 +1,6 @@
 """Init for encodings."""
 
-from .base import FermionQubitEncoding
+from .base import FermionQubitEncoding, MajoranaStringEncoding
 from .maxnto import MaxNTO
 from .standard import (
     bravyi_kitaev,
@@ -22,6 +22,7 @@ from .ternary_tree import (
 
 __all__ = [
     "FermionQubitEncoding",
+    "MajoranaStringEncoding",
     "TernaryTree",
     "MaxNTO",
     "jordan_wigner",

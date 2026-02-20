@@ -8,7 +8,7 @@
 //! these to a python API
 
 use ::core::panic;
-use log::{debug, info};
+use log::debug;
 use numpy::ndarray::Array1;
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
@@ -166,6 +166,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[pyfn(m)]
     #[pyo3(name = "anneal_enumerations")]
     fn wrap_anneal_enumerations<'py>(

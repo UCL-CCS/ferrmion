@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Callable
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from ferrmion.core import (
     anneal_enumerations,
@@ -189,6 +189,14 @@ class FermionQubitEncoding(ABC):
             constant_energy=fham.constant_energy,
         )
 
+    def to_json(self) -> dict:
+        """Store the encoding as a JSON-readable dict."""
+        ipow, sym = self._build_symplectic_matrix()
+        dict_output = {}
+        dict_output["ipowers"]=ipow.tolist()
+        dict_output["symplectics"]=sym.tolist()
+        return dict_output
+
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
         """Encode a Hamiltonian."""
         logger.debug("Encoding fermionic Hamiltonian.")
@@ -332,3 +340,35 @@ class FermionQubitEncoding(ABC):
         return encode_fermion_product(
             *self._build_symplectic_matrix(), signature, mode_indices, coeff
         )
+
+
+class MajoranaStringEncoding(FermionQubitEncoding):
+    """Majorana string encoding defined by input."""
+
+    def __init__(self, ipowers: ArrayLike, symplectics: ArrayLike):
+        """Initialize MajoranaStringEncoding.
+
+        Args:
+            ipowers (ArrayLike): Array of integers representing powers of the imaginary unit (i).
+            symplectics (ArrayLike): Array of booleans representing Pauli strings in XZ format.
+        """
+        self._ipowers = np.array(ipowers, dtype=np.uint8)
+        self._ipowers %= 4
+
+        self._symplectics = np.array(symplectics, dtype=np.bool)
+
+        if len(self._ipowers) != len(self._symplectics):
+            raise ValueError("ipowers and symplectics must be same length.")
+        self.n_modes = self._symplectics.shape[0] // 2
+        self.n_qubits = self._symplectics.shape[1] // 2
+        super().__init__(self.n_modes, self.n_qubits)
+
+    def _build_symplectic_matrix(
+        self,
+    ) -> tuple[NDArray[np.uint8], NDArray[np.bool]]:
+        """Build the symplectic matrix for the Majorana string encoding.
+
+        Returns:
+            Tuple[ArrayLike, ArrayLike]: The symplectic matrix in XZ format.
+        """
+        return self._ipowers, self._symplectics

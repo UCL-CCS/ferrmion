@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from ferrmion.encode import TernaryTree, MaxNTO
 from ferrmion.encode.ternary_tree import JordanWigner, BravyiKitaev, JKMN, ParityEncoding
-from ferrmion.encode.base import FermionQubitEncoding
+from ferrmion.encode.base import FermionQubitEncoding, MajoranaStringEncoding
 from hypothesis import strategies as st, given
 
 np.random.seed(1710)

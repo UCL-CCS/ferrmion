@@ -1,8 +1,7 @@
-use crate::hamiltonians::QubitHamiltonian;
 /*
 Functions relating to the FermionQubitEncoding base class.
 */
-
+use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{FermionProduct, MajoranaProduct, MajoranaSparse, Pauli};
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
@@ -12,6 +11,7 @@ use ndarray::{Axis, Zip};
 use num_complex::c64;
 use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1};
 use numpy::Complex64;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -251,14 +251,10 @@ impl Encode<MajoranaProduct> for MajoranaEncoding {
 impl Encode<&MajoranaSparse> for MajoranaEncoding {
     fn encode(&self, input: &MajoranaSparse) -> QubitHamiltonian {
         let mut qham: QubitHamiltonian = HashMap::with_hasher(RandomState::new());
-        input
+        let paulis_ipowers: Vec<(String, u8)> = input
             .indices
-            .iter()
-            .zip(&input.coefficients)
-            .for_each(|(&indices, coef)| {
-                debug!("\nindices {:?}", indices);
-                debug!("coef {:?}", coef);
-
+            .par_iter()
+            .map(|&indices| {
                 let (operator, product_ipower) = indices.iter().fold(
                     (Array1::from_elem(self.symplectics.ncols(), false), 0_u8),
                     |acc, &ind| {
@@ -281,11 +277,15 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
                 debug!("Total Ipower {:?}", ipower);
                 let (pauli, ipower) =
                     MajoranaEncoding::symplectic_to_pauli(operator.view(), ipower);
-                debug!("Pauli term {:?}", pauli.clone());
-                *qham.entry(pauli).or_insert(Complex64::new(0., 0.)) +=
-                    coef * icount_to_sign(ipower as usize);
-                debug!("Total Ipower {:?}", icount_to_sign(ipower as usize));
-            });
+                (pauli, ipower)
+            })
+            .collect();
+
+        for (pauli, coef) in paulis_ipowers.into_iter().zip(&input.coefficients) {
+            *qham.entry(pauli.0).or_insert(Complex64::new(0., 0.)) +=
+                coef * icount_to_sign(pauli.1 as usize);
+            debug!("Total Ipower {:?}", icount_to_sign(pauli.1 as usize));
+        }
 
         *qham
             .entry(

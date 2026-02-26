@@ -44,7 +44,6 @@ def test_topphatt_hatt(water_sparse_majorana, water_data):
     assert topphatt_tree.root_node.child_strings == initial_children
     assert topphatt_tree.root_node.branch_strings == initial_branches
 
-
 def test_topphatt_fasthatt(water_sparse_majorana, water_data):
     ones, twos = water_data["ones"], water_data["twos"]
     test_tree = fast_hatt(fermionic_to_sparse_majorana(((ones,"+-"), (twos, "++--"))), n_modes=14)
@@ -57,7 +56,6 @@ def test_topphatt_fasthatt(water_sparse_majorana, water_data):
 
 def test_topphatt_bonsai(water_sparse_majorana):
     pass
-
 
 @pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
 def test_topphatt_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):

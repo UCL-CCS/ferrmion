@@ -294,7 +294,6 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
                     .collect::<String>(),
             )
             .or_insert(c64(0., 0.)) += input.constant;
-        // qham.into_iter().filter(|(_, v)| v.abs() > 1e-12).collect()
         qham.into_iter().filter(|(_, v)| v.norm() > 1e-16).collect()
     }
 }

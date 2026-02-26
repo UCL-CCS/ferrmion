@@ -312,7 +312,7 @@ Fermion
 /// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct FermionProduct {
-    ops: Vec<LadderOperator>,
+    action: Vec<LadderOperator>,
     indices: Vec<usize>,
     coefficient: Complex64,
 }
@@ -324,15 +324,15 @@ pub struct FermionProductError;
 impl FermionProduct {
     /// Constructor for [`FermionProduct`]
     pub fn new(
-        ops: Vec<LadderOperator>,
+        action: Vec<LadderOperator>,
         indices: Vec<usize>,
         coefficient: Complex64,
     ) -> Result<Self, FermionProductError> {
-        if ops.len() != indices.len() {
+        if action.len() != indices.len() {
             Err(FermionProductError)
         } else {
             Ok(Self {
-                ops,
+                action: action,
                 indices,
                 coefficient,
             })
@@ -347,7 +347,7 @@ impl FermionProduct {
 /// </div>
 ///
 pub struct FermionMatrix {
-    ops: Vec<LadderOperator>,
+    action: Vec<LadderOperator>,
     coefficients: ArrayD<f64>,
 }
 
@@ -358,12 +358,12 @@ pub struct FermionMatrixError;
 impl FermionMatrix {
     /// Constructor for [`FermionMatrix`]
     pub fn new(
-        ops: Vec<LadderOperator>,
+        action: Vec<LadderOperator>,
         coefficients: ArrayD<f64>,
     ) -> Result<Self, FermionMatrixError> {
         // Check we have enough ladder operators
         // and a square/cube/... matrix
-        if ops.len() != coefficients.ndim()
+        if action.len() != coefficients.ndim()
             || !coefficients
                 .shape()
                 .iter()
@@ -371,7 +371,10 @@ impl FermionMatrix {
         {
             return Err(FermionMatrixError);
         }
-        Ok(Self { ops, coefficients })
+        Ok(Self {
+            action,
+            coefficients,
+        })
     }
 }
 
@@ -380,7 +383,7 @@ impl FermionMatrix {
 /// Each index is non-empty and each coefficient is non-zero.
 #[derive(Debug, PartialEq)]
 pub struct FermionSparse {
-    ops: Vec<LadderOperator>,
+    action: Vec<LadderOperator>,
     indices: Array2<usize>,
     coefficients: Array1<Complex64>,
 }
@@ -392,16 +395,17 @@ pub struct FermionSparseError;
 impl FermionSparse {
     /// Constructor for [`FermionSparse`]
     pub fn new(
-        ops: Vec<LadderOperator>,
+        action: Vec<LadderOperator>,
         indices: Array2<usize>,
         coefficients: Array1<Complex64>,
     ) -> Result<Self, FermionSparseError> {
-        if coefficients.len() != indices.len_of(Axis(0)) || ops.len() != indices.len_of(Axis(1)) {
+        if coefficients.len() != indices.len_of(Axis(0)) || action.len() != indices.len_of(Axis(1))
+        {
             return Err(FermionSparseError);
         };
 
         Ok(Self {
-            ops,
+            action,
             indices,
             coefficients,
         })
@@ -410,17 +414,8 @@ impl FermionSparse {
 
 impl From<FermionMatrix> for FermionSparse {
     fn from(mft: FermionMatrix) -> FermionSparse {
-        // let temp_hashmap: HashMap<ArrayView1<usize>, f64, RandomState> =
-        //     HashMap::with_hasher(RandomState::new());
-        // mft.coefficients
-        //     .indexed_iter()
-        //     .filter(|(_, &v)| v != 0.)
-        //     .for_each(|(ind, &v)| {
-        //         *temp_hashmap.entry(ind.as_array_view()).or_default() += v;
-        //     });
-
         let n_nonzero = mft.coefficients.iter().filter(|&v| *v != 0.).count();
-        let mut sparse_indices: Array2<usize> = Array2::zeros((n_nonzero, mft.ops.len()));
+        let mut sparse_indices: Array2<usize> = Array2::zeros((n_nonzero, mft.action.len()));
         let mut sparse_coefficients: Array1<Complex64> = Array1::from_elem(n_nonzero, c64(0., 0.));
         mft.coefficients
             .indexed_iter()
@@ -432,7 +427,7 @@ impl From<FermionMatrix> for FermionSparse {
                     .assign(&ind.into_dimension().as_array_view());
                 sparse_coefficients[count] += c64(v, 0.);
             });
-        FermionSparse::new(mft.ops, sparse_indices, sparse_coefficients)
+        FermionSparse::new(mft.action, sparse_indices, sparse_coefficients)
             .expect("Conversion from MatrixFermionTerm should be validated.")
     }
 }
@@ -445,9 +440,9 @@ mod fermion_tests {
     use num_complex::c64;
 
     #[test]
-    fn test_ops_conversion() {
-        let ops = [LadderOperator::Creation, LadderOperator::Annihilation];
-        let im_coeffs: Array1<Complex64> = ops
+    fn test_action_conversion() {
+        let action = [LadderOperator::Creation, LadderOperator::Annihilation];
+        let im_coeffs: Array1<Complex64> = action
             .iter()
             .map(|s| s.majorana_coefficients())
             .reduce(|acc, s| vector_kron(&acc, &s))
@@ -465,22 +460,22 @@ mod fermion_tests {
 
     #[test]
     fn test_sparse_term_creation() {
-        let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let action = vec![LadderOperator::Creation, LadderOperator::Annihilation];
         let indices = arr2(&[[0, 1], [2, 3]]);
         let coefficients = arr1(&[c64(1.0, 0.), c64(-1., 0.)]);
-        let _term = FermionSparse::new(ops, indices, coefficients).unwrap();
+        let _term = FermionSparse::new(action, indices, coefficients).unwrap();
     }
     #[test]
     fn test_matrix_term_creation() {
-        let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let action = vec![LadderOperator::Creation, LadderOperator::Annihilation];
         let dyn_shape = ndarray::IxDyn(&[2, 2]);
         assert_eq!(dyn_shape.clone().ndim(), 2);
         let coefficients = ArrayD::from_elem(dyn_shape, 1.);
-        let _term = FermionMatrix::new(ops, coefficients).unwrap();
+        let _term = FermionMatrix::new(action, coefficients).unwrap();
     }
     #[test]
     fn test_sparse_from_matrix() {
-        let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let action = vec![LadderOperator::Creation, LadderOperator::Annihilation];
         let dyn_shape = ndarray::IxDyn(&[2, 2]);
         assert_eq!(dyn_shape.clone().ndim(), 2);
         let mut coefficients = ArrayD::from_elem(dyn_shape, 0.);
@@ -488,7 +483,7 @@ mod fermion_tests {
         coefficients[[0, 1]] = 0.5;
         coefficients[[1, 0]] = 2.;
         coefficients[[1, 1]] = 10.;
-        let term = FermionMatrix::new(ops, coefficients).unwrap();
+        let term = FermionMatrix::new(action, coefficients).unwrap();
         let sparse = FermionSparse::from(term);
         assert_eq!(sparse.indices, arr2(&[[0, 0], [0, 1], [1, 0], [1, 1]]));
         assert_eq!(
@@ -567,12 +562,12 @@ impl MajoranaBTree {
 
     /// Append a single product of Fermionic operators to the [`MajoranaBTree`].
     fn append_fermion_product(&mut self, fproduct: FermionProduct) {
-        let term_length = fproduct.ops.len();
+        let term_length = fproduct.action.len();
         let offsets = repeat_n(0usize..=1usize, term_length).multi_cartesian_product();
         for offset in offsets {
             let scaler = offset
                 .iter()
-                .zip(fproduct.ops.iter())
+                .zip(fproduct.action.iter())
                 .fold(c64(1., 0.), |acc, (&offset, op)| {
                     acc * op.majorana_coefficients()[offset]
                 });
@@ -594,7 +589,17 @@ impl MajoranaBTree {
     /// Append a Fermionic Hamiltonian in sparse form to the [`MajoranaBTree`].
     fn append_fermion_sparse(&mut self, fsparse: FermionSparse) {
         debug!("FSparse Indices {:?}", &fsparse.indices);
-        let term_length = fsparse.ops.len();
+
+        // Note: This can be generalised
+        // +-+- (ijkl) is also invalid if i==k and i!=j
+        let double_action: Vec<(usize, usize)> = (0..fsparse.action.len() - 1)
+            .filter(|&i| fsparse.action[i] == fsparse.action[i + 1])
+            .map(|i| (i, i + 1))
+            .collect::<Vec<_>>();
+
+        debug!("Doubled fermonic operators {double_action:?}");
+
+        let term_length = fsparse.action.len();
         Zip::from(fsparse.indices.rows())
             .and(fsparse.coefficients.view())
             .for_each(|ind, coeff| {
@@ -602,7 +607,7 @@ impl MajoranaBTree {
                 for offset in offsets {
                     let scaler = offset
                         .iter()
-                        .zip(fsparse.ops.iter())
+                        .zip(fsparse.action.iter())
                         .fold(c64(1., 0.), |acc, (&offset, op)| {
                             acc * op.majorana_coefficients()[offset]
                         });
@@ -779,14 +784,14 @@ mod majorana_tests {
         // Output should look like
         // [left_0 right_0, left_0 right_1, left_1 right_0, left_1 right_1]
         let ladder_vec = [LadderOperator::Creation, LadderOperator::Annihilation];
-        let two_ops: Vec<Complex64> = ladder_vec
+        let two_action: Vec<Complex64> = ladder_vec
             .iter()
             .map(|signature| signature.majorana_coefficients())
             .reduce(|acc, s| vector_kron(&acc, &s))
             .unwrap()
             .to_vec();
         assert_eq!(
-            two_ops,
+            two_action,
             vec![c64(0.25, 0.), c64(0., -0.25), c64(0., 0.25), c64(0.25, 0.)]
         );
 
@@ -795,14 +800,14 @@ mod majorana_tests {
             LadderOperator::Annihilation,
             LadderOperator::Creation,
         ];
-        let three_ops: Vec<Complex64> = ladder_vec
+        let three_action: Vec<Complex64> = ladder_vec
             .iter()
             .map(|signature| signature.majorana_coefficients())
             .reduce(|acc, s| vector_kron(&acc, &s))
             .unwrap()
             .to_vec();
         assert_eq!(
-            three_ops,
+            three_action,
             vec![
                 c64(0.125, 0.),
                 c64(0., -0.125),
@@ -937,10 +942,10 @@ mod majorana_tests {
     fn test_from_fermion_sparse_len_one() {
         let indices = arr2(&[[0]]);
         let coefficients = arr1(&[c64(10.0, 0.)]);
-        let ops = vec![LadderOperator::Creation];
+        let action = vec![LadderOperator::Creation];
         debug!("{:#?}", indices.clone());
         debug!("{:#?}", coefficients.clone());
-        debug!("{:#?}", ops.clone());
+        debug!("{:#?}", action.clone());
 
         let majorana_term = MajoranaSparse::new(
             vec![array_vec!([u16; 4]=> 0), array_vec!([u16; 4]=> 1)],
@@ -949,7 +954,7 @@ mod majorana_tests {
         )
         .unwrap();
         let fermion_term =
-            FermionSparse::new(ops.clone(), indices.clone(), coefficients.clone()).unwrap();
+            FermionSparse::new(action.clone(), indices.clone(), coefficients.clone()).unwrap();
         assert_eq!(majorana_term, MajoranaSparse::from(fermion_term));
     }
 
@@ -957,10 +962,10 @@ mod majorana_tests {
     fn test_from_fermion_sparse_len_two() {
         let indices = arr2(&[[0, 1]]);
         let coefficients = arr1(&[c64(10.0, 0.)]);
-        let ops = vec![LadderOperator::Creation, LadderOperator::Annihilation];
+        let action = vec![LadderOperator::Creation, LadderOperator::Annihilation];
         debug!("{:#?}", indices.clone());
         debug!("{:#?}", coefficients.clone());
-        debug!("{:#?}", ops.clone());
+        debug!("{:#?}", action.clone());
 
         let majorana_term = MajoranaSparse::new(
             vec![
@@ -974,7 +979,7 @@ mod majorana_tests {
         )
         .unwrap();
         let fermion_term =
-            FermionSparse::new(ops.clone(), indices.clone(), coefficients.clone()).unwrap();
+            FermionSparse::new(action.clone(), indices.clone(), coefficients.clone()).unwrap();
         assert_eq!(majorana_term, MajoranaSparse::from(fermion_term));
     }
 
@@ -982,14 +987,14 @@ mod majorana_tests {
     fn test_from_fermion_sparse_len_three() {
         let indices = arr2(&[[0, 1, 2]]);
         let coefficients = arr1(&[c64(10.0, 0.)]);
-        let ops = vec![
+        let action = vec![
             LadderOperator::Creation,
             LadderOperator::Annihilation,
             LadderOperator::Creation,
         ];
         debug!("{:#?}", indices.clone());
         debug!("{:#?}", coefficients.clone());
-        debug!("{:#?}", ops.clone());
+        debug!("{:#?}", action.clone());
 
         let majorana_term = MajoranaSparse::new(
             vec![
@@ -1016,7 +1021,7 @@ mod majorana_tests {
         )
         .unwrap();
         let fermion_term =
-            FermionSparse::new(ops.clone(), indices.clone(), coefficients.clone()).unwrap();
+            FermionSparse::new(action.clone(), indices.clone(), coefficients.clone()).unwrap();
         assert_eq!(majorana_term, MajoranaSparse::from(fermion_term));
     }
 

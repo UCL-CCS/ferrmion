@@ -414,6 +414,27 @@ def test_core_standard_encodings(n_modes,encoding,name):
 
 @pytest.mark.parametrize("optimisation", ["naive", "anneal", "topphatt"])
 @pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
+def test_encode_num_terms_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str, mol_data_sets: dict):
+    ones = mol_data_sets["ones"]
+    twos = mol_data_sets["twos"]
+    e_nuc = mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+    fham = FermionHamiltonian(terms = {"+-":ones,"++--":twos}, constant_energy=e_nuc)
+    initial_ones = deepcopy(ones)
+    initial_twos = deepcopy(twos)
+
+    match optimisation:
+        case "naive":
+            qham = encoding(fham.n_modes).encode(fham)
+        case "anneal":
+            qham = encoding(fham.n_modes).encode_annealed(fham)
+        case "topphatt":
+            qham = encoding(fham.n_modes).encode_topphatt(fham)
+
+    assert len(qham) == mol_data_sets["num_terms"]
+
+@pytest.mark.parametrize("optimisation", ["naive", "anneal", "topphatt"])
+@pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
 def test_encode_h2_eigvals_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str, h2_mol_data_sets: dict):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]

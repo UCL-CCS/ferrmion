@@ -112,7 +112,8 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, water_data, topph
                 fham.n_modes)
         case "Huffman":
             tree = huffman_ternary_tree(ones, twos)
+    qham_naive = tree.encode(fham)
     qham = tree.encode_topphatt(fham)
 
-    assert pauli_weight(qham)[0] <= topphatt_weight_snapshot[encoding]["pauli_weight"]
-    assert coefficient_pauli_weight(qham)[0] <= topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"]
+    assert np.isclose(float(pauli_weight(qham)[0]/pauli_weight(qham_naive)[0]),topphatt_weight_snapshot[encoding]["pauli_weight"], atol=0.01)
+    assert np.isclose(float(coefficient_pauli_weight(qham)[0]/coefficient_pauli_weight(qham_naive)[0]), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"], atol=0.01)

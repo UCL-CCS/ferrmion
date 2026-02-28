@@ -12,7 +12,7 @@
 use crate::ternarytree::Edge;
 use itertools::Itertools;
 use log::debug;
-use ndarray::Dimension;
+use ndarray::{arr0, s, Dimension};
 use num_complex::{c64, ComplexFloat};
 use numpy::ndarray::{
     arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis, IntoDimension, Zip,
@@ -371,10 +371,61 @@ impl FermionMatrix {
         {
             return Err(FermionMatrixError);
         }
-        Ok(Self {
+        let mut out = Self {
             action,
             coefficients,
-        })
+        };
+        out.zero_disallowed_terms();
+        Ok(out)
+    }
+
+    /// Zero out terms with disallowed fermion operator index combinations.
+    ///
+    /// For instance, with action [+,+,-,-] any operators with indices i,j,k,l
+    /// where i = j or k == l are zeroed out.
+    ///
+    /// Note: Current implementation only checks for operators of dimension 4.
+    ///
+    ///
+    // Can be made more general when dim > 4 is added.
+    fn zero_disallowed_terms(&mut self) {
+        use crate::operators::LadderOperator::{Annihilation, Creation};
+        if self.coefficients.ndim() == 4 {
+            match self.action.as_slice() {
+                [Annihilation, Annihilation, Creation, Creation]
+                | [Creation, Creation, Annihilation, Annihilation] => {
+                    for i in 0..self.coefficients.shape()[0] {
+                        self.coefficients
+                            .slice_mut(s![i, i, .., ..])
+                            .assign(&arr0(0.0));
+                        self.coefficients
+                            .slice_mut(s![.., .., i, i])
+                            .assign(&arr0(0.0));
+                    }
+                }
+                [Creation, Annihilation, Creation, Annihilation]
+                | [Annihilation, Creation, Annihilation, Creation] => {
+                    for i in 0..self.coefficients.shape()[0] {
+                        // Keeping only [i, i, i, ..]
+                        self.coefficients
+                            .slice_mut(s![i, ..i, i, ..])
+                            .assign(&arr0(0.0));
+                        self.coefficients
+                            .slice_mut(s![i, i + 1.., i, ..])
+                            .assign(&arr0(0.0));
+
+                        // Keeping only [.., i, i, i]
+                        self.coefficients
+                            .slice_mut(s![.., i, ..i, i])
+                            .assign(&arr0(0.0));
+                        self.coefficients
+                            .slice_mut(s![.., i, i + 1.., i])
+                            .assign(&arr0(0.0));
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 }
 

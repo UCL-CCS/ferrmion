@@ -556,13 +556,15 @@ pub fn topphatt(
         for active in active_nodes {
             let mut allowed_x =
                 restrictions.x[active].get_index_subset(&unassigned_modes, tree.n_nodes);
+            // Optimisation:
+            // Reversing x, y but leaving z increadsing order reduces the runtime for
+            // for hamiltonians in tests.
             allowed_x.reverse();
             let mut allowed_y =
                 restrictions.y[active].get_index_subset(&unassigned_modes, tree.n_nodes);
             allowed_y.reverse();
-            let mut allowed_z =
+            let allowed_z =
                 restrictions.z[active].get_index_subset(&unassigned_modes, tree.n_nodes);
-            allowed_z.reverse();
 
             debug!("Allowed X {:?}", allowed_x);
             debug!("Allowed Y {:?}", allowed_y);

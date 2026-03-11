@@ -1,12 +1,12 @@
 use itertools::FoldWhile::{Continue, Done};
+use tinyvec::SliceVec;
 use itertools::Itertools;
 use log::debug;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::iter::zip;
 use std::ops::BitXorAssign;
-use std::rc::Rc;
-use std::sync::{Arc, LockResult, PoisonError, RwLock, Mutex};
+use std::sync::{RwLock, Mutex};
 use thiserror::Error;
 use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 4;
@@ -646,15 +646,31 @@ pub fn topphatt(
                                 // This part interacts with the ordering of active nodes,
                                 // which is X-most to Z-Most
 
-                                if weight < min_weight {
-                                    debug!("Min Weight {:?}", min_weight);
+                                if weight <= min_weight {
                                     debug!("Selection {:?}", selection);
+                                    debug!("Min Weight {:?}", min_weight);
                                     debug!("Min Parent {:?}", active);
                                     let mut write_guard = selection.write().expect("Rwlock should not be poisoned before write.");
                                     if weight < write_guard.min_weight {
                                             write_guard.min_weight = weight;
                                             write_guard.leaf_indices = comb;
                                             write_guard.min_parent = active;
+                                    } else if weight == write_guard.min_weight {
+                                        let li = write_guard.leaf_indices;
+                                        // Safety:
+                                        // The the only use of these values is to compare u64 values below.
+                                        // This allows us to make multi-threaded topp-hatt deterministic,
+                                        // enforcing a specific ordering for leaf-index selection.
+                                        // These values are immediately dropped.
+                                        unsafe {
+                                            let current = std::mem::transmute::<[u16;4], u64>([0, li[0], li[1], li[2]]);
+                                            let this = std::mem::transmute::<[u16;4], u64>([0, comb[0], comb[1], comb[2]]);
+                                            if this > current {
+                                                write_guard.min_weight = weight;
+                                                write_guard.leaf_indices = comb;
+                                                write_guard.min_parent = active;
+                                            }
+                                        }
                                     };
                                 };
                             } else {

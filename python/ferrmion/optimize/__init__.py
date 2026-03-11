@@ -1,6 +1,6 @@
 """Init Optimize Submodule."""
 
-from ..core import anneal_enumerations, topphatt_standard
+from ..core import anneal_enumerations, topphatt, topphatt_standard
 from .bonsai import bonsai_algorithm
 from .cost_functions import (
     coefficient_pauli_weight,
@@ -12,7 +12,6 @@ from .enumeration.evolutionary import lambda_plus_mu
 from .hatt import hamiltonian_adaptive_ternary_tree
 from .huffman import huffman_ternary_tree
 from .rett import reduced_entanglement_ternary_tree
-from .topphatt import topphatt
 
 __all__ = [
     "lambda_plus_mu",

@@ -2,7 +2,6 @@
 from typing import Callable
 from ferrmion import TernaryTree
 
-from ferrmion.optimize.topphatt import topphatt
 from ferrmion.utils import fermionic_to_sparse_majorana
 from ferrmion.encode.ternary_tree import (
     JordanWigner,
@@ -22,7 +21,7 @@ from scipy.sparse.linalg import eigsh
 
 @pytest.mark.parametrize("encoding", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
 @pytest.mark.parametrize("coeff_weight", [True, False])
-def test_core_topphatt_standard_h2_eigvals_equal_expected(encoding, coeff_weight, h2_mol_data_sets: dict):
+def test_core_anneal_standard_h2_eigvals_equal_expected(encoding, coeff_weight, h2_mol_data_sets: dict):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]

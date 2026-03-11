@@ -486,10 +486,18 @@ fn reduce_hamiltonian(
 pub fn topphatt(
     mut hamiltonian: MajoranaSparse,
     mut tree: TernaryTree,
+    parallelize: bool,
 ) -> Result<TernaryTree, ToppHattError> {
     let mut restrictions = TreeRetrictions::new(&tree);
     let mut node_dependencies = NodeDependencies::new(&tree);
-    let n_threads:usize = num_cpus::get();
+
+    // Rough threshold at which it's worth the cost.
+    let n_threads:usize = if parallelize && hamiltonian.indices.len() > 1000 {
+        num_cpus::get()
+    } else {
+        1
+    };
+
     // Reversing the direction tends to give better results for molecules
     let mut unassigned_modes: BTreeSet<usize> = BTreeSet::from_iter(0..tree.n_nodes);
     let mut total_weight = 0;

@@ -154,7 +154,9 @@ class TernaryTree(FermionQubitEncoding):
         self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
-    def encode_topphatt(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+    def encode_topphatt(
+        self, fham: FermionHamiltonian, parallelize: bool = True
+    ) -> QubitHamiltonian:
         """Encode a Hamiltonian, using TOPP-HATT optimisation."""
         sigs, coeffs = fham.signatures_and_coefficients
         ipow, sym = core.topphatt(
@@ -162,6 +164,7 @@ class TernaryTree(FermionQubitEncoding):
             n_qubits=self.n_qubits,
             signatures=deepcopy(sigs),
             coeffs=deepcopy(coeffs),
+            parallelize=parallelize,
         )
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
         self.default_mode_op_map = [*range(self.n_modes)]

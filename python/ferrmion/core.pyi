@@ -64,6 +64,7 @@ def topphatt(
     n_qubits: int,
     signatures: list[str],
     coeffs: list[np.ndarray],
+    parallelize: bool,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
 def topphatt_standard(
     encoding: str,
@@ -71,6 +72,7 @@ def topphatt_standard(
     n_qubits: int,
     signatures: list[str],
     coeffs: list[np.ndarray],
+    parallelize: bool,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
 def flatpack_symplectic_matrix(
     flatpack: TTFlatpack,

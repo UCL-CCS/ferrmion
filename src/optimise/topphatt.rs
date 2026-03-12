@@ -1,9 +1,12 @@
 use itertools::FoldWhile::{Continue, Done};
+use tinyvec::SliceVec;
 use itertools::Itertools;
 use log::debug;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::error::Error;
 use std::iter::zip;
 use std::ops::BitXorAssign;
+use std::sync::{RwLock, Mutex};
 use thiserror::Error;
 use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 4;
@@ -23,6 +26,14 @@ pub enum ToppHattError {
     #[error("No min parent for loop index {0}.")]
     NoMinParentFound(usize),
 }
+
+#[derive(Debug)]
+pub struct ToppHattSelection {
+    min_weight: usize,
+    min_parent: usize,
+    leaf_indices: [u16; 3],
+}
+
 
 /// Restrictons on which Majorana operator can be assigned
 ///
@@ -475,9 +486,17 @@ fn reduce_hamiltonian(
 pub fn topphatt(
     mut hamiltonian: MajoranaSparse,
     mut tree: TernaryTree,
+    parallelize: bool,
 ) -> Result<TernaryTree, ToppHattError> {
     let mut restrictions = TreeRetrictions::new(&tree);
     let mut node_dependencies = NodeDependencies::new(&tree);
+
+    // Rough threshold at which it's worth the cost.
+    let n_threads:usize = if parallelize && hamiltonian.indices.len() > 1000 {
+        num_cpus::get()
+    } else {
+        1
+    };
 
     // Reversing the direction tends to give better results for molecules
     let mut unassigned_modes: BTreeSet<usize> = BTreeSet::from_iter(0..tree.n_nodes);
@@ -493,9 +512,12 @@ pub fn topphatt(
         debug!("Dependencies {:?}", node_dependencies);
         debug!("Unassigned Modes {:?}", unassigned_modes);
         let n_leaves = 2 * tree.n_nodes + 1;
-        let mut selection: [u16; 3] = [u16::MAX, u16::MAX, u16::MAX];
-        let mut min_parent: usize = usize::MAX;
-        let mut min_weight = usize::MAX;
+
+        let mut selection = RwLock::new(ToppHattSelection {
+            min_weight: usize::MAX,
+            min_parent: usize::MAX,
+            leaf_indices: [u16::MAX; 3],
+        });
 
         let max_root_distance: &usize = node_dependencies
             .root_distances
@@ -542,18 +564,21 @@ pub fn topphatt(
         for active in active_nodes {
             let mut allowed_x =
                 restrictions.x[active].get_index_subset(&unassigned_modes, tree.n_nodes);
+            // Optimisation:
+            // Reversing x, y but leaving z increadsing order reduces the runtime for
+            // for hamiltonians in tests.
             allowed_x.reverse();
             let mut allowed_y =
                 restrictions.y[active].get_index_subset(&unassigned_modes, tree.n_nodes);
             allowed_y.reverse();
-            let mut allowed_z =
+            let allowed_z =
                 restrictions.z[active].get_index_subset(&unassigned_modes, tree.n_nodes);
-            allowed_z.reverse();
 
             debug!("Allowed X {:?}", allowed_x);
             debug!("Allowed Y {:?}", allowed_y);
             debug!("Allowed Z {:?}", allowed_z);
-            let product = match (restrictions.x[active], restrictions.y[active]) {
+
+            let mut product = match (restrictions.x[active], restrictions.y[active]) {
                 (
                     Restriction::EvenLeaf | Restriction::OddLeaf,
                     Restriction::EvenLeaf | Restriction::OddLeaf,
@@ -562,77 +587,122 @@ pub fn topphatt(
                     .into_iter()
                     .multi_cartesian_product(),
             };
+
             debug!("Product {:?}", product);
 
             // Find the combination of possible assignments
             // which has the minimum Pauli weight
-            for comb in product {
-                // debug!("Comb {:?}", &comb);
-                let comb: [u16; 3] = match comb.len() {
-                    2 => {
-                        let pair = if comb[0] % 2 == 0 {
-                            comb[0] + 1
-                        } else {
-                            comb[0] - 1
-                        };
-                        [comb[0], pair, comb[1]]
-                    }
-                    3 => [comb[0], comb[1], comb[2]],
-                    _ => return Err(ToppHattError::InvalidCombination(comb)),
-                };
-                if comb[0] == comb[2] {
-                    continue;
-                }
-                let mut sorted_comb: [u16; 3] = comb;
-                sorted_comb.sort();
+            // Good target for concurrency.
+            // product.into_par_iter().for_each(|comb| {
+            //     update_selection(&comb, active, selection, &hamiltonian)
+            //         .expect("Threads should not panic in update selection.")
+            // });
+            let product = Mutex::new(product);
+            std::thread::scope(|s| {
+                for _ in 0..n_threads {
+                    s.spawn(|| {
+                        'outer: loop {
+                            let mut product_guard = product.lock().expect("Product should not be poisoned.");
+                            let comb = product_guard.next();
+                            drop(product_guard);
 
-                let comb_min = unsafe { sorted_comb.get_unchecked(0) };
-                let comb_max = unsafe { sorted_comb.get_unchecked(2) };
-                // We expect that the hamiltonian terms are sorted!
-                let weight = hamiltonian
-                    .indices
-                    .iter()
-                    .fold_while(0, |acc, inds| {
-                        debug_assert!(inds.is_sorted());
-                        let inds_max = inds.last().expect("Hamiltonian terms should not be empty.");
-                        let inds_min = inds
-                            .first()
-                            .expect("Hamiltonian terms should not be empty.");
+                            if let Some(comb) = comb {
+                                let comb: [u16; 3] = if comb.len() == 3 {
+                                    [comb[0], comb[1], comb[2]]
+                                } else {
+                                    let pair = if comb[0] % 2 == 0 {
+                                        comb[0] + 1
+                                    } else {
+                                        comb[0] - 1
+                                    };
+                                    [comb[0], pair, comb[1]]
+                                };
 
-                        if (comb_min > inds_max) | (comb_max < inds_min) {
-                            Continue(acc)
-                        } else if acc > min_weight {
-                            Done(acc)
-                        } else {
-                            Continue(acc + qubit_term_weight(inds, &sorted_comb))
+                                if comb[0] == comb[2] {
+                                    continue 'outer;
+                                };
+                                let mut sorted_comb: [u16; 3] = comb;
+                                sorted_comb.sort();
+                                let comb_min = unsafe { sorted_comb.get_unchecked(0) };
+                                let comb_max = unsafe { sorted_comb.get_unchecked(2) };
+
+                                let read_guard = selection.read().expect("Selection should not be poisoned before read.");
+                                let min_weight = read_guard.min_weight;
+                                drop(read_guard);
+
+
+                                // We expect that the hamiltonian terms are sorted!
+                                let weight = hamiltonian
+                                    .indices
+                                    .iter()
+                                    .fold_while(0, |acc, inds| {
+                                        debug_assert!(inds.is_sorted());
+                                        let inds_max = inds.last().expect("Hamiltonian terms should not be empty.");
+                                        let inds_min = inds
+                                            .first()
+                                            .expect("Hamiltonian terms should not be empty.");
+
+                                        if (comb_min > inds_max) | (comb_max < inds_min) {
+                                            Continue(acc)
+                                        } else if acc > min_weight {
+                                            Done(acc)
+                                        } else {
+                                            Continue(acc + qubit_term_weight(inds, &comb))
+                                        }
+                                    })
+                                    .into_inner();
+                                // For most trees, using < gives the best results.
+                                // counter example: JKMN(14), benefits from setting <=
+                                // This part interacts with the ordering of active nodes,
+                                // which is X-most to Z-Most
+
+                                if weight <= min_weight {
+                                    debug!("Selection {:?}", selection);
+                                    debug!("Min Weight {:?}", min_weight);
+                                    debug!("Min Parent {:?}", active);
+                                    let mut write_guard = selection.write().expect("Rwlock should not be poisoned before write.");
+                                    if weight < write_guard.min_weight {
+                                            write_guard.min_weight = weight;
+                                            write_guard.leaf_indices = comb;
+                                            write_guard.min_parent = active;
+                                    } else if weight == write_guard.min_weight {
+                                        let li = write_guard.leaf_indices;
+                                        // Safety:
+                                        // The the only use of these values is to compare u64 values below.
+                                        // This allows us to make multi-threaded topp-hatt deterministic,
+                                        // enforcing a specific ordering for leaf-index selection.
+                                        // These values are immediately dropped.
+                                        unsafe {
+                                            let current = std::mem::transmute::<[u16;4], u64>([0, li[0], li[1], li[2]]);
+                                            let this = std::mem::transmute::<[u16;4], u64>([0, comb[0], comb[1], comb[2]]);
+                                            if this > current {
+                                                write_guard.min_weight = weight;
+                                                write_guard.leaf_indices = comb;
+                                                write_guard.min_parent = active;
+                                            }
+                                        }
+                                    };
+                                };
+                            } else {
+                                break 'outer;
+                            };
                         }
-                    })
-                    .into_inner();
-                // For most trees, using < gives the best results.
-                // counter example: JKMN(14), benefits from setting <=
-                // This part interacts with the ordering of active nodes,
-                // which is X-most to Z-Most
-                if weight < min_weight {
-                    min_weight = weight;
-                    selection = comb;
-                    min_parent = active;
-                    debug!("Min Weight {:?}", min_weight);
-                    debug!("Selection {:?}", selection);
-                    debug!("Min Parent {:?}", min_parent);
+                    });
                 }
-            }
-            debug!("Finished active\n");
+            });
         }
-
-        debug!("Selection {:?}", selection);
-        debug!("Min Parent {:?}", min_parent);
-        match selection {
+        // debug!("Selection {:?}", &selection);
+        let selection = selection
+            .into_inner()
+            .expect("Should not have poisoned threads.");
+        match selection.leaf_indices {
             [u16::MAX, u16::MAX, u16::MAX] => {
                 return Err(ToppHattError::NoSelectionMade(loop_index))
             }
             _ => {
                 debug!("Removing selection from unassigned");
                 selection
+                    .leaf_indices
                     .into_iter()
                     .filter(|&v| n_leaves > v as usize)
                     .map(|v| if v % 2 == 0 { v / 2 } else { (v - 1) / 2 })
@@ -642,17 +712,17 @@ pub fn topphatt(
             }
         }
         debug!("Unassigned {:?}", unassigned_modes);
-        total_weight += min_weight;
+        total_weight += selection.min_weight;
         debug!("Total weight {:?}", total_weight);
 
-        match min_parent {
+        match selection.min_parent {
             usize::MAX => return Err(ToppHattError::NoMinParentFound(loop_index)),
-            _ => node_dependencies.drop_node(min_parent),
+            _ => node_dependencies.drop_node(selection.min_parent),
         }
 
         debug!("Dropped dependencies");
         for (&sel, res) in zip(
-            &selection,
+            &selection.leaf_indices,
             [
                 &mut restrictions.x,
                 &mut restrictions.y,
@@ -660,9 +730,9 @@ pub fn topphatt(
             ],
         ) {
             if (sel as usize) < n_leaves - 1 {
-                res[min_parent] = Restriction::Majorana(sel);
+                res[selection.min_parent] = Restriction::Majorana(sel);
             } else if (sel as usize) == n_leaves {
-                res[min_parent] = Restriction::Empty;
+                res[selection.min_parent] = Restriction::Empty;
             }
         }
 
@@ -670,17 +740,17 @@ pub fn topphatt(
         // Need to subtract one so that the all-z leaf
         // which is set at index 2*n_nodes doesn't look for a pair.
         // Be careful about zero indexing here too.
-        if (selection[2] as usize) < n_leaves - 1 {
-            let pair_index: u16 = if selection[2].is_multiple_of(2) {
-                selection[2] + 1
+        if (selection.leaf_indices[2] as usize) < n_leaves - 1 {
+            let pair_index: u16 = if selection.leaf_indices[2].is_multiple_of(2) {
+                selection.leaf_indices[2] + 1
             } else {
-                selection[2] - 1
+                selection.leaf_indices[2] - 1
             };
             debug!("pair index {:?}", pair_index);
             let partner_location: LeafLocation = {
                 *restrictions
                     .pairs
-                    .get(&(min_parent, Edge::Z))
+                    .get(&(selection.min_parent, Edge::Z))
                     .expect("All leaves should have pairs.")
             };
             debug!("partner location {:?}", partner_location);
@@ -712,10 +782,13 @@ pub fn topphatt(
             .iter()
             .for_each(|&ind| node_dependencies.drop_node(ind));
 
-        let parent_majorana_index = min_parent + n_leaves;
+        let parent_majorana_index = selection.min_parent + n_leaves;
         debug!("Parent Majorana Index {parent_majorana_index}.");
-        hamiltonian.indices =
-            reduce_hamiltonian(hamiltonian.indices, parent_majorana_index as u16, selection);
+        hamiltonian.indices = reduce_hamiltonian(
+            hamiltonian.indices,
+            parent_majorana_index as u16,
+            selection.leaf_indices,
+        );
         debug!("Reduced Hamiltonian {:?}", hamiltonian.indices);
         debug!("Finished loop\n\n\n");
         if unassigned_modes.is_empty() {

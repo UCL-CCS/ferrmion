@@ -332,7 +332,7 @@ impl FermionProduct {
             Err(FermionProductError)
         } else {
             Ok(Self {
-                action: action,
+                action,
                 indices,
                 coefficient,
             })

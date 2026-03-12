@@ -464,7 +464,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         n_qubits: usize,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
-        parallelize:bool,
+        parallelize: bool,
     ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
         // ) -> PyResult<()> {
         debug!("Starting TOPPHATT");
@@ -483,7 +483,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .expect("Ternary tree should build from flatpack");
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian.clone(), tree, parallelize).expect("TOPPHATT should have failed by now.");
+        tree = topphatt(hamiltonian.clone(), tree, parallelize)
+            .expect("TOPPHATT should have failed by now.");
 
         let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
@@ -508,7 +509,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         n_qubits: usize,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
-        parallelize:bool,
+        parallelize: bool,
     ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
         // ) -> PyResult<Bound<'py, PyDict>> {
         assert_eq!(
@@ -539,7 +540,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         };
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian.clone(), tree, parallelize).expect("TOPPHATT should have failed by now.");
+        tree = topphatt(hamiltonian.clone(), tree, parallelize)
+            .expect("TOPPHATT should have failed by now.");
         let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
         Ok((

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0]
+### Added
+- `zero_disallowed_terms` deletes coefficients of degree 4 fermionic operators with invalid combinations of indices.
+
+### Changed
+- core `topphatt` implementation runs concurrently for Hamiltonians with more than 1,000 terms
+- 'signature' of fermionic operators changed to 'action'
+
+### Removed
+- Python implementation of `topphatt`
+
 ## [0.6.3]
 ### Added
   - `MajoranaStringEncoding` class for input-defined encodings.

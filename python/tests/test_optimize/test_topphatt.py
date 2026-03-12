@@ -44,7 +44,6 @@ def test_topphatt_hatt(water_sparse_majorana, water_data):
     assert topphatt_tree.root_node.child_strings == initial_children
     assert topphatt_tree.root_node.branch_strings == initial_branches
 
-
 def test_topphatt_fasthatt(water_sparse_majorana, water_data):
     ones, twos = water_data["ones"], water_data["twos"]
     test_tree = fast_hatt(fermionic_to_sparse_majorana(((ones,"+-"), (twos, "++--"))), n_modes=14)
@@ -57,7 +56,6 @@ def test_topphatt_fasthatt(water_sparse_majorana, water_data):
 
 def test_topphatt_bonsai(water_sparse_majorana):
     pass
-
 
 @pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
 def test_topphatt_standard_h2_eigvals_equal_expected(encoding, h2_mol_data_sets):
@@ -114,7 +112,8 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, water_data, topph
                 fham.n_modes)
         case "Huffman":
             tree = huffman_ternary_tree(ones, twos)
+    qham_naive = tree.encode(fham)
     qham = tree.encode_topphatt(fham)
 
-    assert pauli_weight(qham)[0] <= topphatt_weight_snapshot[encoding]["pauli_weight"]
-    assert coefficient_pauli_weight(qham)[0] <= topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"]
+    assert np.isclose(float(pauli_weight(qham)[0]/pauli_weight(qham_naive)[0]),topphatt_weight_snapshot[encoding]["pauli_weight"], atol=0.01)
+    assert np.isclose(float(coefficient_pauli_weight(qham)[0]/coefficient_pauli_weight(qham_naive)[0]), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"], atol=0.01)

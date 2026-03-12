@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 itertools = "0.14.0"
-ndarray = {version="0.16.1", features=["rayon"]}
+ndarray = { version = "0.16.1", features = ["rayon"] }
 numpy = "0.24.0"
 pyo3 = {version = "0.24.0", features = ["num-complex"]}
 pyo3-log = "0.12.4"

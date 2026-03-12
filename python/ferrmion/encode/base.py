@@ -193,8 +193,8 @@ class FermionQubitEncoding(ABC):
         """Store the encoding as a JSON-readable dict."""
         ipow, sym = self._build_symplectic_matrix()
         dict_output = {}
-        dict_output["ipowers"]=ipow.tolist()
-        dict_output["symplectics"]=sym.tolist()
+        dict_output["ipowers"] = ipow.tolist()
+        dict_output["symplectics"] = sym.tolist()
         return dict_output
 
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:

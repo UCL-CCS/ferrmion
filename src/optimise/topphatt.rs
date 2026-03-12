@@ -1,12 +1,10 @@
 use itertools::FoldWhile::{Continue, Done};
-use tinyvec::SliceVec;
 use itertools::Itertools;
 use log::debug;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::error::Error;
 use std::iter::zip;
 use std::ops::BitXorAssign;
-use std::sync::{RwLock, Mutex};
+use std::sync::{Mutex, RwLock};
 use thiserror::Error;
 use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 4;
@@ -19,8 +17,6 @@ use crate::ternarytree::{Child, Edge, TernaryTree, YParity};
 pub enum ToppHattError {
     #[error("Found invalid restriction: {0:?}.")]
     InvalidRestriction(Restriction),
-    #[error("Combination {0:?} cannot be used.")]
-    InvalidCombination(Vec<u16>),
     #[error("No selection made for loop index {0}.")]
     NoSelectionMade(usize),
     #[error("No min parent for loop index {0}.")]
@@ -33,7 +29,6 @@ pub struct ToppHattSelection {
     min_parent: usize,
     leaf_indices: [u16; 3],
 }
-
 
 /// Restrictons on which Majorana operator can be assigned
 ///
@@ -492,7 +487,7 @@ pub fn topphatt(
     let mut node_dependencies = NodeDependencies::new(&tree);
 
     // Rough threshold at which it's worth the cost.
-    let n_threads:usize = if parallelize && hamiltonian.indices.len() > 1000 {
+    let n_threads: usize = if parallelize && hamiltonian.indices.len() > 1000 {
         num_cpus::get()
     } else {
         1
@@ -513,7 +508,7 @@ pub fn topphatt(
         debug!("Unassigned Modes {:?}", unassigned_modes);
         let n_leaves = 2 * tree.n_nodes + 1;
 
-        let mut selection = RwLock::new(ToppHattSelection {
+        let selection = RwLock::new(ToppHattSelection {
             min_weight: usize::MAX,
             min_parent: usize::MAX,
             leaf_indices: [u16::MAX; 3],
@@ -578,7 +573,7 @@ pub fn topphatt(
             debug!("Allowed Y {:?}", allowed_y);
             debug!("Allowed Z {:?}", allowed_z);
 
-            let mut product = match (restrictions.x[active], restrictions.y[active]) {
+            let product = match (restrictions.x[active], restrictions.y[active]) {
                 (
                     Restriction::EvenLeaf | Restriction::OddLeaf,
                     Restriction::EvenLeaf | Restriction::OddLeaf,
@@ -602,7 +597,8 @@ pub fn topphatt(
                 for _ in 0..n_threads {
                     s.spawn(|| {
                         'outer: loop {
-                            let mut product_guard = product.lock().expect("Product should not be poisoned.");
+                            let mut product_guard =
+                                product.lock().expect("Product should not be poisoned.");
                             let comb = product_guard.next();
                             drop(product_guard);
 
@@ -626,10 +622,11 @@ pub fn topphatt(
                                 let comb_min = unsafe { sorted_comb.get_unchecked(0) };
                                 let comb_max = unsafe { sorted_comb.get_unchecked(2) };
 
-                                let read_guard = selection.read().expect("Selection should not be poisoned before read.");
+                                let read_guard = selection
+                                    .read()
+                                    .expect("Selection should not be poisoned before read.");
                                 let min_weight = read_guard.min_weight;
                                 drop(read_guard);
-
 
                                 // We expect that the hamiltonian terms are sorted!
                                 let weight = hamiltonian
@@ -637,7 +634,9 @@ pub fn topphatt(
                                     .iter()
                                     .fold_while(0, |acc, inds| {
                                         debug_assert!(inds.is_sorted());
-                                        let inds_max = inds.last().expect("Hamiltonian terms should not be empty.");
+                                        let inds_max = inds
+                                            .last()
+                                            .expect("Hamiltonian terms should not be empty.");
                                         let inds_min = inds
                                             .first()
                                             .expect("Hamiltonian terms should not be empty.");
@@ -660,11 +659,13 @@ pub fn topphatt(
                                     debug!("Selection {:?}", selection);
                                     debug!("Min Weight {:?}", min_weight);
                                     debug!("Min Parent {:?}", active);
-                                    let mut write_guard = selection.write().expect("Rwlock should not be poisoned before write.");
+                                    let mut write_guard = selection
+                                        .write()
+                                        .expect("Rwlock should not be poisoned before write.");
                                     if weight < write_guard.min_weight {
-                                            write_guard.min_weight = weight;
-                                            write_guard.leaf_indices = comb;
-                                            write_guard.min_parent = active;
+                                        write_guard.min_weight = weight;
+                                        write_guard.leaf_indices = comb;
+                                        write_guard.min_parent = active;
                                     } else if weight == write_guard.min_weight {
                                         let li = write_guard.leaf_indices;
                                         // Safety:
@@ -673,8 +674,12 @@ pub fn topphatt(
                                         // enforcing a specific ordering for leaf-index selection.
                                         // These values are immediately dropped.
                                         unsafe {
-                                            let current = std::mem::transmute::<[u16;4], u64>([0, li[0], li[1], li[2]]);
-                                            let this = std::mem::transmute::<[u16;4], u64>([0, comb[0], comb[1], comb[2]]);
+                                            let current = std::mem::transmute::<[u16; 4], u64>([
+                                                0, li[0], li[1], li[2],
+                                            ]);
+                                            let this = std::mem::transmute::<[u16; 4], u64>([
+                                                0, comb[0], comb[1], comb[2],
+                                            ]);
                                             if this > current {
                                                 write_guard.min_weight = weight;
                                                 write_guard.leaf_indices = comb;
@@ -1040,7 +1045,7 @@ mod test_topphatt {
         .unwrap();
         let tree = TernaryTree::naive_jordan_wigner(3);
 
-        let jw_topphatt = topphatt(hamiltonian, tree).unwrap();
+        let jw_topphatt = topphatt(hamiltonian, tree, true).unwrap();
         let encoding: MajoranaEncoding = jw_topphatt.build_encoding(3).unwrap();
         assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
@@ -1070,7 +1075,7 @@ mod test_topphatt {
         flatpack.push((3, (None, None, None)));
 
         let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
-        let jw_topphatt = topphatt(hamiltonian, tree).unwrap();
+        let jw_topphatt = topphatt(hamiltonian, tree, true).unwrap();
         let encoding = jw_topphatt.build_encoding(4).unwrap();
         assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(

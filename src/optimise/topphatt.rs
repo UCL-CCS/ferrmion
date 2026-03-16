@@ -487,7 +487,7 @@ pub fn topphatt(
     let mut node_dependencies = NodeDependencies::new(&tree);
 
     // Rough threshold at which it's worth the cost.
-    let n_threads: usize = if parallelize && hamiltonian.indices.len() > 1000 {
+    let mut n_threads: usize = if parallelize && hamiltonian.indices.len() > 1000 {
         num_cpus::get()
     } else {
         1
@@ -794,6 +794,9 @@ pub fn topphatt(
             parent_majorana_index as u16,
             selection.leaf_indices,
         );
+        if hamiltonian.indices.len() < 1000 {
+            n_threads = 1;
+        }
         debug!("Reduced Hamiltonian {:?}", hamiltonian.indices);
         debug!("Finished loop\n\n\n");
         if unassigned_modes.is_empty() {

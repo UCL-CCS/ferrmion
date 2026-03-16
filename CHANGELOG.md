@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `encode_topphatt` function in core to allow re-use of hamiltonian.
 
+### Changed
+- `topphatt` checks the number of hamiltonian terms remaining before spawning threads
+
 ## [0.7.0]
 ### Added
 - `zero_disallowed_terms` deletes coefficients of degree 4 fermionic operators with invalid combinations of indices.

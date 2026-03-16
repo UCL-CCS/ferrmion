@@ -225,7 +225,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .max()
             .expect("Flatpack should have maxiumum qubit index.");
 
-        debug!("Starting TOPPHATT");
         let tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)
             .expect("Should be able to build tree from flatpack.");
 
@@ -250,7 +249,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         n_modes: usize,
     ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
         // ) -> PyResult<()> {
-        debug!("Starting TOPPHATT");
 
         let tree: TernaryTree = match encoding.as_str() {
             "Jordan-Wigner" | "JW" => TernaryTree::naive_jordan_wigner(n_modes),
@@ -483,7 +481,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .expect("Ternary tree should build from flatpack");
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian.clone(), tree, parallelize)
+        tree = topphatt(hamiltonian, tree, parallelize)
             .expect("TOPPHATT should have failed by now.");
 
         let encoding = tree.build_encoding(n_qubits).unwrap();
@@ -492,12 +490,48 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             encoding.ipowers.into_pyarray(py),
             encoding.symplectics.into_pyarray(py),
         ))
-        // let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
-        // debug!("Got qham");
-        // Ok(qham
-        //     .into_py_dict(py)
-        //     .expect("Should be able to convert QubitHamiltonian to PyDict."))
-        // Ok(())
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "encode_topphatt")]
+    fn wrap_encode_topphatt<'py>(
+        py: Python<'py>,
+        flatpack: TTFlatPack,
+        n_qubits: usize,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+        constant_energy: f64,
+        parallelize: bool,
+    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>, Bound<'py, PyDict>)> {
+        debug!("Starting TOPPHATT");
+        let flatpack: TTFlatPack = flatpack;
+        debug!("Got flatpack");
+
+        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            constant_energy,
+        );
+
+        debug!("Got MSparse");
+        debug!("Got Hamiltonian");
+        let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)
+            .expect("Ternary tree should build from flatpack");
+        debug!("Got Tree");
+        debug!("Hamiltonian {:?}", hamiltonian);
+        tree = topphatt(hamiltonian.clone(), tree, parallelize)
+            .expect("TOPPHATT should have failed by now.");
+
+        let encoding = tree.build_encoding(n_qubits).unwrap();
+        debug!("Got encoding");
+        let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
+        debug!("Got qham");
+
+        Ok((encoding.ipowers.into_pyarray(py),
+            encoding.symplectics.into_pyarray(py),
+            qham
+            .into_py_dict(py)
+            .expect("Should be able to convert QubitHamiltonian to PyDict.")))
     }
 
     #[pyfn(m)]

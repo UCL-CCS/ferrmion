@@ -159,23 +159,18 @@ class TernaryTree(FermionQubitEncoding):
     ) -> QubitHamiltonian:
         """Encode a Hamiltonian, using TOPP-HATT optimisation."""
         sigs, coeffs = fham.signatures_and_coefficients
-        ipow, sym = core.topphatt(
+        ipow, sym, qham = core.encode_topphatt(
             flatpack=self.flatpack(),
             n_qubits=self.n_qubits,
             signatures=deepcopy(sigs),
             coeffs=deepcopy(coeffs),
+            constant_energy=fham.constant_energy,
             parallelize=parallelize,
         )
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
         self.default_mode_op_map = [*range(self.n_modes)]
 
-        return core.encode(
-            ipowers=ipow,
-            symplectics=sym,
-            signatures=sigs,
-            coeffs=coeffs,
-            constant_energy=fham.constant_energy,
-        )
+        return qham
 
     def hartree_fock_state(
         self,

@@ -102,6 +102,16 @@ def encode(
     coeffs: list[np.ndarray],
     constant_energy: float,
 ) -> dict: ...
+def encode_topphatt(
+    flatpack: list[tuple[np.uint, tuple[np.uint, np.uint, np.uint]]],
+    n_qubits: int,
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+    constant_energy:float,
+    parallelize: bool,
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+def topphatt_standard(
+    encoding: str,
 def fermionic_to_sparse_majorana(
     signatures: list[str],
     coeffs: list[np.ndarray],

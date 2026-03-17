@@ -186,12 +186,25 @@ mod test_pauli {
 }
 
 /// Pauli operator encoded in symplectic (XZ) form.
-#[allow(dead_code)]
 #[derive(PartialEq, Eq, Debug, Clone)]
-struct SymplecticOperator<'sym> {
+pub struct SymplecticOperator<'sym> {
     ipower: u8,
     x_block: ArrayView1<'sym, bool>,
     z_block: ArrayView1<'sym, bool>,
+}
+
+impl<'sym> SymplecticOperator<'sym> {
+    pub fn new(
+        ipower: u8,
+        x_block: ArrayView1<'sym, bool>,
+        z_block: ArrayView1<'sym, bool>,
+    ) -> Self {
+        Self {
+            ipower,
+            x_block,
+            z_block,
+        }
+    }
 }
 
 impl PauliWeight for SymplecticOperator<'_> {

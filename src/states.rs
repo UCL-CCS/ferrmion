@@ -12,9 +12,14 @@ pub struct ZBasisState {
     pub state: Array1<bool>,
     pub coefficient: Complex64,
 }
+
 impl ZBasisState {
     pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
         Self { state, coefficient }
+    }
+
+    pub fn zeros(n_modes: usize) -> Self {
+        Self::new(Array1::from_elem(n_modes, false), Complex64::new(1., 0.))
     }
 }
 

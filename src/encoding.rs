@@ -3,9 +3,9 @@ Functions relating to the FermionQubitEncoding base class.
 */
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{FermionProduct, MajoranaProduct, MajoranaSparse, Pauli};
+use crate::states::ZBasisState;
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
-use itertools::izip;
 use log::debug;
 use ndarray::{Axis, Zip};
 use num_complex::c64;

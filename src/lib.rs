@@ -19,6 +19,7 @@ use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
 use tinyvec::ArrayVec;
 pub mod operators;
+mod states;
 mod utils;
 use crate::operators::{FermionProduct, LadderOperator, MajoranaSparse};
 use crate::optimise::topphatt;
@@ -481,8 +482,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .expect("Ternary tree should build from flatpack");
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian, tree, parallelize)
-            .expect("TOPPHATT should have failed by now.");
+        tree =
+            topphatt(hamiltonian, tree, parallelize).expect("TOPPHATT should have failed by now.");
 
         let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
@@ -502,7 +503,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
         parallelize: bool,
-    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>, Bound<'py, PyDict>)> {
+    ) -> PyResult<(
+        Bound<'py, PyArray1<u8>>,
+        Bound<'py, PyArray2<bool>>,
+        Bound<'py, PyDict>,
+    )> {
         debug!("Starting TOPPHATT");
         let flatpack: TTFlatPack = flatpack;
         debug!("Got flatpack");
@@ -527,11 +532,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         debug!("Got qham");
 
-        Ok((encoding.ipowers.into_pyarray(py),
+        Ok((
+            encoding.ipowers.into_pyarray(py),
             encoding.symplectics.into_pyarray(py),
-            qham
-            .into_py_dict(py)
-            .expect("Should be able to convert QubitHamiltonian to PyDict.")))
+            qham.into_py_dict(py)
+                .expect("Should be able to convert QubitHamiltonian to PyDict."),
+        ))
     }
 
     #[pyfn(m)]

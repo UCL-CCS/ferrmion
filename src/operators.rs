@@ -9,6 +9,7 @@
 //! - Sparse operators: Iterables containing product operator indices and coefficients.
 //! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
 //!
+use crate::states::ZBasisState;
 use crate::ternarytree::Edge;
 use itertools::Itertools;
 use log::debug;
@@ -20,6 +21,7 @@ use numpy::ndarray::{
 use numpy::Complex64;
 use std::collections::BTreeMap;
 use std::iter::repeat_n;
+use std::ops::{BitAnd, BitXor, Mul};
 use std::{result::Result, str::FromStr};
 use tinyvec::ArrayVec;
 
@@ -188,24 +190,48 @@ mod test_pauli {
 #[derive(PartialEq, Eq, Debug, Clone)]
 struct SymplecticOperator<'sym> {
     ipower: u8,
-    symplectic: ArrayView1<'sym, bool>,
+    x_block: ArrayView1<'sym, bool>,
+    z_block: ArrayView1<'sym, bool>,
 }
 
 impl PauliWeight for SymplecticOperator<'_> {
     fn pauli_weight(&self) -> usize {
-        let view = self.symplectic.view();
-        let x_block: ArrayView1<bool>;
-        let z_block: ArrayView1<bool>;
-        (x_block, z_block) = view.split_at(Axis(0), view.len() / 2);
-        Zip::from(x_block).and(z_block).fold(0, |acc, x, z| {
-            acc + if (x == &false) & (z == &false) { 0 } else { 1 }
-        })
+        Zip::from(&self.x_block)
+            .and(self.z_block)
+            .fold(0, |acc, x, z| {
+                acc + if (x == &false) & (z == &false) { 0 } else { 1 }
+            })
     }
 }
 
 impl CoefficientPauliWeight for SymplecticOperator<'_> {
     fn coeff_pauli_weight(&self) -> f64 {
         self.pauli_weight() as f64
+    }
+}
+
+impl Mul<ZBasisState> for SymplecticOperator<'_> {
+    type Output = ZBasisState;
+
+    fn mul(self, rhs: ZBasisState) -> Self::Output {
+        let mut state = rhs.state;
+        let mut phase_factor = c64(-1., 0.).powi(
+            self.z_block
+                .bitand(&state)
+                .fold(0, |acc, &n| if n { acc + 2 } else { acc })
+                % 4,
+        );
+        let y_count: i32 = self
+            .x_block
+            .bitand(&self.z_block)
+            .fold(0, |acc, &n| if n { acc + 1 } else { acc } as i32);
+        phase_factor *= c64(0., 1.).powi(y_count);
+
+        let coefficient = rhs.coefficient * phase_factor;
+
+        state = self.x_block.bitxor(&state);
+
+        ZBasisState { state, coefficient }
     }
 }
 

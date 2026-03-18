@@ -15,7 +15,9 @@ pub struct ZBasisState {
 
 impl ZBasisState {
     pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
-        Self { state, coefficient }
+        let mut out = Self { state, coefficient };
+        out.normalize();
+        out
     }
 
     pub fn zeros(n_modes: usize) -> Self {

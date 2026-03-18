@@ -185,15 +185,130 @@ mod test_pauli {
     }
 }
 
+/// Pauli operator in symplectic form.
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub struct SymplecticOperator {
+    ipower: u8,
+    x_block: Array1<bool>,
+    z_block: Array1<bool>,
+}
+
+impl SymplecticOperator {
+    pub fn new(ipower: u8, x_block: Array1<bool>, z_block: Array1<bool>) -> Self {
+        Self {
+            ipower,
+            x_block,
+            z_block,
+        }
+    }
+
+    pub fn identity(n_modes: usize) -> Self {
+        Self {
+            ipower: 0,
+            x_block: Array1::from_elem(n_modes, false),
+            z_block: Array1::from_elem(n_modes, false),
+        }
+    }
+
+    pub fn view(&self) -> SymplecticOperatorView<'_> {
+        SymplecticOperatorView {
+            ipower: self.ipower,
+            x_block: self.x_block.view(),
+            z_block: self.z_block.view(),
+        }
+    }
+
+    pub fn to_pauli_string(self) -> (String, u8) {
+        let mut pauli_string = String::new();
+        let mut ipower = self.ipower;
+        Zip::from(&self.x_block)
+            .and(&self.z_block)
+            .for_each(|&x, &z| {
+                if x && z {
+                    ipower += 3;
+                };
+                pauli_string.push(Pauli::from((x, z)).into());
+            });
+        (pauli_string, (ipower % 4))
+    }
+}
+
+impl PauliWeight for SymplecticOperator {
+    fn pauli_weight(&self) -> usize {
+        Zip::from(&self.x_block)
+            .and(&self.z_block)
+            .fold(0, |acc, x, z| {
+                acc + if (x == &false) & (z == &false) { 0 } else { 1 }
+            })
+    }
+}
+
+impl CoefficientPauliWeight for SymplecticOperator {
+    fn coeff_pauli_weight(&self) -> f64 {
+        self.pauli_weight() as f64
+    }
+}
+
+impl<'a> Mul<SymplecticOperatorView<'a>> for SymplecticOperator {
+    type Output = SymplecticOperator;
+
+    fn mul(self, rhs: SymplecticOperatorView<'a>) -> Self::Output {
+        // bitwise or between two vectors
+        let x_product = &self.x_block ^ &rhs.x_block;
+        let z_product = &self.z_block ^ &rhs.z_block;
+
+        // bitwise sum of left z and right x
+        let mut ipower = self.ipower + rhs.ipower;
+        for (&lz, &rx) in self.z_block.iter().zip(&rhs.x_block) {
+            if lz && rx {
+                ipower += 2;
+            };
+        }
+
+        Self::Output {
+            ipower: ipower % 4,
+            x_block: x_product,
+            z_block: z_product,
+        }
+    }
+}
+
+impl Mul<ZBasisState> for SymplecticOperator {
+    type Output = ZBasisState;
+
+    fn mul(self, rhs: ZBasisState) -> Self::Output {
+        let mut state = rhs.state;
+        let mut phase_factor = c64(-1., 0.).powi(
+            self.z_block
+                .view()
+                .bitand(&state)
+                .fold(0, |acc, &n| if n { acc + 2 } else { acc })
+                % 4,
+        );
+        let y_count: i32 = self
+            .x_block
+            .view()
+            .bitand(&self.z_block.view())
+            .fold(0, |acc, &n| if n { acc + 1 } else { acc } as i32);
+        phase_factor *= c64(0., 1.).powi(y_count);
+
+        let coefficient = rhs.coefficient * phase_factor;
+
+        state = self.x_block.bitxor(&state);
+
+        ZBasisState { state, coefficient }
+    }
+}
+
 /// Pauli operator encoded in symplectic (XZ) form.
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub struct SymplecticOperator<'sym> {
+pub struct SymplecticOperatorView<'sym> {
     ipower: u8,
     x_block: ArrayView1<'sym, bool>,
     z_block: ArrayView1<'sym, bool>,
 }
 
-impl<'sym> SymplecticOperator<'sym> {
+impl<'sym> SymplecticOperatorView<'sym> {
     pub fn new(
         ipower: u8,
         x_block: ArrayView1<'sym, bool>,
@@ -205,9 +320,23 @@ impl<'sym> SymplecticOperator<'sym> {
             z_block,
         }
     }
+
+    pub fn to_pauli_string(self) -> (String, u8) {
+        let mut pauli_string = String::new();
+        let mut ipower = self.ipower;
+        Zip::from(&self.x_block)
+            .and(&self.z_block)
+            .for_each(|&x, &z| {
+                if x && z {
+                    ipower += 3;
+                };
+                pauli_string.push(Pauli::from((x, z)).into());
+            });
+        (pauli_string, (ipower % 4))
+    }
 }
 
-impl PauliWeight for SymplecticOperator<'_> {
+impl PauliWeight for SymplecticOperatorView<'_> {
     fn pauli_weight(&self) -> usize {
         Zip::from(&self.x_block)
             .and(self.z_block)
@@ -217,13 +346,13 @@ impl PauliWeight for SymplecticOperator<'_> {
     }
 }
 
-impl CoefficientPauliWeight for SymplecticOperator<'_> {
+impl CoefficientPauliWeight for SymplecticOperatorView<'_> {
     fn coeff_pauli_weight(&self) -> f64 {
         self.pauli_weight() as f64
     }
 }
 
-impl Mul<ZBasisState> for SymplecticOperator<'_> {
+impl Mul<ZBasisState> for SymplecticOperatorView<'_> {
     type Output = ZBasisState;
 
     fn mul(self, rhs: ZBasisState) -> Self::Output {
@@ -245,6 +374,78 @@ impl Mul<ZBasisState> for SymplecticOperator<'_> {
         state = self.x_block.bitxor(&state);
 
         ZBasisState { state, coefficient }
+    }
+}
+
+impl Mul<&mut ZBasisState> for SymplecticOperatorView<'_> {
+    type Output = ();
+
+    fn mul(self, rhs: &mut ZBasisState) {
+        let mut phase_factor = c64(-1., 0.).powi(
+            self.z_block
+                .bitand(&rhs.state)
+                .fold(0, |acc, &n| if n { acc + 2 } else { acc })
+                % 4,
+        );
+        let y_count: i32 = self
+            .x_block
+            .bitand(&self.z_block)
+            .fold(0, |acc, &n| if n { acc + 1 } else { acc } as i32);
+        phase_factor *= c64(0., 1.).powi(y_count);
+
+        rhs.state = self.x_block.bitxor(&rhs.state);
+        rhs.coefficient *= phase_factor;
+    }
+}
+
+/// Pauli operator in symplectic form.
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub struct SymplecticMatrix {
+    ipowers: Array1<u8>,
+    x_block: Array2<bool>,
+    z_block: Array2<bool>,
+}
+
+impl SymplecticMatrix {
+    pub fn new(ipowers: Array1<u8>, x_block: Array2<bool>, z_block: Array2<bool>) -> Self {
+        Self {
+            ipowers,
+            x_block,
+            z_block,
+        }
+    }
+
+    pub fn identity(n_ops: usize, n_qubits: usize) -> Self {
+        Self {
+            ipowers: Array1::from_elem(n_ops, 0),
+            x_block: Array2::from_elem((n_ops, n_qubits), false),
+            z_block: Array2::from_elem((n_ops, n_qubits), false),
+        }
+    }
+}
+
+impl PauliWeight for SymplecticMatrix {
+    fn pauli_weight(&self) -> usize {
+        Zip::from(self.x_block.rows())
+            .and(self.z_block.rows())
+            .fold(0, |acc, x_row, z_row| {
+                acc + SymplecticOperatorView::new(0, x_row, z_row).pauli_weight()
+            })
+    }
+}
+
+impl Mul<&mut ZBasisState> for SymplecticMatrix {
+    type Output = ();
+
+    fn mul(self, rhs: &mut ZBasisState) -> () {
+        Zip::from(&self.ipowers)
+            .and(self.x_block.rows())
+            .and(self.z_block.rows())
+            .fold(rhs, |rhs, i, x_row, z_row| {
+                let sym = SymplecticOperatorView::new(*i, x_row, z_row);
+                let _ = sym.mul(&mut *rhs);
+                rhs
+            });
     }
 }
 

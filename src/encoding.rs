@@ -3,13 +3,13 @@ Functions relating to the FermionQubitEncoding base class.
 */
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{FermionProduct, MajoranaProduct, MajoranaSparse, Pauli};
-use crate::states::ZBasisState;
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
+use itertools::izip;
 use log::debug;
-use ndarray::{Axis, Zip};
+use ndarray::Axis;
 use num_complex::c64;
-use numpy::ndarray::{azip, s, Array1, Array2, Array3, ArrayView1};
+use numpy::ndarray::{Array1, Array2, ArrayView1};
 use numpy::Complex64;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -51,68 +51,6 @@ impl MajoranaEncoding {
             symplectics,
             n_modes,
         }
-    }
-
-    pub fn symplectic_to_pauli(symplectic: ArrayView1<bool>, ipower: u8) -> (String, u8) {
-        let block_width = symplectic.len_of(Axis(0)) / 2;
-        let mut ipower: u8 = ipower;
-        let (x_block, z_block) = symplectic.split_at(Axis(0), block_width);
-        let mut pauli_string = String::new();
-        Zip::from(x_block).and(z_block).for_each(|&x, &z| {
-            if x && z {
-                ipower += 3;
-            };
-            pauli_string.push(Pauli::from((x, z)).into());
-        });
-        (pauli_string, (ipower % 4))
-    }
-
-    pub fn symplectic_product(
-        left: ArrayView1<bool>,
-        right: ArrayView1<bool>,
-        mut ipower: u8,
-    ) -> (Array1<bool>, u8) {
-        // bitwise or between two vectors
-        let product = &left ^ &right;
-
-        // bitwise sum of left z and right x
-        let half_length: usize = left.len() / 2;
-
-        let left_z = left.slice(s![half_length..]);
-        let right_x = right.slice(s![..half_length]);
-        for index in 0..half_length {
-            if left_z[index] & right_x[index] {
-                ipower += 2;
-            };
-        }
-
-        (product, ipower % 4)
-    }
-
-    pub fn symplectic_product_map(
-        &self,
-        // ipowers: ArrayView1<u8>,
-        // symplectics: ArrayView2<bool>,
-    ) -> (Array2<u8>, Array3<bool>) {
-        debug!("Calculating symplectic product map");
-
-        let n_majoranas = self.symplectics.nrows();
-        assert_eq!(n_majoranas, self.ipowers.len());
-
-        let mut product_powers: Array2<u8> = Array2::zeros((n_majoranas, n_majoranas));
-        let mut product_map: Array3<bool> =
-            Array3::from_elem((n_majoranas, n_majoranas, self.symplectics.ncols()), false);
-        azip!((index (l, r), pow in &mut product_powers) {
-            let left = self.symplectics.slice(s![l,..]);
-            let right = self.symplectics.slice(s![r,..]);
-            let (term, imaginary) = MajoranaEncoding::symplectic_product(left, right, 0);
-
-            *pow += &((imaginary + self.ipowers[[l]] + self.ipowers[[r]]) % 4);
-            product_map.slice_mut(s![l,r,..]).assign(&term);
-        });
-
-        debug!("Found symplectic product map.");
-        (product_powers, product_map)
     }
 
     /// Transforms a given fermionic Hartree-Fock to its computational-basis state.

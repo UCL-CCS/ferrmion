@@ -18,10 +18,6 @@ def symplectic_to_pauli(symplectic: npt.NDArray[np.bool], int) -> tuple[str, int
 def pauli_to_symplectic(
     pauli: str, ipower: int
 ) -> tuple[npt.NDArray[np.bool], int]: ...
-def symplectic_product_map(
-    symplectics: npt.NDArray[np.bool],
-    ipowers: npt.NDArray[np.uint8],
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
 def symplectic_to_sparse(
     symplectic: npt.NDArray[np.bool],
     ipower: int,

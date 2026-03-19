@@ -218,7 +218,19 @@ impl SymplecticOperator {
         }
     }
 
-    pub fn to_pauli_string(self) -> (String, u8) {
+    pub fn x_block(&self) -> ArrayView1<bool> {
+        self.x_block.view()
+    }
+
+    pub fn z_block(&self) -> ArrayView1<bool> {
+        self.z_block.view()
+    }
+
+    pub fn ipower(&self) -> u8 {
+        self.ipower
+    }
+
+    pub fn to_pauli_string(&self) -> (String, u8) {
         let mut pauli_string = String::new();
         let mut ipower = self.ipower;
         Zip::from(&self.x_block)
@@ -351,7 +363,6 @@ impl CoefficientPauliWeight for SymplecticOperatorView<'_> {
         self.pauli_weight() as f64
     }
 }
-
 impl Mul<ZBasisState> for SymplecticOperatorView<'_> {
     type Output = ZBasisState;
 
@@ -401,18 +412,30 @@ impl Mul<&mut ZBasisState> for SymplecticOperatorView<'_> {
 /// Pauli operator in symplectic form.
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct SymplecticMatrix {
-    ipowers: Array1<u8>,
-    x_block: Array2<bool>,
-    z_block: Array2<bool>,
+    pub x_block: Array2<bool>,
+    pub z_block: Array2<bool>,
+    pub ipowers: Array1<u8>,
 }
 
 impl SymplecticMatrix {
-    pub fn new(ipowers: Array1<u8>, x_block: Array2<bool>, z_block: Array2<bool>) -> Self {
+    pub fn new(x_block: Array2<bool>, z_block: Array2<bool>) -> Self {
+        let mut ipowers = Array1::from_elem(x_block.len_of(Axis(0)), 0);
+        Zip::from(&mut ipowers)
+            .and(x_block.rows())
+            .and(z_block.rows())
+            .for_each(|ipower, x_row, z_row| {
+                let y_count: usize = x_row.bitand(&z_row).map(|b| *b as usize).sum();
+                *ipower = (y_count % 4) as u8;
+            });
         Self {
-            ipowers,
             x_block,
             z_block,
+            ipowers,
         }
+    }
+
+    pub fn with_ipowers(x_block: Array2<bool>, z_block: Array2<bool>, ipowers: Array1<u8>) -> Self {
+        Self { x_block, z_block, ipowers }
     }
 
     pub fn identity(n_ops: usize, n_qubits: usize) -> Self {
@@ -420,6 +443,14 @@ impl SymplecticMatrix {
             ipowers: Array1::from_elem(n_ops, 0),
             x_block: Array2::from_elem((n_ops, n_qubits), false),
             z_block: Array2::from_elem((n_ops, n_qubits), false),
+        }
+    }
+
+    pub fn view_row(&self, row: usize) -> SymplecticOperatorView {
+        SymplecticOperatorView {
+            x_block: self.x_block.row(row),
+            z_block: self.z_block.row(row),
+            ipower: self.ipowers[row],
         }
     }
 }
@@ -446,6 +477,68 @@ impl Mul<&mut ZBasisState> for SymplecticMatrix {
                 let _ = sym.mul(&mut *rhs);
                 rhs
             });
+    }
+}
+
+#[cfg(test)]
+mod symplectic_tests {
+    use super::*;
+
+    #[test]
+    fn test_symplectic_product() {
+        let xxx = SymplecticOperator::new(
+            0,
+            ndarray::arr1(&[true, true, true]),
+            ndarray::arr1(&[false, false, false]),
+        );
+        let zzz = SymplecticOperator::new(
+            0,
+            ndarray::arr1(&[false, false, false]),
+            ndarray::arr1(&[true, true, true]),
+        );
+        let result = xxx.clone() * zzz.view();
+        assert_eq!(result.ipower(), 0);
+        assert_eq!(result.x_block(), ndarray::arr1(&[true, true, true]).view());
+        assert_eq!(result.z_block(), ndarray::arr1(&[true, true, true]).view());
+
+        let result = zzz * xxx.view();
+        assert_eq!(result.ipower(), 2);
+        assert_eq!(result.x_block(), ndarray::arr1(&[true, true, true]).view());
+        assert_eq!(result.z_block(), ndarray::arr1(&[true, true, true]).view());
+    }
+
+    #[test]
+    fn test_symplectic_to_pauli() {
+        // YXZI: x=[T,T,F,F], z=[T,F,T,F]
+        assert_eq!(
+            SymplecticOperator::new(
+                0,
+                ndarray::arr1(&[true, true, false, false]),
+                ndarray::arr1(&[true, false, true, false]),
+            )
+            .to_pauli_string(),
+            (String::from("YXZI"), 3)
+        );
+        assert_eq!(
+            SymplecticOperator::new(0, ndarray::arr1(&[false]), ndarray::arr1(&[false]))
+                .to_pauli_string(),
+            (String::from("I"), 0)
+        );
+        assert_eq!(
+            SymplecticOperator::new(0, ndarray::arr1(&[false]), ndarray::arr1(&[true]))
+                .to_pauli_string(),
+            (String::from("Z"), 0)
+        );
+        assert_eq!(
+            SymplecticOperator::new(0, ndarray::arr1(&[true]), ndarray::arr1(&[false]))
+                .to_pauli_string(),
+            (String::from("X"), 0)
+        );
+        assert_eq!(
+            SymplecticOperator::new(0, ndarray::arr1(&[true]), ndarray::arr1(&[true]))
+                .to_pauli_string(),
+            (String::from("Y"), 3)
+        );
     }
 }
 

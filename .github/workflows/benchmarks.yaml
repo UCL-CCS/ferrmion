@@ -34,7 +34,7 @@ jobs:
       - name: Install Dependencies
         run: |
           uv venv .venv/
-          uv pip install -r pyproject.toml --all-extras --all-groups
+          uv sync --all-extras --all-groups
       - name: Run benchmarks
         run: |
           uv run pytest python/tests/ \

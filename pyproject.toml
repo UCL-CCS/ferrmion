@@ -78,5 +78,5 @@ select = [
 ]
 ignore = ["E741"]
 
-[tool.pytest]
+[tool.pytest.ini_options]
 addopts = ["--log-level=WARNING"]

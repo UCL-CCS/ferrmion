@@ -23,7 +23,7 @@ jobs:
       - name: Install Dependencies
         run: |
           uv venv .venv/
-          uv pip install -r pyproject.toml --all-extras
+          uv pip install -r pyproject.toml --all-extras --all-groups
       - name: Check Pre-commits
         run: |
           uv run pre-commit install

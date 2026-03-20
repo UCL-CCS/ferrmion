@@ -40,3 +40,4 @@ jobs:
         uses: CodSpeedHQ/action@v4
         with:
           run: uv run pytest python/tests/ --codspeed
+          mode: walltime

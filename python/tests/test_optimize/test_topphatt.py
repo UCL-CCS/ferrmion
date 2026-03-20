@@ -1,6 +1,4 @@
 """Tests for TOPP-HATT Algorithm."""
-from autoray import e
-
 import json
 import ferrmion as fr
 from ferrmion.optimize.cost_functions import pauli_weight, coefficient_pauli_weight

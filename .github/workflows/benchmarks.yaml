@@ -37,7 +37,7 @@ jobs:
           uv pip install -r pyproject.toml --all-extras
       - name: Run benchmarks
         run: |
-          uv run pytest python/benchmarks/ \
+          uv run pytest python/tests/ \
             --benchmark-only \
             --benchmark-json=benchmark-results.json \
             --benchmark-min-rounds=5 \

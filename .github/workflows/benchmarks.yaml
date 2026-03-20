@@ -56,9 +56,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
           # Alert if a benchmark degrades by more than 20%
-          alert-threshold: "120%"
+          alert-threshold: "105%"
           comment-on-alert: true
-          fail-on-alert: false
+          fail-on-alert: true
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: dev/bench
       - name: Comment benchmark comparison on PR

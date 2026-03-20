@@ -16,6 +16,7 @@ on:
 permissions:
   contents: write
   deployments: write
+  pull-requests: write
 
 jobs:
   python-benchmarks:
@@ -48,7 +49,7 @@ jobs:
           name: benchmark-results
           path: benchmark-results.json
       - name: Store benchmark results (push to master only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: pytest
@@ -72,3 +73,4 @@ jobs:
           comment-always: true
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: dev/bench
+          skip-fetch-gh-pages: true

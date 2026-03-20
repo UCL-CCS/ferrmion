@@ -4,7 +4,7 @@
 use crate::operators::{SymplecticMatrix, SymplecticOperator};
 use crate::{encoding::MajoranaEncoding, operators::Pauli};
 use log::{debug, error};
-use numpy::ndarray::{s, Array1, Array2, Zip};
+use numpy::ndarray::{s, Array1, Array2};
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Not;

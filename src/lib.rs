@@ -11,7 +11,7 @@ use ::core::panic;
 use log::debug;
 use numpy::ndarray::Array1;
 use numpy::{
-    Complex64, IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    Complex64, IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
 };
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};

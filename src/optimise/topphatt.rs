@@ -1050,7 +1050,7 @@ mod test_topphatt {
 
         let jw_topphatt = topphatt(hamiltonian, tree, true).unwrap();
         let encoding: MajoranaEncoding = jw_topphatt.build_encoding(3).unwrap();
-        assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
+        assert_eq!(encoding.operators.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
         //     encoding.symplectics,
         //     arr2(&[
@@ -1080,7 +1080,7 @@ mod test_topphatt {
         let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
         let jw_topphatt = topphatt(hamiltonian, tree, true).unwrap();
         let encoding = jw_topphatt.build_encoding(4).unwrap();
-        assert_eq!(encoding.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
+        assert_eq!(encoding.operators.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
         //     encoding.symplectics,
         //     arr2(&[

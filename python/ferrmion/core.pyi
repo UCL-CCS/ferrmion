@@ -18,10 +18,6 @@ def symplectic_to_pauli(symplectic: npt.NDArray[np.bool], int) -> tuple[str, int
 def pauli_to_symplectic(
     pauli: str, ipower: int
 ) -> tuple[npt.NDArray[np.bool], int]: ...
-def symplectic_product_map(
-    symplectics: npt.NDArray[np.bool],
-    ipowers: npt.NDArray[np.uint8],
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
 def symplectic_to_sparse(
     symplectic: npt.NDArray[np.bool],
     ipower: int,
@@ -107,11 +103,9 @@ def encode_topphatt(
     n_qubits: int,
     signatures: list[str],
     coeffs: list[np.ndarray],
-    constant_energy:float,
+    constant_energy: float,
     parallelize: bool,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
-def topphatt_standard(
-    encoding: str,
 def fermionic_to_sparse_majorana(
     signatures: list[str],
     coeffs: list[np.ndarray],

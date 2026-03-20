@@ -11,7 +11,6 @@ from ferrmion.core import (
     anneal_enumerations,
     encode,
     encode_fermion_product,
-    symplectic_product_map,
 )
 from ferrmion.hamiltonians import FermionHamiltonian, QubitHamiltonian
 from ferrmion.utils import (
@@ -235,13 +234,6 @@ class FermionQubitEncoding(ABC):
             pauli (str): A Pauli-string.
         """
         return pauli_to_symplectic(pauli, ipower)
-
-    @property
-    def symplectic_product_map(self):
-        """Calculate the product of symplectic terms and cache them."""
-        logger.debug("Building symplectic product map")
-        ipowers, symplectics = self._build_symplectic_matrix()
-        return symplectic_product_map(ipowers, symplectics)
 
     def number_operator(
         self,

@@ -19,8 +19,11 @@ use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
 use tinyvec::ArrayVec;
 pub mod operators;
+mod states;
 mod utils;
-use crate::operators::{FermionProduct, LadderOperator, MajoranaSparse};
+use crate::operators::{
+    FermionProduct, LadderOperator, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
+};
 use crate::optimise::topphatt;
 use crate::utils::*;
 mod hamiltonians;
@@ -61,9 +64,25 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         */
         let left = left.as_array();
         let right = right.as_array();
-        let (product, ipower) = MajoranaEncoding::symplectic_product(left, right, 0);
-        let pyproduct = PyArray1::from_owned_array(py, product);
-        (ipower as usize, pyproduct)
+        let n = left.len() / 2;
+        let left_op = SymplecticOperator::new(
+            0,
+            left.slice(ndarray::s![..n]).to_owned(),
+            left.slice(ndarray::s![n..]).to_owned(),
+        );
+        let right_op = SymplecticOperator::new(
+            0,
+            right.slice(ndarray::s![..n]).to_owned(),
+            right.slice(ndarray::s![n..]).to_owned(),
+        );
+        let result = left_op * right_op.view();
+        let combined =
+            ndarray::concatenate(ndarray::Axis(0), &[result.x_block(), result.z_block()])
+                .expect("x and z blocks should have the same length");
+        (
+            result.ipower() as usize,
+            PyArray1::from_owned_array(py, combined),
+        )
     }
 
     #[pyfn(m)]
@@ -91,9 +110,18 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         */
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let mode_op_map = mode_op_map.as_array();
+        let symplectic_matrix = symplectic_matrix.as_array();
+        let n_qubits = symplectic_matrix.ncols() / 2;
+        let x_block = symplectic_matrix
+            .slice(ndarray::s![.., ..n_qubits])
+            .to_owned();
+        let z_block = symplectic_matrix
+            .slice(ndarray::s![.., n_qubits..])
+            .to_owned();
         let ipowers = ipowers.as_array().to_owned();
-        let symplectic_matrix = symplectic_matrix.as_array().to_owned();
-        let encoding = MajoranaEncoding::new(ipowers, symplectic_matrix);
+        let encoding =
+            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers))
+                .expect("Should be able to construct encoding from symplectic matrix.");
         let state = encoding
             .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
             .expect("Should be able to get HF state.");
@@ -108,7 +136,13 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipower: u8,
     ) -> (Bound<'py, PyString>, Bound<'py, PyInt>) {
         let symplectic = symplectic.as_array();
-        let (pauli, ipower) = MajoranaEncoding::symplectic_to_pauli(symplectic, ipower);
+        let n = symplectic.len() / 2;
+        let op = SymplecticOperator::new(
+            ipower,
+            symplectic.slice(ndarray::s![..n]).to_owned(),
+            symplectic.slice(ndarray::s![n..]).to_owned(),
+        );
+        let (pauli, ipower) = op.to_pauli_string();
         (PyString::new(py, &pauli), PyInt::new(py, ipower))
     }
 
@@ -124,25 +158,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         (
             PyArray1::from_owned_array(py, symplectic),
             PyInt::new(py, ipower),
-        )
-    }
-
-    #[pyfn(m)]
-    #[pyo3(name = "symplectic_product_map")]
-    fn wrap_symplectic_product_map<'py>(
-        py: Python<'py>,
-        ipowers: PyReadonlyArray1<u8>,
-        symplectics: PyReadonlyArray2<bool>,
-    ) -> (Bound<'py, PyArray2<u8>>, Bound<'py, PyArray3<bool>>) {
-        let encoding = MajoranaEncoding::new(
-            ipowers.as_array().to_owned(),
-            symplectics.as_array().to_owned(),
-        );
-
-        let (power_map, product_map) = encoding.symplectic_product_map();
-        (
-            PyArray2::from_owned_array(py, power_map),
-            PyArray3::from_owned_array(py, product_map),
         )
     }
 
@@ -186,10 +201,17 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.iter().map(|v| v.as_array()).collect(),
             0.,
         );
-        let encoding = MajoranaEncoding::new(
-            ipowers.as_array().to_owned(),
-            symplectics.as_array().to_owned(),
-        );
+        let symplectics = symplectics.as_array();
+        let n_qubits = symplectics.ncols() / 2;
+        let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
+        let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
+        let ipowers = ipowers.as_array().to_owned();
+        let encoding = MajoranaEncoding::new(SymplecticMatrix::with_ipowers(
+            x_block.clone(),
+            z_block.clone(),
+            ipowers,
+        ))
+        .expect("Should be able to construct encoding from symplectic matrix.");
         let best_mode_enumeration: Array1<usize>;
         (_, best_mode_enumeration) = anneal_enumerations(
             msparse,
@@ -200,15 +222,21 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
         .expect("Annealing should have succeeded.");
 
-        let encoding = MajoranaEncoding::new(
-            ipowers.as_array().to_owned(),
-            symplectics.as_array().to_owned(),
-        )
-        .apply_mode_enumeration(best_mode_enumeration.to_vec());
+        let encoding = MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block))
+            .expect("Should be able to construct encoding from symplectic matrix.")
+            .apply_mode_enumeration(best_mode_enumeration.to_vec());
 
+        let combined = ndarray::concatenate(
+            ndarray::Axis(1),
+            &[
+                encoding.operators.x_block.view(),
+                encoding.operators.z_block.view(),
+            ],
+        )
+        .unwrap();
         Ok((
-            encoding.ipowers.into_pyarray(py),
-            encoding.symplectics.into_pyarray(py),
+            encoding.operators.ipowers.into_pyarray(py),
+            combined.into_pyarray(py),
         ))
     }
 
@@ -235,9 +263,17 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got encoding");
 
         debug!("Got qham");
+        let combined = ndarray::concatenate(
+            ndarray::Axis(1),
+            &[
+                encoding.operators.x_block.view(),
+                encoding.operators.z_block.view(),
+            ],
+        )
+        .unwrap();
         Ok((
-            encoding.ipowers.into_pyarray(py),
-            encoding.symplectics.into_pyarray(py),
+            encoding.operators.ipowers.into_pyarray(py),
+            combined.into_pyarray(py),
         ))
     }
 
@@ -262,9 +298,17 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got encoding");
 
         debug!("Got qham");
+        let combined = ndarray::concatenate(
+            ndarray::Axis(1),
+            &[
+                encoding.operators.x_block.view(),
+                encoding.operators.z_block.view(),
+            ],
+        )
+        .unwrap();
         Ok((
-            encoding.ipowers.into_pyarray(py),
-            encoding.symplectics.into_pyarray(py),
+            encoding.operators.ipowers.into_pyarray(py),
+            combined.into_pyarray(py),
         ))
     }
 
@@ -330,8 +374,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             indices.len(),
             "Signatures and indices should be same length"
         );
-        let ipowers = ipowers.as_array().to_owned();
-        let symplectics = symplectics.as_array().to_owned();
+        let symplectics = symplectics.as_array();
         let n_qubits = symplectics.ncols() / 2;
         let n_modes = symplectics.nrows() / 2;
         let vec_sig: Vec<LadderOperator> = signatures
@@ -346,7 +389,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         let fproduct = FermionProduct::new(vec_sig, indices, coefficient)
             .expect("Should be able to create FermionProduct.");
-        let encoding = MajoranaEncoding::new(ipowers, symplectics);
+        let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
+        let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
+        let ipowers = ipowers.as_array().to_owned();
+        let encoding =
+            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers))
+                .expect("Should be able to construct encoding from symplectic matrix.");
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(fproduct);
         debug!("Got Hamiltonian");
@@ -374,8 +422,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.len(),
             "Signatures and coefficients should be same length"
         );
-        let ipowers = ipowers.as_array().to_owned();
-        let symplectics = symplectics.as_array().to_owned();
+        let symplectics = symplectics.as_array();
         let n_qubits = symplectics.ncols() / 2;
         let n_modes = symplectics.nrows() / 2;
 
@@ -389,7 +436,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.iter().map(|v| v.as_array()).collect(),
             constant_energy,
         );
-        let encoding = MajoranaEncoding::new(ipowers, symplectics);
+        let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
+        let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
+        let ipowers = ipowers.as_array().to_owned();
+        let encoding =
+            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers))
+                .expect("Should be able to construct encoding from symplectic matrix.");
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         debug!("Got Hamiltonian");
@@ -481,14 +533,22 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .expect("Ternary tree should build from flatpack");
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian, tree, parallelize)
-            .expect("TOPPHATT should have failed by now.");
+        tree =
+            topphatt(hamiltonian, tree, parallelize).expect("TOPPHATT should have failed by now.");
 
         let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
+        let combined = ndarray::concatenate(
+            ndarray::Axis(1),
+            &[
+                encoding.operators.x_block.view(),
+                encoding.operators.z_block.view(),
+            ],
+        )
+        .unwrap();
         Ok((
-            encoding.ipowers.into_pyarray(py),
-            encoding.symplectics.into_pyarray(py),
+            encoding.operators.ipowers.into_pyarray(py),
+            combined.into_pyarray(py),
         ))
     }
 
@@ -502,7 +562,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
         parallelize: bool,
-    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>, Bound<'py, PyDict>)> {
+    ) -> PyResult<(
+        Bound<'py, PyArray1<u8>>,
+        Bound<'py, PyArray2<bool>>,
+        Bound<'py, PyDict>,
+    )> {
         debug!("Starting TOPPHATT");
         let flatpack: TTFlatPack = flatpack;
         debug!("Got flatpack");
@@ -526,12 +590,20 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         debug!("Got qham");
-
-        Ok((encoding.ipowers.into_pyarray(py),
-            encoding.symplectics.into_pyarray(py),
-            qham
-            .into_py_dict(py)
-            .expect("Should be able to convert QubitHamiltonian to PyDict.")))
+        let combined = ndarray::concatenate(
+            ndarray::Axis(1),
+            &[
+                encoding.operators.x_block.view(),
+                encoding.operators.z_block.view(),
+            ],
+        )
+        .unwrap();
+        Ok((
+            encoding.operators.ipowers.into_pyarray(py),
+            combined.into_pyarray(py),
+            qham.into_py_dict(py)
+                .expect("Should be able to convert QubitHamiltonian to PyDict."),
+        ))
     }
 
     #[pyfn(m)]
@@ -578,9 +650,17 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .expect("TOPPHATT should have failed by now.");
         let encoding = tree.build_encoding(n_qubits).unwrap();
         debug!("Got encoding");
+        let combined = ndarray::concatenate(
+            ndarray::Axis(1),
+            &[
+                encoding.operators.x_block.view(),
+                encoding.operators.z_block.view(),
+            ],
+        )
+        .unwrap();
         Ok((
-            encoding.ipowers.into_pyarray(py),
-            encoding.symplectics.into_pyarray(py),
+            encoding.operators.ipowers.into_pyarray(py),
+            combined.into_pyarray(py),
         ))
         // let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         // debug!("Got qham");

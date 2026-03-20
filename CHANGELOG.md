@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.7.2]
+### Added
+- `SymplecticOperator`, owned variant, and `SymplecticMatrix` for representing symplectic operations.
+- `ZBasisState` and supporting states infrastructure in `states` module.
+
+### Changed
+- Encodings now use symplectic operators internally.
+
 ## [0.7.1]
 ### Added
 - `encode_topphatt` function in core to allow re-use of hamiltonian.

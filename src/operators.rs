@@ -435,7 +435,11 @@ impl SymplecticMatrix {
     }
 
     pub fn with_ipowers(x_block: Array2<bool>, z_block: Array2<bool>, ipowers: Array1<u8>) -> Self {
-        Self { x_block, z_block, ipowers }
+        Self {
+            x_block,
+            z_block,
+            ipowers,
+        }
     }
 
     pub fn identity(n_ops: usize, n_qubits: usize) -> Self {

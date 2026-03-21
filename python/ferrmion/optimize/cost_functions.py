@@ -41,9 +41,8 @@ def distance_squared(
     if set(permutation) != set(range(n_mode)):
         logger.warning("Invalid permutation %s, returning infinite cost.", permutation)
         return [np.inf]
-    distance_matrix = np.array(
-        [[np.abs(i - j) ** 2 for j in range(n_mode)] for i in range(n_mode)]
-    )
+    indices = np.arange(n_mode)
+    distance_matrix = (indices[:, None] - indices[None, :]) ** 2
     return [
         np.sum(mutual_information[permutation, :][:, permutation] * distance_matrix)
     ]

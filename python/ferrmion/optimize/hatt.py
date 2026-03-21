@@ -352,5 +352,5 @@ def fast_hatt(
     tree = TernaryTree(n_modes=n_modes, root_node=root)
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     tree.pauli_weight = total_weight
-    print("Total Weight: ", total_weight)
+    logger.debug("Total Weight: %s", total_weight)
     return tree

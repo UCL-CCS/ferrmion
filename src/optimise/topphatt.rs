@@ -453,25 +453,28 @@ fn qubit_term_weight(term: &ArrayVec<[u16; MAJORANA_MAX]>, sorted_children: &[u1
 /// We can therefore substitute a single index, representing the node, in place of
 /// all the individual Majorana operator indices.
 fn reduce_hamiltonian(
-    mut majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
+    majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
     parent_majorana_index: u16,
     selection: [u16; 3],
 ) -> Vec<ArrayVec<[u16; MAJORANA_MAX]>> {
     // could also filter here by terms that
     // only contain indices in pairs.
     let parent_filler = ArrayVec::from([parent_majorana_index; MAJORANA_MAX]);
-    majorana_terms
-        .iter_mut()
-        .map(|term| {
+    let mut result: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = majorana_terms
+        .into_iter()
+        .map(|mut term| {
             term.retain(|&ind| !selection.contains(&ind));
             term.fill(parent_filler);
-            term.sort();
-            *term
+            term.sort_unstable();
+            term
         })
-        .filter(|&term| term != parent_filler)
-        .collect::<BTreeSet<ArrayVec<[u16; MAJORANA_MAX]>>>()
-        .into_iter()
-        .collect::<Vec<ArrayVec<[u16; MAJORANA_MAX]>>>()
+        .filter(|term| *term != parent_filler)
+        .collect();
+    // Use sort + dedup instead of BTreeSet for deduplication:
+    // avoids per-element tree insertion overhead.
+    result.sort_unstable();
+    result.dedup();
+    result
 }
 
 /// Toplogy-Preserving Hamiltonian-Adaptive Ternary Tree
@@ -593,16 +596,24 @@ pub fn topphatt(
             //         .expect("Threads should not panic in update selection.")
             // });
             let product = Mutex::new(product);
+            const BATCH_SIZE: usize = 64;
             std::thread::scope(|s| {
                 for _ in 0..n_threads {
                     s.spawn(|| {
-                        'outer: loop {
-                            let mut product_guard =
-                                product.lock().expect("Product should not be poisoned.");
-                            let comb = product_guard.next();
-                            drop(product_guard);
+                        let mut batch: Vec<Vec<u16>> = Vec::with_capacity(BATCH_SIZE);
+                        loop {
+                            // Grab a batch of combinations to reduce Mutex contention.
+                            {
+                                let mut product_guard =
+                                    product.lock().expect("Product should not be poisoned.");
+                                batch.clear();
+                                batch.extend(product_guard.by_ref().take(BATCH_SIZE));
+                            }
+                            if batch.is_empty() {
+                                break;
+                            }
 
-                            if let Some(comb) = comb {
+                            for comb in &batch {
                                 let comb: [u16; 3] = if comb.len() == 3 {
                                     [comb[0], comb[1], comb[2]]
                                 } else {
@@ -615,10 +626,10 @@ pub fn topphatt(
                                 };
 
                                 if comb[0] == comb[2] {
-                                    continue 'outer;
+                                    continue;
                                 };
                                 let mut sorted_comb: [u16; 3] = comb;
-                                sorted_comb.sort();
+                                sorted_comb.sort_unstable();
                                 let comb_min = unsafe { sorted_comb.get_unchecked(0) };
                                 let comb_max = unsafe { sorted_comb.get_unchecked(2) };
 
@@ -633,20 +644,22 @@ pub fn topphatt(
                                     .indices
                                     .iter()
                                     .fold_while(0, |acc, inds| {
-                                        debug_assert!(inds.is_sorted());
-                                        let inds_max = inds
-                                            .last()
-                                            .expect("Hamiltonian terms should not be empty.");
-                                        let inds_min = inds
-                                            .first()
-                                            .expect("Hamiltonian terms should not be empty.");
-
-                                        if (comb_min > inds_max) | (comb_max < inds_min) {
-                                            Continue(acc)
-                                        } else if acc > min_weight {
+                                        if acc > min_weight {
                                             Done(acc)
                                         } else {
-                                            Continue(acc + qubit_term_weight(inds, &comb))
+                                            debug_assert!(inds.is_sorted());
+                                            let inds_max = unsafe {
+                                                inds.last().unwrap_unchecked()
+                                            };
+                                            let inds_min = unsafe {
+                                                inds.first().unwrap_unchecked()
+                                            };
+
+                                            if (comb_min > inds_max) | (comb_max < inds_min) {
+                                                Continue(acc)
+                                            } else {
+                                                Continue(acc + qubit_term_weight(inds, &comb))
+                                            }
                                         }
                                     })
                                     .into_inner();
@@ -688,9 +701,7 @@ pub fn topphatt(
                                         }
                                     };
                                 };
-                            } else {
-                                break 'outer;
-                            };
+                            }
                         }
                     });
                 }

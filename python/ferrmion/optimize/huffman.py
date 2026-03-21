@@ -12,23 +12,26 @@ def _majarana_op_frequency(
     ones: npt.NDArray[float], twos: npt.NDArray[float]
 ) -> npt.NDArray[float]:
     n_modes = ones.shape[0]
-    majorana_freq = np.zeros(n_modes)
 
-    for i in range(n_modes):
-        for j in range(n_modes):
-            val = np.abs(ones[i, j])
-            positions = {i, j}
-            for p in positions:
-                majorana_freq[p] += val
+    # One-electron: each unique position in {i, j} gets |ones[i,j]| added once.
+    # When i != j both get it; when i == j only one does.
+    abs_ones = np.abs(ones)
+    majorana_freq = np.sum(abs_ones, axis=1) + np.sum(abs_ones, axis=0) - np.diag(abs_ones)
 
-    for i in range(n_modes):
-        for j in range(n_modes):
-            for k in range(n_modes):
-                for l in range(n_modes):
-                    val = np.abs(twos[i, j, k, l])
-                    positions = {i, j, k, l}
-                    for p in positions:
-                        majorana_freq[p] += val
+    # Two-electron: each unique position in {i,j,k,l} gets |twos[i,j,k,l]| added once.
+    # Use inclusion-exclusion to handle duplicate indices correctly.
+    abs_twos = np.abs(twos)
+    for p in range(n_modes):
+        s1 = (abs_twos[p, :, :, :].sum() + abs_twos[:, p, :, :].sum()
+              + abs_twos[:, :, p, :].sum() + abs_twos[:, :, :, p].sum())
+        s2 = (abs_twos[p, p, :, :].sum() + abs_twos[p, :, p, :].sum()
+              + abs_twos[p, :, :, p].sum() + abs_twos[:, p, p, :].sum()
+              + abs_twos[:, p, :, p].sum() + abs_twos[:, :, p, p].sum())
+        s3 = (abs_twos[p, p, p, :].sum() + abs_twos[p, p, :, p].sum()
+              + abs_twos[p, :, p, p].sum() + abs_twos[:, p, p, p].sum())
+        s4 = abs_twos[p, p, p, p]
+        majorana_freq[p] += s1 - s2 + s3 - s4
+
     return majorana_freq.repeat(2)
 
 
@@ -66,15 +69,8 @@ def _build_huffman_tree(
 
 
 def _two_e_frequency(ones, twos) -> npt.NDArray[float]:
-    n_modes = ones.shape[0]
-    two_e_freq = np.zeros(ones.shape)
-    for j in range(n_modes):
-        for i in range(n_modes):
-            for l in range(n_modes):
-                for k in range(n_modes):
-                    val = np.abs(twos[i, j, k, l])
-                    two_e_freq[i, j] += val
-                    two_e_freq[k, l] += val
+    abs_twos = np.abs(twos)
+    two_e_freq = np.sum(abs_twos, axis=(2, 3)) + np.sum(abs_twos, axis=(0, 1))
     two_e_freq = np.kron(two_e_freq, np.array([[1, 1], [1, 1]]))
     two_e_freq = np.triu(two_e_freq, k=1)
     return two_e_freq

@@ -29,13 +29,11 @@ def h2_mol_data_sets(request):
     data["twos"] = np.array(data["twos"])
     return data
 
-@fixture(scope="module", params=["h2_sto-3g", "h2_6-31g", "water"])
+@fixture(scope="module", params=["h2_sto-3g", "h2_6-31g", "h2o_sto-3g", "h2o_6-31g"])
 def mol_data_sets(request):
     folder = Path(__file__).parent
-    if request.param == "water":
-        filename = "./data/h2o_sto-3g.json"
-    else:
-        filename = f"./data/{request.param}.json"
+
+    filename = f"./data/{request.param}.json"
     with open(folder.joinpath(filename), "rb") as file:
         data = json.load(file)
     data["ones"] = np.array(data["ones"])

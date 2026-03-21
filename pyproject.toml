@@ -50,6 +50,7 @@ test = [
     "pytest-xdist>=3.8.0",
     "openfermion>=1.7.1",
     "symmer>=0.0.10",
+    "pytest-codspeed>=4.3.0",
 ]
 docs = [
     "pylatexenc>=2.10",

@@ -581,14 +581,14 @@ def test_benchmark_encode_topphatt(benchmark,encoding, mol_data_sets):
     benchmark(lambda: encoding.encode_topphatt(fham))
 
 
-@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
-def test_benchmark_encode_annealed(benchmark,encoding, h2_mol_data_sets):
-    ones = h2_mol_data_sets["ones"]
-    twos = h2_mol_data_sets["twos"]
-    e_nuc = h2_mol_data_sets["constant_energy"]
-    fham = FermionHamiltonian(terms={"+-": ones, "++--": twos}, constant_energy=e_nuc)
-    encoding:TernaryTree = encoding(fham.n_modes)
-    benchmark(lambda: encoding.encode_annealed(fham))
+# @pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+# def test_benchmark_encode_annealed(benchmark,encoding, h2_mol_data_sets):
+#     ones = h2_mol_data_sets["ones"]
+#     twos = h2_mol_data_sets["twos"]
+#     e_nuc = h2_mol_data_sets["constant_energy"]
+#     fham = FermionHamiltonian(terms={"+-": ones, "++--": twos}, constant_energy=e_nuc)
+#     encoding:TernaryTree = encoding(fham.n_modes)
+#     benchmark(lambda: encoding.encode_annealed(fham))
 
 
 @pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])

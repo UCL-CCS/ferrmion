@@ -19,7 +19,7 @@ use numpy::ndarray::{
     arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis, IntoDimension, Zip,
 };
 use numpy::Complex64;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::iter::repeat_n;
 use std::ops::{BitAnd, BitXor, Mul};
 use std::{result::Result, str::FromStr};
@@ -218,11 +218,11 @@ impl SymplecticOperator {
         }
     }
 
-    pub fn x_block(&self) -> ArrayView1<bool> {
+    pub fn x_block(&self) -> ArrayView1<'_, bool> {
         self.x_block.view()
     }
 
-    pub fn z_block(&self) -> ArrayView1<bool> {
+    pub fn z_block(&self) -> ArrayView1<'_, bool> {
         self.z_block.view()
     }
 
@@ -301,7 +301,7 @@ impl Mul<ZBasisState> for SymplecticOperator {
             .x_block
             .view()
             .bitand(&self.z_block.view())
-            .fold(0, |acc, &n| if n { acc + 1 } else { acc } as i32);
+            .fold(0, |acc, &n| if n { acc + 1 } else { acc });
         phase_factor *= c64(0., 1.).powi(y_count);
 
         let coefficient = rhs.coefficient * phase_factor;
@@ -374,10 +374,10 @@ impl Mul<ZBasisState> for SymplecticOperatorView<'_> {
                 .fold(0, |acc, &n| if n { acc + 2 } else { acc })
                 % 4,
         );
-        let y_count: i32 = self
-            .x_block
-            .bitand(&self.z_block)
-            .fold(0, |acc, &n| if n { acc + 1 } else { acc } as i32);
+        let y_count: i32 =
+            self.x_block
+                .bitand(&self.z_block)
+                .fold(0, |acc, &n| if n { acc + 1 } else { acc });
         phase_factor *= c64(0., 1.).powi(y_count);
 
         let coefficient = rhs.coefficient * phase_factor;
@@ -398,10 +398,10 @@ impl Mul<&mut ZBasisState> for SymplecticOperatorView<'_> {
                 .fold(0, |acc, &n| if n { acc + 2 } else { acc })
                 % 4,
         );
-        let y_count: i32 = self
-            .x_block
-            .bitand(&self.z_block)
-            .fold(0, |acc, &n| if n { acc + 1 } else { acc } as i32);
+        let y_count: i32 =
+            self.x_block
+                .bitand(&self.z_block)
+                .fold(0, |acc, &n| if n { acc + 1 } else { acc });
         phase_factor *= c64(0., 1.).powi(y_count);
 
         rhs.state = self.x_block.bitxor(&rhs.state);
@@ -450,7 +450,7 @@ impl SymplecticMatrix {
         }
     }
 
-    pub fn view_row(&self, row: usize) -> SymplecticOperatorView {
+    pub fn view_row(&self, row: usize) -> SymplecticOperatorView<'_> {
         SymplecticOperatorView {
             x_block: self.x_block.row(row),
             z_block: self.z_block.row(row),
@@ -472,13 +472,13 @@ impl PauliWeight for SymplecticMatrix {
 impl Mul<&mut ZBasisState> for SymplecticMatrix {
     type Output = ();
 
-    fn mul(self, rhs: &mut ZBasisState) -> () {
+    fn mul(self, rhs: &mut ZBasisState) {
         Zip::from(&self.ipowers)
             .and(self.x_block.rows())
             .and(self.z_block.rows())
             .fold(rhs, |rhs, i, x_row, z_row| {
                 let sym = SymplecticOperatorView::new(*i, x_row, z_row);
-                let _ = sym.mul(&mut *rhs);
+                sym.mul(&mut *rhs);
                 rhs
             });
     }
@@ -934,83 +934,56 @@ impl MajoranaProduct {
     }
 }
 
-/// Order-preserving map from indices to complex coefficients.
-///
-/// This is used as an intermetiate step when constructing or combining majorana operators.
+/// Map from majorana indices to complex coefficients, used to accumulate and combine like terms.
 #[derive(Debug)]
-pub(super) struct MajoranaBTree {
-    operators: BTreeMap<Vec<usize>, Complex64>,
+pub(super) struct MajoranaHashMap {
+    operators: HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
 }
 
-impl MajoranaBTree {
+impl MajoranaHashMap {
     fn new() -> Self {
-        let operators = BTreeMap::<Vec<usize>, Complex64>::new();
-        Self { operators }
-    }
-
-    /// Append a single product of Fermionic operators to the [`MajoranaBTree`].
-    fn append_fermion_product(&mut self, fproduct: FermionProduct) {
-        let term_length = fproduct.action.len();
-        let offsets = repeat_n(0usize..=1usize, term_length).multi_cartesian_product();
-        for offset in offsets {
-            let scaler = offset
-                .iter()
-                .zip(fproduct.action.iter())
-                .fold(c64(1., 0.), |acc, (&offset, op)| {
-                    acc * op.majorana_coefficients()[offset]
-                });
-            let mut majorana_term = Array1::zeros(term_length);
-            majorana_term += &arr1(fproduct.indices.as_slice());
-            majorana_term *= 2;
-            majorana_term = majorana_term + Array1::from_vec(offset);
-
-            let mut mp =
-                MajoranaProduct::new(majorana_term.to_vec(), fproduct.coefficient * scaler);
-            mp.majorise();
-            *self
-                .operators
-                .entry(mp.indices)
-                .or_insert(Complex64 { re: 0.0, im: 0.0 }) += mp.coefficient;
+        Self {
+            operators: HashMap::new(),
         }
     }
 
-    /// Append a Fermionic Hamiltonian in sparse form to the [`MajoranaBTree`].
+    /// Core accumulation: expand one fermionic term (given by its action, mode indices, and
+    /// coefficient) into its 2^n majorana components and insert into the map.
+    fn append_term(&mut self, action: &[LadderOperator], indices: &[usize], coeff: Complex64) {
+        let term_length = action.len();
+        for offset in repeat_n(0usize..=1usize, term_length).multi_cartesian_product() {
+            let scaler = offset
+                .iter()
+                .zip(action.iter())
+                .fold(c64(1., 0.), |acc, (&o, op)| {
+                    acc * op.majorana_coefficients()[o]
+                });
+            let raw_indices: Vec<usize> = indices
+                .iter()
+                .zip(&offset)
+                .map(|(&i, &o)| 2 * i + o)
+                .collect();
+            let mut mp = MajoranaProduct::new(raw_indices, coeff * scaler);
+            mp.majorise();
+            let key: ArrayVec<[u16; MAX_MAJORANAS]> =
+                mp.indices.iter().map(|&i| i as u16).collect();
+            *self.operators.entry(key).or_insert(Complex64::ZERO) += mp.coefficient;
+        }
+    }
+
+    /// Append a single product of Fermionic operators to the [`MajoranaHashMap`].
+    fn append_fermion_product(&mut self, fproduct: FermionProduct) {
+        self.append_term(&fproduct.action, &fproduct.indices, fproduct.coefficient);
+    }
+
+    /// Append a Fermionic Hamiltonian in sparse form to the [`MajoranaHashMap`].
     fn append_fermion_sparse(&mut self, fsparse: FermionSparse) {
         debug!("FSparse Indices {:?}", &fsparse.indices);
-
-        // Note: This can be generalised
-        // +-+- (ijkl) is also invalid if i==k and i!=j
-        let double_action: Vec<(usize, usize)> = (0..fsparse.action.len() - 1)
-            .filter(|&i| fsparse.action[i] == fsparse.action[i + 1])
-            .map(|i| (i, i + 1))
-            .collect::<Vec<_>>();
-
-        debug!("Doubled fermonic operators {double_action:?}");
-
-        let term_length = fsparse.action.len();
         Zip::from(fsparse.indices.rows())
             .and(fsparse.coefficients.view())
             .for_each(|ind, coeff| {
-                let offsets = repeat_n(0usize..=1usize, term_length).multi_cartesian_product();
-                for offset in offsets {
-                    let scaler = offset
-                        .iter()
-                        .zip(fsparse.action.iter())
-                        .fold(c64(1., 0.), |acc, (&offset, op)| {
-                            acc * op.majorana_coefficients()[offset]
-                        });
-                    let mut majorana_term = Array1::zeros(term_length);
-                    majorana_term += &ind;
-                    majorana_term *= 2;
-                    majorana_term = majorana_term + Array1::from_vec(offset);
-
-                    let mut mp = MajoranaProduct::new(majorana_term.to_vec(), *coeff * scaler);
-                    mp.majorise();
-                    *self
-                        .operators
-                        .entry(mp.indices)
-                        .or_insert(Complex64 { re: 0.0, im: 0.0 }) += mp.coefficient;
-                }
+                let ind_slice: Vec<usize> = ind.iter().copied().collect();
+                self.append_term(&fsparse.action, &ind_slice, *coeff);
             });
         debug!("MBTree {:?}\n", &self);
     }
@@ -1073,54 +1046,65 @@ impl MajoranaSparse {
         coeffs: Vec<ArrayViewD<f64>>,
         constant_energy: f64,
     ) -> MajoranaSparse {
-        let mut fsparse_vec: Vec<FermionSparse> = Vec::new();
-        for (sig, coeff) in std::iter::zip(signatures, coeffs) {
-            let vec_sig: Vec<LadderOperator> = sig
+        let mut majoranas = MajoranaHashMap::new();
+        for (sig, coeff_view) in std::iter::zip(signatures, coeffs) {
+            let action: Vec<LadderOperator> = sig
                 .chars()
                 .map(|v| {
                     LadderOperator::try_from(v).expect("Signature components should be + or -")
                 })
                 .collect();
-            let term_coef = coeff.to_owned();
-            fsparse_vec.push(
-                FermionMatrix::new(vec_sig, term_coef)
-                    .expect("Signature lengths and coeff dimensions must match")
-                    .into(),
-            );
+            coeff_view
+                .indexed_iter()
+                .filter(|(_, &v)| v != 0.0)
+                .for_each(|(ind, &v)| {
+                    let iv = ind.into_dimension();
+                    let indices = iv.as_array_view();
+                    if is_valid_fermion_term(&action, indices.as_slice().unwrap()) {
+                        majoranas.append_term(&action, indices.as_slice().unwrap(), c64(v, 0.));
+                    }
+                });
         }
-        debug!("FSparse {:?}", &fsparse_vec);
         debug!("Getting MSparse");
-        let mut hamiltonian: MajoranaSparse = MajoranaSparse::from(fsparse_vec);
+        let mut hamiltonian = MajoranaSparse::from(majoranas);
         hamiltonian.constant += constant_energy;
         debug!("Got MSparse");
         hamiltonian
     }
 }
 
-impl From<MajoranaBTree> for MajoranaSparse {
-    fn from(mbt: MajoranaBTree) -> MajoranaSparse {
-        // debug!("Majoranas {:#?}", majoranas);
-        let mut sparse_values: Vec<Complex64> =
-            Vec::with_capacity(mbt.operators.values().filter(|&v| v.abs() >= 1e-16).count());
-        let mut sparse_indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> =
-            Vec::with_capacity(sparse_values.len());
-        // debug!("{:#?}", sparse_values.clone());
+/// Returns `false` for index combinations that are zeroed out by the antisymmetry constraints
+/// of the fermionic action, `true` otherwise.
+///
+/// Mirrors the logic of [`FermionMatrix::zero_disallowed_terms`] but as a per-term predicate,
+/// so it can be used to filter a coefficient array view without needing to copy it.
+fn is_valid_fermion_term(action: &[LadderOperator], indices: &[usize]) -> bool {
+    use LadderOperator::{Annihilation as Ann, Creation as Cr};
+    if action.len() != 4 {
+        return true;
+    }
+    let (a, b, c, d) = (indices[0], indices[1], indices[2], indices[3]);
+    match action {
+        [Ann, Ann, Cr, Cr] | [Cr, Cr, Ann, Ann] => a != b && c != d,
+        [Cr, Ann, Cr, Ann] | [Ann, Cr, Ann, Cr] => !(a == c && b != a || b == d && c != b),
+        _ => true,
+    }
+}
+
+impl From<MajoranaHashMap> for MajoranaSparse {
+    fn from(mbt: MajoranaHashMap) -> MajoranaSparse {
         let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
-        mbt.operators
-            .iter()
-            .filter(|(_, &v)| v.abs() >= 1e-16)
-            .for_each(|(k, &v)| {
-                let mut op: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-                if k.is_empty() {
-                    sparse_constant += v;
-                } else {
-                    for ind in k {
-                        op.push(*ind as u16);
-                    }
-                    sparse_indices.push(op);
-                    sparse_values.push(v);
-                }
-            });
+        let mut pairs: Vec<(ArrayVec<[u16; MAX_MAJORANAS]>, Complex64)> = Vec::new();
+        for (k, v) in mbt.operators.into_iter().filter(|(_, v)| v.abs() >= 1e-16) {
+            if k.is_empty() {
+                sparse_constant += v;
+            } else {
+                pairs.push((k, v));
+            }
+        }
+        // Restore deterministic ordering (equivalent to the prior BTreeMap key order).
+        pairs.sort_unstable_by_key(|(a, _)| *a);
+        let (sparse_indices, sparse_values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
         debug!("Sparse Majorana Indices {:?}", &sparse_indices);
         debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
         MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
@@ -1132,7 +1116,7 @@ impl From<FermionProduct> for MajoranaSparse {
     fn from(fproduct: FermionProduct) -> Self {
         // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
         // to each majorana term
-        let mut majoranas: MajoranaBTree = MajoranaBTree::new();
+        let mut majoranas: MajoranaHashMap = MajoranaHashMap::new();
         majoranas.append_fermion_product(fproduct);
         majoranas.into()
     }
@@ -1142,7 +1126,7 @@ impl From<FermionSparse> for MajoranaSparse {
     fn from(sft: FermionSparse) -> Self {
         // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
         // to each majorana term
-        let mut majoranas: MajoranaBTree = MajoranaBTree::new();
+        let mut majoranas: MajoranaHashMap = MajoranaHashMap::new();
         majoranas.append_fermion_sparse(sft);
         majoranas.into()
     }
@@ -1150,7 +1134,7 @@ impl From<FermionSparse> for MajoranaSparse {
 
 impl From<Vec<FermionSparse>> for MajoranaSparse {
     fn from(sft: Vec<FermionSparse>) -> Self {
-        let mut majoranas: MajoranaBTree = MajoranaBTree::new();
+        let mut majoranas: MajoranaHashMap = MajoranaHashMap::new();
         sft.into_iter().for_each(|term| {
             majoranas.append_fermion_sparse(term);
         });

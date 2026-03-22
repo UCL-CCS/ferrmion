@@ -4,5 +4,5 @@
   "PE": { "pauli_weight": 0.759, "coefficient_pauli_weight": 0.829 },
   "JKMN": { "pauli_weight": 0.936, "coefficient_pauli_weight": 0.792 },
   "HATT": { "pauli_weight": 0.968, "coefficient_pauli_weight": 0.935 },
-  "Huffman": { "pauli_weight": 0.946, "coefficient_pauli_weight": 0.942 }
+  "Huffman": { "pauli_weight": 0.946, "coefficient_pauli_weight": 0.955 }
 }

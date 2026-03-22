@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.8.0]
+### Added
+- Water 6-31G benchmark data for performance testing.
+- CodSpeed continuous performance tracking in CI.
+- Performance benchmarks and improved CI/CD workflows.
+
+### Changed
+- Encoding avoids intermediate representations, reducing memory overhead.
+- Optimized Rust encoding performance: replaced `BTreeSet` with sort+dedup in `reduce_hamiltonian`, used `sort_unstable` for fixed-size arrays.
+- TOPP-HATT performance improvement: batched thread work to reduce lock contention
+
+### Removed
+- `encode_anneal` benchmarks were unpredictable, even with fixed rng.
+
 ## [0.7.2]
 ### Added
 - `SymplecticOperator`, owned variant, and `SymplecticMatrix` for representing symplectic operations.

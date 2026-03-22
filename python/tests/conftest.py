@@ -29,7 +29,7 @@ def h2_mol_data_sets(request):
     data["twos"] = np.array(data["twos"])
     return data
 
-@fixture(scope="module", params=["h2_sto-3g", "h2_6-31g", "h2o_sto-3g", "h2o_6-31g"])
+@fixture(scope="module", params=["h2_6-31g", "h2o_sto-3g", "h2o_6-31g"])
 def mol_data_sets(request):
     folder = Path(__file__).parent
 

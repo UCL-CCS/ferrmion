@@ -58,7 +58,7 @@ impl State for ZBasisState {
 }
 
 #[cfg(test)]
-mod tests {
+mod zbasis_tests {
     use super::*;
 
     #[test]
@@ -76,5 +76,46 @@ mod tests {
             ZBasisState::new(Array1::from_elem(3, false), Complex64::new(2., 0.));
         zbasis_state.normalize();
         assert_eq!(zbasis_state.coefficient, Complex64::new(1., 0.));
+    }
+}
+
+pub struct FockState {
+    pub state: Array1<bool>,
+    pub coefficient: Complex64,
+}
+
+impl FockState {
+    pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
+        Self { state, coefficient }
+    }
+}
+impl State for FockState {
+    fn normalize(&mut self) {
+        let norm = self.coefficient.norm();
+        if norm != 0. {
+            self.coefficient /= norm;
+        }
+    }
+    fn dimension(&self) -> usize {
+        self.state.len()
+    }
+
+    fn adjoint(&mut self) {
+        self.state = self.state.slice(s![..;-1]).to_owned();
+        self.coefficient = self.coefficient.conj();
+    }
+}
+
+#[cfg(test)]
+mod fock_tests {
+    use super::*;
+
+    #[test]
+    fn test_fock_state() {
+        let state = Array1::from_elem(3, false);
+        let coefficient = Complex64::new(1., 0.);
+        let fock_state = FockState::new(state, coefficient);
+        assert_eq!(fock_state.state, Array1::from_elem(3, false));
+        assert_eq!(fock_state.coefficient, Complex64::new(1., 0.));
     }
 }

@@ -2,9 +2,11 @@
 //!
 //! The [`TernaryTree`] struct is made up of a set of vectors.
 use crate::operators::{SymplecticMatrix, SymplecticOperator};
+use crate::states::ZBasisState;
 use crate::{encoding::MajoranaEncoding, operators::Pauli};
 use log::{debug, error};
 use numpy::ndarray::{s, Array1, Array2};
+use numpy::Complex64;
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Not;
@@ -432,6 +434,19 @@ impl TernaryTree {
                 self.qubit_index_of.clone(),
             ));
         }
+        let vacuum_state_fock: Array1<bool> = self
+            .y_parity_of
+            .iter()
+            .map(|v| {
+                if matches!(v, YParity::Even) {
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
+        let mut vacuum_state: ZBasisState = ZBasisState::new(vacuum_state_fock, Complex64::ONE);
+
         let mut x_block: Array2<bool> = Array2::from_elem((2 * self.n_nodes, self.n_nodes), false);
         let mut z_block: Array2<bool> = Array2::from_elem((2 * self.n_nodes, self.n_nodes), false);
         for final_edge in [Edge::X, Edge::Y, Edge::Z] {
@@ -477,16 +492,24 @@ impl TernaryTree {
             }
             let mut padded_x: Array2<bool> = Array2::from_elem((2 * self.n_nodes, n_qubits), false);
             let mut padded_z: Array2<bool> = Array2::from_elem((2 * self.n_nodes, n_qubits), false);
+            let mut padded_vacuum_state: ZBasisState = ZBasisState::zeros(n_qubits);
             for (col_idx, &qi) in index.iter().enumerate() {
                 padded_x.column_mut(qi).assign(&x_block.column(col_idx));
                 padded_z.column_mut(qi).assign(&z_block.column(col_idx));
+                padded_vacuum_state.state.slice_mut(s![qi]).fill(
+                    *vacuum_state
+                        .state
+                        .get(col_idx)
+                        .expect("Vacuum state should have same dimension as encoding."),
+                );
             }
             debug!("Padded x_block {:?}", padded_x);
             x_block = padded_x;
             z_block = padded_z;
+            vacuum_state = padded_vacuum_state;
         }
         Ok(
-            MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block))
+            MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block), vacuum_state)
                 .expect("Encoding built from a valid TernaryTree should always be valid."),
         )
     }

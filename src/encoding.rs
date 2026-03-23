@@ -189,13 +189,17 @@ impl TryEncode<FockState> for MajoranaEncoding {
 
     fn try_encode(&self, input: FockState) -> Result<Self::Output, MajoranaEncodingError> {
         let mut zstate: Option<ZBasisState> = Some(self.vacuum_state.clone());
+        #[allow(unused_assignments)]
+        let mut left = self.vacuum_state.clone();
+        #[allow(unused_assignments)]
+        let mut right = self.vacuum_state.clone();
         for (idx, occ) in input.state.iter().enumerate() {
             if !*occ {
                 continue;
             }
             zstate = if let Some(zstate) = zstate {
-                let left = self.operators.view_row(2 * idx) * zstate.clone();
-                let right = self.operators.view_row(2 * idx + 1) * zstate.clone();
+                left = self.operators.view_row(2 * idx) * zstate.clone();
+                right = self.operators.view_row(2 * idx + 1) * zstate.clone();
                 if left.state != right.state {
                     let lop = SymplecticOperator::new(
                         self.operators.ipowers[2 * idx],

@@ -422,11 +422,7 @@ impl TernaryTree {
     /// let tree = TernaryTree::naive_jordan_wigner(4);
     /// let encoding = tree.build_encoding(4).unwrap();
     /// ```
-    pub fn build_encoding(
-        &self,
-        n_qubits: usize,
-        // mode_op_map: Option<Vec<usize>>, //TODO
-    ) -> Result<MajoranaEncoding, TernaryTreeError> {
+    pub fn build_encoding(&self, n_qubits: usize) -> Result<MajoranaEncoding, TernaryTreeError> {
         debug!("Build encoding from {self:?}");
         if n_qubits < self.n_nodes {
             return Err(TernaryTreeError::BuildEncodingError(
@@ -510,10 +506,19 @@ impl TernaryTree {
 }
 
 impl TernaryTree {
-    fn majorana_index(&self, child: Child) -> u8 {
+    #[allow(dead_code)]
+    fn real_eigenvalue_majorana_index(&self, child: Child) -> u8 {
         match child {
             Child::XLeaf(ind) => 2 * ind + self.y_parity_of[child.usize_index()].as_u8(),
             Child::YLeaf(ind) => 2 * ind + (!self.y_parity_of[child.usize_index()]).as_u8(),
+            Child::Node(ind) => 2 * self.n_nodes as u8 + 1 + ind,
+        }
+    }
+
+    fn vacuum_preserving_majorana_index(&self, child: Child) -> u8 {
+        match child {
+            Child::XLeaf(ind) => 2 * ind,
+            Child::YLeaf(ind) => 2 * ind + 1,
             Child::Node(ind) => 2 * self.n_nodes as u8 + 1 + ind,
         }
     }
@@ -640,7 +645,7 @@ impl TernaryTree {
             debug!("Child {child:?}");
             match child {
                 Child::XLeaf(_) | Child::YLeaf(_) => {
-                    majorana_index = self.majorana_index(child);
+                    majorana_index = self.vacuum_preserving_majorana_index(child);
                 }
                 Child::Node(_) => {
                     return Err(TernaryTreeError::LeafSymplecticError(
@@ -1122,15 +1127,15 @@ mod tt_tests {
     fn test_naive_jkmn_encoding() {
         let tree = TernaryTree::naive_jkmn(3);
         let encoding = tree.build_encoding(3).unwrap();
-        let ipow_expected = arr1(&[0, 1, 0, 1, 2, 1]);
+        let ipow_expected = arr1(&[0, 1, 0, 1, 1, 2]);
         assert_eq!(encoding.operators.ipowers, ipow_expected);
         let symplectic_expected = arr2(&[
             [true, false, false, false, true, false],
             [true, false, false, true, false, true],
             [true, true, false, false, false, false],
             [true, true, false, false, true, false],
-            [true, false, true, true, false, true],
             [true, false, true, true, false, false],
+            [true, false, true, true, false, true],
         ]);
         let combined = ndarray::concatenate(
             ndarray::Axis(1),

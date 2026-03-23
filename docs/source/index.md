@@ -21,8 +21,10 @@ examples
 encode
 optimize
 hamiltonians
+core
 utils
 devices
 interop
 development
+rust_internals
 ```

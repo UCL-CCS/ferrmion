@@ -44,6 +44,28 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
     debug!("Initializing Python module 'core'");
 
+    /// Compute the symplectic product of two Pauli operators in symplectic representation.
+    ///
+    /// Each operator is encoded as a 1D boolean array of length ``2n`` where the first
+    /// ``n`` entries are the X-block and the last ``n`` entries are the Z-block.
+    ///
+    /// Args:
+    ///     left: 1D boolean numpy array — symplectic representation of the left operator.
+    ///     right: 1D boolean numpy array — symplectic representation of the right operator.
+    ///
+    /// Returns:
+    ///     Tuple of ``(ipower, product)`` where ``ipower`` is the accumulated phase exponent
+    ///     (i.e. the overall phase is ``i**ipower``) and ``product`` is the symplectic
+    ///     representation of the resulting operator.
+    ///
+    /// Example:
+    ///     ```python
+    ///     import ferrmion
+    ///     import numpy as np
+    ///     a = np.array([True, False, True, False])
+    ///     b = np.array([False, True, False, True])
+    ///     ipower, product = ferrmion.symplectic_product(a, b)
+    ///     ```
     #[pyfn(m)]
     #[pyo3(name = "symplectic_product")]
     fn wrap_symplectic_product_py<'py>(
@@ -51,18 +73,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         left: PyReadonlyArray1<bool>,
         right: PyReadonlyArray1<bool>,
     ) -> (usize, Bound<'py, PyArray1<bool>>) {
-        /*
-        Computes the symplectic product between two numpy boolean arrays.
-
-        # Simple example
-        ```python
-        import ferrmion
-        import numpy as np
-        a = np.array([True, False, True, False])
-        b = np.array([False, True, False, True])
-        ipower, product = ferrmion.symplectic_product(a, b)
-        ```
-        */
         let left = left.as_array();
         let right = right.as_array();
         let n = left.len() / 2;
@@ -86,6 +96,33 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
     }
 
+    /// Compute the Hartree-Fock state in the ternary-tree encoding basis.
+    ///
+    /// Applies the ternary-tree encoding operators to the fermionic Hartree-Fock
+    /// occupation vector, returning the corresponding qubit state expressed as
+    /// a superposition over Z-basis states.
+    ///
+    /// Args:
+    ///     fermionic_hf_state: 1D boolean array — fermionic occupation vector
+    ///         (``True`` = occupied, ``False`` = unoccupied).
+    ///     mode_op_map: 1D uint array mapping fermionic modes to encoding operators.
+    ///     ipowers: 1D uint8 array of phase exponents for each encoding operator.
+    ///     symplectic_matrix: 2D boolean array of shape ``(2*n_modes, 2*n_qubits)``
+    ///         representing the full symplectic encoding matrix.
+    ///
+    /// Returns:
+    ///     1D boolean array — the qubit Hartree-Fock state in the Z basis.
+    ///
+    /// Example:
+    ///     ```python
+    ///     import ferrmion
+    ///     import numpy as np
+    ///     hf = np.array([True, True, False, False, False, False])
+    ///     mode_op_map = np.array([0, 1, 2, 3, 4, 5])
+    ///     ipowers = np.zeros(6, dtype=np.uint8)
+    ///     symplectic = np.eye(6, 12, dtype=bool)
+    ///     state = ferrmion.ternary_tree_hartree_fock_state(hf, mode_op_map, ipowers, symplectic)
+    ///     ```
     #[pyfn(m)]
     #[pyo3(name = "ternary_tree_hartree_fock_state")]
     fn wrap_ternary_tree_hartree_fock_state<'py>(
@@ -95,20 +132,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectic_matrix: PyReadonlyArray2<bool>,
     ) -> Bound<'py, PyArray1<bool>> {
-        /*
-        Computes the Hartree-Fock state from Python using numpy arrays.
-
-        # Simple example
-        ```python
-        import ferrmion
-        import numpy as np
-        vacuum = np.zeros(6)
-        hf = np.array([True, True, False, False, False, False])
-        mode_op_map = np.array([0,1,2,3,4,5])
-        symplectic = np.eye(6, 12, dtype=bool)
-        coeffs, states = ferrmion.ternary_tree_hartree_fock_state(vacuum, hf, mode_op_map, symplectic)
-        ```
-        */
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let mode_op_map = mode_op_map.as_array();
         let symplectic_matrix = symplectic_matrix.as_array();
@@ -129,6 +152,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         PyArray1::from_owned_array(py, state)
     }
 
+    /// Convert a symplectic operator representation to a Pauli string.
+    ///
+    /// Args:
+    ///     symplectic: 1D boolean array of length ``2n`` (X-block then Z-block).
+    ///     ipower: Phase exponent — overall phase is ``i**ipower``.
+    ///
+    /// Returns:
+    ///     Tuple of ``(pauli_string, ipower)`` where ``pauli_string`` is a string
+    ///     over ``{I, X, Y, Z}`` of length ``n``.
     #[pyfn(m)]
     #[pyo3(name = "symplectic_to_pauli")]
     fn wrap_symplectic_to_pauli<'py>(
@@ -147,6 +179,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         (PyString::new(py, &pauli), PyInt::new(py, ipower))
     }
 
+    /// Convert a Pauli string to symplectic representation.
+    ///
+    /// Args:
+    ///     pauli: Pauli string over ``{I, X, Y, Z}``.
+    ///     ipower: Phase exponent — overall phase is ``i**ipower``.
+    ///
+    /// Returns:
+    ///     Tuple of ``(symplectic, ipower)`` where ``symplectic`` is a 1D boolean
+    ///     array of length ``2n``.
     #[pyfn(m)]
     #[pyo3(name = "pauli_to_symplectic")]
     fn wrap_pauli_to_symplectic(
@@ -162,6 +203,16 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
     }
 
+    /// Convert a symplectic operator to a sparse matrix representation.
+    ///
+    /// Args:
+    ///     symplectic: 1D boolean array of length ``2n``.
+    ///     ipower: Phase exponent — overall phase is ``i**ipower``.
+    ///
+    /// Returns:
+    ///     Tuple of ``(pauli_string, positions, coefficient)`` where ``positions``
+    ///     is a 1D uint array of non-zero column indices and ``coefficient`` is the
+    ///     complex scalar weight.
     #[pyfn(m)]
     #[pyo3(name = "symplectic_to_sparse")]
     fn wrap_symplectic_to_sparse<'py>(
@@ -182,6 +233,22 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
     }
 
+    /// Optimise the mode enumeration of a Majorana encoding by simulated annealing.
+    ///
+    /// Searches for the mode permutation that minimises the Pauli weight of the
+    /// encoded Hamiltonian using a simulated annealing approach.
+    ///
+    /// Args:
+    ///     ipowers: 1D uint8 array — phase exponents for each encoding operator.
+    ///     symplectics: 2D boolean array — symplectic encoding matrix.
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     temperature: Annealing temperature (higher = more random exploration).
+    ///     initial_guess: 1D uint array — initial mode-to-qubit permutation.
+    ///     coefficient_weighted: If ``True``, weight moves by Hamiltonian coefficients.
+    ///
+    /// Returns:
+    ///     Tuple of ``(ipowers, symplectics)`` for the best encoding found.
     #[allow(clippy::too_many_arguments)]
     #[pyfn(m)]
     #[pyo3(name = "anneal_enumerations")]
@@ -241,6 +308,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
+    /// Build a symplectic encoding matrix from a ternary-tree flatpack representation.
+    ///
+    /// Args:
+    ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples describing
+    ///         the ternary tree structure.
+    ///
+    /// Returns:
+    ///     Tuple of ``(ipowers, symplectic_matrix)`` for the encoding derived from
+    ///     the given tree.
     #[pyfn(m)]
     #[pyo3(name = "flatpack_symplectic_matrix")]
     fn wrap_flatpack_symplectic_matrix(
@@ -278,6 +354,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
+    /// Build the symplectic encoding matrix for a standard named encoding.
+    ///
+    /// Args:
+    ///     encoding: One of ``"Jordan-Wigner"`` / ``"JW"``, ``"Bravyi-Kitaev"`` / ``"BK"``,
+    ///         ``"Parity"`` / ``"PE"``, or ``"JKMN"``.
+    ///     n_modes: Number of fermionic modes.
+    ///
+    /// Returns:
+    ///     Tuple of ``(ipowers, symplectic_matrix)``.
     #[pyfn(m)]
     #[pyo3(name = "standard_symplectic_matrix")]
     fn wrap_standard_symplectic_matrix(
@@ -313,6 +398,19 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
+    /// Convert a fermionic Hamiltonian to a sparse Majorana representation.
+    ///
+    /// Decomposes the fermionic Hamiltonian expressed via ladder operator signatures
+    /// into a dictionary keyed by 4-tuples of Majorana mode indices.
+    ///
+    /// Args:
+    ///     signatures: List of fermionic operator signature strings (e.g. ``"+-+-"``).
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     constant_energy: Constant energy offset to include in the result.
+    ///
+    /// Returns:
+    ///     Dictionary mapping ``(i, j, k, l)`` Majorana index tuples to complex
+    ///     coefficients.
     #[pyfn(m)]
     #[pyo3(name = "fermionic_to_sparse_majorana")]
     fn fermionic_to_sparse_majorana<'py>(
@@ -359,6 +457,17 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         output.into_py_dict(py)
     }
 
+    /// Encode a single fermionic operator product into a qubit Hamiltonian.
+    ///
+    /// Args:
+    ///     ipowers: 1D uint8 array — phase exponents for each encoding operator.
+    ///     symplectics: 2D boolean array — symplectic encoding matrix.
+    ///     signatures: Signature string for the fermionic product (e.g. ``"+-"``).
+    ///     indices: Mode indices for each ladder operator in the product.
+    ///     coeff: Complex coefficient for this operator product.
+    ///
+    /// Returns:
+    ///     Dictionary mapping symplectic Pauli keys to complex coefficients.
     #[pyfn(m)]
     #[pyo3(name = "encode_fermion_product")]
     fn wrap_encode_product<'py>(
@@ -407,6 +516,20 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         // Ok(())
     }
 
+    /// Encode a full fermionic Hamiltonian into a qubit Hamiltonian.
+    ///
+    /// Uses the symplectic Majorana encoding provided to map all fermionic
+    /// operator products to Pauli operators.
+    ///
+    /// Args:
+    ///     ipowers: 1D uint8 array — phase exponents for each encoding operator.
+    ///     symplectics: 2D boolean array — symplectic encoding matrix.
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     constant_energy: Constant energy offset to include in the result.
+    ///
+    /// Returns:
+    ///     Dictionary mapping symplectic Pauli keys to complex coefficients.
     #[pyfn(m)]
     #[pyo3(name = "encode")]
     fn wrap_encode<'py>(
@@ -454,6 +577,22 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         // Ok(())
     }
 
+    /// Encode a fermionic Hamiltonian using a standard named encoding.
+    ///
+    /// Convenience wrapper that builds the ternary tree for the named encoding
+    /// and then calls the full encoding pipeline.
+    ///
+    /// Args:
+    ///     encoding: One of ``"Jordan-Wigner"`` / ``"JW"``, ``"Bravyi-Kitaev"`` / ``"BK"``,
+    ///         ``"Parity"`` / ``"PE"``, or ``"JKMN"``.
+    ///     n_modes: Number of fermionic modes.
+    ///     n_qubits: Number of qubits (must be >= ``n_modes``).
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     constant_energy: Constant energy offset to include in the result.
+    ///
+    /// Returns:
+    ///     Dictionary mapping symplectic Pauli keys to complex coefficients.
     #[pyfn(m)]
     #[pyo3(name = "encode_standard")]
     fn wrap_encode_standard<'py>(
@@ -507,6 +646,21 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         // Ok(())
     }
 
+    /// Run the TOPPHATT algorithm to optimise a ternary-tree encoding structure.
+    ///
+    /// TOPPHATT (Tree-Optimised Pauli-weight for Hamiltonian-Adapted Ternary Trees)
+    /// modifies the ternary tree topology to minimise the Pauli weight of the
+    /// encoded Hamiltonian.
+    ///
+    /// Args:
+    ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples — initial tree.
+    ///     n_qubits: Total number of qubits in the system.
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
+    ///
+    /// Returns:
+    ///     Tuple of ``(ipowers, symplectic_matrix)`` for the optimised encoding.
     #[pyfn(m)]
     #[pyo3(name = "topphatt")]
     fn wrap_topphatt<'py>(
@@ -553,6 +707,21 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
+    /// Run TOPPHATT optimisation and return both the encoding and the encoded Hamiltonian.
+    ///
+    /// Combines ``topphatt`` and ``encode`` in a single call: optimises the ternary
+    /// tree and then encodes the full Hamiltonian using the resulting tree.
+    ///
+    /// Args:
+    ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples — initial tree.
+    ///     n_qubits: Total number of qubits in the system.
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     constant_energy: Constant energy offset to include in the result.
+    ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
+    ///
+    /// Returns:
+    ///     Tuple of ``(ipowers, symplectic_matrix, hamiltonian_dict)``.
     #[pyfn(m)]
     #[pyo3(name = "encode_topphatt")]
     fn wrap_encode_topphatt<'py>(
@@ -607,6 +776,22 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
+    /// Run TOPPHATT using a standard named encoding as the initial tree.
+    ///
+    /// Constructs the ternary tree for the named encoding and then runs the
+    /// TOPPHATT optimisation algorithm to minimise Pauli weight.
+    ///
+    /// Args:
+    ///     encoding: One of ``"Jordan-Wigner"`` / ``"JW"``, ``"Bravyi-Kitaev"`` / ``"BK"``,
+    ///         ``"Parity"`` / ``"PE"``, or ``"JKMN"``.
+    ///     n_modes: Number of fermionic modes.
+    ///     n_qubits: Total number of qubits (must be >= ``n_modes``).
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
+    ///
+    /// Returns:
+    ///     Tuple of ``(ipowers, symplectic_matrix)`` for the optimised encoding.
     #[pyfn(m)]
     #[pyo3(name = "topphatt_standard")]
     fn wrap_topphatt_standard<'py>(

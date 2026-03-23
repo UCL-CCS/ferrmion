@@ -19,4 +19,6 @@ build:
       - uv sync --all-extras --all-groups
     build:
       html:
+        - cargo doc --no-deps --document-private-items
         - uv run sphinx-build -T -b html docs/source/ $READTHEDOCS_OUTPUT/html -j auto
+        - cp -r target/doc $READTHEDOCS_OUTPUT/html/rustdoc

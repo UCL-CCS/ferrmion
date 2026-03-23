@@ -67,7 +67,7 @@ impl MajoranaEncoding {
         if operators.x_block.shape() != operators.z_block.shape() {
             return Err(MajoranaEncodingError::InputOperatorsInvalid);
         }
-        if operators.x_block.len_of(Axis(0)) % 2 != 0 {
+        if !operators.x_block.len_of(Axis(0)).is_multiple_of(2) {
             return Err(MajoranaEncodingError::InputOperatorsInvalid);
         }
         Ok(())

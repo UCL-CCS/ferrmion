@@ -437,13 +437,7 @@ impl TernaryTree {
         let vacuum_state_fock: Array1<bool> = self
             .y_parity_of
             .iter()
-            .map(|v| {
-                if matches!(v, YParity::Even) {
-                    false
-                } else {
-                    true
-                }
-            })
+            .map(|v| !matches!(v, YParity::Even))
             .collect();
         let mut vacuum_state: ZBasisState = ZBasisState::new(vacuum_state_fock, Complex64::ONE);
 

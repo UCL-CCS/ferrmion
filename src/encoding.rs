@@ -3,21 +3,18 @@ Functions relating to the FermionQubitEncoding base class.
 */
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    FermionProduct, MajoranaProduct, MajoranaSparse, Pauli, SymplecticMatrix, SymplecticOperator, SymplecticOperatorView,
+    FermionProduct, MajoranaProduct, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
 };
-use crate::states::{FockState, State, ZBasisState};
+use crate::states::{FockState, ZBasisState};
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
-use itertools::izip;
 use log::debug;
 use ndarray::Axis;
-use num_complex::{Complex, c64};
-use numpy::ndarray::{Array1, Array2, ArrayView1};
+use num_complex::c64;
+use numpy::ndarray::{Array1, Array2};
 use numpy::Complex64;
 use rayon::prelude::*;
-use std::assert_matches;
 use std::collections::HashMap;
-use std::process::Output;
 use thiserror::Error;
 
 pub trait Encode<T> {
@@ -60,7 +57,7 @@ pub enum MajoranaEncodingError {
     #[error("Input operators are a valid Majorana encoding.")]
     InputOperatorsInvalid,
     #[error("Cannot apply operator 0.5({0:#?} - i{1:#?}) to state {2:?}.")]
-    StateEncodingError(SymplecticOperator, SymplecticOperator, ZBasisState)
+    StateEncodingError((String, u8), (String, u8), Array1<bool>),
 }
 
 // This caches symplectic products so that we don't have to calculate them
@@ -90,7 +87,6 @@ impl MajoranaEncoding {
         }
         Ok(())
     }
-
 }
 
 impl MajoranaEncoding {
@@ -201,9 +197,21 @@ impl TryEncode<FockState> for MajoranaEncoding {
                 let left = self.operators.view_row(2 * idx) * zstate.clone();
                 let right = self.operators.view_row(2 * idx + 1) * zstate.clone();
                 if left.state != right.state {
-                    let lop = SymplecticOperator::new(self.operators.ipowers[2*idx], self.operators.x_block.row(2*idx).to_owned(), self.operators.z_block.row(2*idx).to_owned());
-                    let rop = SymplecticOperator::new(self.operators.ipowers[2*idx+1], self.operators.x_block.row(2*idx+1).to_owned(), self.operators.z_block.row(2*idx+1).to_owned());
-                    return Err(MajoranaEncodingError::StateEncodingError(lop, rop, zstate))
+                    let lop = SymplecticOperator::new(
+                        self.operators.ipowers[2 * idx],
+                        self.operators.x_block.row(2 * idx).to_owned(),
+                        self.operators.z_block.row(2 * idx).to_owned(),
+                    );
+                    let rop = SymplecticOperator::new(
+                        self.operators.ipowers[2 * idx + 1],
+                        self.operators.x_block.row(2 * idx + 1).to_owned(),
+                        self.operators.z_block.row(2 * idx + 1).to_owned(),
+                    );
+                    return Err(MajoranaEncodingError::StateEncodingError(
+                        lop.to_pauli_string(),
+                        rop.to_pauli_string(),
+                        zstate.state,
+                    ));
                 }
                 let diff = left.coefficient - Complex64::new(0., 1.) * right.coefficient;
                 if diff == Complex64::ZERO {
@@ -223,10 +231,12 @@ impl TryEncode<FockState> for MajoranaEncoding {
 mod owned_tests {
     use super::*;
 
+    use crate::states::State;
     use crate::{operators::LadderOperator, ternarytree::TernaryTree};
-    use ndarray::{arr1, Array1, ArrayView1};
+    use ndarray::{arr1, Array1};
     use num_complex::c64;
     use numpy::Complex64;
+    use std::assert_matches;
     use tinyvec::array_vec;
 
     #[test]
@@ -394,11 +404,17 @@ mod owned_tests {
         let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
 
         let state1 = Array1::from(vec![true, true, true, false, false, false]);
-        let result = encoding.try_encode(FockState::new(state1, Complex64::ONE)).unwrap().unwrap();
+        let result = encoding
+            .try_encode(FockState::new(state1, Complex64::ONE))
+            .unwrap()
+            .unwrap();
         assert!(result.state == arr1(&[true, true, true, false, false, false]));
 
         let state2 = Array1::from(vec![true, true, true, true, false, false]);
-        let result2 = encoding.try_encode(FockState::new(state2, Complex64::ONE)).unwrap().unwrap();
+        let result2 = encoding
+            .try_encode(FockState::new(state2, Complex64::ONE))
+            .unwrap()
+            .unwrap();
         assert!(result2.state == arr1(&[true, true, true, true, false, false]));
     }
 

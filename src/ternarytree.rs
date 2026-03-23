@@ -809,11 +809,12 @@ mod tt_tests {
 
     #[test]
     fn test_from_flatpack_with_qubit_labels() {
-        let mut flatpack = TTFlatPack::new();
-        flatpack.push((9, (Some(10), Some(11), Some(12))));
-        flatpack.push((10, (None, None, None)));
-        flatpack.push((11, (None, None, None)));
-        flatpack.push((12, (None, None, None)));
+        let flatpack: TTFlatPack = vec![
+            (9, (Some(10), Some(11), Some(12))),
+            (10, (None, None, None)),
+            (11, (None, None, None)),
+            (12, (None, None, None)),
+        ];
         let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
 
         let mut expected: TernaryTree = TernaryTree::naive_jkmn(4);

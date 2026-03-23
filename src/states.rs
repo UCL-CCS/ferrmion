@@ -33,8 +33,8 @@ impl ZBasisState {
     }
 
     /// Construct a new `ZBasisState` with all qubits set to zero and a unit coefficient.
-    pub fn zeros(n_modes: usize) -> Self {
-        Self::new(Array1::from_elem(n_modes, false), Complex64::new(1., 0.))
+    pub fn zeros(n_qubits: usize) -> Self {
+        Self::new(Array1::from_elem(n_qubits, false), Complex64::new(1., 0.))
     }
 }
 

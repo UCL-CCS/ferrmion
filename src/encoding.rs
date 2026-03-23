@@ -5,6 +5,7 @@ use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
     FermionProduct, MajoranaProduct, MajoranaSparse, Pauli, SymplecticMatrix, SymplecticOperator,
 };
+use crate::states::ZBasisState;
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
 use itertools::izip;
@@ -33,6 +34,7 @@ pub trait Encode<T> {
 pub struct MajoranaEncoding {
     pub operators: SymplecticMatrix,
     pub n_modes: usize,
+    pub vacuum_state: ZBasisState,
 }
 
 #[derive(Debug, Error)]
@@ -47,11 +49,18 @@ pub enum MajoranaEncodingError {
 // four times for each pair of fermionic operators
 // it does require memory scaling On^3 so if that becomes an issue we can be more clever.
 impl MajoranaEncoding {
-    pub fn new(operators: SymplecticMatrix) -> Result<Self, MajoranaEncodingError> {
+    pub fn new(
+        operators: SymplecticMatrix,
+        vacuum_state: ZBasisState,
+    ) -> Result<Self, MajoranaEncodingError> {
         Self::validate_operators(&operators)?;
 
         let n_modes = operators.x_block.len_of(Axis(1));
-        Ok(Self { operators, n_modes })
+        Ok(Self {
+            operators,
+            n_modes,
+            vacuum_state,
+        })
     }
 
     fn validate_operators(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
@@ -80,7 +89,7 @@ impl MajoranaEncoding {
     ) -> Result<Array1<bool>, MajoranaEncodingError> {
         debug!("Calculating Hartree-fock state");
 
-        let mut current_state: Array1<bool> = Array1::from_elem(fermionic_hf_state.len(), false);
+        let mut current_state: Array1<bool> = self.vacuum_state.state.clone();
 
         for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
             if !occ {
@@ -172,11 +181,14 @@ impl MajoranaEncoding {
         let x_block: Array2<bool> = self.operators.x_block.select(Axis(0), &majorana_rows);
         let z_block: Array2<bool> = self.operators.z_block.select(Axis(0), &majorana_rows);
 
-        MajoranaEncoding::new(SymplecticMatrix {
-            x_block,
-            z_block,
-            ipowers,
-        })
+        MajoranaEncoding::new(
+            SymplecticMatrix {
+                x_block,
+                z_block,
+                ipowers,
+            },
+            self.vacuum_state.clone(),
+        )
         .expect("Reindexing a valid encoding should never fail.")
     }
 }
@@ -292,8 +304,10 @@ mod owned_tests {
             [false, true, true],
             [false, true, false],
         ]);
+        let n_qubits = x_block.len_of(Axis(1));
         let sym = SymplecticMatrix::new(x_block, z_block);
-        let encoding: MajoranaEncoding = MajoranaEncoding::new(sym).unwrap();
+        let encoding: MajoranaEncoding =
+            MajoranaEncoding::new(sym, ZBasisState::zeros(n_qubits)).unwrap();
 
         let mp = MajoranaProduct::new(vec![0], Complex64::new(1.0, 0.));
         let qham = encoding.encode(mp);
@@ -324,8 +338,11 @@ mod owned_tests {
     fn test_encode_sparse_xz() {
         let x_block = ndarray::arr2(&[[true, true, true], [false, false, false]]);
         let z_block = ndarray::arr2(&[[false, false, false], [true, true, true]]);
-        let encoding: MajoranaEncoding =
-            MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block)).unwrap();
+        let encoding: MajoranaEncoding = MajoranaEncoding::new(
+            SymplecticMatrix::new(x_block, z_block),
+            ZBasisState::zeros(3),
+        )
+        .unwrap();
         let ms = MajoranaSparse::new(
             vec![array_vec!([u16; 4] =>0, 1), array_vec!([u16; 4] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)],
@@ -339,8 +356,11 @@ mod owned_tests {
     fn test_encode_sparse_iy() {
         let x_block = ndarray::arr2(&[[false, false, false], [true, true, true]]);
         let z_block = ndarray::arr2(&[[false, false, false], [true, true, true]]);
-        let encoding: MajoranaEncoding =
-            MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block)).unwrap();
+        let encoding: MajoranaEncoding = MajoranaEncoding::new(
+            SymplecticMatrix::new(x_block, z_block),
+            ZBasisState::zeros(3),
+        )
+        .unwrap();
         let ms = MajoranaSparse::new(
             vec![array_vec!([u16; 4] =>0, 1), array_vec!([u16; 4] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)],
@@ -365,8 +385,11 @@ mod owned_tests {
             [false, true, true],
             [false, true, false],
         ]);
-        let encoding: MajoranaEncoding =
-            MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block)).unwrap();
+        let encoding: MajoranaEncoding = MajoranaEncoding::new(
+            SymplecticMatrix::new(x_block, z_block),
+            ZBasisState::zeros(3),
+        )
+        .unwrap();
         let ms = MajoranaSparse::new(
             vec![
                 array_vec!([u16; 4] =>0,0),

@@ -30,6 +30,7 @@ mod hamiltonians;
 use crate::hamiltonians::QubitHamiltonian;
 mod encoding;
 use crate::encoding::{Encode, MajoranaEncoding};
+use crate::states::ZBasisState;
 mod optimise;
 use crate::optimise::anneal_enumerations;
 pub mod ternarytree;
@@ -120,7 +121,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .to_owned();
         let ipowers = ipowers.as_array().to_owned();
         let encoding =
-            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers))
+            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers), ZBasisState::zeros(n_qubits))
                 .expect("Should be able to construct encoding from symplectic matrix.");
         let state = encoding
             .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
@@ -210,7 +211,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             x_block.clone(),
             z_block.clone(),
             ipowers,
-        ))
+        ), ZBasisState::zeros(n_qubits))
         .expect("Should be able to construct encoding from symplectic matrix.");
         let best_mode_enumeration: Array1<usize>;
         (_, best_mode_enumeration) = anneal_enumerations(
@@ -222,7 +223,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
         .expect("Annealing should have succeeded.");
 
-        let encoding = MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block))
+        let encoding = MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block), ZBasisState::zeros(n_qubits))
             .expect("Should be able to construct encoding from symplectic matrix.")
             .apply_mode_enumeration(best_mode_enumeration.to_vec());
 
@@ -393,7 +394,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
         let encoding =
-            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers))
+            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers), ZBasisState::zeros(n_qubits))
                 .expect("Should be able to construct encoding from symplectic matrix.");
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(fproduct);
@@ -440,7 +441,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
         let encoding =
-            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers))
+            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers), ZBasisState::zeros(n_qubits))
                 .expect("Should be able to construct encoding from symplectic matrix.");
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);

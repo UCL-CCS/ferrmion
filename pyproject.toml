@@ -56,11 +56,11 @@ docs = [
     "pylatexenc>=2.10",
     "myst-sphinx-gallery>=0.3.0",
     "myst-parser>=4.0.1",
-    "sphinx>=7.1.2",
+    "sphinx>=7.3,<8",
     "sphinx-rtd-theme>=3.0.2",
     "myst-nb>=1.2.0",
     "pydata-sphinx-theme>=0.16.1",
-    "sphinx-rust>=0.2.0",
+    "sphinx-rust>=0.0.2",
 ]
 
 [tool.ruff]

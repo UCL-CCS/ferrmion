@@ -223,11 +223,14 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
             .indices
             .par_iter()
             .map(|&indices| {
-                let operator = indices
-                    .iter()
-                    .fold(SymplecticOperator::identity(self.n_modes), |acc, &ind| {
-                        acc * self.operators.view_row(ind as usize)
-                    });
+                // Use in-place multiplication to avoid heap allocations per multiply.
+                // Each mul_assign_view reuses the accumulator's arrays instead of
+                // allocating 2 new Array1<bool> per call.
+                let mut operator = SymplecticOperator::identity(self.n_modes);
+                for &ind in indices.iter() {
+                    let row = self.operators.view_row(ind as usize);
+                    operator.mul_assign_view(&row);
+                }
                 debug!("Operator {:?}", operator);
 
                 operator.to_pauli_string()

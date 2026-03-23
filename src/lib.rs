@@ -29,8 +29,8 @@ use crate::utils::*;
 mod hamiltonians;
 use crate::hamiltonians::QubitHamiltonian;
 mod encoding;
-use crate::encoding::{Encode, MajoranaEncoding};
-use crate::states::ZBasisState;
+use crate::encoding::{Encode, MajoranaEncoding, TryEncode};
+use crate::states::{FockState, State, ZBasisState};
 mod optimise;
 use crate::optimise::anneal_enumerations;
 pub mod ternarytree;
@@ -131,6 +131,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         mode_op_map: PyReadonlyArray1<usize>,
         ipowers: PyReadonlyArray1<u8>,
         symplectic_matrix: PyReadonlyArray2<bool>,
+        vacuum_state: PyReadonlyArray1<bool>,
     ) -> Bound<'py, PyArray1<bool>> {
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let mode_op_map = mode_op_map.as_array();
@@ -143,15 +144,26 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .slice(ndarray::s![.., n_qubits..])
             .to_owned();
         let ipowers = ipowers.as_array().to_owned();
+        let vacuum = ZBasisState::new(
+            Array1::from(vacuum_state.as_array().to_vec()),
+            num_complex::Complex::ONE,
+        );
         let encoding = MajoranaEncoding::new(
             SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
-            ZBasisState::zeros(n_qubits),
+            vacuum,
         )
         .expect("Should be able to construct encoding from symplectic matrix.");
-        let state = encoding
-            .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
-            .expect("Should be able to get HF state.");
-        PyArray1::from_owned_array(py, state)
+        let mut fockstate = FockState::new(
+            Array1::from(fermionic_hf_state.to_vec()),
+            num_complex::Complex::ONE,
+        );
+        fockstate.reindex(mode_op_map.as_slice().unwrap());
+        let zstate = encoding.try_encode(fockstate);
+        match zstate {
+            Ok(None) => panic!("HF state should not be zero"),
+            Ok(Some(state)) => PyArray1::from_owned_array(py, state.state),
+            Err(e) => panic!("Should be able to encode HF state: {e}"),
+        }
     }
 
     /// Convert a symplectic operator representation to a Pauli string.
@@ -326,7 +338,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_flatpack_symplectic_matrix(
         py: Python<'_>,
         flatpack: TTFlatPack,
-    ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
+    ) -> PyResult<(
+        Bound<'_, PyArray1<u8>>,
+        Bound<'_, PyArray2<bool>>,
+        Bound<'_, PyArray1<bool>>,
+    )> {
         // ) -> PyResult<()> {
         let n_qubits: &usize = flatpack
             .iter()
@@ -355,6 +371,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
+            encoding.vacuum_state.state.into_pyarray(py),
         ))
     }
 
@@ -373,7 +390,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'_>,
         encoding: String,
         n_modes: usize,
-    ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
+    ) -> PyResult<(
+        Bound<'_, PyArray1<u8>>,
+        Bound<'_, PyArray2<bool>>,
+        Bound<'_, PyArray1<bool>>,
+    )> {
         // ) -> PyResult<()> {
 
         let tree: TernaryTree = match encoding.as_str() {
@@ -399,6 +420,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
+            encoding.vacuum_state.state.into_pyarray(py),
         ))
     }
 
@@ -678,7 +700,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         parallelize: bool,
-    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
+    ) -> PyResult<(
+        Bound<'py, PyArray1<u8>>,
+        Bound<'py, PyArray2<bool>>,
+        Bound<'py, PyArray1<bool>>,
+    )> {
         // ) -> PyResult<()> {
         debug!("Starting TOPPHATT");
         let flatpack: TTFlatPack = flatpack;
@@ -712,6 +738,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
+            encoding.vacuum_state.state.into_pyarray(py),
         ))
     }
 
@@ -744,6 +771,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Bound<'py, PyArray1<u8>>,
         Bound<'py, PyArray2<bool>>,
         Bound<'py, PyDict>,
+        Bound<'py, PyArray1<bool>>,
     )> {
         debug!("Starting TOPPHATT");
         let flatpack: TTFlatPack = flatpack;
@@ -781,6 +809,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             combined.into_pyarray(py),
             qham.into_py_dict(py)
                 .expect("Should be able to convert QubitHamiltonian to PyDict."),
+            encoding.vacuum_state.state.into_pyarray(py),
         ))
     }
 
@@ -810,7 +839,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         parallelize: bool,
-    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
+    ) -> PyResult<(
+        Bound<'py, PyArray1<u8>>,
+        Bound<'py, PyArray2<bool>>,
+        Bound<'py, PyArray1<bool>>,
+    )> {
         // ) -> PyResult<Bound<'py, PyDict>> {
         assert_eq!(
             signatures.len(),
@@ -855,6 +888,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
+            encoding.vacuum_state.state.into_pyarray(py),
         ))
         // let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         // debug!("Got qham");

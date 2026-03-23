@@ -13,7 +13,8 @@ def ternary_tree_hartree_fock_state(
     mode_op_map: npt.NDArray[np.uint],
     ipowers: npt.NDArray[np.uint8],
     symplectic_matrix: npt.NDArray[np.bool],
-) -> tuple[npt.NDArray[np.complex128], npt.NDArray[np.bool]]: ...
+    vacuum_state: npt.NDArray[np.bool],
+) -> npt.NDArray[np.bool]: ...
 def symplectic_to_pauli(symplectic: npt.NDArray[np.bool], int) -> tuple[str, int]: ...
 def pauli_to_symplectic(
     pauli: str, ipower: int
@@ -61,7 +62,7 @@ def topphatt(
     signatures: list[str],
     coeffs: list[np.ndarray],
     parallelize: bool,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def topphatt_standard(
     encoding: str,
     n_modes: int,
@@ -69,13 +70,13 @@ def topphatt_standard(
     signatures: list[str],
     coeffs: list[np.ndarray],
     parallelize: bool,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def flatpack_symplectic_matrix(
     flatpack: TTFlatpack,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def standard_symplectic_matrix(
     encoding: str, n_modes: int
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def encode_standard(
     encoding: str,
     n_modes: int,
@@ -105,7 +106,7 @@ def encode_topphatt(
     coeffs: list[np.ndarray],
     constant_energy: float,
     parallelize: bool,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], dict, npt.NDArray[np.bool]]: ...
 def fermionic_to_sparse_majorana(
     signatures: list[str],
     coeffs: list[np.ndarray],

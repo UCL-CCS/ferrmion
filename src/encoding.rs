@@ -3,18 +3,19 @@ Functions relating to the FermionQubitEncoding base class.
 */
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    FermionProduct, MajoranaProduct, MajoranaSparse, Pauli, SymplecticMatrix, SymplecticOperator,
+    FermionProduct, MajoranaProduct, MajoranaSparse, Pauli, SymplecticMatrix, SymplecticOperator, SymplecticOperatorView,
 };
-use crate::states::ZBasisState;
+use crate::states::{FockState, State, ZBasisState};
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
 use itertools::izip;
 use log::debug;
 use ndarray::Axis;
-use num_complex::c64;
+use num_complex::{Complex, c64};
 use numpy::ndarray::{Array1, Array2, ArrayView1};
 use numpy::Complex64;
 use rayon::prelude::*;
+use std::assert_matches;
 use std::collections::HashMap;
 use std::process::Output;
 use thiserror::Error;
@@ -32,6 +33,19 @@ pub trait Encode<T> {
     fn encode(&self, input: T) -> Self::Output;
 }
 
+pub trait TryEncode<T> {
+    type Output;
+    /// Encodes the input into a QubitHamiltonian.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::encoding::TryEncode;
+    /// // Example usage would depend on the implementor
+    /// ```
+    fn try_encode(&self, input: T) -> Result<Self::Output, MajoranaEncodingError>;
+}
+
 #[derive(Debug)]
 pub struct MajoranaEncoding {
     pub operators: SymplecticMatrix,
@@ -45,6 +59,8 @@ pub enum MajoranaEncodingError {
     HartreeFockError(char, char),
     #[error("Input operators are a valid Majorana encoding.")]
     InputOperatorsInvalid,
+    #[error("Cannot apply operator 0.5({0:#?} - i{1:#?}) to state {2:?}.")]
+    StateEncodingError(SymplecticOperator, SymplecticOperator, ZBasisState)
 }
 
 // This caches symplectic products so that we don't have to calculate them
@@ -75,101 +91,6 @@ impl MajoranaEncoding {
         Ok(())
     }
 
-    /// Transforms a given fermionic Hartree-Fock to its computational-basis state.
-    ///
-    /// This will only work for vacuum preserving ['TernaryTree'] encodings.
-    /// It assumes that:
-    /// - The vacuum state is
-    /// - two majorana operators forming a fermionic operator have non-trivial-overlap on exactly one qubit,
-    /// - that one applies Pauli X and the other applies Y
-    /// - they are ordered so that X is found on even rows and Y on odd rows
-    /// - No entangling operators exist, so we can ignore global phase.
-    pub fn ternary_tree_hartree_fock_state(
-        &self,
-        fermionic_hf_state: ArrayView1<bool>,
-        mode_op_map: ArrayView1<usize>,
-    ) -> Result<Array1<bool>, MajoranaEncodingError> {
-        debug!("Calculating Hartree-fock state");
-
-        let mut current_state: Array1<bool> = self.vacuum_state.state.clone();
-
-        for (mode, occ) in fermionic_hf_state.into_iter().enumerate() {
-            if !occ {
-                continue;
-            }
-            let mode_index = mode_op_map[[mode]];
-
-            // split the left and right operators into x and z sections
-            let left_x = self
-                .operators
-                .x_block
-                .index_axis(ndarray::Axis(0), 2 * mode_index);
-            let right_x = self
-                .operators
-                .x_block
-                .index_axis(ndarray::Axis(0), 2 * mode_index + 1);
-            let left_z = self
-                .operators
-                .z_block
-                .index_axis(ndarray::Axis(0), 2 * mode_index);
-            let right_z = self
-                .operators
-                .z_block
-                .index_axis(ndarray::Axis(0), 2 * mode_index + 1);
-
-            let left_ops: Vec<Pauli> = left_x
-                .iter()
-                .zip(left_z.iter())
-                .map(|(&x, &z)| Pauli::from((x, z)))
-                .collect();
-            let right_ops: Vec<Pauli> = right_x
-                .iter()
-                .zip(right_z.iter())
-                .map(|(&x, &z)| Pauli::from((x, z)))
-                .collect();
-
-            for (s, &left, &right) in izip!(&mut current_state, &left_ops, &right_ops) {
-                // Create an operator to act on the state with
-                match (left, right) {
-                    (Pauli::X, Pauli::Y) => {
-                        if s == &false {
-                            *s = true;
-                        } else {
-                            return Err(MajoranaEncodingError::HartreeFockError(
-                                left.into(),
-                                right.into(),
-                            ));
-                        }
-                    }
-                    // If the parent is an Odd Y-parity node
-                    // The order of these can be swapped.
-                    (Pauli::Y, Pauli::X) => {
-                        if s == &false {
-                            *s = true;
-                        } else {
-                            return Err(MajoranaEncodingError::HartreeFockError(
-                                left.into(),
-                                right.into(),
-                            ));
-                        }
-                    }
-                    (Pauli::Z, Pauli::I) => continue,
-                    (Pauli::I, Pauli::Z) => continue,
-                    (Pauli::X, Pauli::X) => *s = !*s,
-                    (Pauli::Y, Pauli::Y) => *s = !*s,
-                    (Pauli::Z, Pauli::Z) => continue,
-                    (Pauli::I, Pauli::I) => continue,
-                    _ => {
-                        return Err(MajoranaEncodingError::HartreeFockError(
-                            left.into(),
-                            right.into(),
-                        ))
-                    }
-                }
-            }
-        }
-        Ok(current_state)
-    }
 }
 
 impl MajoranaEncoding {
@@ -264,6 +185,37 @@ impl Encode<FermionProduct> for MajoranaEncoding {
     fn encode(&self, input: FermionProduct) -> QubitHamiltonian {
         let msparse = MajoranaSparse::from(input);
         self.encode(&msparse)
+    }
+}
+
+impl TryEncode<FockState> for MajoranaEncoding {
+    type Output = Option<ZBasisState>;
+
+    fn try_encode(&self, input: FockState) -> Result<Self::Output, MajoranaEncodingError> {
+        let mut zstate: Option<ZBasisState> = Some(self.vacuum_state.clone());
+        for (idx, occ) in input.state.iter().enumerate() {
+            if !*occ {
+                continue;
+            }
+            zstate = if let Some(zstate) = zstate {
+                let left = self.operators.view_row(2 * idx) * zstate.clone();
+                let right = self.operators.view_row(2 * idx + 1) * zstate.clone();
+                if left.state != right.state {
+                    let lop = SymplecticOperator::new(self.operators.ipowers[2*idx], self.operators.x_block.row(2*idx).to_owned(), self.operators.z_block.row(2*idx).to_owned());
+                    let rop = SymplecticOperator::new(self.operators.ipowers[2*idx+1], self.operators.x_block.row(2*idx+1).to_owned(), self.operators.z_block.row(2*idx+1).to_owned());
+                    return Err(MajoranaEncodingError::StateEncodingError(lop, rop, zstate))
+                }
+                let diff = left.coefficient - Complex64::new(0., 1.) * right.coefficient;
+                if diff == Complex64::ZERO {
+                    None
+                } else {
+                    Some(ZBasisState::new(left.state, diff))
+                }
+            } else {
+                None
+            };
+        }
+        Ok(zstate)
     }
 }
 
@@ -424,46 +376,30 @@ mod owned_tests {
     }
 
     #[test]
-    fn test_tt_hartree_fock() {
-        let fermionic_hf_state: ArrayView1<bool> =
-            ArrayView1::from(&[true, true, true, false, false, false]);
-        let mode_op_map: ArrayView1<usize> = ArrayView1::from(&[0, 1, 2, 3, 4, 5]);
+    fn test_encode_fock() {
+        let fermionic_hf_state: Array1<bool> =
+            Array1::from(vec![true, true, true, false, false, false]);
+        let fockstate = FockState::new(fermionic_hf_state, Complex64::ONE);
+
         let tree = TernaryTree::naive_jordan_wigner(6);
         let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
-        let result = encoding
-            .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
-            .unwrap();
-        assert!(result == arr1(&[true, true, true, false, false, false]));
-
-        let result2 = encoding
-            .ternary_tree_hartree_fock_state(
-                ArrayView1::from(&[true, true, true, true, false, false]),
-                mode_op_map,
-            )
-            .unwrap();
-        assert!(result2 == arr1(&[true, true, true, true, false, false]));
+        let result = encoding.try_encode(fockstate);
+        assert_matches!(result, Ok(Some(_)));
+        assert!(result.unwrap().unwrap().state == arr1(&[true, true, true, false, false, false]));
     }
 
     #[test]
     fn test_hartree_fock() {
-        let fermionic_hf_state: ArrayView1<bool> =
-            ArrayView1::from(&[true, true, true, false, false, false]);
-        let mode_op_map: ArrayView1<usize> = ArrayView1::from(&[0, 1, 2, 3, 4, 5]);
         let tree = TernaryTree::naive_jordan_wigner(6);
         let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
-        let result = encoding
-            .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
-            .unwrap();
 
-        assert!(result == arr1(&[true, true, true, false, false, false]));
+        let state1 = Array1::from(vec![true, true, true, false, false, false]);
+        let result = encoding.try_encode(FockState::new(state1, Complex64::ONE)).unwrap().unwrap();
+        assert!(result.state == arr1(&[true, true, true, false, false, false]));
 
-        let result2 = encoding
-            .ternary_tree_hartree_fock_state(
-                ArrayView1::from(&[true, true, true, true, false, false]),
-                mode_op_map,
-            )
-            .unwrap();
-        assert!(result2 == arr1(&[true, true, true, true, false, false]));
+        let state2 = Array1::from(vec![true, true, true, true, false, false]);
+        let result2 = encoding.try_encode(FockState::new(state2, Complex64::ONE)).unwrap().unwrap();
+        assert!(result2.state == arr1(&[true, true, true, true, false, false]));
     }
 
     use proptest::prelude::*;
@@ -474,8 +410,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let mode_op_map: Array1<usize> = (0..n).collect();
-            let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
             let expected: Array1<bool> = hf_state.into_iter().collect();
             prop_assert_eq!(qubit_hf, expected);
         }
@@ -485,8 +420,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_parity(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let mode_op_map: Array1<usize> = (0..n).collect();
-            let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
             // expected_parity = cumsum(reversed) % 2, then reverse back
             let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
             let mut cumsum: usize = 0;
@@ -505,10 +439,11 @@ mod owned_tests {
             hf_state.extend(vec![false; n - n_electrons]);
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let naive_mode_op_map: Array1<usize> = (0..n).collect();
-            let naive_qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), naive_mode_op_map.view()).unwrap();
+            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
             prop_assert_eq!(naive_qubit_hf, Array1::from(hf_state.clone()));
-            let enumerated_qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), Array1::from(mode_op_map.clone()).view()).unwrap();
+            let mut enumerated_fockstate = FockState::new(Array1::from(hf_state.clone()), Complex64::ONE);
+            enumerated_fockstate.reindex(&mode_op_map);
+            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().unwrap().state;
             let mut expected = vec![false; n];
             for &i in &mode_op_map[..n_electrons] {
                 if i < n {
@@ -522,8 +457,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let mode_op_map: Array1<usize> = (0..n).collect();
-            let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
             let expected: Array1<bool> = hf_state.into_iter().collect();
             prop_assert_eq!(qubit_hf, expected);
         }
@@ -533,8 +467,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_parity(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let mode_op_map: Array1<usize> = (0..n).collect();
-            let qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), mode_op_map.view()).unwrap();
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
             // expected_parity = cumsum(reversed) % 2, then reverse back
             let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
             let mut cumsum:usize = 0;
@@ -553,10 +486,11 @@ mod owned_tests {
             hf_state.extend(vec![false; n - n_electrons]);
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let naive_mode_op_map: Array1<usize> = (0..n).collect();
-            let naive_qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), naive_mode_op_map.view()).unwrap();
+            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
             prop_assert_eq!(naive_qubit_hf, Array1::from(hf_state.clone()));
-            let enumerated_qubit_hf = encoding.ternary_tree_hartree_fock_state(Array1::from(hf_state.clone()).view(), Array1::from(mode_op_map.clone()).view()).unwrap();
+            let mut enumerated_fockstate = FockState::new(Array1::from(hf_state.clone()), Complex64::ONE);
+            enumerated_fockstate.reindex(&mode_op_map);
+            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().unwrap().state;
             let mut expected = vec![false; n];
             for &i in &mode_op_map[..n_electrons] {
                 if i < n {

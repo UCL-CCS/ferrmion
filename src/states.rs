@@ -1,7 +1,16 @@
 //! Structs representing quantum states.
 
+use itertools::CombinationsWithReplacement;
 use ndarray::{s, Array1};
 use num_complex::Complex64;
+use std::{ops::Mul};
+use thiserror::Error;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BraKet {
+    Bra,
+    Ket,
+}
 
 /// Trait for a quantum state.
 ///
@@ -17,6 +26,14 @@ pub trait State {
     /// Return the adjoint (dagger) of the state.
     #[allow(dead_code)]
     fn adjoint(&mut self);
+
+    fn reindex(&mut self, permutation: &[usize]);
+}
+
+#[derive(Error, Debug)]
+pub enum StateError {
+    #[error("Invalid bra/ket combination")]
+    InvalidBraKet,
 }
 
 /// A quantum state in the computational (pauli Z) basis.
@@ -24,12 +41,13 @@ pub trait State {
 pub struct ZBasisState {
     pub state: Array1<bool>,
     pub coefficient: Complex64,
+    bra_ket: BraKet,
 }
 
 impl ZBasisState {
     /// Construct a new `ZBasisState` with the given state and coefficient.
     pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
-        let mut out = Self { state, coefficient };
+        let mut out = Self { state, coefficient, bra_ket: BraKet::Ket };
         out.normalize();
         out
     }
@@ -54,6 +72,44 @@ impl State for ZBasisState {
     fn adjoint(&mut self) {
         self.state = self.state.slice(s![..;-1]).to_owned();
         self.coefficient = self.coefficient.conj();
+        self.bra_ket = match self.bra_ket {
+            BraKet::Bra => BraKet::Ket,
+            BraKet::Ket => BraKet::Bra,
+        };
+    }
+
+    fn reindex(&mut self, permutation: &[usize]) {
+        let mut new_state = Array1::from_elem(self.state.len(), false);
+        for (original, &new) in permutation.iter().enumerate() {
+            new_state[new] = self.state[original];
+        }
+        self.state = new_state;
+    }
+}
+
+impl Mul<Complex64> for ZBasisState {
+    type Output = Self;
+
+    fn mul(self, rhs: Complex64) -> Self::Output {
+        ZBasisState::new(self.state, self.coefficient * rhs)
+    }
+}
+
+impl Mul for ZBasisState {
+    type Output = Result<Complex64, StateError>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        match (self.bra_ket, rhs.bra_ket) {
+            (BraKet::Bra, BraKet::Ket) => {
+                if self.state == rhs.state {
+                    Ok(self.coefficient * rhs.coefficient.conj())
+                } else {
+                    Ok(Complex64::ZERO)
+                }
+            }
+            _ => Err(StateError::InvalidBraKet),
+        }
+
     }
 }
 
@@ -103,6 +159,14 @@ impl State for FockState {
     fn adjoint(&mut self) {
         self.state = self.state.slice(s![..;-1]).to_owned();
         self.coefficient = self.coefficient.conj();
+    }
+
+    fn reindex(&mut self, permutation: &[usize]) {
+        let mut new_state = Array1::from_elem(self.state.len(), false);
+        for (original, &new) in permutation.iter().enumerate() {
+            new_state[new] = self.state[original];
+        }
+        self.state = new_state;
     }
 }
 

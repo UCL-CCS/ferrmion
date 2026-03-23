@@ -144,7 +144,7 @@ def jkmn_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
 
 def _standard_topphatt(encoding: str, fham: FermionHamiltonian) -> QubitHamiltonian:
     sigs, coeffs = fham.signatures_and_coefficients
-    ipow, sym = topphatt_standard(
+    ipow, sym, _ = topphatt_standard(
         encoding=encoding,
         n_modes=fham.n_modes,
         n_qubits=fham.n_modes,
@@ -256,7 +256,7 @@ def _standard_annealed(
     coefficient_weighted: bool,
 ):
     sigs, coeffs = fham.signatures_and_coefficients
-    ipow, sym = standard_symplectic_matrix(encoding, fham.n_modes)
+    ipow, sym, _ = standard_symplectic_matrix(encoding, fham.n_modes)
 
     if temperature is None:
         temperature = fham.n_modes

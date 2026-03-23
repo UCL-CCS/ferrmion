@@ -159,7 +159,7 @@ class TernaryTree(FermionQubitEncoding):
     ) -> QubitHamiltonian:
         """Encode a Hamiltonian, using TOPP-HATT optimisation."""
         sigs, coeffs = fham.signatures_and_coefficients
-        ipow, sym, qham = core.encode_topphatt(
+        ipow, sym, qham, vacuum = core.encode_topphatt(
             flatpack=self.flatpack(),
             n_qubits=self.n_qubits,
             signatures=deepcopy(sigs),
@@ -167,6 +167,7 @@ class TernaryTree(FermionQubitEncoding):
             constant_energy=fham.constant_energy,
             parallelize=parallelize,
         )
+        self.vacuum_state = vacuum
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
         self.default_mode_op_map = [*range(self.n_modes)]
 
@@ -203,6 +204,7 @@ class TernaryTree(FermionQubitEncoding):
             mode_op_map,
             ipow,
             sym,
+            self.vacuum_state.astype(bool),
         )
 
     def flatpack(self) -> TTFlatpack:
@@ -268,7 +270,7 @@ class TernaryTree(FermionQubitEncoding):
                         "TTFlatpack contains child node which is not int | None."
                     )
 
-        ipow, sym = core.flatpack_symplectic_matrix(flatpack)
+        ipow, sym, vacuum = core.flatpack_symplectic_matrix(flatpack)
         max_id = max(item[0] for item in flatpack)
         nodes = [TTNode() for _ in range(max_id + 1)]
         for qubit_index, children in flatpack:
@@ -296,6 +298,7 @@ class TernaryTree(FermionQubitEncoding):
         n_modes = len(enumeration_scheme)
         tree = cls(n_modes=n_modes, root_node=root)
         tree.enumeration_scheme = enumeration_scheme
+        tree.vacuum_state = vacuum
         tree._build_symplectic_matrix = lambda: (ipow, sym)
         return tree
 
@@ -462,7 +465,9 @@ class TernaryTree(FermionQubitEncoding):
                     [ True, False,  True, False,  True, False],
                     [ True, False,  True, False,  True,  True]]))
         """
-        ipow, sym = core.flatpack_symplectic_matrix(self.flatpack())
+        flatpack = self.flatpack()
+        ipow, sym, vacuum = core.flatpack_symplectic_matrix(flatpack)
+        self.vacuum_state = vacuum
         reordering_index = np.kron(
             self.default_mode_op_map, np.array([2, 2], dtype=np.uint)
         )

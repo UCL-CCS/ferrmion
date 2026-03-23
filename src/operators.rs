@@ -336,7 +336,7 @@ impl Mul<ZBasisState> for SymplecticOperator {
 
         state = self.x_block.bitxor(&state);
 
-        ZBasisState { state, coefficient }
+        ZBasisState::new(state, coefficient)
     }
 }
 
@@ -412,7 +412,7 @@ impl Mul<ZBasisState> for SymplecticOperatorView<'_> {
 
         state = self.x_block.bitxor(&state);
 
-        ZBasisState { state, coefficient }
+        ZBasisState::new(state, coefficient)
     }
 }
 

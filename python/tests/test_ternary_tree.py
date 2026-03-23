@@ -408,7 +408,7 @@ def test_default_mode_op_map(water_tt):
 def test_core_standard_encodings(n_modes,encoding,name):
     n_modes = 20
     i,s = encoding(20)._build_symplectic_matrix()
-    ci, cs = standard_symplectic_matrix(name,20)
+    ci, cs, _ = standard_symplectic_matrix(name,20)
     assert np.all(i==ci)
     assert np.all(s==cs)
 
@@ -699,7 +699,7 @@ def test_symplectic_matrix_roundtrip(flatpack):
 def test_core_python_symplectics_from_flatpack_equal(flatpack):
     python_tree = TernaryTree.from_flatpack(flatpack)
     py_ipow, py_sym = python_tree._build_symplectic_matrix()
-    rust_ipow, rust_sym = flatpack_symplectic_matrix(flatpack)
+    rust_ipow, rust_sym, _ = flatpack_symplectic_matrix(flatpack)
 
     assert np.array_equal(py_ipow, rust_ipow)
     assert np.array_equal(py_sym, rust_sym)

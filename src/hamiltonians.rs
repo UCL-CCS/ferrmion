@@ -3,6 +3,21 @@ use ahash::RandomState;
 use numpy::Complex64;
 use std::collections::HashMap;
 
+/// A qubit Hamiltonian represented as a sparse mapping from Pauli strings to complex coefficients.
+///
+/// Each key is a Pauli string (e.g. `"XYZII"`), and each value is the corresponding
+/// complex coefficient. Uses a randomised hash state for performance.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::hamiltonians::QubitHamiltonian;
+/// use num_complex::Complex64;
+///
+/// let mut ham = QubitHamiltonian::default();
+/// ham.insert("XYZ".to_string(), Complex64::new(1.0, 0.0));
+/// assert_eq!(ham.len(), 1);
+/// ```
 pub type QubitHamiltonian = HashMap<String, Complex64, RandomState>;
 
 impl PauliWeight for QubitHamiltonian {

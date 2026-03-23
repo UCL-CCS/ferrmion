@@ -153,7 +153,17 @@ class FermionQubitEncoding(ABC):
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
     ):
-        """Encode a Hamiltonian, using simulated annealing optimisation."""
+        """Encode a Hamiltonian, optimising mode enumeration via simulated annealing.
+
+        Args:
+            fham (FermionHamiltonian): The fermionic Hamiltonian to encode.
+            temperature (int | None): Initial annealing temperature. Defaults to `fham.n_modes`.
+            initial_guess (list[int] | None): Starting permutation. Defaults to identity.
+            coefficient_weighted (bool): If True, minimise coefficient-weighted Pauli weight.
+
+        Returns:
+            QubitHamiltonian: The encoded qubit Hamiltonian with optimised enumeration.
+        """
         sigs, coeffs = fham.signatures_and_coefficients
         ipow, sym = self._build_symplectic_matrix()
 
@@ -189,7 +199,11 @@ class FermionQubitEncoding(ABC):
         )
 
     def to_json(self) -> dict:
-        """Store the encoding as a JSON-readable dict."""
+        """Serialise the encoding to a JSON-compatible dictionary.
+
+        Returns:
+            dict: Dictionary with ``"ipowers"`` and ``"symplectics"`` keys.
+        """
         ipow, sym = self._build_symplectic_matrix()
         dict_output = {}
         dict_output["ipowers"] = ipow.tolist()
@@ -197,7 +211,14 @@ class FermionQubitEncoding(ABC):
         return dict_output
 
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
-        """Encode a Hamiltonian."""
+        """Encode a fermionic Hamiltonian into a qubit Hamiltonian.
+
+        Args:
+            fham (FermionHamiltonian): The fermionic Hamiltonian to encode.
+
+        Returns:
+            QubitHamiltonian: The encoded qubit Hamiltonian.
+        """
         logger.debug("Encoding fermionic Hamiltonian.")
         ipowers, symplectic = self._build_symplectic_matrix()
         signatures, coeffs = fham.signatures_and_coefficients
@@ -244,7 +265,7 @@ class FermionQubitEncoding(ABC):
 
         Args:
             mode (int): The mode index to obtain a number operator for.
-            coeff (float): Optional complex coeffient
+            coeff (float): Optional complex coefficient
 
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
@@ -266,7 +287,7 @@ class FermionQubitEncoding(ABC):
 
         Args:
             edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
-            coeff (float): Optional complex coeffient
+            coeff (float): Optional complex coefficient
 
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
@@ -289,7 +310,7 @@ class FermionQubitEncoding(ABC):
 
         Args:
             mode_indices (tuple[int, int, int, int]): The mode index to obtain an interaction operator for.
-            coeff (float): Optional complex coeffient
+            coeff (float): Optional complex coefficient
             physicist_notation (bool): Use Physicist's notation, Chemist's if False.
 
         Example:
@@ -335,7 +356,11 @@ class FermionQubitEncoding(ABC):
 
 
 class MajoranaStringEncoding(FermionQubitEncoding):
-    """Majorana string encoding defined by input."""
+    """A fermion-qubit encoding constructed from explicit Majorana string data.
+
+    This encoding is defined directly from user-provided ``i``-powers and
+    symplectic matrices, rather than being derived from a tree structure.
+    """
 
     def __init__(self, ipowers: ArrayLike, symplectics: ArrayLike):
         """Initialize MajoranaStringEncoding.

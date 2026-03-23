@@ -23,6 +23,10 @@ pub enum ToppHattError {
     NoMinParentFound(usize),
 }
 
+/// The result of a single TOPP-HATT assignment step.
+///
+/// Stores the minimum Pauli weight found, the parent node chosen,
+/// and the three leaf indices assigned to that node's edges.
 #[derive(Debug)]
 pub struct ToppHattSelection {
     min_weight: usize,

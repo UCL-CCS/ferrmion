@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def bonsai_algorithm(
     graph: rx.PyGraph, homogenous: bool = True, max_nodes: None | int = None
 ) -> TernaryTree:
-    """Create a TernayTree encoding using the Bonsai Algorithm.
+    """Create a TernaryTree encoding using the Bonsai Algorithm.
 
     Args:
         graph (rx.PyGraph): A RustworkX graph of device qubit-connectivity.

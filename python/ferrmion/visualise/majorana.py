@@ -6,7 +6,12 @@ from matplotlib.colors import ListedColormap
 
 
 def symplectic_matshow(symplectics, title: str | None = None):
-    """Colorised Matplolibn.matshow of a symplectic array."""
+    """Colourised Matplotlib matshow of a symplectic array.
+
+    Args:
+        symplectics: A 2D array in symplectic (XZ) format.
+        title (str | None): Optional plot title.
+    """
     # Crear el mapa de colores cualitativo
     colors = ["linen", "tab:red", "tab:blue", "tab:purple"]
 

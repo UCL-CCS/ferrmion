@@ -8,7 +8,7 @@ from ferrmion.encode.ternary_tree_node import TTNode
 from ferrmion.utils import find_pauli_weight, pauli_to_symplectic, symplectic_product
 
 
-def _majarana_op_frequency(
+def _majorana_op_frequency(
     ones: npt.NDArray[float], twos: npt.NDArray[float]
 ) -> npt.NDArray[float]:
     n_modes = ones.shape[0]
@@ -148,7 +148,7 @@ def huffman_ternary_tree(
     """
     n_modes = one_e_coeffs.shape[0]
 
-    majorana_frequencies = _majarana_op_frequency(one_e_coeffs, two_e_coeffs)
+    majorana_frequencies = _majorana_op_frequency(one_e_coeffs, two_e_coeffs)
 
     huffman_ternary_tree = _build_huffman_tree(n_modes, majorana_frequencies)
     huffman_ternary_tree.enumeration_scheme = (

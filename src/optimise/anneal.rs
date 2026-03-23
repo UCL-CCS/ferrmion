@@ -81,6 +81,22 @@ impl Anneal for OptimalEnumeration {
     }
 }
 
+/// Optimise fermionic mode enumeration using simulated annealing.
+///
+/// Searches for a permutation of mode indices that minimises the Pauli weight
+/// (or coefficient-weighted Pauli weight) of the encoded qubit Hamiltonian.
+///
+/// # Arguments
+///
+/// * `msparse` - The fermionic Hamiltonian in Majorana sparse form.
+/// * `encoding` - The Majorana encoding to use.
+/// * `temperature` - Initial temperature for the annealing schedule.
+/// * `initial_guess` - Starting permutation of mode indices.
+/// * `coefficient_weighted` - If `true`, minimise coefficient-weighted Pauli weight.
+///
+/// # Returns
+///
+/// A tuple of `(best_cost, best_permutation)`.
 pub fn anneal_enumerations(
     msparse: MajoranaSparse,
     encoding: MajoranaEncoding,

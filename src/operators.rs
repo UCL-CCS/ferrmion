@@ -194,6 +194,17 @@ pub struct SymplecticOperator {
 }
 
 impl SymplecticOperator {
+    /// Construct a new [`SymplecticOperator`] from its components.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticOperator;
+    /// use ndarray::arr1;
+    ///
+    /// let op = SymplecticOperator::new(0, arr1(&[true, false]), arr1(&[false, true]));
+    /// assert_eq!(op.ipower(), 0);
+    /// ```
     pub fn new(ipower: u8, x_block: Array1<bool>, z_block: Array1<bool>) -> Self {
         Self {
             ipower,
@@ -202,6 +213,16 @@ impl SymplecticOperator {
         }
     }
 
+    /// Construct an identity operator acting on `n_modes` qubits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticOperator;
+    ///
+    /// let id = SymplecticOperator::identity(3);
+    /// assert_eq!(id.pauli_weight(), 0);
+    /// ```
     pub fn identity(n_modes: usize) -> Self {
         Self {
             ipower: 0,
@@ -210,6 +231,7 @@ impl SymplecticOperator {
         }
     }
 
+    /// Return a borrowed [`SymplecticOperatorView`] of this operator.
     pub fn view(&self) -> SymplecticOperatorView<'_> {
         SymplecticOperatorView {
             ipower: self.ipower,
@@ -218,18 +240,34 @@ impl SymplecticOperator {
         }
     }
 
+    /// Return a view of the X block.
     pub fn x_block(&self) -> ArrayView1<'_, bool> {
         self.x_block.view()
     }
 
+    /// Return a view of the Z block.
     pub fn z_block(&self) -> ArrayView1<'_, bool> {
         self.z_block.view()
     }
 
+    /// Return the power of `i` (imaginary unit) for this operator.
     pub fn ipower(&self) -> u8 {
         self.ipower
     }
 
+    /// Convert to a Pauli string representation and its associated `i`-power.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticOperator;
+    /// use ndarray::arr1;
+    ///
+    /// let op = SymplecticOperator::new(0, arr1(&[true, false]), arr1(&[false, true]));
+    /// let (pauli, ipower) = op.to_pauli_string();
+    /// assert_eq!(pauli, "XZ");
+    /// assert_eq!(ipower, 0);
+    /// ```
     pub fn to_pauli_string(&self) -> (String, u8) {
         let mut pauli_string = String::new();
         let mut ipower = self.ipower;
@@ -321,6 +359,7 @@ pub struct SymplecticOperatorView<'sym> {
 }
 
 impl<'sym> SymplecticOperatorView<'sym> {
+    /// Construct a new [`SymplecticOperatorView`] from borrowed array views.
     pub fn new(
         ipower: u8,
         x_block: ArrayView1<'sym, bool>,
@@ -333,6 +372,7 @@ impl<'sym> SymplecticOperatorView<'sym> {
         }
     }
 
+    /// Convert to a Pauli string representation and its associated `i`-power.
     pub fn to_pauli_string(self) -> (String, u8) {
         let mut pauli_string = String::new();
         let mut ipower = self.ipower;
@@ -418,6 +458,7 @@ pub struct SymplecticMatrix {
 }
 
 impl SymplecticMatrix {
+    /// Construct a new [`SymplecticMatrix`], automatically computing `i`-powers from the X and Z blocks.
     pub fn new(x_block: Array2<bool>, z_block: Array2<bool>) -> Self {
         let mut ipowers = Array1::from_elem(x_block.len_of(Axis(0)), 0);
         Zip::from(&mut ipowers)
@@ -434,6 +475,7 @@ impl SymplecticMatrix {
         }
     }
 
+    /// Construct a [`SymplecticMatrix`] with explicitly provided `i`-powers.
     pub fn with_ipowers(x_block: Array2<bool>, z_block: Array2<bool>, ipowers: Array1<u8>) -> Self {
         Self {
             x_block,
@@ -442,6 +484,7 @@ impl SymplecticMatrix {
         }
     }
 
+    /// Construct an identity [`SymplecticMatrix`] with `n_ops` rows and `n_qubits` columns.
     pub fn identity(n_ops: usize, n_qubits: usize) -> Self {
         Self {
             ipowers: Array1::from_elem(n_ops, 0),
@@ -450,6 +493,7 @@ impl SymplecticMatrix {
         }
     }
 
+    /// Return a [`SymplecticOperatorView`] for the given row index.
     pub fn view_row(&self, row: usize) -> SymplecticOperatorView<'_> {
         SymplecticOperatorView {
             x_block: self.x_block.row(row),
@@ -564,7 +608,7 @@ pub struct ParseLadderError;
 
 impl FromStr for LadderOperator {
     type Err = ParseLadderError;
-    /// Parse a string as a ladfder operator.
+    /// Parse a string as a ladder operator.
     ///
     ///
     fn from_str(string: &str) -> Result<Self, Self::Err> {
@@ -645,8 +689,16 @@ Fermion
 /// A product of fermionic ladder operators.
 ///
 /// # Example
+///
 /// ```
-/// FermionProduct::new(vec![LadderOperator:Creation, LadderOperator::Annihilation], vec![0,1], c64(1.,0.))
+/// use ferrmion::operators::{FermionProduct, LadderOperator};
+/// use num_complex::Complex64;
+///
+/// let fp = FermionProduct::new(
+///     vec![LadderOperator::Creation, LadderOperator::Annihilation],
+///     vec![0, 1],
+///     Complex64::new(1.0, 0.0),
+/// ).unwrap();
 /// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct FermionProduct {
@@ -888,8 +940,12 @@ mod fermion_tests {
 /// Product of Majorana operators, with a complex coefficient.
 ///
 /// # Example
+///
 /// ```
-/// let mp = MajoranaProduct::new(vec![0,1,2,3], c64(0.5,0.5))
+/// use ferrmion::operators::MajoranaProduct;
+/// use num_complex::Complex64;
+///
+/// let mp = MajoranaProduct::new(vec![0, 1, 2, 3], Complex64::new(0.5, 0.5));
 /// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaProduct {

@@ -648,12 +648,10 @@ pub fn topphatt(
                                             Done(acc)
                                         } else {
                                             debug_assert!(inds.is_sorted());
-                                            let inds_max = unsafe {
-                                                inds.last().unwrap_unchecked()
-                                            };
-                                            let inds_min = unsafe {
-                                                inds.first().unwrap_unchecked()
-                                            };
+                                            let inds_max =
+                                                unsafe { inds.last().unwrap_unchecked() };
+                                            let inds_min =
+                                                unsafe { inds.first().unwrap_unchecked() };
 
                                             if (comb_min > inds_max) | (comb_max < inds_min) {
                                                 Continue(acc)

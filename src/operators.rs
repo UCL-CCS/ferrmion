@@ -478,7 +478,8 @@ impl Mul<&mut ZBasisState> for SymplecticMatrix {
             .and(self.z_block.rows())
             .fold(rhs, |rhs, i, x_row, z_row| {
                 let sym = SymplecticOperatorView::new(*i, x_row, z_row);
-                sym.mul(&mut *rhs);
+                #[allow(clippy::let_unit_value)]
+                let _ = sym.mul(&mut *rhs);
                 rhs
             });
     }

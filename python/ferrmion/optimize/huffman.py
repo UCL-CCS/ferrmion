@@ -16,19 +16,34 @@ def _majarana_op_frequency(
     # One-electron: each unique position in {i, j} gets |ones[i,j]| added once.
     # When i != j both get it; when i == j only one does.
     abs_ones = np.abs(ones)
-    majorana_freq = np.sum(abs_ones, axis=1) + np.sum(abs_ones, axis=0) - np.diag(abs_ones)
+    majorana_freq = (
+        np.sum(abs_ones, axis=1) + np.sum(abs_ones, axis=0) - np.diag(abs_ones)
+    )
 
     # Two-electron: each unique position in {i,j,k,l} gets |twos[i,j,k,l]| added once.
     # Use inclusion-exclusion to handle duplicate indices correctly.
     abs_twos = np.abs(twos)
     for p in range(n_modes):
-        s1 = (abs_twos[p, :, :, :].sum() + abs_twos[:, p, :, :].sum()
-              + abs_twos[:, :, p, :].sum() + abs_twos[:, :, :, p].sum())
-        s2 = (abs_twos[p, p, :, :].sum() + abs_twos[p, :, p, :].sum()
-              + abs_twos[p, :, :, p].sum() + abs_twos[:, p, p, :].sum()
-              + abs_twos[:, p, :, p].sum() + abs_twos[:, :, p, p].sum())
-        s3 = (abs_twos[p, p, p, :].sum() + abs_twos[p, p, :, p].sum()
-              + abs_twos[p, :, p, p].sum() + abs_twos[:, p, p, p].sum())
+        s1 = (
+            abs_twos[p, :, :, :].sum()
+            + abs_twos[:, p, :, :].sum()
+            + abs_twos[:, :, p, :].sum()
+            + abs_twos[:, :, :, p].sum()
+        )
+        s2 = (
+            abs_twos[p, p, :, :].sum()
+            + abs_twos[p, :, p, :].sum()
+            + abs_twos[p, :, :, p].sum()
+            + abs_twos[:, p, p, :].sum()
+            + abs_twos[:, p, :, p].sum()
+            + abs_twos[:, :, p, p].sum()
+        )
+        s3 = (
+            abs_twos[p, p, p, :].sum()
+            + abs_twos[p, p, :, p].sum()
+            + abs_twos[p, :, p, p].sum()
+            + abs_twos[:, p, p, p].sum()
+        )
         s4 = abs_twos[p, p, p, p]
         majorana_freq[p] += s1 - s2 + s3 - s4
 

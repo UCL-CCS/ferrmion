@@ -143,9 +143,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .slice(ndarray::s![.., n_qubits..])
             .to_owned();
         let ipowers = ipowers.as_array().to_owned();
-        let encoding =
-            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers), ZBasisState::zeros(n_qubits))
-                .expect("Should be able to construct encoding from symplectic matrix.");
+        let encoding = MajoranaEncoding::new(
+            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
+            ZBasisState::zeros(n_qubits),
+        )
+        .expect("Should be able to construct encoding from symplectic matrix.");
         let state = encoding
             .ternary_tree_hartree_fock_state(fermionic_hf_state, mode_op_map)
             .expect("Should be able to get HF state.");
@@ -274,11 +276,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
-        let encoding = MajoranaEncoding::new(SymplecticMatrix::with_ipowers(
-            x_block.clone(),
-            z_block.clone(),
-            ipowers,
-        ), ZBasisState::zeros(n_qubits))
+        let encoding = MajoranaEncoding::new(
+            SymplecticMatrix::with_ipowers(x_block.clone(), z_block.clone(), ipowers),
+            ZBasisState::zeros(n_qubits),
+        )
         .expect("Should be able to construct encoding from symplectic matrix.");
         let best_mode_enumeration: Array1<usize>;
         (_, best_mode_enumeration) = anneal_enumerations(
@@ -290,9 +291,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
         .expect("Annealing should have succeeded.");
 
-        let encoding = MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block), ZBasisState::zeros(n_qubits))
-            .expect("Should be able to construct encoding from symplectic matrix.")
-            .apply_mode_enumeration(best_mode_enumeration.to_vec());
+        let encoding = MajoranaEncoding::new(
+            SymplecticMatrix::new(x_block, z_block),
+            ZBasisState::zeros(n_qubits),
+        )
+        .expect("Should be able to construct encoding from symplectic matrix.")
+        .apply_mode_enumeration(best_mode_enumeration.to_vec());
 
         let combined = ndarray::concatenate(
             ndarray::Axis(1),
@@ -502,9 +506,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
-        let encoding =
-            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers), ZBasisState::zeros(n_qubits))
-                .expect("Should be able to construct encoding from symplectic matrix.");
+        let encoding = MajoranaEncoding::new(
+            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
+            ZBasisState::zeros(n_qubits),
+        )
+        .expect("Should be able to construct encoding from symplectic matrix.");
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(fproduct);
         debug!("Got Hamiltonian");
@@ -563,9 +569,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
-        let encoding =
-            MajoranaEncoding::new(SymplecticMatrix::with_ipowers(x_block, z_block, ipowers), ZBasisState::zeros(n_qubits))
-                .expect("Should be able to construct encoding from symplectic matrix.");
+        let encoding = MajoranaEncoding::new(
+            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
+            ZBasisState::zeros(n_qubits),
+        )
+        .expect("Should be able to construct encoding from symplectic matrix.");
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         debug!("Got Hamiltonian");

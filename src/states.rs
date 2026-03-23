@@ -11,9 +11,11 @@ pub trait State {
     fn normalize(&mut self);
 
     /// Return the dimension of the state space.
+    #[allow(dead_code)]
     fn dimension(&self) -> usize;
 
     /// Return the adjoint (dagger) of the state.
+    #[allow(dead_code)]
     fn adjoint(&mut self);
 }
 

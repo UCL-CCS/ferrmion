@@ -1,10 +1,11 @@
 # Rust internals
 
-This section documents the internal Rust API of `ferrmion`. It is primarily
-useful for contributors who want to extend the Rust core, understand algorithmic
-details, or add new PyO3 bindings.
+This section is aimed at contributors who want to extend the Rust core,
+understand algorithmic details, or add new PyO3 bindings.
 
-The Rust crate is organised into the following public modules:
+The internal Rust API is documented via `cargo doc` and served alongside
+this documentation. It covers types and functions that are not part of the
+public Python API, including:
 
 | Module | Purpose |
 |--------|---------|
@@ -16,36 +17,9 @@ The Rust crate is organised into the following public modules:
 | `states` | Z-basis qubit state representation |
 | `utils` | Shared utility functions (symplectic arithmetic, phase accounting) |
 
----
+**[Browse the Rust API docs →](rustdoc/ferrmion/index.html)**
 
-## operators
-
-```{rust:module} ferrmion::operators
-```
-
----
-
-## ternarytree
-
-```{rust:module} ferrmion::ternarytree
-```
-
----
-
-## encoding
-
-```{rust:module} ferrmion::encoding
-```
-
----
-
-## optimise
-
-```{rust:module} ferrmion::optimise
-```
-
-```{rust:module} ferrmion::optimise::anneal
-```
-
-```{rust:module} ferrmion::optimise::topphatt
+```{note}
+The Rust API docs are generated with `cargo doc --no-deps --document-private-items`
+and are available at `rustdoc/ferrmion/index.html` relative to this page.
 ```

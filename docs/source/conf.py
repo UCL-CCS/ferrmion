@@ -34,14 +34,7 @@ extensions = ["sphinx.ext.autodoc",
     "myst_nb",
     "pydata_sphinx_theme",
     "myst_sphinx_gallery",
-    "sphinx_rust",
     ]
-
-# -- sphinx-rust configuration -----------------------------------------------
-# Path to the Cargo.toml for the ferrmion crate, relative to this conf.py.
-rust_crates = {
-    "ferrmion": "../../",
-}
 
 myst_enable_extensions = [
     "amsmath",

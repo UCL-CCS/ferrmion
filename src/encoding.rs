@@ -16,9 +16,11 @@ use numpy::ndarray::{Array1, Array2, ArrayView1};
 use numpy::Complex64;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::process::Output;
 use thiserror::Error;
 
 pub trait Encode<T> {
+    type Output;
     /// Encodes the input into a QubitHamiltonian.
     ///
     /// # Examples
@@ -27,7 +29,7 @@ pub trait Encode<T> {
     /// use ferrmion::encoding::Encode;
     /// // Example usage would depend on the implementor
     /// ```
-    fn encode(&self, input: T) -> QubitHamiltonian;
+    fn encode(&self, input: T) -> Self::Output;
 }
 
 #[derive(Debug)]
@@ -194,7 +196,8 @@ impl MajoranaEncoding {
 }
 
 impl Encode<MajoranaProduct> for MajoranaEncoding {
-    fn encode(&self, input: MajoranaProduct) -> HashMap<String, Complex64, RandomState> {
+    type Output = QubitHamiltonian;
+    fn encode(&self, input: MajoranaProduct) -> QubitHamiltonian {
         let mut qham: HashMap<String, Complex64, RandomState> =
             HashMap::with_hasher(RandomState::new());
         let operator = input
@@ -217,6 +220,8 @@ impl Encode<MajoranaProduct> for MajoranaEncoding {
 }
 
 impl Encode<&MajoranaSparse> for MajoranaEncoding {
+    type Output = QubitHamiltonian;
+
     fn encode(&self, input: &MajoranaSparse) -> QubitHamiltonian {
         let mut qham: QubitHamiltonian = HashMap::with_hasher(RandomState::new());
         let paulis_ipowers: Vec<(String, u8)> = input
@@ -255,6 +260,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
 }
 
 impl Encode<FermionProduct> for MajoranaEncoding {
+    type Output = QubitHamiltonian;
     fn encode(&self, input: FermionProduct) -> QubitHamiltonian {
         let msparse = MajoranaSparse::from(input);
         self.encode(&msparse)

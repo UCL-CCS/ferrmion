@@ -78,7 +78,9 @@ impl YParity {
 ///
 /// # Example
 /// ```
-/// let yp= YParity::Even;
+/// use ferrmion::ternarytree::YParity;
+///
+/// let yp = YParity::Even;
 /// assert_eq!(!yp, YParity::Odd);
 /// ```
 impl Not for YParity {

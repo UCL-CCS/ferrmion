@@ -1,6 +1,7 @@
-/*
-Functions relating to the FermionQubitEncoding base class.
-*/
+//! Fermion-to-qubit encoding implementations.
+//!
+//! Provides the [`Encode`] trait and [`MajoranaEncoding`] struct for transforming
+//! fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
     FermionProduct, MajoranaProduct, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
@@ -21,6 +22,21 @@ use thiserror::Error;
 ///
 /// Implementors define how a particular input type `T` (e.g. [`MajoranaProduct`],
 /// [`MajoranaSparse`]) is transformed into a [`QubitHamiltonian`].
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::encoding::{Encode, MajoranaEncoding};
+/// use ferrmion::operators::MajoranaProduct;
+/// use ferrmion::ternarytree::TernaryTree;
+/// use num_complex::Complex64;
+///
+/// let tree = TernaryTree::naive_jordan_wigner(2);
+/// let encoding = tree.build_encoding(2).unwrap();
+/// let mp = MajoranaProduct::new(vec![0, 1], Complex64::new(1.0, 0.0));
+/// let qham = encoding.encode(mp);
+/// assert!(!qham.is_empty());
+/// ```
 pub trait Encode<T> {
     type Output;
     /// Encodes the input into a QubitHamiltonian.
@@ -34,16 +50,26 @@ pub trait Encode<T> {
     fn encode(&self, input: T) -> Self::Output;
 }
 
+/// Fallible encoding trait for inputs that may not have a valid qubit representation.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::encoding::{TryEncode, MajoranaEncoding};
+/// use ferrmion::states::FockState;
+/// use ferrmion::ternarytree::TernaryTree;
+/// use ndarray::arr1;
+/// use num_complex::Complex64;
+///
+/// let tree = TernaryTree::naive_jordan_wigner(3);
+/// let encoding = tree.build_encoding(3).unwrap();
+/// let fock = FockState::new(arr1(&[true, false, false]), Complex64::ONE);
+/// let result = encoding.try_encode(fock);
+/// assert!(result.is_ok());
+/// ```
 pub trait TryEncode<T> {
     type Output;
-    /// Encodes the input into a QubitHamiltonian.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use ferrmion::encoding::TryEncode;
-    /// // Example usage would depend on the implementor
-    /// ```
+    /// Attempt to encode the input, returning an error if encoding is not possible.
     fn try_encode(&self, input: T) -> Result<Self::Output, MajoranaEncodingError>;
 }
 
@@ -77,6 +103,22 @@ impl MajoranaEncoding {
     ///
     /// Returns an error if the operators do not form a valid Majorana encoding
     /// (mismatched X/Z block shapes or odd number of operator rows).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::encoding::MajoranaEncoding;
+    /// use ferrmion::operators::SymplecticMatrix;
+    /// use ferrmion::states::ZBasisState;
+    /// use ndarray::arr2;
+    ///
+    /// let sym = SymplecticMatrix::new(
+    ///     arr2(&[[true, false], [false, true]]),
+    ///     arr2(&[[false, true], [true, false]]),
+    /// );
+    /// let enc = MajoranaEncoding::new(sym, ZBasisState::zeros(2)).unwrap();
+    /// assert_eq!(enc.n_modes, 2);
+    /// ```
     pub fn new(
         operators: SymplecticMatrix,
         vacuum_state: ZBasisState,
@@ -107,6 +149,18 @@ impl MajoranaEncoding {
     ///
     /// Returns a new [`MajoranaEncoding`] with Majorana operator rows reordered
     /// so that mode `i` maps to the operator pair at `mode_op_map[i]`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::encoding::MajoranaEncoding;
+    /// use ferrmion::ternarytree::TernaryTree;
+    ///
+    /// let tree = TernaryTree::naive_jordan_wigner(3);
+    /// let encoding = tree.build_encoding(3).unwrap();
+    /// let swapped = encoding.apply_mode_enumeration(vec![2, 0, 1]);
+    /// assert_eq!(swapped.n_modes, 3);
+    /// ```
     pub fn apply_mode_enumeration(&self, mode_op_map: Vec<usize>) -> MajoranaEncoding {
         assert_eq!(2 * mode_op_map.len(), self.operators.ipowers.len());
         let majorana_rows: Vec<usize> = mode_op_map

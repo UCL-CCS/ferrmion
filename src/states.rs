@@ -228,6 +228,21 @@ mod zbasis_tests {
     }
 }
 
+/// A fermionic Fock (occupation number) state.
+///
+/// Represents an occupation-number state where each mode is either occupied (`true`)
+/// or unoccupied (`false`), with an associated complex coefficient.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::states::FockState;
+/// use ndarray::arr1;
+/// use num_complex::Complex64;
+///
+/// let fs = FockState::new(arr1(&[true, false, true]), Complex64::new(1.0, 0.0));
+/// assert_eq!(fs.state.len(), 3);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FockState {
     pub state: Array1<bool>,
@@ -236,6 +251,18 @@ pub struct FockState {
 }
 
 impl FockState {
+    /// Construct a new [`FockState`] from an occupation array and a coefficient.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::states::FockState;
+    /// use ndarray::arr1;
+    /// use num_complex::Complex64;
+    ///
+    /// let fs = FockState::new(arr1(&[true, true, false]), Complex64::ONE);
+    /// assert_eq!(fs.coefficient, Complex64::ONE);
+    /// ```
     pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
         Self {
             state,

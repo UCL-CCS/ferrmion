@@ -1,6 +1,4 @@
-/*
-Functions relating to encoding optimisation.
-*/
+//! Simulated annealing optimisation of fermionic mode enumerations.
 
 use crate::encoding::Encode;
 use crate::encoding::MajoranaEncoding;

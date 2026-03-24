@@ -19,19 +19,19 @@ use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
 use tinyvec::ArrayVec;
 pub mod operators;
-mod states;
-mod utils;
+pub mod states;
+pub mod utils;
 use crate::operators::{
     FermionProduct, LadderOperator, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
 };
 use crate::optimise::topphatt;
 use crate::utils::*;
-mod hamiltonians;
+pub mod hamiltonians;
 use crate::hamiltonians::QubitHamiltonian;
-mod encoding;
+pub mod encoding;
 use crate::encoding::{Encode, MajoranaEncoding, TryEncode};
 use crate::states::{FockState, State, ZBasisState};
-mod optimise;
+pub mod optimise;
 use crate::optimise::anneal_enumerations;
 pub mod ternarytree;
 use crate::ternarytree::{TTFlatPack, TernaryTree};

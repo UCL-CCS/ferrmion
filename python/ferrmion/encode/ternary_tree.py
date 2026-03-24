@@ -199,7 +199,7 @@ class TernaryTree(FermionQubitEncoding):
 
         ipow, sym = self._build_symplectic_matrix()
 
-        return core.ternary_tree_hartree_fock_state(
+        return core.hartree_fock_state(
             fermionic_hf_state,
             mode_op_map,
             ipow,

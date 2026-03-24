@@ -1,7 +1,7 @@
 //! Fermion-to-qubit encoding implementations.
 //!
-//! Provides the [`Encode`] trait and [`MajoranaEncoding`] struct for transforming
-//! fermionic operators into qubit Hamiltonians via Majorana representations.
+//! Provides the [`Encode`] and [`TryEncode`] traits, and the [`MajoranaEncoding`] struct
+//! for transforming fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
     FermionProduct, MajoranaProduct, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
@@ -77,6 +77,10 @@ pub trait TryEncode<T> {
 ///
 /// Stores the symplectic matrix of Majorana operators, the number of fermionic modes,
 /// and the vacuum state used for Hartree-Fock state construction.
+///
+/// The [`SymplecticMatrix`] contains `2 * n_modes` rows. Consecutive pairs of rows
+/// define a single fermionic operator: rows `2i` and `2i+1` correspond to the
+/// two Majorana operators (γ₂ᵢ and γ₂ᵢ₊₁) that make up fermionic mode `i`.
 #[derive(Debug)]
 pub struct MajoranaEncoding {
     pub operators: SymplecticMatrix,
@@ -90,14 +94,11 @@ pub enum MajoranaEncodingError {
     #[error("Cannot construct Hartree-Fock state with Pauli operators {0:?}-i{1:?}.")]
     HartreeFockError(char, char),
     #[error("Input operators are not a valid Majorana encoding.")]
-    InputOperatorsInvalid,
+    InvalidOperatorsError,
     #[error("Cannot apply operator 0.5({0:#?} - i{1:#?}) to state {2:?}.")]
     StateEncodingError((String, u8), (String, u8), Array1<bool>),
 }
 
-// This caches symplectic products so that we don't have to calculate them
-// four times for each pair of fermionic operators
-// it does require memory scaling On^3 so if that becomes an issue we can be more clever.
 impl MajoranaEncoding {
     /// Construct a new [`MajoranaEncoding`] from a symplectic matrix and vacuum state.
     ///
@@ -135,10 +136,10 @@ impl MajoranaEncoding {
 
     fn validate_operators(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
         if operators.x_block.shape() != operators.z_block.shape() {
-            return Err(MajoranaEncodingError::InputOperatorsInvalid);
+            return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
         if !operators.x_block.len_of(Axis(0)).is_multiple_of(2) {
-            return Err(MajoranaEncodingError::InputOperatorsInvalid);
+            return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
         Ok(())
     }

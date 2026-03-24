@@ -504,7 +504,20 @@ impl Mul<&mut ZBasisState> for SymplecticOperatorView<'_> {
     }
 }
 
-/// Pauli operator in symplectic form.
+/// A collection of Pauli operators in symplectic form.
+///
+/// Each row represents one Pauli operator. The `x_block` and `z_block` matrices
+/// encode the Pauli type on each qubit via the symplectic convention:
+///
+/// | `x_block` | `z_block` | Pauli |
+/// |-----------|-----------|-------|
+/// | `false`   | `false`   | `I`   |
+/// | `true`    | `false`   | `X`   |
+/// | `false`   | `true`    | `Z`   |
+/// | `true`    | `true`    | `Y`   |
+///
+/// For example, a row with `x_block = [true, false, true]` and
+/// `z_block = [true, true, false]` represents the Pauli string `"YZX"`.
 ///
 /// # Examples
 ///
@@ -579,7 +592,7 @@ impl SymplecticMatrix {
         }
     }
 
-    /// Construct an identity [`SymplecticMatrix`] with `n_ops` rows and `n_qubits` columns.
+    /// Construct an identity [`SymplecticMatrix`] with `n_modes` rows and `n_qubits` columns.
     ///
     /// # Examples
     ///
@@ -589,11 +602,11 @@ impl SymplecticMatrix {
     /// let id = SymplecticMatrix::identity(4, 3);
     /// assert_eq!(id.pauli_weight(), 0);
     /// ```
-    pub fn identity(n_ops: usize, n_qubits: usize) -> Self {
+    pub fn identity(n_modes: usize, n_qubits: usize) -> Self {
         Self {
-            ipowers: Array1::from_elem(n_ops, 0),
-            x_block: Array2::from_elem((n_ops, n_qubits), false),
-            z_block: Array2::from_elem((n_ops, n_qubits), false),
+            ipowers: Array1::from_elem(n_modes, 0),
+            x_block: Array2::from_elem((n_modes, n_qubits), false),
+            z_block: Array2::from_elem((n_modes, n_qubits), false),
         }
     }
 

@@ -1,6 +1,6 @@
 //! Optimisation algorithms for fermion-qubit encodings.
 //!
-//! Provides simulated annealing and the TOPP-HATT algorithm for
+//! Provides the TOPP-HATT algorithm and simulated annealing for
 //! minimising the Pauli weight of encoded qubit Hamiltonians.
 
 mod anneal;

@@ -121,11 +121,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     mode_op_map = np.array([0, 1, 2, 3, 4, 5])
     ///     ipowers = np.zeros(6, dtype=np.uint8)
     ///     symplectic = np.eye(6, 12, dtype=bool)
-    ///     state = ferrmion.ternary_tree_hartree_fock_state(hf, mode_op_map, ipowers, symplectic)
+    ///     state = ferrmion.hartree_fock_state(hf, mode_op_map, ipowers, symplectic)
     ///     ```
     #[pyfn(m)]
-    #[pyo3(name = "ternary_tree_hartree_fock_state")]
-    fn wrap_ternary_tree_hartree_fock_state<'py>(
+    #[pyo3(name = "hartree_fock_state")]
+    fn wrap_hartree_fock_state<'py>(
         py: Python<'py>,
         fermionic_hf_state: PyReadonlyArray1<bool>,
         mode_op_map: PyReadonlyArray1<usize>,

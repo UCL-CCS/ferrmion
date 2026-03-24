@@ -8,14 +8,16 @@ from .encode.ternary_tree import TTFlatpack
 def symplectic_product(
     left: npt.NDArray[np.bool], right: npt.NDArray[np.bool]
 ) -> tuple[int, npt.NDArray[np.bool]]: ...
-def ternary_tree_hartree_fock_state(
+def hartree_fock_state(
     fermionic_hf_state: npt.NDArray[np.bool],
     mode_op_map: npt.NDArray[np.uint],
     ipowers: npt.NDArray[np.uint8],
     symplectic_matrix: npt.NDArray[np.bool],
     vacuum_state: npt.NDArray[np.bool],
 ) -> npt.NDArray[np.bool]: ...
-def symplectic_to_pauli(symplectic: npt.NDArray[np.bool], ipower: int) -> tuple[str, int]: ...
+def symplectic_to_pauli(
+    symplectic: npt.NDArray[np.bool], ipower: int
+) -> tuple[str, int]: ...
 def pauli_to_symplectic(
     pauli: str, ipower: int
 ) -> tuple[npt.NDArray[np.bool], int]: ...

@@ -1081,10 +1081,11 @@ mod test_topphatt {
             0.,
         )
         .unwrap();
-        let mut flatpack = TTFlatPack::new();
-        flatpack.push((1, (None, None, Some(2))));
-        flatpack.push((2, (None, None, Some(3))));
-        flatpack.push((3, (None, None, None)));
+        let flatpack: TTFlatPack = vec![
+            (1, (None, None, Some(2))),
+            (2, (None, None, Some(3))),
+            (3, (None, None, None)),
+        ];
 
         let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
         let jw_topphatt = topphatt(hamiltonian, tree, true).unwrap();

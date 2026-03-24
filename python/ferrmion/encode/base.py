@@ -57,6 +57,7 @@ class FermionQubitEncoding(ABC):
         self,
         n_modes: int,
         n_qubits: int,
+        vacuum_state: NDArray[np.bool] | None = None,
     ):
         """Initialise encoding.
 
@@ -68,6 +69,11 @@ class FermionQubitEncoding(ABC):
         self.n_modes = n_modes
         self.n_qubits = n_qubits
         self.default_mode_op_map = np.array([*range(self.n_modes)], dtype=np.uint)
+
+        if vacuum_state is None:
+            self.vacuum_state = np.zeros(self.n_qubits, dtype=np.bool)
+        else:
+            self.vacuum_state = vacuum_state
 
     def __eq__(self, other: object) -> bool:
         """Checks if two encodings are exactly equivalent."""

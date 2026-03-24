@@ -43,7 +43,7 @@ def test_core_standard(encoding, water_eigenvalues, water_data):
     twos = water_data["twos"]
     one_step = encode_standard(encoding, 14,14, ["+-","++--"], [ones, twos], 0.)
 
-    ipow, sym = standard_symplectic_matrix(encoding, ones.shape[0])
+    ipow, sym, _ = standard_symplectic_matrix(encoding, ones.shape[0])
     two_step = encode(ipow, sym,["+-","++--"], [ones, twos], 0.)
 
     assert len(one_step) == len(two_step)

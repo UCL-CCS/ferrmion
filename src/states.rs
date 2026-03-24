@@ -2,11 +2,19 @@
 
 use ndarray::{s, Array1};
 use num_complex::Complex64;
+use std::ops::Mul;
+use thiserror::Error;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BraKet {
+    Bra,
+    Ket,
+}
 
 /// Trait for a quantum state.
 ///
 /// Note this is implicitly a Ket vector.
-pub trait State {
+pub trait State: Mul<Complex64> {
     /// Normalize the state so that the coefficient has unit norm.
     fn normalize(&mut self);
 
@@ -16,7 +24,16 @@ pub trait State {
 
     /// Return the adjoint (dagger) of the state.
     #[allow(dead_code)]
-    fn adjoint(&mut self);
+    fn adjoint(self) -> Self;
+
+    /// Reindex the state according to the given permutation.
+    fn reindex(&mut self, permutation: &[usize]);
+}
+
+#[derive(Error, Debug)]
+pub enum StateError {
+    #[error("Invalid bra/ket combination")]
+    InvalidBraKet,
 }
 
 /// A quantum state in the computational (pauli Z) basis.
@@ -24,12 +41,17 @@ pub trait State {
 pub struct ZBasisState {
     pub state: Array1<bool>,
     pub coefficient: Complex64,
+    bra_ket: BraKet,
 }
 
 impl ZBasisState {
-    /// Construct a new `ZBasisState` with the given state and coefficient.
+    /// Construct a new `ZBasisState` ket vector with the given state and coefficient.
     pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
-        let mut out = Self { state, coefficient };
+        let mut out = Self {
+            state,
+            coefficient,
+            bra_ket: BraKet::Ket,
+        };
         out.normalize();
         out
     }
@@ -51,23 +73,102 @@ impl State for ZBasisState {
         self.state.len()
     }
 
-    fn adjoint(&mut self) {
-        self.state = self.state.slice(s![..;-1]).to_owned();
-        self.coefficient = self.coefficient.conj();
+    fn adjoint(self) -> Self {
+        Self {
+            state: self.state.slice(s![..;-1]).to_owned(),
+            coefficient: self.coefficient.conj(),
+            bra_ket: match self.bra_ket {
+                BraKet::Bra => BraKet::Ket,
+                BraKet::Ket => BraKet::Bra,
+            },
+        }
+    }
+
+    fn reindex(&mut self, permutation: &[usize]) {
+        let mut new_state = Array1::from_elem(self.state.len(), false);
+        for (original, &new) in permutation.iter().enumerate() {
+            new_state[new] = self.state[original];
+        }
+        self.state = new_state;
+    }
+}
+
+impl Mul<Complex64> for ZBasisState {
+    type Output = Self;
+
+    fn mul(self, rhs: Complex64) -> Self::Output {
+        ZBasisState {
+            state: self.state,
+            coefficient: self.coefficient * rhs,
+            bra_ket: self.bra_ket,
+        }
+    }
+}
+
+impl Mul for ZBasisState {
+    type Output = Result<Complex64, StateError>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        match (self.bra_ket, rhs.bra_ket) {
+            (BraKet::Bra, BraKet::Ket) => {
+                if self.state == rhs.state {
+                    Ok(self.coefficient * rhs.coefficient.conj())
+                } else {
+                    Ok(Complex64::ZERO)
+                }
+            }
+            _ => Err(StateError::InvalidBraKet),
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod zbasis_tests {
+
     use super::*;
+    use ndarray::arr1;
+
+    #[test]
+    fn test_dimension() {
+        let state = Array1::from_elem(3, false);
+        let coefficient = Complex64::new(1., 2.);
+        let zbasis_state = ZBasisState::new(state, coefficient);
+        assert_eq!(zbasis_state.dimension(), 3);
+    }
+
+    #[test]
+    fn test_adjoint() {
+        let state_vec = arr1(&[true, false, true, false]);
+        let coefficient = Complex64::new(1., 2.);
+        let zbasis_state = ZBasisState::new(state_vec, coefficient);
+        let adjoint_state = zbasis_state.adjoint();
+        assert_eq!(adjoint_state.state, arr1(&[false, true, false, true]));
+        assert_eq!(
+            adjoint_state.coefficient,
+            coefficient.conj() / coefficient.norm()
+        );
+        assert_eq!(adjoint_state.bra_ket, BraKet::Bra);
+    }
+
+    #[test]
+    fn test_adjoint_roundtrip() {
+        let state = Array1::from_elem(3, false);
+        let coefficient = Complex64::new(1., 2.);
+        let zbasis_state = ZBasisState::new(state, coefficient);
+        let adjoint_state = zbasis_state.clone().adjoint();
+        let roundtrip_state = adjoint_state.clone().adjoint();
+        assert_eq!(roundtrip_state.state, zbasis_state.state);
+        assert_eq!(roundtrip_state.coefficient, zbasis_state.coefficient);
+    }
 
     #[test]
     fn test_zbasis_state() {
         let state = Array1::from_elem(3, false);
         let coefficient = Complex64::new(1., 0.);
         let zbasis_state = ZBasisState::new(state, coefficient);
-        assert_eq!(zbasis_state.state, Array1::from_elem(3, false));
-        assert_eq!(zbasis_state.coefficient, Complex64::new(1., 0.));
+        let adjoint_state = zbasis_state.clone().adjoint();
+        assert_eq!(adjoint_state.state, Array1::from_elem(3, false));
+        assert_eq!(adjoint_state.coefficient, Complex64::new(1., 0.));
     }
 
     #[test]
@@ -76,5 +177,114 @@ mod tests {
             ZBasisState::new(Array1::from_elem(3, false), Complex64::new(2., 0.));
         zbasis_state.normalize();
         assert_eq!(zbasis_state.coefficient, Complex64::new(1., 0.));
+    }
+
+    #[test]
+    fn test_reindex_roundtrip() {
+        let state = arr1(&[false, true, false]);
+        let coefficient = Complex64::new(1., 0.);
+        let zbasis_state = ZBasisState::new(state, coefficient);
+        let mut reindexed_state = zbasis_state.clone();
+        reindexed_state.reindex(&[1, 2, 0]);
+        reindexed_state.reindex(&[2, 0, 1]);
+        assert_eq!(reindexed_state.state, zbasis_state.state);
+        assert_eq!(reindexed_state.coefficient, zbasis_state.coefficient);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FockState {
+    pub state: Array1<bool>,
+    pub coefficient: Complex64,
+    bra_ket: BraKet,
+}
+
+impl FockState {
+    pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
+        Self {
+            state,
+            coefficient,
+            bra_ket: BraKet::Ket,
+        }
+    }
+}
+impl State for FockState {
+    fn normalize(&mut self) {
+        let norm = self.coefficient.norm();
+        if norm != 0. {
+            self.coefficient /= norm;
+        }
+    }
+    fn dimension(&self) -> usize {
+        self.state.len()
+    }
+
+    fn adjoint(self) -> Self {
+        Self {
+            state: self.state.slice(s![..;-1]).to_owned(),
+            coefficient: self.coefficient.conj(),
+            bra_ket: match self.bra_ket {
+                BraKet::Ket => BraKet::Bra,
+                BraKet::Bra => BraKet::Ket,
+            },
+        }
+    }
+
+    fn reindex(&mut self, permutation: &[usize]) {
+        let mut new_state = Array1::from_elem(self.state.len(), false);
+        for (original, &new) in permutation.iter().enumerate() {
+            new_state[new] = self.state[original];
+        }
+        self.state = new_state;
+    }
+}
+
+impl Mul<Complex64> for FockState {
+    type Output = Self;
+
+    fn mul(self, rhs: Complex64) -> Self::Output {
+        Self {
+            state: self.state,
+            coefficient: self.coefficient * rhs,
+            bra_ket: self.bra_ket,
+        }
+    }
+}
+
+#[cfg(test)]
+mod fock_tests {
+    use super::*;
+    use ndarray::arr1;
+
+    #[test]
+    fn test_new() {
+        let state = Array1::from_elem(3, false);
+        let coefficient = Complex64::new(1., 0.);
+        let fock_state = FockState::new(state, coefficient);
+        assert_eq!(fock_state.state, Array1::from_elem(3, false));
+        assert_eq!(fock_state.coefficient, Complex64::new(1., 0.));
+    }
+
+    #[test]
+    fn test_adjoint() {
+        let state = arr1(&[true, true, false]);
+        let coefficient = Complex64::new(1., 0.);
+        let fock_state = FockState::new(state, coefficient);
+        let adjoint_state = fock_state.clone();
+        assert_eq!(adjoint_state.state, arr1(&[true, true, false]));
+        assert_eq!(adjoint_state.coefficient, Complex64::new(1., 0.));
+        assert_eq!(adjoint_state.bra_ket, BraKet::Ket);
+    }
+
+    #[test]
+    fn test_reindex_roundtrip() {
+        let state = arr1(&[false, true, false]);
+        let coefficient = Complex64::new(1., 0.);
+        let fock_state = FockState::new(state, coefficient);
+        let mut reindexed_state = fock_state.clone();
+        reindexed_state.reindex(&[1, 2, 0]);
+        reindexed_state.reindex(&[2, 0, 1]);
+        assert_eq!(reindexed_state.state, fock_state.state);
+        assert_eq!(reindexed_state.coefficient, fock_state.coefficient);
     }
 }

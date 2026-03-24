@@ -285,6 +285,34 @@ impl<'a> Mul<SymplecticOperatorView<'a>> for SymplecticOperator {
     }
 }
 
+impl SymplecticOperator {
+    /// In-place multiply: `self = self * rhs`, reusing existing array allocations.
+    ///
+    /// This avoids 2 heap allocations per call compared to `Mul`, which is critical
+    /// in the encoding hot path where we fold over up to 4 Majorana indices per term.
+    #[inline]
+    pub fn mul_assign_view(&mut self, rhs: &SymplecticOperatorView<'_>) {
+        // Accumulate ipower from z_block . x_block before mutating z_block
+        let mut ipower = self.ipower + rhs.ipower;
+        for (&lz, &rx) in self.z_block.iter().zip(rhs.x_block.iter()) {
+            if lz && rx {
+                ipower += 2;
+            }
+        }
+        self.ipower = ipower % 4;
+
+        // In-place XOR for x_block and z_block
+        self.x_block
+            .iter_mut()
+            .zip(rhs.x_block.iter())
+            .for_each(|(l, &r)| *l ^= r);
+        self.z_block
+            .iter_mut()
+            .zip(rhs.z_block.iter())
+            .for_each(|(l, &r)| *l ^= r);
+    }
+}
+
 impl Mul<ZBasisState> for SymplecticOperator {
     type Output = ZBasisState;
 

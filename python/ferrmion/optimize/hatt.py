@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 def _qubit_term_weight(term: Iterable, comb: tuple[int, int, int]) -> int:
     """Find the single-qubit Pauli-weight of majorana terms.
 
-    If any pauli term is found an even number f times, we obtain I, weight = 0.
-    If we find all three pauli terms, return I (with an imaginary ccoefficient), weight = 0
+    If any pauli term is found an even number of times, we obtain I, weight = 0.
+    If we find all three pauli terms, return I (with an imaginary coefficient), weight = 0
     If we find either one pauli or two then the weight = 1.
 
     Args:

@@ -90,10 +90,9 @@ def molecular_hamiltonian(
     constant_energy: float = 0.0,
     physicist_notation: bool = True,
 ) -> FermionHamiltonian:
-    """Return an encoded electronic stucture hamiltonain with niave enumeration.
+    """Return a molecular electronic structure Hamiltonian.
 
     Args:
-        encoding (FermionQubitEncoding): The encoding to use.
         one_e_coeffs (NDArray): One electron hamiltonian coefficients in spinorb format.
         two_e_coeffs (NDArray): Two electron hamiltonian coefficients in spinorb format.
         constant_energy (float): Constant energy offset.
@@ -101,13 +100,12 @@ def molecular_hamiltonian(
 
     Example:
         >>> import numpy as np
-        >>> from ferrmion.hamiltonians.molecular import molecular_hamiltonian
-        >>> from ferrmion.encode import TernaryTree
-        >>> tree = TernaryTree(12).JW()
-        >>> one_e = np.eye((2,2))
-        >>> two_e = np.eye((2,2,2,2))
+        >>> from ferrmion.hamiltonians import molecular_hamiltonian
+        >>> one_e = np.eye(2)
+        >>> two_e = np.zeros((2, 2, 2, 2))
         >>> fham = molecular_hamiltonian(one_e, two_e, 0.0)
-        >>> tree.encode(fham)
+        >>> fham.n_modes
+        2
     """
     if physicist_notation:
         terms = {"+-": one_e_coeffs, "++--": two_e_coeffs}
@@ -248,18 +246,16 @@ def hubbard_hamiltonian(
     hopping_term: float = 1.0,
     spinless: bool = False,
 ) -> FermionHamiltonian:
-    """Return an encoded Hubbard hamiltonain with niave enumeration.
+    """Return a Hubbard model Hamiltonian.
 
-    As the Hubbard Hamiltonian has the same signature as the Chemists' Molecular Hamiltonian:
-    (+-, +-+-)
-    We can use the existing functions for the molecular Hamiltonian to create a template.
+    As the Hubbard Hamiltonian has the same signature as the Chemists' Molecular Hamiltonian
+    (+-, +-+-), the molecular Hamiltonian functions are reused internally.
 
     Args:
-        encoding (FermionQubitEncoding): The encoding to use.
         adjacency_matrix (npt.NDArray): Adjacency matrix of lattice sites.
         onsite_term (float): Onsite two-electron term.
         hopping_term (float): Kinetic term coefficient.
-        physicist_noation (bool): Set to False for Chemist Notation.
+        physicist_notation (bool): Set to False for Chemist Notation.
         spinless (bool): Set to True to use single spin Hamiltonian.
 
     Returns:
@@ -267,12 +263,11 @@ def hubbard_hamiltonian(
 
     Example:
         >>> import numpy as np
-        >>> from ferrmion.hamiltonians.molecular import hubbard_hamiltonian, square_adjacency_matrix
-        >>> from ferrmion.encode import TernaryTree
-        >>> tree = TernaryTree(12).JW()
-        >>> adjacency = square_lattice_adjacency_matrix(shape=(4,4),periodic=False)
-        >>> fham = hubbard_hamiltonian(adjacency, onsite_term=2,...)
-        >>> tree.encode(fham)
+        >>> from ferrmion.hamiltonians import hubbard_hamiltonian, linear_adjacency_matrix
+        >>> adjacency = linear_adjacency_matrix(4, periodic=False)
+        >>> fham = hubbard_hamiltonian(adjacency, onsite_term=2.0)
+        >>> fham.n_modes
+        8
     """
     n_sites = adjacency_matrix.shape[0]
 

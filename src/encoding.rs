@@ -17,6 +17,10 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use thiserror::Error;
 
+/// Trait for encoding fermionic operators into qubit Hamiltonians.
+///
+/// Implementors define how a particular input type `T` (e.g. [`MajoranaProduct`],
+/// [`MajoranaSparse`]) is transformed into a [`QubitHamiltonian`].
 pub trait Encode<T> {
     type Output;
     /// Encodes the input into a QubitHamiltonian.
@@ -43,6 +47,10 @@ pub trait TryEncode<T> {
     fn try_encode(&self, input: T) -> Result<Self::Output, MajoranaEncodingError>;
 }
 
+/// A fermion-to-qubit encoding defined by its Majorana operator representations.
+///
+/// Stores the symplectic matrix of Majorana operators, the number of fermionic modes,
+/// and the vacuum state used for Hartree-Fock state construction.
 #[derive(Debug)]
 pub struct MajoranaEncoding {
     pub operators: SymplecticMatrix,
@@ -50,11 +58,12 @@ pub struct MajoranaEncoding {
     pub vacuum_state: ZBasisState,
 }
 
+/// Errors that can occur when constructing or using a [`MajoranaEncoding`].
 #[derive(Debug, Error)]
 pub enum MajoranaEncodingError {
     #[error("Cannot construct Hartree-Fock state with Pauli operators {0:?}-i{1:?}.")]
     HartreeFockError(char, char),
-    #[error("Input operators are a valid Majorana encoding.")]
+    #[error("Input operators are not a valid Majorana encoding.")]
     InputOperatorsInvalid,
     #[error("Cannot apply operator 0.5({0:#?} - i{1:#?}) to state {2:?}.")]
     StateEncodingError((String, u8), (String, u8), Array1<bool>),
@@ -64,6 +73,10 @@ pub enum MajoranaEncodingError {
 // four times for each pair of fermionic operators
 // it does require memory scaling On^3 so if that becomes an issue we can be more clever.
 impl MajoranaEncoding {
+    /// Construct a new [`MajoranaEncoding`] from a symplectic matrix and vacuum state.
+    ///
+    /// Returns an error if the operators do not form a valid Majorana encoding
+    /// (mismatched X/Z block shapes or odd number of operator rows).
     pub fn new(
         operators: SymplecticMatrix,
         vacuum_state: ZBasisState,
@@ -90,6 +103,10 @@ impl MajoranaEncoding {
 }
 
 impl MajoranaEncoding {
+    /// Reorder the fermionic modes according to the given permutation.
+    ///
+    /// Returns a new [`MajoranaEncoding`] with Majorana operator rows reordered
+    /// so that mode `i` maps to the operator pair at `mode_op_map[i]`.
     pub fn apply_mode_enumeration(&self, mode_op_map: Vec<usize>) -> MajoranaEncoding {
         assert_eq!(2 * mode_op_map.len(), self.operators.ipowers.len());
         let majorana_rows: Vec<usize> = mode_op_map

@@ -36,7 +36,20 @@ pub enum StateError {
     InvalidBraKet,
 }
 
-/// A quantum state in the computational (pauli Z) basis.
+/// A quantum state in the computational (Pauli Z) basis.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::states::{ZBasisState, State};
+/// use ndarray::Array1;
+/// use num_complex::Complex64;
+///
+/// let state = ZBasisState::new(Array1::from_vec(vec![true, false, true]), Complex64::new(2.0, 0.0));
+/// // The coefficient is normalised on construction.
+/// assert_eq!(state.coefficient, Complex64::new(1.0, 0.0));
+/// assert_eq!(state.dimension(), 3);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZBasisState {
     pub state: Array1<bool>,
@@ -46,6 +59,19 @@ pub struct ZBasisState {
 
 impl ZBasisState {
     /// Construct a new `ZBasisState` ket vector with the given state and coefficient.
+    ///
+    /// The coefficient is automatically normalised to unit norm.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::states::ZBasisState;
+    /// use ndarray::arr1;
+    /// use num_complex::Complex64;
+    ///
+    /// let s = ZBasisState::new(arr1(&[false, true]), Complex64::new(0.0, 3.0));
+    /// assert_eq!(s.coefficient.norm(), 1.0);
+    /// ```
     pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
         let mut out = Self {
             state,
@@ -57,6 +83,16 @@ impl ZBasisState {
     }
 
     /// Construct a new `ZBasisState` with all qubits set to zero and a unit coefficient.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::states::ZBasisState;
+    ///
+    /// let s = ZBasisState::zeros(4);
+    /// assert_eq!(s.state.len(), 4);
+    /// assert!(s.state.iter().all(|&b| !b));
+    /// ```
     pub fn zeros(n_qubits: usize) -> Self {
         Self::new(Array1::from_elem(n_qubits, false), Complex64::new(1., 0.))
     }

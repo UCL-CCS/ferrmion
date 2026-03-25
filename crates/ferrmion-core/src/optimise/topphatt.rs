@@ -840,7 +840,7 @@ mod test_topphatt {
     use crate::{optimise::topphatt::TreeRetrictions, ternarytree::TernaryTree};
     use log::debug;
     use ndarray::arr1;
-    use numpy::Complex64;
+    use num_complex::Complex64;
     use tinyvec::array_vec;
 
     #[test]

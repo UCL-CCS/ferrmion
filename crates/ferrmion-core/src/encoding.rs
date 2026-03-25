@@ -12,8 +12,8 @@ use ahash::RandomState;
 use log::debug;
 use ndarray::Axis;
 use num_complex::c64;
-use numpy::ndarray::{Array1, Array2};
-use numpy::Complex64;
+use ndarray::{Array1, Array2};
+use num_complex::Complex64;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -26,9 +26,9 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use ferrmion::encoding::{Encode, MajoranaEncoding};
-/// use ferrmion::operators::MajoranaProduct;
-/// use ferrmion::ternarytree::TernaryTree;
+/// use ferrmion_core::encoding::{Encode, MajoranaEncoding};
+/// use ferrmion_core::operators::MajoranaProduct;
+/// use ferrmion_core::ternarytree::TernaryTree;
 /// use num_complex::Complex64;
 ///
 /// let tree = TernaryTree::naive_jordan_wigner(2);
@@ -44,7 +44,7 @@ pub trait Encode<T> {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encoding::Encode;
+    /// use ferrmion_core::encoding::Encode;
     /// // Example usage would depend on the implementor
     /// ```
     fn encode(&self, input: T) -> Self::Output;
@@ -55,9 +55,9 @@ pub trait Encode<T> {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::encoding::{TryEncode, MajoranaEncoding};
-/// use ferrmion::states::FockState;
-/// use ferrmion::ternarytree::TernaryTree;
+/// use ferrmion_core::encoding::{TryEncode, MajoranaEncoding};
+/// use ferrmion_core::states::FockState;
+/// use ferrmion_core::ternarytree::TernaryTree;
 /// use ndarray::arr1;
 /// use num_complex::Complex64;
 ///
@@ -108,9 +108,9 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encoding::MajoranaEncoding;
-    /// use ferrmion::operators::SymplecticMatrix;
-    /// use ferrmion::states::ZBasisState;
+    /// use ferrmion_core::encoding::MajoranaEncoding;
+    /// use ferrmion_core::operators::SymplecticMatrix;
+    /// use ferrmion_core::states::ZBasisState;
     /// use ndarray::arr2;
     ///
     /// let sym = SymplecticMatrix::new(
@@ -154,8 +154,8 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encoding::MajoranaEncoding;
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion_core::encoding::MajoranaEncoding;
+    /// use ferrmion_core::ternarytree::TernaryTree;
     ///
     /// let tree = TernaryTree::naive_jordan_wigner(3);
     /// let encoding = tree.build_encoding(3).unwrap();
@@ -311,8 +311,7 @@ mod owned_tests {
     use crate::{operators::LadderOperator, ternarytree::TernaryTree};
     use ndarray::{arr1, Array1};
     use num_complex::c64;
-    use numpy::Complex64;
-    use std::assert_matches;
+    use num_complex::Complex64;
     use tinyvec::array_vec;
 
     #[test]
@@ -470,7 +469,7 @@ mod owned_tests {
         let tree = TernaryTree::naive_jordan_wigner(6);
         let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
         let result = encoding.try_encode(fockstate);
-        assert_matches!(result, Ok(Some(_)));
+        assert!(matches!(result, Ok(Some(_))));
         assert!(result.unwrap().unwrap().state == arr1(&[true, true, true, false, false, false]));
     }
 

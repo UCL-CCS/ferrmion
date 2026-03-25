@@ -18,23 +18,16 @@ use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
 use tinyvec::ArrayVec;
-pub mod operators;
-pub mod states;
-pub mod utils;
-use crate::operators::{
+use ferrmion_core::operators::{
     FermionProduct, LadderOperator, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
 };
-use crate::optimise::topphatt;
-use crate::utils::*;
-pub mod hamiltonians;
-use crate::hamiltonians::QubitHamiltonian;
-pub mod encoding;
-use crate::encoding::{Encode, MajoranaEncoding, TryEncode};
-use crate::states::{FockState, State, ZBasisState};
-pub mod optimise;
-use crate::optimise::anneal_enumerations;
-pub mod ternarytree;
-use crate::ternarytree::{TTFlatPack, TernaryTree};
+use ferrmion_core::optimise::topphatt;
+use ferrmion_core::utils::*;
+use ferrmion_core::hamiltonians::QubitHamiltonian;
+use ferrmion_core::encoding::{Encode, MajoranaEncoding, TryEncode};
+use ferrmion_core::states::{FockState, State, ZBasisState};
+use ferrmion_core::optimise::anneal_enumerations;
+use ferrmion_core::ternarytree::{TTFlatPack, TernaryTree};
 
 /// A Python module implemented in Rust.
 #[allow(clippy::type_complexity)]

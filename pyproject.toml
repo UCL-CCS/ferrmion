@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.8,<2.0"]
+requires = ["maturin>=1.9.4,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -26,9 +26,9 @@ qiskit = [
 ]
 
 [tool.maturin]
+manifest-path = "crates/ferrmion-python/Cargo.toml"
 module-name = "ferrmion.core"
 python-source = "python/"
-features = ["pyo3/extension-module"]
 
 [dependency-groups]
 dev = [

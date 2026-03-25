@@ -41,7 +41,7 @@ pub enum StateError {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::states::{ZBasisState, State};
+/// use ferrmion_core::states::{ZBasisState, State};
 /// use ndarray::Array1;
 /// use num_complex::Complex64;
 ///
@@ -65,7 +65,7 @@ impl ZBasisState {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::states::ZBasisState;
+    /// use ferrmion_core::states::ZBasisState;
     /// use ndarray::arr1;
     /// use num_complex::Complex64;
     ///
@@ -87,7 +87,7 @@ impl ZBasisState {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::states::ZBasisState;
+    /// use ferrmion_core::states::ZBasisState;
     ///
     /// let s = ZBasisState::zeros(4);
     /// assert_eq!(s.state.len(), 4);
@@ -236,7 +236,7 @@ mod zbasis_tests {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::states::FockState;
+/// use ferrmion_core::states::FockState;
 /// use ndarray::arr1;
 /// use num_complex::Complex64;
 ///
@@ -256,7 +256,7 @@ impl FockState {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::states::FockState;
+    /// use ferrmion_core::states::FockState;
     /// use ndarray::arr1;
     /// use num_complex::Complex64;
     ///

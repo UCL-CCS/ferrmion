@@ -579,7 +579,7 @@ def string_pairing_algorithm(tree: TernaryTree):
         all_z += "z"
     branch_majorana_map[all_z] = 2 * len(node_set) + 1
 
-    logger.debug("String-paring algoithm complete.")
+    logger.debug("String-pairing algorithm complete.")
     logger.debug(f"{branch_majorana_map=}")
     return branch_majorana_map
 

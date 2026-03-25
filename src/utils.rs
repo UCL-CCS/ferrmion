@@ -1,6 +1,4 @@
-/*
-Utility functions for core functionality.
-*/
+//! Utility functions for symplectic and Pauli string conversions.
 use ndarray::{concatenate, Axis, Zip};
 use numpy::ndarray::{Array1, ArrayView1};
 use numpy::Complex64;

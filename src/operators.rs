@@ -194,6 +194,17 @@ pub struct SymplecticOperator {
 }
 
 impl SymplecticOperator {
+    /// Construct a new [`SymplecticOperator`] from its components.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticOperator;
+    /// use ndarray::arr1;
+    ///
+    /// let op = SymplecticOperator::new(0, arr1(&[true, false]), arr1(&[false, true]));
+    /// assert_eq!(op.ipower(), 0);
+    /// ```
     pub fn new(ipower: u8, x_block: Array1<bool>, z_block: Array1<bool>) -> Self {
         Self {
             ipower,
@@ -202,6 +213,16 @@ impl SymplecticOperator {
         }
     }
 
+    /// Construct an identity operator acting on `n_modes` qubits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::{SymplecticOperator, PauliWeight};
+    ///
+    /// let id = SymplecticOperator::identity(3);
+    /// assert_eq!(id.pauli_weight(), 0);
+    /// ```
     pub fn identity(n_modes: usize) -> Self {
         Self {
             ipower: 0,
@@ -210,6 +231,7 @@ impl SymplecticOperator {
         }
     }
 
+    /// Return a borrowed [`SymplecticOperatorView`] of this operator.
     pub fn view(&self) -> SymplecticOperatorView<'_> {
         SymplecticOperatorView {
             ipower: self.ipower,
@@ -218,18 +240,34 @@ impl SymplecticOperator {
         }
     }
 
+    /// Return a view of the X block.
     pub fn x_block(&self) -> ArrayView1<'_, bool> {
         self.x_block.view()
     }
 
+    /// Return a view of the Z block.
     pub fn z_block(&self) -> ArrayView1<'_, bool> {
         self.z_block.view()
     }
 
+    /// Return the power of `i` (imaginary unit) for this operator.
     pub fn ipower(&self) -> u8 {
         self.ipower
     }
 
+    /// Convert to a Pauli string representation and its associated `i`-power.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticOperator;
+    /// use ndarray::arr1;
+    ///
+    /// let op = SymplecticOperator::new(0, arr1(&[true, false]), arr1(&[false, true]));
+    /// let (pauli, ipower) = op.to_pauli_string();
+    /// assert_eq!(pauli, "XZ");
+    /// assert_eq!(ipower, 0);
+    /// ```
     pub fn to_pauli_string(&self) -> (String, u8) {
         let mut pauli_string = String::new();
         let mut ipower = self.ipower;
@@ -290,6 +328,19 @@ impl SymplecticOperator {
     ///
     /// This avoids 2 heap allocations per call compared to `Mul`, which is critical
     /// in the encoding hot path where we fold over up to 4 Majorana indices per term.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticOperator;
+    /// use ndarray::arr1;
+    ///
+    /// let mut op = SymplecticOperator::identity(2);
+    /// let rhs = SymplecticOperator::new(0, arr1(&[true, false]), arr1(&[false, true]));
+    /// op.mul_assign_view(&rhs.view());
+    /// let (pauli, _) = op.to_pauli_string();
+    /// assert_eq!(pauli, "XZ");
+    /// ```
     #[inline]
     pub fn mul_assign_view(&mut self, rhs: &SymplecticOperatorView<'_>) {
         // Accumulate ipower from z_block . x_block before mutating z_block
@@ -341,6 +392,20 @@ impl Mul<ZBasisState> for SymplecticOperator {
 }
 
 /// Pauli operator encoded in symplectic (XZ) form.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::operators::SymplecticOperatorView;
+/// use ndarray::arr1;
+///
+/// let x = arr1(&[true, false]);
+/// let z = arr1(&[false, true]);
+/// let view = SymplecticOperatorView::new(0, x.view(), z.view());
+/// let (pauli, ipower) = view.to_pauli_string();
+/// assert_eq!(pauli, "XZ");
+/// assert_eq!(ipower, 0);
+/// ```
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct SymplecticOperatorView<'sym> {
     ipower: u8,
@@ -349,6 +414,7 @@ pub struct SymplecticOperatorView<'sym> {
 }
 
 impl<'sym> SymplecticOperatorView<'sym> {
+    /// Construct a new [`SymplecticOperatorView`] from borrowed array views.
     pub fn new(
         ipower: u8,
         x_block: ArrayView1<'sym, bool>,
@@ -361,6 +427,7 @@ impl<'sym> SymplecticOperatorView<'sym> {
         }
     }
 
+    /// Convert to a Pauli string representation and its associated `i`-power.
     pub fn to_pauli_string(self) -> (String, u8) {
         let mut pauli_string = String::new();
         let mut ipower = self.ipower;
@@ -437,7 +504,32 @@ impl Mul<&mut ZBasisState> for SymplecticOperatorView<'_> {
     }
 }
 
-/// Pauli operator in symplectic form.
+/// A collection of Pauli operators in symplectic form.
+///
+/// Each row represents one Pauli operator. The `x_block` and `z_block` matrices
+/// encode the Pauli type on each qubit via the symplectic convention:
+///
+/// | `x_block` | `z_block` | Pauli |
+/// |-----------|-----------|-------|
+/// | `false`   | `false`   | `I`   |
+/// | `true`    | `false`   | `X`   |
+/// | `false`   | `true`    | `Z`   |
+/// | `true`    | `true`    | `Y`   |
+///
+/// For example, a row with `x_block = [true, false, true]` and
+/// `z_block = [true, true, false]` represents the Pauli string `"YZX"`.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion::operators::{SymplecticMatrix, PauliWeight};
+/// use ndarray::arr2;
+///
+/// let x = arr2(&[[true, false], [false, true]]);
+/// let z = arr2(&[[false, true], [true, false]]);
+/// let mat = SymplecticMatrix::new(x, z);
+/// assert_eq!(mat.pauli_weight(), 4);
+/// ```
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct SymplecticMatrix {
     pub x_block: Array2<bool>,
@@ -446,6 +538,21 @@ pub struct SymplecticMatrix {
 }
 
 impl SymplecticMatrix {
+    /// Construct a new [`SymplecticMatrix`], automatically computing `i`-powers from the X and Z blocks.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticMatrix;
+    /// use ndarray::arr2;
+    ///
+    /// let mat = SymplecticMatrix::new(
+    ///     arr2(&[[true, false]]),
+    ///     arr2(&[[false, true]]),
+    /// );
+    /// assert_eq!(mat.ipowers.len(), 1);
+    /// assert_eq!(mat.ipowers[0], 0); // no Y operators, so ipower = 0
+    /// ```
     pub fn new(x_block: Array2<bool>, z_block: Array2<bool>) -> Self {
         let mut ipowers = Array1::from_elem(x_block.len_of(Axis(0)), 0);
         Zip::from(&mut ipowers)
@@ -462,6 +569,21 @@ impl SymplecticMatrix {
         }
     }
 
+    /// Construct a [`SymplecticMatrix`] with explicitly provided `i`-powers.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticMatrix;
+    /// use ndarray::{arr1, arr2};
+    ///
+    /// let mat = SymplecticMatrix::with_ipowers(
+    ///     arr2(&[[true, true]]),
+    ///     arr2(&[[true, true]]),
+    ///     arr1(&[2u8]),
+    /// );
+    /// assert_eq!(mat.ipowers[0], 2);
+    /// ```
     pub fn with_ipowers(x_block: Array2<bool>, z_block: Array2<bool>, ipowers: Array1<u8>) -> Self {
         Self {
             x_block,
@@ -470,14 +592,40 @@ impl SymplecticMatrix {
         }
     }
 
-    pub fn identity(n_ops: usize, n_qubits: usize) -> Self {
+    /// Construct an identity [`SymplecticMatrix`] with `n_modes` rows and `n_qubits` columns.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::{SymplecticMatrix, PauliWeight};
+    ///
+    /// let id = SymplecticMatrix::identity(4, 3);
+    /// assert_eq!(id.pauli_weight(), 0);
+    /// ```
+    pub fn identity(n_modes: usize, n_qubits: usize) -> Self {
         Self {
-            ipowers: Array1::from_elem(n_ops, 0),
-            x_block: Array2::from_elem((n_ops, n_qubits), false),
-            z_block: Array2::from_elem((n_ops, n_qubits), false),
+            ipowers: Array1::from_elem(n_modes, 0),
+            x_block: Array2::from_elem((n_modes, n_qubits), false),
+            z_block: Array2::from_elem((n_modes, n_qubits), false),
         }
     }
 
+    /// Return a [`SymplecticOperatorView`] for the given row index.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::SymplecticMatrix;
+    /// use ndarray::arr2;
+    ///
+    /// let mat = SymplecticMatrix::new(
+    ///     arr2(&[[true, false], [false, true]]),
+    ///     arr2(&[[false, false], [true, true]]),
+    /// );
+    /// let row0 = mat.view_row(0);
+    /// let (pauli, _) = row0.to_pauli_string();
+    /// assert_eq!(pauli, "XI");
+    /// ```
     pub fn view_row(&self, row: usize) -> SymplecticOperatorView<'_> {
         SymplecticOperatorView {
             x_block: self.x_block.row(row),
@@ -587,14 +735,25 @@ pub enum LadderOperator {
 }
 
 /// Error for failure to parse ladder operators from strings.
+///
+/// Returned by [`LadderOperator::from_str`] when the input is not `"+"` or `"-"`.
 #[derive(Debug, PartialEq, Clone)]
 pub struct ParseLadderError;
 
 impl FromStr for LadderOperator {
     type Err = ParseLadderError;
-    /// Parse a string as a ladfder operator.
+    /// Parse a string as a ladder operator.
     ///
+    /// # Examples
     ///
+    /// ```
+    /// use ferrmion::operators::LadderOperator;
+    /// use std::str::FromStr;
+    ///
+    /// assert_eq!(LadderOperator::from_str("+").unwrap(), LadderOperator::Creation);
+    /// assert_eq!(LadderOperator::from_str("-").unwrap(), LadderOperator::Annihilation);
+    /// assert!(LadderOperator::from_str("x").is_err());
+    /// ```
     fn from_str(string: &str) -> Result<Self, Self::Err> {
         if string == "+" {
             Ok(LadderOperator::Creation)
@@ -612,7 +771,19 @@ impl LadderOperator {
     /// While ladder operators are general, the fermionic ladder operators can be expressed exactly as
     /// a combination of two majorana operators.
     ///
-    /// This function is used when converting from fermionic operators with arbitrary signature, to a mjorana operator.
+    /// This function is used when converting from fermionic operators with arbitrary signature, to a Majorana operator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::LadderOperator;
+    /// use num_complex::Complex64;
+    ///
+    /// let coeffs = LadderOperator::Creation.majorana_coefficients();
+    /// assert_eq!(coeffs.len(), 2);
+    /// assert_eq!(coeffs[0], Complex64::new(0.5, 0.0));
+    /// assert_eq!(coeffs[1], Complex64::new(0.0, -0.5));
+    /// ```
     pub fn majorana_coefficients(&self) -> Array1<Complex64> {
         match &self {
             LadderOperator::Creation => arr1(&[c64(0.5, 0.0), c64(0., -0.5)]),
@@ -673,8 +844,16 @@ Fermion
 /// A product of fermionic ladder operators.
 ///
 /// # Example
+///
 /// ```
-/// FermionProduct::new(vec![LadderOperator:Creation, LadderOperator::Annihilation], vec![0,1], c64(1.,0.))
+/// use ferrmion::operators::{FermionProduct, LadderOperator};
+/// use num_complex::Complex64;
+///
+/// let fp = FermionProduct::new(
+///     vec![LadderOperator::Creation, LadderOperator::Annihilation],
+///     vec![0, 1],
+///     Complex64::new(1.0, 0.0),
+/// ).unwrap();
 /// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct FermionProduct {
@@ -810,7 +989,21 @@ pub struct FermionSparse {
 pub struct FermionSparseError;
 
 impl FermionSparse {
-    /// Constructor for [`FermionSparse`]
+    /// Constructor for [`FermionSparse`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::{FermionSparse, LadderOperator};
+    /// use ndarray::{arr1, arr2};
+    /// use num_complex::Complex64;
+    ///
+    /// let fs = FermionSparse::new(
+    ///     vec![LadderOperator::Creation, LadderOperator::Annihilation],
+    ///     arr2(&[[0, 1], [2, 3]]),
+    ///     arr1(&[Complex64::new(1.0, 0.0), Complex64::new(-1.0, 0.0)]),
+    /// ).unwrap();
+    /// ```
     pub fn new(
         action: Vec<LadderOperator>,
         indices: Array2<usize>,
@@ -916,8 +1109,12 @@ mod fermion_tests {
 /// Product of Majorana operators, with a complex coefficient.
 ///
 /// # Example
+///
 /// ```
-/// let mp = MajoranaProduct::new(vec![0,1,2,3], c64(0.5,0.5))
+/// use ferrmion::operators::MajoranaProduct;
+/// use num_complex::Complex64;
+///
+/// let mp = MajoranaProduct::new(vec![0, 1, 2, 3], Complex64::new(0.5, 0.5));
 /// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaProduct {
@@ -1037,7 +1234,23 @@ pub struct MajoranaSparse {
 pub struct MajoranaSparseError;
 
 impl MajoranaSparse {
-    /// Constructor for [`MajoranaSparse`]
+    /// Constructor for [`MajoranaSparse`].
+    ///
+    /// Filters out terms with zero coefficients.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::operators::MajoranaSparse;
+    /// use num_complex::Complex64;
+    /// use tinyvec::array_vec;
+    ///
+    /// let ms = MajoranaSparse::new(
+    ///     vec![array_vec!([u16; 4] => 0, 1)],
+    ///     vec![Complex64::new(1.0, 0.0)],
+    ///     0.0,
+    /// ).unwrap();
+    /// ```
     pub fn new(
         indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
         coefficients: Vec<Complex64>,

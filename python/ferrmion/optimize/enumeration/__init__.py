@@ -7,7 +7,7 @@ from ferrmion.core import anneal_enumerations as core_anneal_enumerations
 from .evolutionary import lambda_plus_mu
 
 
-def anneal_enemerations(
+def anneal_enumerations(
     template: dict,
     one_e_coeffs: np.ndarray,
     two_e_coeffs: np.ndarray,
@@ -15,6 +15,16 @@ def anneal_enemerations(
     initial_guess=np.typing.ArrayLike | None,
     coefficient_weighted: bool = False,
 ):
+    """Optimise mode enumeration using simulated annealing.
+
+    Args:
+        template (dict): Encoding template dictionary.
+        one_e_coeffs (np.ndarray): One-electron coefficient matrix.
+        two_e_coeffs (np.ndarray): Two-electron coefficient matrix.
+        temperature (float | None): Initial annealing temperature. Defaults to ``n_modes``.
+        initial_guess (ArrayLike | None): Starting permutation. Defaults to identity.
+        coefficient_weighted (bool): If True, minimise coefficient-weighted Pauli weight.
+    """
     n_modes = one_e_coeffs.shape[0]
     if temperature is None:
         temperature = float(n_modes)

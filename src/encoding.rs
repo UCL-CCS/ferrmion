@@ -84,8 +84,9 @@ pub trait TryEncode<T> {
 #[derive(Debug)]
 pub struct MajoranaEncoding {
     pub operators: SymplecticMatrix,
-    pub n_modes: usize,
     pub vacuum_state: ZBasisState,
+    pub n_modes: usize,
+    pub n_qubits: usize,
 }
 
 /// Errors that can occur when constructing or using a [`MajoranaEncoding`].
@@ -114,31 +115,101 @@ impl MajoranaEncoding {
     /// use ndarray::arr2;
     ///
     /// let sym = SymplecticMatrix::new(
-    ///     arr2(&[[true, false], [false, true]]),
-    ///     arr2(&[[false, true], [true, false]]),
+    ///     arr2(&[[true, false], [true, false]]),
+    ///     arr2(&[[false, false], [true, false]]),
     /// );
     /// let enc = MajoranaEncoding::new(sym, ZBasisState::zeros(2)).unwrap();
-    /// assert_eq!(enc.n_modes, 2);
+    /// assert_eq!(enc.n_modes, 1);
+    /// assert_eq!(enc.n_qubits, 2);
     /// ```
     pub fn new(
         operators: SymplecticMatrix,
         vacuum_state: ZBasisState,
     ) -> Result<Self, MajoranaEncodingError> {
-        Self::validate_operators(&operators)?;
+        // Shape
+        Self::validate_operator_shape(&operators)?;
+        // Overlap
+        Self::validate_operator_overlap(&operators)?;
+        // Linear independence (also implies algebraic independence)
+        Self::validate_linear_independence(&operators)?;
 
-        let n_modes = operators.x_block.len_of(Axis(1));
+        let n_modes = operators.x_block.nrows() / 2;
+        let n_qubits = operators.x_block.ncols();
         Ok(Self {
             operators,
             n_modes,
+            n_qubits,
             vacuum_state,
         })
     }
 
-    fn validate_operators(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
+    fn validate_operator_shape(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
         if operators.x_block.shape() != operators.z_block.shape() {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
         if !operators.x_block.len_of(Axis(0)).is_multiple_of(2) {
+            return Err(MajoranaEncodingError::InvalidOperatorsError);
+        }
+        Ok(())
+    }
+
+    fn validate_operator_overlap(
+        operators: &SymplecticMatrix,
+    ) -> Result<(), MajoranaEncodingError> {
+        // Check all distinct pairs anticommute via the symplectic inner product.
+        // Two Pauli operators anticommute iff Σ_q (x_i[q]·z_j[q] ⊕ z_i[q]·x_j[q]) is odd.
+        let n_ops = operators.x_block.len_of(Axis(0));
+        let n_qubits = operators.x_block.len_of(Axis(1));
+        for i in 0..n_ops {
+            for j in i + 1..n_ops {
+                let mut inner_product = 0usize;
+                for q in 0..n_qubits {
+                    let xz = operators.x_block[[i, q]] & operators.z_block[[j, q]];
+                    let zx = operators.z_block[[i, q]] & operators.x_block[[j, q]];
+                    inner_product += (xz ^ zx) as usize;
+                }
+                if inner_product % 2 == 0 {
+                    return Err(MajoranaEncodingError::InvalidOperatorsError);
+                }
+            }
+        }
+        Ok(())
+    s
+
+    fn validate_linear_independence(
+        operators: &SymplecticMatrix,
+    ) -> Result<(), MajoranaEncodingError> {
+        let matrix = ndarray::concatenate(
+            Axis(1),
+            &[operators.x_block.view(), operators.z_block.view()],
+        )
+        .expect("X and Z blocks should have compatible shapes");
+
+        // Perform Gaussian elimination on the symplectic matrix.
+        let mut mat = matrix.clone();
+        let n_rows = mat.len_of(Axis(0));
+        let n_cols = mat.len_of(Axis(1));
+        let mut pivot_row = 0;
+        for col in 0..n_cols {
+            if let Some(swap_row) = (pivot_row..n_rows).find(|&r| mat[[r, col]]) {
+                if swap_row != pivot_row {
+                    for c in 0..n_cols {
+                        let tmp = mat[[pivot_row, c]];
+                        mat[[pivot_row, c]] = mat[[swap_row, c]];
+                        mat[[swap_row, c]] = tmp;
+                    }
+                }
+                for r in 0..n_rows {
+                    if r != pivot_row && mat[[r, col]] {
+                        for c in 0..n_cols {
+                            mat[[r, c]] ^= mat[[pivot_row, c]];
+                        }
+                    }
+                }
+                pivot_row += 1;
+            }
+        }s
+        if pivot_row < n_rows {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
         Ok(())
@@ -192,7 +263,7 @@ impl Encode<MajoranaProduct> for MajoranaEncoding {
         let operator = input
             .indices
             .iter()
-            .fold(SymplecticOperator::identity(self.n_modes), |acc, &ind| {
+            .fold(SymplecticOperator::identity(self.n_qubits), |acc, &ind| {
                 acc * self.operators.view_row(ind)
             });
         debug!("{:#?}", operator);
@@ -220,7 +291,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
                 // Use in-place multiplication to avoid heap allocations per multiply.
                 // Each mul_assign_view reuses the accumulator's arrays instead of
                 // allocating 2 new Array1<bool> per call.
-                let mut operator = SymplecticOperator::identity(self.n_modes);
+                let mut operator = SymplecticOperator::identity(self.n_qubits);
                 for &ind in indices.iter() {
                     let row = self.operators.view_row(ind as usize);
                     operator.mul_assign_view(&row);
@@ -239,7 +310,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
 
         *qham
             .entry(
-                (0..self.n_modes)
+                (0..self.n_qubits)
                     .map(|_| "I".to_string())
                     .collect::<String>(),
             )
@@ -338,17 +409,18 @@ mod owned_tests {
 
     #[test]
     fn test_encode_majorana_product() {
+        // JW encoding for 2 modes on 3 qubits: γ₀=XII, γ₁=YII, γ₂=ZXI, γ₃=ZYI
         let x_block = ndarray::arr2(&[
-            [false, false, false],
-            [true, true, true],
-            [true, true, false],
-            [true, false, true],
+            [true, false, false],
+            [true, false, false],
+            [false, true, false],
+            [false, true, false],
         ]);
         let z_block = ndarray::arr2(&[
             [false, false, false],
-            [true, true, true],
-            [false, true, true],
-            [false, true, false],
+            [true, false, false],
+            [true, false, false],
+            [true, true, false],
         ]);
         let n_qubits = x_block.len_of(Axis(1));
         let sym = SymplecticMatrix::new(x_block, z_block);
@@ -357,7 +429,7 @@ mod owned_tests {
 
         let mp = MajoranaProduct::new(vec![0], Complex64::new(1.0, 0.));
         let qham = encoding.encode(mp);
-        assert_eq!(qham.get("III").unwrap(), &Complex64::new(1., 0.));
+        assert_eq!(qham.get("XII").unwrap(), &Complex64::new(1., 0.));
 
         let mp = MajoranaProduct::new(vec![0, 0], Complex64::new(1.0, 0.));
         let qham = encoding.encode(mp);
@@ -369,15 +441,15 @@ mod owned_tests {
 
         let mp = MajoranaProduct::new(vec![2, 3], Complex64::new(1.0, 0.));
         let qham = encoding.encode(mp);
-        assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(-1., 0.));
+        assert_eq!(qham.get("IZI").unwrap(), &Complex64::new(0., 1.));
 
         let mp = MajoranaProduct::new(vec![3, 2], Complex64::new(1.0, 0.));
         let qham = encoding.encode(mp);
-        assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(-1., 0.));
+        assert_eq!(qham.get("IZI").unwrap(), &Complex64::new(0., -1.));
 
         let mp = MajoranaProduct::new(vec![3, 2, 2, 2], Complex64::new(1.0, 0.));
         let qham = encoding.encode(mp);
-        assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(-1., 0.));
+        assert_eq!(qham.get("IZI").unwrap(), &Complex64::new(0., -1.));
     }
 
     #[test]
@@ -400,8 +472,9 @@ mod owned_tests {
 
     #[test]
     fn test_encode_sparse_iy() {
+        // γ₀=ZZZ, γ₁=XXX — anticommuting and linearly independent
         let x_block = ndarray::arr2(&[[false, false, false], [true, true, true]]);
-        let z_block = ndarray::arr2(&[[false, false, false], [true, true, true]]);
+        let z_block = ndarray::arr2(&[[true, true, true], [false, false, false]]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(3),
@@ -419,17 +492,18 @@ mod owned_tests {
     }
     #[test]
     fn test_encode_sparse_long() {
+        // JW encoding for 2 modes on 3 qubits: γ₀=XII, γ₁=YII, γ₂=ZXI, γ₃=ZYI
         let x_block = ndarray::arr2(&[
-            [false, false, false],
-            [true, true, true],
-            [true, true, false],
-            [true, false, true],
+            [true, false, false],
+            [true, false, false],
+            [false, true, false],
+            [false, true, false],
         ]);
         let z_block = ndarray::arr2(&[
             [false, false, false],
-            [true, true, true],
-            [false, true, true],
-            [false, true, false],
+            [true, false, false],
+            [true, false, false],
+            [true, true, false],
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(
             SymplecticMatrix::new(x_block, z_block),
@@ -455,9 +529,10 @@ mod owned_tests {
         debug!("{:#?}", ms);
         let qham = encoding.encode(&ms);
         debug!("{:#?}", qham);
+        // γ₀²=I and γ₁²=I both contribute III with coeff 1 → total 2
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
-        assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(-2., 0.));
-        // assert_eq!(qham.get("IXY").unwrap(), &Complex64::new(-1., 0.));
+        // γ₂γ₃ gives IZI with coeff i, γ₃γ₂ gives IZI with coeff -i → cancel to zero (filtered out)
+        assert!(qham.get("IZI").is_none());
     }
 
     #[test]
@@ -590,5 +665,14 @@ mod owned_tests {
             }
             prop_assert_eq!(enumerated_qubit_hf, Array1::from(expected));
         }
+    }
+
+    #[test]
+    fn test_linearly_dependent_operators_rejected() {
+        // Row 2 = Row 0 XOR Row 1, so these are linearly dependent over GF(2)
+        let x_block = ndarray::arr2(&[[true, false], [false, true], [true, true], [true, true]]);
+        let z_block = ndarray::arr2(&[[false, true], [true, false], [true, true], [true, true]]);
+        let sym = SymplecticMatrix::new(x_block, z_block);
+        assert!(MajoranaEncoding::new(sym, ZBasisState::zeros(2)).is_err());
     }
 }

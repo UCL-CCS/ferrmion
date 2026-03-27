@@ -6,10 +6,9 @@ use std::iter::zip;
 use std::ops::BitXorAssign;
 use std::sync::{Mutex, RwLock};
 use thiserror::Error;
-use tinyvec::ArrayVec;
-const MAJORANA_MAX: usize = 4;
+use smallvec::SmallVec;
 
-use crate::operators::MajoranaSparse;
+use crate::operators::{MajoranaIndices, MajoranaSparse};
 use crate::ternarytree::{Child, Edge, TernaryTree, YParity};
 
 /// Error types possible during TOPP-HATT
@@ -318,7 +317,7 @@ struct NodeDependencies {
     /// The distance of each node from the root node.
     root_distances: BTreeMap<usize, usize>,
     /// Child nodes of each node which are still to be assigned Majoranas.
-    children_without_leaves: BTreeMap<usize, ArrayVec<[usize; 3]>>,
+    children_without_leaves: BTreeMap<usize, SmallVec<[usize; 3]>>,
 }
 
 impl NodeDependencies {
@@ -332,7 +331,7 @@ impl NodeDependencies {
         }
         let mut root_distances: BTreeMap<usize, usize> = BTreeMap::new();
         debug!("{:?}", tree.n_nodes);
-        let mut children_without_leaves: BTreeMap<usize, ArrayVec<[usize; 3]>> = BTreeMap::new();
+        let mut children_without_leaves: BTreeMap<usize, SmallVec<[usize; 3]>> = BTreeMap::new();
 
         let mut nodes_to_check: VecDeque<usize> = VecDeque::new();
         nodes_to_check.push_front(parent_index);
@@ -343,7 +342,7 @@ impl NodeDependencies {
             debug!("UC {:?}", children_without_leaves);
             if let Some(node) = nodes_to_check.pop_front() {
                 assert!(children_without_leaves
-                    .insert(node, ArrayVec::new())
+                    .insert(node, SmallVec::new())
                     .is_none());
                 match tree.parent_of[node] {
                     Some(parent) => {
@@ -390,7 +389,7 @@ impl NodeDependencies {
         self.children_without_leaves.remove(&index);
         debug!("{:?}", self.children_without_leaves);
         for v in self.children_without_leaves.values_mut() {
-            v.retain(|&i| i != index);
+            v.retain(|i| *i != index);
         }
         debug!("{:?}", self.children_without_leaves);
         debug!("Dopped node {:?}", index);
@@ -422,7 +421,7 @@ impl NodeDependencies {
 /// if three Majorana operators appear in both the term and _children_ with odd parity,
 /// together, they act with the identity as XYZ=-iI
 #[inline(always)]
-fn qubit_term_weight(term: &ArrayVec<[u16; MAJORANA_MAX]>, sorted_children: &[u16; 3]) -> usize {
+fn qubit_term_weight(term: &MajoranaIndices, sorted_children: &[u16; 3]) -> usize {
     let mut even_parity_paulis = [true, true, true];
     unsafe {
         for t in term {
@@ -457,22 +456,22 @@ fn qubit_term_weight(term: &ArrayVec<[u16; MAJORANA_MAX]>, sorted_children: &[u1
 /// We can therefore substitute a single index, representing the node, in place of
 /// all the individual Majorana operator indices.
 fn reduce_hamiltonian(
-    majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
+    majorana_terms: Vec<MajoranaIndices>,
     parent_majorana_index: u16,
     selection: [u16; 3],
-) -> Vec<ArrayVec<[u16; MAJORANA_MAX]>> {
+) -> Vec<MajoranaIndices> {
     // could also filter here by terms that
     // only contain indices in pairs.
-    let parent_filler = ArrayVec::from([parent_majorana_index; MAJORANA_MAX]);
-    let mut result: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = majorana_terms
+    let mut result: Vec<MajoranaIndices> = majorana_terms
         .into_iter()
         .map(|mut term| {
-            term.retain(|&ind| !selection.contains(&ind));
-            term.fill(parent_filler);
+            let original_len = term.len();
+            term.retain(|ind| !selection.contains(ind));
+            term.resize(original_len, parent_majorana_index);
             term.sort_unstable();
             term
         })
-        .filter(|term| *term != parent_filler)
+        .filter(|term| !term.iter().all(|&ind| ind == parent_majorana_index))
         .collect();
     // Use sort + dedup instead of BTreeSet for deduplication:
     // avoids per-element tree insertion overhead.
@@ -532,7 +531,7 @@ pub fn topphatt(
             .root_distances
             .iter()
             .zip(node_dependencies.children_without_leaves.values())
-            .filter(|&((_, rd), &uc)| (rd == max_root_distance) & (uc == ArrayVec::new()))
+            .filter(|&((_, rd), uc)| (rd == max_root_distance) & uc.is_empty())
             .map(|((&ind, _), _)| ind)
             .collect();
 
@@ -841,31 +840,31 @@ mod test_topphatt {
     use log::debug;
     use ndarray::arr1;
     use numpy::Complex64;
-    use tinyvec::array_vec;
+    use smallvec::smallvec;
 
     #[test]
     fn test_qubit_term_weight() {
-        assert_eq!(qubit_term_weight(&array_vec!(0u16), &[0u16, 1u16, 2u16]), 1);
-        assert_eq!(qubit_term_weight(&array_vec!(1u16), &[0u16, 1u16, 2u16]), 1);
-        assert_eq!(qubit_term_weight(&array_vec!(2u16), &[0u16, 1u16, 2u16]), 1);
+        assert_eq!(qubit_term_weight(&smallvec![0u16], &[0u16, 1u16, 2u16]), 1);
+        assert_eq!(qubit_term_weight(&smallvec![1u16], &[0u16, 1u16, 2u16]), 1);
+        assert_eq!(qubit_term_weight(&smallvec![2u16], &[0u16, 1u16, 2u16]), 1);
         assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 0u16), &[0u16, 1u16, 2u16]),
+            qubit_term_weight(&smallvec![0u16, 0u16], &[0u16, 1u16, 2u16]),
             0
         );
         assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 1u16, 2u16), &[0u16, 1u16, 2u16]),
+            qubit_term_weight(&smallvec![0u16, 1u16, 2u16], &[0u16, 1u16, 2u16]),
             0
         );
         assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 1u16), &[0u16, 1u16, 2u16]),
+            qubit_term_weight(&smallvec![0u16, 1u16], &[0u16, 1u16, 2u16]),
             1
         );
         assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 3u16, 4u16, 5u16), &[0u16, 1u16, 2u16]),
+            qubit_term_weight(&smallvec![0u16, 3u16, 4u16, 5u16], &[0u16, 1u16, 2u16]),
             1
         );
         assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 0u16, 0u16, 0u16), &[0u16, 1u16, 2u16]),
+            qubit_term_weight(&smallvec![0u16, 0u16, 0u16, 0u16], &[0u16, 1u16, 2u16]),
             0
         );
     }
@@ -965,10 +964,10 @@ mod test_topphatt {
         expected_dists.insert(2, 2);
         expected_dists.insert(3, 3);
         let mut expected_children = BTreeMap::new();
-        expected_children.insert(0, array_vec!(1));
-        expected_children.insert(1, array_vec!(2));
-        expected_children.insert(2, array_vec!(3));
-        expected_children.insert(3, array_vec!());
+        expected_children.insert(0, smallvec![1]);
+        expected_children.insert(1, smallvec![2]);
+        expected_children.insert(2, smallvec![3]);
+        expected_children.insert(3, smallvec![]);
         let jw_tree = TernaryTree::naive_jordan_wigner(4);
         let pe_tree = TernaryTree::naive_parity(4);
         let jw_deps = NodeDependencies::new(&jw_tree);
@@ -986,10 +985,10 @@ mod test_topphatt {
         expected_dists.insert(2, 2);
         expected_dists.insert(3, 2);
         let mut expected_children = BTreeMap::new();
-        expected_children.insert(0, array_vec!(1));
-        expected_children.insert(1, array_vec!(2, 3));
-        expected_children.insert(2, array_vec!());
-        expected_children.insert(3, array_vec!());
+        expected_children.insert(0, smallvec![1]);
+        expected_children.insert(1, smallvec![2, 3]);
+        expected_children.insert(2, smallvec![]);
+        expected_children.insert(3, smallvec![]);
         let tree = TernaryTree::naive_bravyi_kitaev(4);
         let deps = NodeDependencies::new(&tree);
         assert_eq!(expected_dists, deps.root_distances);
@@ -1006,13 +1005,13 @@ mod test_topphatt {
         expected_dists.insert(5, 2);
         expected_dists.insert(6, 2);
         let mut expected_children = BTreeMap::new();
-        expected_children.insert(0, array_vec!(1, 2, 3));
-        expected_children.insert(1, array_vec!(4, 5, 6));
-        expected_children.insert(2, array_vec!());
-        expected_children.insert(3, array_vec!());
-        expected_children.insert(4, array_vec!());
-        expected_children.insert(5, array_vec!());
-        expected_children.insert(6, array_vec!());
+        expected_children.insert(0, smallvec![1, 2, 3]);
+        expected_children.insert(1, smallvec![4, 5, 6]);
+        expected_children.insert(2, smallvec![]);
+        expected_children.insert(3, smallvec![]);
+        expected_children.insert(4, smallvec![]);
+        expected_children.insert(5, smallvec![]);
+        expected_children.insert(6, smallvec![]);
         let tree = TernaryTree::naive_jkmn(7);
         let deps = NodeDependencies::new(&tree);
         assert_eq!(expected_dists, deps.root_distances);
@@ -1030,10 +1029,10 @@ mod test_topphatt {
         expected_dists.insert(2, 2);
         expected_dists.insert(3, 3);
         let mut expected_children = BTreeMap::new();
-        expected_children.insert(0, array_vec!(1));
-        expected_children.insert(1, array_vec!(2));
-        expected_children.insert(2, array_vec!(3));
-        expected_children.insert(3, array_vec!());
+        expected_children.insert(0, smallvec![1]);
+        expected_children.insert(1, smallvec![2]);
+        expected_children.insert(2, smallvec![3]);
+        expected_children.insert(3, smallvec![]);
 
         assert_eq!(jw_deps.root_distances, expected_dists);
         assert_eq!(jw_deps.children_without_leaves, expected_children);
@@ -1044,9 +1043,9 @@ mod test_topphatt {
         expected_dists.insert(1, 1);
         expected_dists.insert(2, 2);
         let mut expected_children = BTreeMap::new();
-        expected_children.insert(0, array_vec!(1));
-        expected_children.insert(1, array_vec!(2));
-        expected_children.insert(2, array_vec!());
+        expected_children.insert(0, smallvec![1]);
+        expected_children.insert(1, smallvec![2]);
+        expected_children.insert(2, smallvec![]);
         assert_eq!(jw_deps.root_distances, expected_dists);
         assert_eq!(jw_deps.children_without_leaves, expected_children);
     }
@@ -1054,7 +1053,7 @@ mod test_topphatt {
     #[test]
     fn test_topphatt() {
         let hamiltonian = MajoranaSparse::new(
-            vec![array_vec!([u16; 4]=> 2,3)],
+            vec![smallvec![2u16, 3]],
             vec![Complex64::new(1., 0.)],
             0.,
         )
@@ -1064,23 +1063,12 @@ mod test_topphatt {
         let jw_topphatt = topphatt(hamiltonian, tree, true).unwrap();
         let encoding: MajoranaEncoding = jw_topphatt.build_encoding(3).unwrap();
         assert_eq!(encoding.operators.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
-        // assert_eq!(
-        //     encoding.symplectics,
-        //     arr2(&[
-        //         [false, false, true, true, true, false],
-        //         [false, false, true, true, true, true],
-        //         [true, false, false, false, false, false],
-        //         [true, false, false, true, false, false],
-        //         [false, true, false, true, false, false],
-        //         [false, true, false, true, true, false],
-        //     ])
-        // );
     }
 
     #[test]
     fn test_with_qubit_labels() {
         let hamiltonian = MajoranaSparse::new(
-            vec![array_vec!([u16; 4]=> 2,3)],
+            vec![smallvec![2u16, 3]],
             vec![Complex64::new(1., 0.)],
             0.,
         )
@@ -1111,15 +1099,15 @@ mod test_topphatt {
     #[test]
     fn test_reduce_hamiltonian_substitutes_inplace() {
         let mut hamiltonian = vec![
-            array_vec!([u16;4] => 0,1,2,3),
-            array_vec!([u16;4] => 0,2,3,4),
+            smallvec![0u16, 1, 2, 3],
+            smallvec![0u16, 2, 3, 4],
         ];
 
         hamiltonian = reduce_hamiltonian(hamiltonian, 999, [2, 3, 55]);
 
-        let expected = vec![
-            array_vec!([u16;4] => 0,1,999,999),
-            array_vec!([u16;4] => 0,4, 999,999),
+        let expected: Vec<MajoranaIndices> = vec![
+            smallvec![0u16, 1, 999, 999],
+            smallvec![0u16, 4, 999, 999],
         ];
 
         assert_eq!(hamiltonian, expected);

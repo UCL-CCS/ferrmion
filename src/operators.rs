@@ -23,10 +23,13 @@ use std::collections::HashMap;
 use std::iter::repeat_n;
 use std::ops::{BitAnd, BitXor, Mul};
 use std::{result::Result, str::FromStr};
-use tinyvec::ArrayVec;
+use smallvec::SmallVec;
 
-/// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
-const MAX_MAJORANAS: usize = 4;
+/// Type alias for Majorana operator index sequences.
+///
+/// Uses `SmallVec` to store indices on the stack for sequences of 4 or fewer elements,
+/// falling back to heap allocation for longer sequences.
+pub type MajoranaIndices = SmallVec<[u16; 4]>;
 
 /// Total number of qubits for which
 /// non-identity Pauli-operators appear in the operator.
@@ -1163,7 +1166,7 @@ impl MajoranaProduct {
 /// Map from majorana indices to complex coefficients, used to accumulate and combine like terms.
 #[derive(Debug)]
 pub(super) struct MajoranaHashMap {
-    operators: HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
+    operators: HashMap<MajoranaIndices, Complex64>,
 }
 
 impl MajoranaHashMap {
@@ -1191,7 +1194,7 @@ impl MajoranaHashMap {
                 .collect();
             let mut mp = MajoranaProduct::new(raw_indices, coeff * scaler);
             mp.majorise();
-            let key: ArrayVec<[u16; MAX_MAJORANAS]> =
+            let key: MajoranaIndices =
                 mp.indices.iter().map(|&i| i as u16).collect();
             *self.operators.entry(key).or_insert(Complex64::ZERO) += mp.coefficient;
         }
@@ -1214,17 +1217,13 @@ impl MajoranaHashMap {
         debug!("MBTree {:?}\n", &self);
     }
 }
-/// Sparse represtnation of a set of [`MajoranaProduct`] operators.
+/// Sparse representation of a set of [`MajoranaProduct`] operators.
 ///
-/// # Panics
-/// <div class="warning">
-/// This type internally represents indices as stack-allocated ArrayVecs.
-/// The maximum size of these is currently restricted to [`MAX_MAJORANAS`].
-/// Attempting to create an index of length greater than this will cause a panic.
-/// </div>
+/// Indices are stored as [`MajoranaIndices`] (`SmallVec<[u16; 4]>`), which are
+/// stack-allocated for sequences of 4 or fewer elements and heap-allocated for longer ones.
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparse {
-    pub(super) indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+    pub(super) indices: Vec<MajoranaIndices>,
     pub(super) coefficients: Vec<Complex64>,
     pub(super) constant: f64,
 }
@@ -1243,16 +1242,16 @@ impl MajoranaSparse {
     /// ```
     /// use ferrmion::operators::MajoranaSparse;
     /// use num_complex::Complex64;
-    /// use tinyvec::array_vec;
+    /// use smallvec::smallvec;
     ///
     /// let ms = MajoranaSparse::new(
-    ///     vec![array_vec!([u16; 4] => 0, 1)],
+    ///     vec![smallvec![0u16, 1]],
     ///     vec![Complex64::new(1.0, 0.0)],
     ///     0.0,
     /// ).unwrap();
     /// ```
     pub fn new(
-        indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+        indices: Vec<MajoranaIndices>,
         coefficients: Vec<Complex64>,
         constant: f64,
     ) -> Result<Self, MajoranaSparseError> {
@@ -1261,9 +1260,9 @@ impl MajoranaSparse {
         };
 
         let (i, c) = indices
-            .iter()
-            .zip(&coefficients)
-            .filter(|&(_, &coeff)| coeff != Complex64::ZERO)
+            .into_iter()
+            .zip(coefficients)
+            .filter(|(_, coeff)| *coeff != Complex64::ZERO)
             .unzip();
 
         Ok(Self {
@@ -1336,7 +1335,7 @@ fn is_valid_fermion_term(action: &[LadderOperator], indices: &[usize]) -> bool {
 impl From<MajoranaHashMap> for MajoranaSparse {
     fn from(mbt: MajoranaHashMap) -> MajoranaSparse {
         let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
-        let mut pairs: Vec<(ArrayVec<[u16; MAX_MAJORANAS]>, Complex64)> = Vec::new();
+        let mut pairs: Vec<(MajoranaIndices, Complex64)> = Vec::new();
         for (k, v) in mbt.operators.into_iter().filter(|(_, v)| v.abs() >= 1e-16) {
             if k.is_empty() {
                 sparse_constant += v;
@@ -1345,7 +1344,7 @@ impl From<MajoranaHashMap> for MajoranaSparse {
             }
         }
         // Restore deterministic ordering (equivalent to the prior BTreeMap key order).
-        pairs.sort_unstable_by_key(|(a, _)| *a);
+        pairs.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
         let (sparse_indices, sparse_values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
         debug!("Sparse Majorana Indices {:?}", &sparse_indices);
         debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
@@ -1391,7 +1390,7 @@ mod majorana_tests {
     use log::debug;
     use ndarray::{arr1, arr2};
     use num_complex::c64;
-    use tinyvec::array_vec;
+    use smallvec::smallvec;
 
     #[test]
     fn test_ladder_to_complex() {
@@ -1562,7 +1561,7 @@ mod majorana_tests {
         debug!("{:#?}", action.clone());
 
         let majorana_term = MajoranaSparse::new(
-            vec![array_vec!([u16; 4]=> 0), array_vec!([u16; 4]=> 1)],
+            vec![smallvec![0u16], smallvec![1u16]],
             vec![c64(5., 0.), c64(0., -5.)],
             0.,
         )
@@ -1583,10 +1582,10 @@ mod majorana_tests {
 
         let majorana_term = MajoranaSparse::new(
             vec![
-                array_vec!([u16; 4]=> 0, 2),
-                array_vec!([u16; 4]=> 0, 3),
-                array_vec!([u16; 4]=> 1,2),
-                array_vec!([u16; 4]=> 1,3),
+                smallvec![0u16, 2],
+                smallvec![0u16, 3],
+                smallvec![1u16, 2],
+                smallvec![1u16, 3],
             ],
             vec![c64(2.5, 0.), c64(0., 2.5), c64(0.0, -2.5), c64(2.5, 0.)],
             0.,
@@ -1612,14 +1611,14 @@ mod majorana_tests {
 
         let majorana_term = MajoranaSparse::new(
             vec![
-                array_vec!([u16; 4]=> 0, 2, 4),
-                array_vec!([u16; 4]=> 0, 2, 5),
-                array_vec!([u16; 4]=> 0, 3, 4),
-                array_vec!([u16; 4]=> 0, 3, 5),
-                array_vec!([u16; 4]=> 1,2, 4),
-                array_vec!([u16; 4]=> 1,2, 5),
-                array_vec!([u16; 4]=> 1,3, 4),
-                array_vec!([u16; 4]=> 1,3, 5),
+                smallvec![0u16, 2, 4],
+                smallvec![0u16, 2, 5],
+                smallvec![0u16, 3, 4],
+                smallvec![0u16, 3, 5],
+                smallvec![1u16, 2, 4],
+                smallvec![1u16, 2, 5],
+                smallvec![1u16, 3, 4],
+                smallvec![1u16, 3, 5],
             ],
             vec![
                 c64(1.25, 0.),

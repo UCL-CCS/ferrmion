@@ -132,7 +132,7 @@ impl MajoranaEncoding {
         Self::validate_operator_shape(&operators)?;
         // Overlap
         Self::validate_operator_overlap(&operators)?;
-        // Linear independence (also implies algebraic independence)
+        // Linear independence
         Self::validate_linear_independence(&operators)?;
 
         let n_modes = operators.x_block.nrows() / 2;
@@ -224,7 +224,7 @@ impl MajoranaEncoding {
         if self.vacuum_state.state.len() != self.n_qubits {
             return Err(MajoranaEncodingError::InvalidVacuumStateError);
         }
-        // Check each singly-occupied FockState can be encoded (a_i†|Ω⟩ is well-defined).
+        // Check each singly-occupied FockState can be encoded ( a_i†|Ω⟩ is well-defined).
         for i in 0..self.n_modes {
             let mut occ = Array1::from_elem(self.n_modes, false);
             occ[i] = true;

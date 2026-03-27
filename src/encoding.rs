@@ -96,6 +96,8 @@ pub enum MajoranaEncodingError {
     HartreeFockError(char, char),
     #[error("Input operators are not a valid Majorana encoding.")]
     InvalidOperatorsError,
+    #[error("Vacuum state is not a valid vacuum for the given Majorana operators.")]
+    InvalidVacuumStateError,
     #[error("Cannot apply operator 0.5({0:#?} - i{1:#?}) to state {2:?}.")]
     StateEncodingError((String, u8), (String, u8), Array1<bool>),
 }
@@ -135,12 +137,15 @@ impl MajoranaEncoding {
 
         let n_modes = operators.x_block.nrows() / 2;
         let n_qubits = operators.x_block.ncols();
-        Ok(Self {
+        let encoding = Self {
             operators,
             n_modes,
             n_qubits,
             vacuum_state,
-        })
+        };
+        // Vacuum state
+        encoding.validate_vacuum_state()?;
+        Ok(encoding)
     }
 
     fn validate_operator_shape(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
@@ -168,13 +173,13 @@ impl MajoranaEncoding {
                     let zx = operators.z_block[[i, q]] & operators.x_block[[j, q]];
                     inner_product += (xz ^ zx) as usize;
                 }
-                if inner_product % 2 == 0 {
+                if inner_product.is_multiple_of(2) {
                     return Err(MajoranaEncodingError::InvalidOperatorsError);
                 }
             }
         }
         Ok(())
-    s
+    }
 
     fn validate_linear_independence(
         operators: &SymplecticMatrix,
@@ -208,10 +213,28 @@ impl MajoranaEncoding {
                 }
                 pivot_row += 1;
             }
-        }s
+        }
         if pivot_row < n_rows {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
+        Ok(())
+    }
+
+    fn validate_vacuum_state(&self) -> Result<(), MajoranaEncodingError> {
+        if self.vacuum_state.state.len() != self.n_qubits {
+            return Err(MajoranaEncodingError::InvalidVacuumStateError);
+        }
+        // Check each singly-occupied FockState can be encoded (a_i†|Ω⟩ is well-defined).
+        for i in 0..self.n_modes {
+            let mut occ = Array1::from_elem(self.n_modes, false);
+            occ[i] = true;
+            self.try_encode(FockState::new(occ, Complex64::ONE))
+                .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError)?;
+        }
+        // Check the fully-occupied FockState can also be encoded.
+        let all_occ = Array1::from_elem(self.n_modes, true);
+        self.try_encode(FockState::new(all_occ, Complex64::ONE))
+            .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError)?;
         Ok(())
     }
 }
@@ -454,8 +477,9 @@ mod owned_tests {
 
     #[test]
     fn test_encode_sparse_xz() {
-        let x_block = ndarray::arr2(&[[true, true, true], [false, false, false]]);
-        let z_block = ndarray::arr2(&[[false, false, false], [true, true, true]]);
+        // γ₀=XII, γ₁=YII — 1-mode JW on 3 qubits; vacuum |000⟩ is valid
+        let x_block = ndarray::arr2(&[[true, false, false], [true, false, false]]);
+        let z_block = ndarray::arr2(&[[false, false, false], [true, false, false]]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(3),
@@ -472,9 +496,9 @@ mod owned_tests {
 
     #[test]
     fn test_encode_sparse_iy() {
-        // γ₀=ZZZ, γ₁=XXX — anticommuting and linearly independent
-        let x_block = ndarray::arr2(&[[false, false, false], [true, true, true]]);
-        let z_block = ndarray::arr2(&[[true, true, true], [false, false, false]]);
+        // γ₀=YII, γ₁=XII — 1-mode JW (swapped) on 3 qubits; vacuum |000⟩ is valid
+        let x_block = ndarray::arr2(&[[true, false, false], [true, false, false]]);
+        let z_block = ndarray::arr2(&[[true, false, false], [false, false, false]]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(3),
@@ -674,5 +698,17 @@ mod owned_tests {
         let z_block = ndarray::arr2(&[[false, true], [true, false], [true, true], [true, true]]);
         let sym = SymplecticMatrix::new(x_block, z_block);
         assert!(MajoranaEncoding::new(sym, ZBasisState::zeros(2)).is_err());
+    }
+
+    #[test]
+    fn test_invalid_vacuum_state_rejected() {
+        let tree = TernaryTree::naive_jordan_wigner(2);
+        let operators = tree.build_encoding(2).unwrap().operators;
+        // Wrong number of qubits: encoding has 2 qubits but vacuum has 1.
+        let result = MajoranaEncoding::new(operators, ZBasisState::zeros(1));
+        assert!(matches!(
+            result,
+            Err(MajoranaEncodingError::InvalidVacuumStateError)
+        ));
     }
 }

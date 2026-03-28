@@ -484,13 +484,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let output = PyDict::new(py);
         for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
             let py_key = PyTuple::new(py, key.as_slice())?;
-            let existing: Option<numpy::Complex64> = output.get_item(&py_key)?.map(|v| v.extract()).transpose()?;
+            let existing: Option<numpy::Complex64> =
+                output.get_item(&py_key)?.map(|v| v.extract()).transpose()?;
             match existing {
                 Some(prev) => output.set_item(&py_key, prev + val)?,
                 None => output.set_item(&py_key, val)?,
             }
         }
-        Ok(output.into())
+        Ok(output)
     }
 
     /// Encode a single fermionic operator product into a qubit Hamiltonian.

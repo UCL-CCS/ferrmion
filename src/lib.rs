@@ -14,9 +14,8 @@ use numpy::{
     PyReadonlyArrayDyn,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
-use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
+use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString, PyTuple};
 use pyo3::{prelude::*, pymodule, Bound};
-use pyo3::types::PyTuple;
 pub mod operators;
 pub mod states;
 pub mod utils;
@@ -491,7 +490,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 None => output.set_item(&py_key, val)?,
             }
         }
-        Ok(output)
+        Ok(output.into())
     }
 
     /// Encode a single fermionic operator product into a qubit Hamiltonian.

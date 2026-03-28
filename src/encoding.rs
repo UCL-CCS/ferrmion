@@ -216,7 +216,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
         let paulis_ipowers: Vec<(String, u8)> = input
             .indices
             .par_iter()
-            .map(|indices| {
+            .map(|&indices| {
                 // Use in-place multiplication to avoid heap allocations per multiply.
                 // Each mul_assign_view reuses the accumulator's arrays instead of
                 // allocating 2 new Array1<bool> per call.
@@ -312,7 +312,7 @@ mod owned_tests {
     use ndarray::{arr1, Array1};
     use num_complex::c64;
     use numpy::Complex64;
-    use smallvec::smallvec;
+    use tinyvec::array_vec;
 
     #[test]
     fn test_encode_fermion_product() {
@@ -390,7 +390,7 @@ mod owned_tests {
         )
         .unwrap();
         let ms = MajoranaSparse::new(
-            vec![smallvec![0u16, 1], smallvec![1u16, 0]],
+            vec![array_vec!([u16; 7] =>0, 1), array_vec!([u16; 7] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)],
             0.,
         )
@@ -408,7 +408,7 @@ mod owned_tests {
         )
         .unwrap();
         let ms = MajoranaSparse::new(
-            vec![smallvec![0u16, 1], smallvec![1u16, 0]],
+            vec![array_vec!([u16; 7] =>0, 1), array_vec!([u16; 7] =>1,0)],
             vec![Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)],
             0.,
         )
@@ -438,10 +438,10 @@ mod owned_tests {
         .unwrap();
         let ms = MajoranaSparse::new(
             vec![
-                smallvec![0u16, 0],
-                smallvec![1u16, 1],
-                smallvec![2u16, 3],
-                smallvec![3u16, 2],
+                array_vec!([u16; 7] =>0,0),
+                array_vec!([u16; 7] =>1,1),
+                array_vec!([u16; 7] =>2,3),
+                array_vec!([u16; 7] =>3,2),
             ],
             vec![
                 Complex64::new(1.0, 0.),
@@ -469,8 +469,7 @@ mod owned_tests {
         let tree = TernaryTree::naive_jordan_wigner(6);
         let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
         let result = encoding.try_encode(fockstate);
-        assert!(result.is_ok());
-        assert!(result.as_ref().unwrap().is_some());
+        assert!(matches!(result, Ok(Some(_))));
         assert!(result.unwrap().unwrap().state == arr1(&[true, true, true, false, false, false]));
     }
 

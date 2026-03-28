@@ -7,13 +7,13 @@
 //! This file contains the PyO3 interop layer which wraps rust functions and exposes
 //! these to a python API
 
-use ::core::panic;
 use log::debug;
 use numpy::ndarray::Array1;
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
 };
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
 use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
@@ -22,19 +22,47 @@ pub mod operators;
 pub mod states;
 pub mod utils;
 use crate::operators::{
-    FermionProduct, LadderOperator, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
+    FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
+    SymplecticOperator,
 };
 use crate::optimise::topphatt;
 use crate::utils::*;
 pub mod hamiltonians;
 use crate::hamiltonians::QubitHamiltonian;
 pub mod encoding;
-use crate::encoding::{Encode, MajoranaEncoding, TryEncode};
+use crate::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
 use crate::states::{FockState, State, ZBasisState};
 pub mod optimise;
 use crate::optimise::anneal_enumerations;
 pub mod ternarytree;
-use crate::ternarytree::{TTFlatPack, TernaryTree};
+use crate::optimise::ToppHattError;
+use crate::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
+
+impl From<MajoranaEncodingError> for PyErr {
+    fn from(e: MajoranaEncodingError) -> PyErr {
+        PyValueError::new_err(e.to_string())
+    }
+}
+
+impl From<TernaryTreeError> for PyErr {
+    fn from(e: TernaryTreeError) -> PyErr {
+        PyValueError::new_err(e.to_string())
+    }
+}
+
+impl From<ToppHattError> for PyErr {
+    fn from(e: ToppHattError) -> PyErr {
+        PyRuntimeError::new_err(e.to_string())
+    }
+}
+
+impl From<FermionProductError> for PyErr {
+    fn from(_: FermionProductError) -> PyErr {
+        PyValueError::new_err(
+            "Invalid FermionProduct: operators and indices must have equal length",
+        )
+    }
+}
 
 /// A Python module implemented in Rust.
 #[allow(clippy::type_complexity)]
@@ -72,7 +100,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         left: PyReadonlyArray1<bool>,
         right: PyReadonlyArray1<bool>,
-    ) -> (usize, Bound<'py, PyArray1<bool>>) {
+    ) -> PyResult<(usize, Bound<'py, PyArray1<bool>>)> {
         let left = left.as_array();
         let right = right.as_array();
         let n = left.len() / 2;
@@ -89,11 +117,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let result = left_op * right_op.view();
         let combined =
             ndarray::concatenate(ndarray::Axis(0), &[result.x_block(), result.z_block()])
-                .expect("x and z blocks should have the same length");
-        (
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        Ok((
             result.ipower() as usize,
             PyArray1::from_owned_array(py, combined),
-        )
+        ))
     }
 
     /// Compute the Hartree-Fock state in the ternary-tree encoding basis.
@@ -132,7 +160,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectic_matrix: PyReadonlyArray2<bool>,
         vacuum_state: PyReadonlyArray1<bool>,
-    ) -> Bound<'py, PyArray1<bool>> {
+    ) -> PyResult<Bound<'py, PyArray1<bool>>> {
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let mode_op_map = mode_op_map.as_array();
         let symplectic_matrix = symplectic_matrix.as_array();
@@ -151,18 +179,21 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let encoding = MajoranaEncoding::new(
             SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
             vacuum,
-        )
-        .expect("Should be able to construct encoding from symplectic matrix.");
+        )?;
         let mut fockstate = FockState::new(
             Array1::from(fermionic_hf_state.to_vec()),
             num_complex::Complex::ONE,
         );
-        fockstate.reindex(mode_op_map.as_slice().unwrap());
+        fockstate.reindex(
+            mode_op_map.as_slice().ok_or_else(|| {
+                PyValueError::new_err("mode_op_map must be a contiguous 1-D array")
+            })?,
+        );
         let zstate = encoding.try_encode(fockstate);
         match zstate {
-            Ok(None) => panic!("HF state should not be zero"),
-            Ok(Some(state)) => PyArray1::from_owned_array(py, state.state),
-            Err(e) => panic!("Should be able to encode HF state: {e}"),
+            Ok(None) => Err(PyValueError::new_err("HF state encoded to null.")),
+            Ok(Some(state)) => Ok(PyArray1::from_owned_array(py, state.state)),
+            Err(e) => Err(PyErr::from(e)),
         }
     }
 
@@ -181,7 +212,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
         ipower: u8,
-    ) -> (Bound<'py, PyString>, Bound<'py, PyInt>) {
+    ) -> PyResult<(Bound<'py, PyString>, Bound<'py, PyInt>)> {
         let symplectic = symplectic.as_array();
         let n = symplectic.len() / 2;
         let op = SymplecticOperator::new(
@@ -190,7 +221,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             symplectic.slice(ndarray::s![n..]).to_owned(),
         );
         let (pauli, ipower) = op.to_pauli_string();
-        (PyString::new(py, &pauli), PyInt::new(py, ipower))
+        Ok((PyString::new(py, &pauli), PyInt::new(py, ipower)))
     }
 
     /// Convert a Pauli string to symplectic representation.
@@ -208,13 +239,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'_>,
         pauli: String,
         ipower: usize,
-    ) -> (Bound<'_, PyArray1<bool>>, Bound<'_, PyInt>) {
-        // let pauli = pauli.extract();
+    ) -> PyResult<(Bound<'_, PyArray1<bool>>, Bound<'_, PyInt>)> {
         let (symplectic, ipower) = pauli_to_symplectic(pauli, ipower);
-        (
+        Ok((
             PyArray1::from_owned_array(py, symplectic),
             PyInt::new(py, ipower),
-        )
+        ))
     }
 
     /// Convert a symplectic operator to a sparse matrix representation.
@@ -233,18 +263,18 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
         ipower: usize,
-    ) -> (
+    ) -> PyResult<(
         Bound<'py, PyString>,
         Bound<'py, PyArray1<usize>>,
         Bound<'py, PyComplex>,
-    ) {
+    )> {
         let symplectic = symplectic.as_array();
         let (pauli_string, position_vec, coeff) = symplectic_to_sparse(symplectic, ipower);
-        (
+        Ok((
             PyString::new(py, &pauli_string),
             PyArray1::from_owned_array(py, position_vec),
             PyComplex::from_complex_bound(py, coeff),
-        )
+        ))
     }
 
     /// Optimise the mode enumeration of a Majorana encoding by simulated annealing.
@@ -291,8 +321,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let encoding = MajoranaEncoding::new(
             SymplecticMatrix::with_ipowers(x_block.clone(), z_block.clone(), ipowers),
             ZBasisState::zeros(n_qubits),
-        )
-        .expect("Should be able to construct encoding from symplectic matrix.");
+        )?;
         let best_mode_enumeration: Array1<usize>;
         (_, best_mode_enumeration) = anneal_enumerations(
             msparse,
@@ -301,13 +330,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             initial_guess,
             coefficient_weighted,
         )
-        .expect("Annealing should have succeeded.");
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
         let encoding = MajoranaEncoding::new(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(n_qubits),
-        )
-        .expect("Should be able to construct encoding from symplectic matrix.")
+        )?
         .apply_mode_enumeration(best_mode_enumeration.to_vec());
 
         let combined = ndarray::concatenate(
@@ -317,7 +345,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 encoding.operators.z_block.view(),
             ],
         )
-        .unwrap();
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
@@ -348,15 +376,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .iter()
             .map(|(v, _)| v)
             .max()
-            .expect("Flatpack should have maxiumum qubit index.");
+            .ok_or_else(|| PyValueError::new_err("Flatpack must be non-empty"))?;
 
-        let tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)
-            .expect("Should be able to build tree from flatpack.");
+        let tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)?;
 
         debug!("Got Tree");
-        let encoding = tree
-            .build_encoding(*n_qubits + 1)
-            .expect("Should be able to crrate encoding from tree.");
+        let encoding = tree.build_encoding(*n_qubits + 1)?;
         debug!("Got encoding");
 
         debug!("Got qham");
@@ -367,7 +392,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 encoding.operators.z_block.view(),
             ],
         )
-        .unwrap();
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
@@ -402,10 +427,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
             "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
             "JKMN" => TernaryTree::naive_jkmn(n_modes),
-            _ => panic!("Encoding must be one of JW, PE, BK or JKMN."),
+            _ => return Err(PyValueError::new_err(
+                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.",
+            )),
         };
         debug!("Got Tree");
-        let encoding = tree.build_encoding(n_modes).unwrap();
+        let encoding = tree.build_encoding(n_modes)?;
         debug!("Got encoding");
 
         debug!("Got qham");
@@ -416,7 +443,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 encoding.operators.z_block.view(),
             ],
         )
-        .unwrap();
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
@@ -445,12 +472,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
     ) -> PyResult<Bound<'py, PyDict>> {
-        // ) -> PyResult<()> {
-        assert_eq!(
-            signatures.len(),
-            coeffs.len(),
-            "Signatures and coefficients should be same length"
-        );
+        if signatures.len() != coeffs.len() {
+            return Err(PyValueError::new_err(
+                "signatures and coefficients must have equal length",
+            ));
+        }
 
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
             signatures,
@@ -505,43 +531,41 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         coefficient: Complex64,
     ) -> PyResult<Bound<'py, PyDict>> {
         // ) -> PyResult<()> {
-        assert_eq!(
-            signatures.len(),
-            indices.len(),
-            "Signatures and indices should be same length"
-        );
+        if signatures.len() != indices.len() {
+            return Err(PyValueError::new_err(
+                "signatures and indices must have equal length",
+            ));
+        }
         let symplectics = symplectics.as_array();
         let n_qubits = symplectics.ncols() / 2;
         let n_modes = symplectics.nrows() / 2;
         let vec_sig: Vec<LadderOperator> = signatures
             .chars()
-            .map(|v| LadderOperator::try_from(v).expect("Signature components should be + or -"))
-            .collect();
+            .map(|v| {
+                LadderOperator::try_from(v).map_err(|_| {
+                    PyValueError::new_err(format!("Invalid signature character: '{v}'"))
+                })
+            })
+            .collect::<PyResult<Vec<_>>>()?;
 
-        assert!(
-            n_qubits >= n_modes,
-            "Must have at least as many qubits as modes."
-        );
+        if n_qubits < n_modes {
+            return Err(PyValueError::new_err("n_qubits must be >= n_modes"));
+        }
 
-        let fproduct = FermionProduct::new(vec_sig, indices, coefficient)
-            .expect("Should be able to create FermionProduct.");
+        let fproduct = FermionProduct::new(vec_sig, indices, coefficient)?;
         let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
         let encoding = MajoranaEncoding::new(
             SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
             ZBasisState::zeros(n_qubits),
-        )
-        .expect("Should be able to construct encoding from symplectic matrix.");
+        )?;
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(fproduct);
         debug!("Got Hamiltonian");
 
         debug!("Got qham");
-        Ok(qham
-            .into_py_dict(py)
-            .expect("Should be able to convert QubitHamiltonian to PyDict."))
-        // Ok(())
+        qham.into_py_dict(py)
     }
 
     /// Encode a full fermionic Hamiltonian into a qubit Hamiltonian.
@@ -569,19 +593,18 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         constant_energy: f64,
     ) -> PyResult<Bound<'py, PyDict>> {
         // ) -> PyResult<()> {
-        assert_eq!(
-            signatures.len(),
-            coeffs.len(),
-            "Signatures and coefficients should be same length"
-        );
+        if signatures.len() != coeffs.len() {
+            return Err(PyValueError::new_err(
+                "signatures and coefficients must have equal length",
+            ));
+        }
         let symplectics = symplectics.as_array();
         let n_qubits = symplectics.ncols() / 2;
         let n_modes = symplectics.nrows() / 2;
 
-        assert!(
-            n_qubits >= n_modes,
-            "Must have at least as many qubits as modes."
-        );
+        if n_qubits < n_modes {
+            return Err(PyValueError::new_err("n_qubits must be >= n_modes"));
+        }
 
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
             signatures,
@@ -594,16 +617,13 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let encoding = MajoranaEncoding::new(
             SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
             ZBasisState::zeros(n_qubits),
-        )
-        .expect("Should be able to construct encoding from symplectic matrix.");
+        )?;
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         debug!("Got Hamiltonian");
 
         debug!("Got qham");
-        Ok(qham
-            .into_py_dict(py)
-            .expect("Should be able to convert QubitHamiltonian to PyDict."))
+        qham.into_py_dict(py)
         // Ok(())
     }
 
@@ -635,15 +655,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         constant_energy: f64,
     ) -> PyResult<Bound<'py, PyDict>> {
         // ) -> PyResult<()> {
-        assert_eq!(
-            signatures.len(),
-            coeffs.len(),
-            "Signatures and coefficients should be same length"
-        );
-        assert!(
-            n_qubits >= n_modes,
-            "Must have at least as many qubits as modes."
-        );
+        if signatures.len() != coeffs.len() {
+            return Err(PyValueError::new_err(
+                "signatures and coefficients must have equal length",
+            ));
+        }
+        if n_qubits < n_modes {
+            return Err(PyValueError::new_err("n_qubits must be >= n_modes"));
+        }
 
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
             signatures,
@@ -657,12 +676,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
             "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
             "JKMN" => TernaryTree::naive_jkmn(n_modes),
-            _ => panic!("Encoding must be one of JW, PE, BK or JKMN."),
+            _ => return Err(PyValueError::new_err(
+                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.",
+            )),
         };
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
         debug!("Hamiltonian {:?}", hamiltonian);
-        let encoding = tree.build_encoding(n_qubits).unwrap();
+        let encoding = tree.build_encoding(n_qubits)?;
         debug!("Got encoding {:?}", encoding);
         debug!("Got encoding {:?}", encoding);
 
@@ -670,9 +691,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         debug!("Got qham");
         debug!("Got qham {:?}", qham);
-        Ok(qham
-            .into_py_dict(py)
-            .expect("Should be able to convert QubitHamiltonian to PyDict."))
+        qham.into_py_dict(py)
         // Ok(())
     }
 
@@ -718,14 +737,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
-        let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)
-            .expect("Ternary tree should build from flatpack");
+        let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)?;
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree =
-            topphatt(hamiltonian, tree, parallelize).expect("TOPPHATT should have failed by now.");
+        tree = topphatt(hamiltonian, tree, parallelize)?;
 
-        let encoding = tree.build_encoding(n_qubits).unwrap();
+        let encoding = tree.build_encoding(n_qubits)?;
         debug!("Got encoding");
         let combined = ndarray::concatenate(
             ndarray::Axis(1),
@@ -734,7 +751,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 encoding.operators.z_block.view(),
             ],
         )
-        .unwrap();
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
@@ -785,14 +802,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         debug!("Got MSparse");
         debug!("Got Hamiltonian");
-        let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)
-            .expect("Ternary tree should build from flatpack");
+        let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)?;
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian.clone(), tree, parallelize)
-            .expect("TOPPHATT should have failed by now.");
+        tree = topphatt(hamiltonian.clone(), tree, parallelize)?;
 
-        let encoding = tree.build_encoding(n_qubits).unwrap();
+        let encoding = tree.build_encoding(n_qubits)?;
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         debug!("Got qham");
@@ -803,12 +818,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 encoding.operators.z_block.view(),
             ],
         )
-        .unwrap();
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
-            qham.into_py_dict(py)
-                .expect("Should be able to convert QubitHamiltonian to PyDict."),
+            qham.into_py_dict(py)?,
             encoding.vacuum_state.state.into_pyarray(py),
         ))
     }
@@ -845,18 +859,16 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Bound<'py, PyArray1<bool>>,
     )> {
         // ) -> PyResult<Bound<'py, PyDict>> {
-        assert_eq!(
-            signatures.len(),
-            coeffs.len(),
-            "Signatures and coefficients should be same length"
-        );
-        assert!(
-            n_qubits >= n_modes,
-            "Must have at least as many qubits as modes."
-        );
+        if signatures.len() != coeffs.len() {
+            return Err(PyValueError::new_err(
+                "signatures and coefficients must have equal length",
+            ));
+        }
+        if n_qubits < n_modes {
+            return Err(PyValueError::new_err("n_qubits must be >= n_modes"));
+        }
 
         debug!("Starting TOPPHATT");
-        // let flatpack: TTFlatPack = node_map.extract::<TTFlatPack>()?;
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
             signatures,
             coeffs.iter().map(|v| v.as_array()).collect(),
@@ -869,13 +881,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
             "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
             "JKMN" => TernaryTree::naive_jkmn(n_modes),
-            _ => panic!("Encoding must be one of JW, PE, BK or JKMN."),
+            _ => return Err(PyValueError::new_err(
+                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.",
+            )),
         };
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian.clone(), tree, parallelize)
-            .expect("TOPPHATT should have failed by now.");
-        let encoding = tree.build_encoding(n_qubits).unwrap();
+        tree = topphatt(hamiltonian.clone(), tree, parallelize)?;
+        let encoding = tree.build_encoding(n_qubits)?;
         debug!("Got encoding");
         let combined = ndarray::concatenate(
             ndarray::Axis(1),
@@ -884,7 +897,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 encoding.operators.z_block.view(),
             ],
         )
-        .unwrap();
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),

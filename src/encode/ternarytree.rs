@@ -1,10 +1,10 @@
 //! Ternary tree encodings and methods.
 //!
 //! The [`TernaryTree`] struct is made up of a set of vectors.
+use crate::encode::encoding::{MajoranaEncoding, MajoranaEncodingError};
+use crate::operators::Pauli;
 use crate::operators::{SymplecticMatrix, SymplecticOperator};
 use crate::states::ZBasisState;
-use crate::encode::encoding::MajoranaEncoding;
-use crate::operators::Pauli;
 use log::{debug, error};
 use numpy::ndarray::{s, Array1, Array2};
 use numpy::Complex64;
@@ -191,6 +191,8 @@ pub enum TernaryTreeError {
     BuildEncodingError(usize, Option<Vec<usize>>),
     #[error("Cannot reassign qubit indices of nodes.")]
     QubitReassignmentError,
+    #[error("Encoding validation failed: {0}")]
+    EncodingValidationError(#[from] MajoranaEncodingError),
 }
 
 // Constructors and input
@@ -501,10 +503,7 @@ impl TernaryTree {
             z_block = padded_z;
             vacuum_state = padded_vacuum_state;
         }
-        Ok(
-            MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block), vacuum_state)
-                .expect("Encoding built from a valid TernaryTree should always be valid."),
-        )
+        Ok(MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block), vacuum_state)?)
     }
 }
 
@@ -1185,6 +1184,31 @@ mod tt_tests {
                 prop_assert_eq!(tt.z_child_of[i], None);
             }
         }
+
+        #[test]
+        fn test_jw_encodings_valid(n in 5usize..50) {
+            let tt = TernaryTree::naive_jordan_wigner(n);
+            prop_assert!(tt.build_encoding(n).is_ok());
+        }
+
+        #[test]
+        fn test_parity_encodings_valid(n in 5usize..50) {
+            let tt = TernaryTree::naive_parity(n);
+            prop_assert!(tt.build_encoding(n).is_ok());
+        }
+
+        #[test]
+        fn test_bk_encodings_valid(n in 5usize..50) {
+            let tt = TernaryTree::naive_bravyi_kitaev(n);
+            prop_assert!(tt.build_encoding(n).is_ok());
+        }
+
+        #[test]
+        fn test_jkmn_encodings_valid(n in 5usize..50) {
+            let tt = TernaryTree::naive_jkmn(n);
+            prop_assert!(tt.build_encoding(n).is_ok());
+        }
+
     }
 }
 
@@ -1197,6 +1221,7 @@ mod integration_tests {
     use ahash::HashMapExt;
     use num_complex::c64;
     use numpy::ndarray::arr2;
+
     #[test]
     fn test_encode_identity_with_jw() {
         let encoding = TernaryTree::naive_jordan_wigner(2)

@@ -9,8 +9,8 @@ use thiserror::Error;
 use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 7;
 
-use crate::operators::MajoranaSparse;
 use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
+use crate::operators::MajoranaSparse;
 
 /// Error types possible during TOPP-HATT
 #[derive(Debug, Error)]
@@ -837,10 +837,10 @@ mod test_topphatt {
     use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
     use crate::encode::encoding::MajoranaEncoding;
-    use crate::optimise::topphatt::NodeDependencies;
     use crate::encode::ternarytree::TTFlatPack;
-    use crate::optimise::topphatt::TreeRetrictions;
     use crate::encode::ternarytree::TernaryTree;
+    use crate::optimise::topphatt::NodeDependencies;
+    use crate::optimise::topphatt::TreeRetrictions;
     use log::debug;
     use ndarray::arr1;
     use numpy::Complex64;

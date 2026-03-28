@@ -31,10 +31,10 @@ pub mod encode;
 use crate::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
 use crate::states::{FockState, State, ZBasisState};
 pub mod optimise;
+use crate::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
+use crate::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
 use crate::optimise::anneal_enumerations;
 use crate::optimise::ToppHattError;
-use crate::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
-use crate::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
 
 impl From<MajoranaEncodingError> for PyErr {
     fn from(e: MajoranaEncodingError) -> PyErr {

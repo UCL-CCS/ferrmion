@@ -11,9 +11,8 @@ use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
 use log::debug;
 use ndarray::Axis;
-use num_complex::c64;
+use num_complex::{c64, Complex64, ComplexFloat};
 use numpy::ndarray::{Array1, Array2};
-use numpy::Complex64;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -227,13 +226,23 @@ impl MajoranaEncoding {
         for i in 0..self.n_modes {
             let mut occ = Array1::from_elem(self.n_modes, false);
             occ[i] = true;
-            self.try_encode(FockState::new(occ, Complex64::ONE))
+            let state = self
+                .try_encode(FockState::new(occ, Complex64::ONE))
                 .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError)?;
+            if state.is_none() {
+                debug!("Creation on mode {i} returns Null state.");
+                return Err(MajoranaEncodingError::InvalidVacuumStateError);
+            }
         }
         // Check the fully-occupied FockState can also be encoded.
         let all_occ = Array1::from_elem(self.n_modes, true);
-        self.try_encode(FockState::new(all_occ, Complex64::ONE))
+        let state = self
+            .try_encode(FockState::new(all_occ, Complex64::ONE))
             .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError)?;
+        if state.is_none() {
+            debug!("Creation on all modes returns Null state.");
+            return Err(MajoranaEncodingError::InvalidVacuumStateError);
+        }
         Ok(())
     }
 }
@@ -353,18 +362,23 @@ impl TryEncode<FockState> for MajoranaEncoding {
     type Output = Option<ZBasisState>;
 
     fn try_encode(&self, input: FockState) -> Result<Self::Output, MajoranaEncodingError> {
-        let mut zstate: Option<ZBasisState> = Some(self.vacuum_state.clone());
+        debug!("\nFock state: {input:?}");
+        let mut maybe_state: Option<ZBasisState> = Some(self.vacuum_state.clone());
         #[allow(unused_assignments)]
         let mut left = self.vacuum_state.clone();
         #[allow(unused_assignments)]
         let mut right = self.vacuum_state.clone();
+        debug!("Vacuum: {left:?}");
         for (idx, occ) in input.state.iter().enumerate() {
             if !*occ {
                 continue;
             }
-            zstate = if let Some(zstate) = zstate {
+            debug!("ZState: {maybe_state:?}");
+            if let Some(zstate) = maybe_state {
                 left = self.operators.view_row(2 * idx) * zstate.clone();
                 right = self.operators.view_row(2 * idx + 1) * zstate.clone();
+                debug!("Left: {left:?}");
+                debug!("Right: {right:?}");
                 if left.state != right.state {
                     let lop = SymplecticOperator::new(
                         self.operators.ipowers[2 * idx],
@@ -382,17 +396,18 @@ impl TryEncode<FockState> for MajoranaEncoding {
                         zstate.state,
                     ));
                 }
-                let diff = left.coefficient - Complex64::new(0., 1.) * right.coefficient;
-                if diff == Complex64::ZERO {
-                    None
+                let diff: num_complex::Complex64 =
+                    left.coefficient - Complex64::new(0., 1.) * right.coefficient;
+                debug!("Diff: {diff:?}");
+                debug!("Diff: {0:?}", Complex64::new(0., 0.));
+                if (diff.re() == 0.) & (diff.im() == 0.) {
+                    maybe_state = None;
                 } else {
-                    Some(ZBasisState::new(left.state, diff))
+                    maybe_state = Some(ZBasisState::new(left.state, diff));
                 }
-            } else {
-                None
             };
         }
-        Ok(zstate)
+        Ok(maybe_state)
     }
 }
 
@@ -400,9 +415,9 @@ impl TryEncode<FockState> for MajoranaEncoding {
 mod owned_tests {
     use super::*;
 
-    use crate::states::State;
-    use crate::operators::LadderOperator;
     use crate::encode::ternarytree::TernaryTree;
+    use crate::operators::LadderOperator;
+    use crate::states::State;
     use ndarray::{arr1, Array1};
     use num_complex::c64;
     use numpy::Complex64;
@@ -496,9 +511,9 @@ mod owned_tests {
 
     #[test]
     fn test_encode_sparse_iy() {
-        // γ₀=YII, γ₁=XII — 1-mode JW (swapped) on 3 qubits; vacuum |000⟩ is valid
+        // γ₀=XII, γ₁=YII — 1-mode JW (swapped) on 3 qubits; vacuum |000⟩ is valid
         let x_block = ndarray::arr2(&[[true, false, false], [true, false, false]]);
-        let z_block = ndarray::arr2(&[[true, false, false], [false, false, false]]);
+        let z_block = ndarray::arr2(&[[false, false, false], [true, false, false]]);
         let encoding: MajoranaEncoding = MajoranaEncoding::new(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(3),

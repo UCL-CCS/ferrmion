@@ -9,8 +9,8 @@
 //! - Sparse operators: Iterables containing product operator indices and coefficients.
 //! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
 //!
-use crate::states::ZBasisState;
 use crate::encode::ternarytree::Edge;
+use crate::states::ZBasisState;
 use itertools::Itertools;
 use log::debug;
 use ndarray::{arr0, s, Dimension};

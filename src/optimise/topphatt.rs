@@ -463,16 +463,18 @@ fn reduce_hamiltonian(
 ) -> Vec<ArrayVec<[u16; MAJORANA_MAX]>> {
     // could also filter here by terms that
     // only contain indices in pairs.
-    let parent_filler = ArrayVec::from([parent_majorana_index; MAJORANA_MAX]);
     let mut result: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = majorana_terms
         .into_iter()
         .map(|mut term| {
+            let original_len = term.len();
             term.retain(|&ind| !selection.contains(&ind));
-            term.fill(parent_filler);
+            while term.len() < original_len {
+                term.push(parent_majorana_index);
+            }
             term.sort_unstable();
             term
         })
-        .filter(|term| *term != parent_filler)
+        .filter(|term| !term.iter().all(|&ind| ind == parent_majorana_index))
         .collect();
     // Use sort + dedup instead of BTreeSet for deduplication:
     // avoids per-element tree insertion overhead.
@@ -1118,8 +1120,8 @@ mod test_topphatt {
         hamiltonian = reduce_hamiltonian(hamiltonian, 999, [2, 3, 55]);
 
         let expected = vec![
-            array_vec!([u16;7] => 0,1,999,999,999,999,999),
-            array_vec!([u16;7] => 0,4,999,999,999,999,999),
+            array_vec!([u16;7] => 0,1,999,999),
+            array_vec!([u16;7] => 0,4,999,999),
         ];
 
         assert_eq!(hamiltonian, expected);

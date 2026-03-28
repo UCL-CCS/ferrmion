@@ -26,7 +26,7 @@ use std::{result::Result, str::FromStr};
 use tinyvec::ArrayVec;
 
 /// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
-const MAX_MAJORANAS: usize = 4;
+const MAX_MAJORANAS: usize = 7;
 
 /// Total number of qubits for which
 /// non-identity Pauli-operators appear in the operator.
@@ -1246,7 +1246,7 @@ impl MajoranaSparse {
     /// use tinyvec::array_vec;
     ///
     /// let ms = MajoranaSparse::new(
-    ///     vec![array_vec!([u16; 4] => 0, 1)],
+    ///     vec![array_vec!([u16; 7] => 0, 1)],
     ///     vec![Complex64::new(1.0, 0.0)],
     ///     0.0,
     /// ).unwrap();
@@ -1562,7 +1562,7 @@ mod majorana_tests {
         debug!("{:#?}", action.clone());
 
         let majorana_term = MajoranaSparse::new(
-            vec![array_vec!([u16; 4]=> 0), array_vec!([u16; 4]=> 1)],
+            vec![array_vec!([u16; 7]=> 0), array_vec!([u16; 7]=> 1)],
             vec![c64(5., 0.), c64(0., -5.)],
             0.,
         )
@@ -1583,10 +1583,10 @@ mod majorana_tests {
 
         let majorana_term = MajoranaSparse::new(
             vec![
-                array_vec!([u16; 4]=> 0, 2),
-                array_vec!([u16; 4]=> 0, 3),
-                array_vec!([u16; 4]=> 1,2),
-                array_vec!([u16; 4]=> 1,3),
+                array_vec!([u16; 7]=> 0, 2),
+                array_vec!([u16; 7]=> 0, 3),
+                array_vec!([u16; 7]=> 1,2),
+                array_vec!([u16; 7]=> 1,3),
             ],
             vec![c64(2.5, 0.), c64(0., 2.5), c64(0.0, -2.5), c64(2.5, 0.)],
             0.,
@@ -1612,14 +1612,14 @@ mod majorana_tests {
 
         let majorana_term = MajoranaSparse::new(
             vec![
-                array_vec!([u16; 4]=> 0, 2, 4),
-                array_vec!([u16; 4]=> 0, 2, 5),
-                array_vec!([u16; 4]=> 0, 3, 4),
-                array_vec!([u16; 4]=> 0, 3, 5),
-                array_vec!([u16; 4]=> 1,2, 4),
-                array_vec!([u16; 4]=> 1,2, 5),
-                array_vec!([u16; 4]=> 1,3, 4),
-                array_vec!([u16; 4]=> 1,3, 5),
+                array_vec!([u16; 7]=> 0, 2, 4),
+                array_vec!([u16; 7]=> 0, 2, 5),
+                array_vec!([u16; 7]=> 0, 3, 4),
+                array_vec!([u16; 7]=> 0, 3, 5),
+                array_vec!([u16; 7]=> 1,2, 4),
+                array_vec!([u16; 7]=> 1,2, 5),
+                array_vec!([u16; 7]=> 1,3, 4),
+                array_vec!([u16; 7]=> 1,3, 5),
             ],
             vec![
                 c64(1.25, 0.),

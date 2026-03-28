@@ -14,10 +14,8 @@ use numpy::{
     PyReadonlyArrayDyn,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
-use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString};
+use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString, PyTuple};
 use pyo3::{prelude::*, pymodule, Bound};
-use std::collections::HashMap;
-use tinyvec::ArrayVec;
 pub mod operators;
 pub mod states;
 pub mod utils;
@@ -454,7 +452,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     /// Convert a fermionic Hamiltonian to a sparse Majorana representation.
     ///
     /// Decomposes the fermionic Hamiltonian expressed via ladder operator signatures
-    /// into a dictionary keyed by 4-tuples of Majorana mode indices.
+    /// into a dictionary keyed by tuples of Majorana mode indices.
     ///
     /// Args:
     ///     signatures: List of fermionic operator signature strings (e.g. ``"+-+-"``).
@@ -462,8 +460,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     constant_energy: Constant energy offset to include in the result.
     ///
     /// Returns:
-    ///     Dictionary mapping ``(i, j, k, l)`` Majorana index tuples to complex
-    ///     coefficients.
+    ///     Dictionary mapping tuples of Majorana indices to complex coefficients.
     #[pyfn(m)]
     #[pyo3(name = "fermionic_to_sparse_majorana")]
     fn fermionic_to_sparse_majorana<'py>(
@@ -484,29 +481,17 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             constant_energy,
         );
 
-        let mut output: HashMap<
-            (Option<u16>, Option<u16>, Option<u16>, Option<u16>),
-            numpy::Complex64,
-        > = HashMap::new();
+        let output = PyDict::new(py);
         for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
-            let key_with_options = key
-                .into_inner()
-                .iter()
-                .enumerate()
-                .map(|(ind, &v)| if ind < key.len() { Some(v) } else { None })
-                .collect::<ArrayVec<[Option<u16>; 4]>>()
-                .into_inner();
-            output
-                .entry((
-                    key_with_options[0],
-                    key_with_options[1],
-                    key_with_options[2],
-                    key_with_options[3],
-                ))
-                .and_modify(|v| *v += val)
-                .or_insert(val);
+            let py_key = PyTuple::new(py, key.as_slice())?;
+            let existing: Option<numpy::Complex64> =
+                output.get_item(&py_key)?.map(|v| v.extract()).transpose()?;
+            match existing {
+                Some(prev) => output.set_item(&py_key, prev + val)?,
+                None => output.set_item(&py_key, val)?,
+            }
         }
-        output.into_py_dict(py)
+        Ok(output)
     }
 
     /// Encode a single fermionic operator product into a qubit Hamiltonian.

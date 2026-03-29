@@ -2,7 +2,6 @@
 from typing import Callable
 from ferrmion import TernaryTree
 
-from ferrmion.utils import fermionic_to_sparse_majorana
 from ferrmion.encode.ternary_tree import (
     JordanWigner,
     BravyiKitaev,

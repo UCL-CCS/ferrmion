@@ -16,6 +16,7 @@ use numpy::ndarray::{Array1, Array2};
 use numpy::Complex64;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::ops::{BitOr, BitXor};
 use thiserror::Error;
 
 /// Trait for encoding fermionic operators into qubit Hamiltonians.
@@ -157,7 +158,6 @@ impl MajoranaEncoding {
         }
         Ok(())
     }
-
     fn validate_operator_overlap(
         operators: &SymplecticMatrix,
     ) -> Result<(), MajoranaEncodingError> {
@@ -237,7 +237,7 @@ impl MajoranaEncoding {
             .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError)?;
         Ok(())
     }
-}
+
 
 impl MajoranaEncoding {
     /// Reorder the fermionic modes according to the given permutation.

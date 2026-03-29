@@ -51,6 +51,7 @@ def topphatt_standard(
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def flatpack_symplectic_matrix(
     flatpack: TTFlatpack,
+    n_qubits: None | int,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def standard_symplectic_matrix(
     encoding: str, n_modes: int

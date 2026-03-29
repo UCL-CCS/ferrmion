@@ -364,22 +364,29 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_flatpack_symplectic_matrix(
         py: Python<'_>,
         flatpack: TTFlatPack,
+        n_qubits: Option<usize>,
     ) -> PyResult<(
         Bound<'_, PyArray1<u8>>,
         Bound<'_, PyArray2<bool>>,
         Bound<'_, PyArray1<bool>>,
     )> {
         // ) -> PyResult<()> {
-        let n_qubits: &usize = flatpack
+        let flatplack_max_qubit_index: &usize = flatpack
             .iter()
             .map(|(v, _)| v)
             .max()
             .ok_or_else(|| PyValueError::new_err("Flatpack must be non-empty"))?;
 
+        
+
+        if n_qubits.unwrap_or(*flatplack_max_qubit_index+1) < *flatplack_max_qubit_index {
+            return Err(PyValueError::new_err("Passed value of n_qubits less than existing flatpack qubit index."));
+        }
+
         let tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)?;
 
         debug!("Got Tree");
-        let encoding = tree.build_encoding(*n_qubits + 1)?;
+        let encoding = tree.build_encoding(n_qubits.unwrap_or(*flatplack_max_qubit_index+1))?;
         debug!("Got encoding");
 
         debug!("Got qham");
@@ -483,12 +490,28 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         let output = PyDict::new(py);
         for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
-            let py_key = PyTuple::new(py, key.as_slice())?;
+            // γ_i² = 1: remove pairs of equal adjacent indices (keys are already sorted)
+            let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
+            for &idx in key.as_slice() {
+                if simplified.last() == Some(&idx) {
+                    simplified.pop();
+                } else {
+                    simplified.push(idx);
+                }
+            }
+            // Constant (identity) terms are tracked in hamiltonian.constant; skip them here
+            if simplified.is_empty() {
+                continue;
+            }
+            let py_key = PyTuple::new(py, simplified.as_slice())?;
             let existing: Option<numpy::Complex64> =
                 output.get_item(&py_key)?.map(|v| v.extract()).transpose()?;
-            match existing {
-                Some(prev) => output.set_item(&py_key, prev + val)?,
-                None => output.set_item(&py_key, val)?,
+            let new_val = match existing {
+                Some(prev) => prev + val,
+                None => val,
+            };
+            if new_val.norm() > 1e-16 {
+                output.set_item(&py_key, new_val)?;
             }
         }
         Ok(output)

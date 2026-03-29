@@ -1,6 +1,7 @@
 """Tests for Utils functions"""
 
 import numpy as np
+from ferrmion.core import fermionic_to_sparse_majorana
 from ferrmion.utils import (
     icount_to_sign,
     pauli_to_symplectic,
@@ -8,7 +9,6 @@ from ferrmion.utils import (
     symplectic_to_pauli,
     symplectic_to_sparse,
     symplectic_unhash,
-    fermionic_to_sparse_majorana,
 )
 
 
@@ -53,7 +53,7 @@ def test_fermionic_to_sparse_majorana() -> None:
     ones[0, 0] = 1
     twos[1, 2, 1, 2] = 2
 
-    majorana_ham = fermionic_to_sparse_majorana([(ones, "+-"), (twos, "++--")])
+    majorana_ham = fermionic_to_sparse_majorana(["+-", "++--"], [ones, twos], 0)
     assert majorana_ham == {
         (0, 1): np.complex128(0.5j),
         (4, 5): np.complex128(-0.5j),

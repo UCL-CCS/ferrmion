@@ -270,7 +270,7 @@ class TernaryTree(FermionQubitEncoding):
                         "TTFlatpack contains child node which is not int | None."
                     )
 
-        ipow, sym, vacuum = core.flatpack_symplectic_matrix(flatpack)
+        ipow, sym, vacuum = core.flatpack_symplectic_matrix(flatpack, None)
         max_id = max(item[0] for item in flatpack)
         nodes = [TTNode() for _ in range(max_id + 1)]
         for qubit_index, children in flatpack:
@@ -466,7 +466,7 @@ class TernaryTree(FermionQubitEncoding):
                     [ True, False,  True, False,  True,  True]]))
         """
         flatpack = self.flatpack()
-        ipow, sym, vacuum = core.flatpack_symplectic_matrix(flatpack)
+        ipow, sym, vacuum = core.flatpack_symplectic_matrix(flatpack, self.n_qubits)
         self.vacuum_state = vacuum
         reordering_index = np.kron(
             self.default_mode_op_map, np.array([2, 2], dtype=np.uint)

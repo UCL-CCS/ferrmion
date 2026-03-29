@@ -46,6 +46,7 @@ myst_enable_extensions = [
 
 nb_scroll_outputs = True
 nb_execution_timeout = 600
+nb_execution_raise_on_error = True
 
 templates_path = ['_templates']
 exclude_patterns = []

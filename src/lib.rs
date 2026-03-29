@@ -364,22 +364,29 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_flatpack_symplectic_matrix(
         py: Python<'_>,
         flatpack: TTFlatPack,
+        n_qubits: Option<usize>,
     ) -> PyResult<(
         Bound<'_, PyArray1<u8>>,
         Bound<'_, PyArray2<bool>>,
         Bound<'_, PyArray1<bool>>,
     )> {
         // ) -> PyResult<()> {
-        let n_qubits: &usize = flatpack
+        let flatplack_max_qubit_index: &usize = flatpack
             .iter()
             .map(|(v, _)| v)
             .max()
             .ok_or_else(|| PyValueError::new_err("Flatpack must be non-empty"))?;
 
+        if n_qubits.unwrap_or(*flatplack_max_qubit_index + 1) < *flatplack_max_qubit_index {
+            return Err(PyValueError::new_err(
+                "Passed value of n_qubits less than existing flatpack qubit index.",
+            ));
+        }
+
         let tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)?;
 
         debug!("Got Tree");
-        let encoding = tree.build_encoding(*n_qubits + 1)?;
+        let encoding = tree.build_encoding(n_qubits.unwrap_or(*flatplack_max_qubit_index + 1))?;
         debug!("Got encoding");
 
         debug!("Got qham");

@@ -4,9 +4,9 @@ This file is ignored by pre-commit as the pyo3 integration requires importing
 rust functions before importing functions from the python module.
 """
 
-from .core import hartree_fock_state, symplectic_product
+from .core import hartree_fock_state, maxnto_symplectic_matrix, symplectic_product
 from .encode import FermionQubitEncoding, MajoranaStringEncoding
-from .encode.maxnto import MaxNTO, maxnto_symplectic_matrix
+from .encode.maxnto import MaxNTO
 from .encode.ternary_tree import TernaryTree
 from .encode.ternary_tree_node import TTNode, node_sorter
 from .encode.standard import (

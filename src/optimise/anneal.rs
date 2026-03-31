@@ -1,7 +1,7 @@
 //! Simulated annealing optimisation of fermionic mode enumerations.
 
-use crate::encoding::Encode;
-use crate::encoding::MajoranaEncoding;
+use crate::encode::encoding::Encode;
+use crate::encode::encoding::MajoranaEncoding;
 
 use crate::operators::{CoefficientPauliWeight, MajoranaSparse, PauliWeight};
 use argmin::{

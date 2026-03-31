@@ -1,12 +1,10 @@
 """Tests for MaxNTO encoding."""
 
-from ferrmion.encode import MaxNTO
+from ferrmion.core import maxnto_symplectic_matrix
 import numpy as np
 
-
 def test_max_nto():
-    mnto = MaxNTO(14)
-    ipowers, symplectics = mnto._build_symplectic_matrix()
+    ipowers, symplectics = maxnto_symplectic_matrix(14)
 
     assert np.all(
         ipowers

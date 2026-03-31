@@ -3,7 +3,8 @@
 //! The [`TernaryTree`] struct is made up of a set of vectors.
 use crate::operators::{SymplecticMatrix, SymplecticOperator};
 use crate::states::ZBasisState;
-use crate::{encoding::MajoranaEncoding, operators::Pauli};
+use crate::encode::encoding::MajoranaEncoding;
+use crate::operators::Pauli;
 use log::{debug, error};
 use numpy::ndarray::{s, Array1, Array2};
 use numpy::Complex64;
@@ -78,7 +79,7 @@ impl YParity {
 ///
 /// # Example
 /// ```
-/// use ferrmion::ternarytree::YParity;
+/// use ferrmion::encode::ternarytree::YParity;
 ///
 /// let yp = YParity::Even;
 /// assert_eq!(!yp, YParity::Odd);
@@ -115,7 +116,7 @@ impl Parent {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::{Parent, Edge};
+    /// use ferrmion::encode::ternarytree::{Parent, Edge};
     /// let parent = Parent::new(Edge::X, 0);
     /// ```
     pub fn new(edge: Edge, index: u8) -> Self {
@@ -127,7 +128,7 @@ impl Parent {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::{Parent, Edge};
+    /// use ferrmion::encode::ternarytree::{Parent, Edge};
     /// let parent = Parent::new(Edge::X, 5);
     /// assert_eq!(parent.node_index(), 5);
     /// ```
@@ -164,11 +165,11 @@ impl Child {
 /// Represents a ternary tree structure for fermion-to-qubit encodings.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TernaryTree {
-    pub(super) parent_of: Vec<Option<Parent>>,
-    pub(super) x_child_of: Vec<Option<Child>>,
-    pub(super) y_child_of: Vec<Option<Child>>,
-    pub(super) z_child_of: Vec<Option<Child>>,
-    pub(super) y_parity_of: Vec<YParity>,
+    pub(crate) parent_of: Vec<Option<Parent>>,
+    pub(crate) x_child_of: Vec<Option<Child>>,
+    pub(crate) y_child_of: Vec<Option<Child>>,
+    pub(crate) z_child_of: Vec<Option<Child>>,
+    pub(crate) y_parity_of: Vec<YParity>,
     pub n_nodes: usize,
     qubit_index_of: Option<Vec<usize>>,
 }
@@ -199,7 +200,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
     /// let tree = TernaryTree::new(5);
     /// ```
     pub fn new(n_nodes: usize) -> Self {
@@ -219,7 +220,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
     /// let tree = TernaryTree::new_naive(5);
     /// ```
     pub fn new_naive(n_nodes: usize) -> Self {
@@ -239,7 +240,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::{TernaryTree, TTFlatPack};
+    /// use ferrmion::encode::ternarytree::{TernaryTree, TTFlatPack};
     /// let flatpack: TTFlatPack = vec![];
     /// let tree = TernaryTree::from_flatpack(&flatpack).unwrap();
     /// ```
@@ -255,7 +256,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::{TernaryTree, TTFlatPack};
+    /// use ferrmion::encode::ternarytree::{TernaryTree, TTFlatPack};
     /// let flatpack: TTFlatPack = vec![];
     /// let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
     /// ```
@@ -327,7 +328,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
     /// let tree = TernaryTree::naive_jordan_wigner(4);
     /// ```
     pub fn naive_jordan_wigner(n_nodes: usize) -> TernaryTree {
@@ -345,7 +346,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
     /// let tree = TernaryTree::naive_parity(4);
     /// ```
     pub fn naive_parity(n_nodes: usize) -> TernaryTree {
@@ -362,7 +363,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
     /// let tree = TernaryTree::naive_bravyi_kitaev(4);
     /// ```
     pub fn naive_bravyi_kitaev(n_nodes: usize) -> TernaryTree {
@@ -390,7 +391,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
     /// let tree = TernaryTree::naive_jkmn(4);
     /// ```
     pub fn naive_jkmn(n_nodes: usize) -> TernaryTree {
@@ -420,7 +421,7 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
     /// let tree = TernaryTree::naive_jordan_wigner(4);
     /// let encoding = tree.build_encoding(4).unwrap();
     /// ```
@@ -1190,7 +1191,7 @@ mod tt_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::encoding::Encode;
+    use crate::encode::encoding::Encode;
     use crate::hamiltonians::QubitHamiltonian;
     use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
     use ahash::HashMapExt;

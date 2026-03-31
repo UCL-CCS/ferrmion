@@ -10,7 +10,7 @@
 //! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
 //!
 use crate::states::ZBasisState;
-use crate::ternarytree::Edge;
+use crate::encode::ternarytree::Edge;
 use itertools::Itertools;
 use log::debug;
 use ndarray::{arr0, s, Dimension};

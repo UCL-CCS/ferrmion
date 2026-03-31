@@ -26,9 +26,9 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use ferrmion::encoding::{Encode, MajoranaEncoding};
+/// use ferrmion::encode::encoding::{Encode, MajoranaEncoding};
 /// use ferrmion::operators::MajoranaProduct;
-/// use ferrmion::ternarytree::TernaryTree;
+/// use ferrmion::encode::ternarytree::TernaryTree;
 /// use num_complex::Complex64;
 ///
 /// let tree = TernaryTree::naive_jordan_wigner(2);
@@ -44,7 +44,7 @@ pub trait Encode<T> {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encoding::Encode;
+    /// use ferrmion::encode::encoding::Encode;
     /// // Example usage would depend on the implementor
     /// ```
     fn encode(&self, input: T) -> Self::Output;
@@ -55,9 +55,9 @@ pub trait Encode<T> {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::encoding::{TryEncode, MajoranaEncoding};
+/// use ferrmion::encode::encoding::{TryEncode, MajoranaEncoding};
 /// use ferrmion::states::FockState;
-/// use ferrmion::ternarytree::TernaryTree;
+/// use ferrmion::encode::ternarytree::TernaryTree;
 /// use ndarray::arr1;
 /// use num_complex::Complex64;
 ///
@@ -111,7 +111,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encoding::MajoranaEncoding;
+    /// use ferrmion::encode::encoding::MajoranaEncoding;
     /// use ferrmion::operators::SymplecticMatrix;
     /// use ferrmion::states::ZBasisState;
     /// use ndarray::arr2;
@@ -247,8 +247,8 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encoding::MajoranaEncoding;
-    /// use ferrmion::ternarytree::TernaryTree;
+    /// use ferrmion::encode::encoding::MajoranaEncoding;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
     ///
     /// let tree = TernaryTree::naive_jordan_wigner(3);
     /// let encoding = tree.build_encoding(3).unwrap();
@@ -401,7 +401,8 @@ mod owned_tests {
     use super::*;
 
     use crate::states::State;
-    use crate::{operators::LadderOperator, ternarytree::TernaryTree};
+    use crate::operators::LadderOperator;
+    use crate::encode::ternarytree::TernaryTree;
     use ndarray::{arr1, Array1};
     use num_complex::c64;
     use numpy::Complex64;

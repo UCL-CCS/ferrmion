@@ -347,7 +347,6 @@ def qubit_swap(symplectic, index_pair) -> NDArray[np.uint8]:
     return symplectic
 
 
-
 def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
     """Calculate the product of two operators in symplectic form.
 

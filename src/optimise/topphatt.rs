@@ -10,7 +10,7 @@ use tinyvec::ArrayVec;
 const MAJORANA_MAX: usize = 7;
 
 use crate::operators::MajoranaSparse;
-use crate::ternarytree::{Child, Edge, TernaryTree, YParity};
+use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
 
 /// Error types possible during TOPP-HATT
 #[derive(Debug, Error)]
@@ -836,10 +836,11 @@ mod test_topphatt {
     use super::Edge::{X, Y, Z};
     use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
-    use crate::encoding::MajoranaEncoding;
+    use crate::encode::encoding::MajoranaEncoding;
     use crate::optimise::topphatt::NodeDependencies;
-    use crate::ternarytree::TTFlatPack;
-    use crate::{optimise::topphatt::TreeRetrictions, ternarytree::TernaryTree};
+    use crate::encode::ternarytree::TTFlatPack;
+    use crate::optimise::topphatt::TreeRetrictions;
+    use crate::encode::ternarytree::TernaryTree;
     use log::debug;
     use ndarray::arr1;
     use numpy::Complex64;

@@ -563,47 +563,6 @@ def _hamiltonian_term_to_majorana(
     return majorana_ham
 
 
-def fermionic_to_sparse_majorana(
-    hamiltonian_terms: list[tuple[np.ndarray, str]],
-) -> dict[tuple[int], np.complex64]:
-    """Convert a list of fermionic Hamiltonian terms to a sparse majorana Hamiltonian.
-
-    Args:
-        hamiltonian_terms (list): A list of tuples, each containing a numpy array of coefficients and a signature string.
-
-    Returns:
-        dict: A sparse majorana Hamiltonian, with majorana indices as keys and coefficients as values.
-
-    Example:
-        >>> from openfermionpyscf import *
-        >>> from openfermion import spinorb_from_spatial
-
-        >>> mol="H2O"
-        >>> geometry = geometry_from_pubchem(mol)
-        >>> basis = "sto-3g"
-        >>> multiplicity = 1
-        >>> charge = 0
-
-        >>> molecule = MolecularData(geometry, basis, multiplicity, charge)
-        >>> molecule = run_pyscf(molecule,run_scf=True,run_fci=False) # NOTE: running FCI is expensive! Don't try on large systems
-        >>> ones = molecule.one_body_integrals
-        >>> twos = molecule.two_body_integrals
-
-        >>> ones,twos = spinorb_from_spatial(ones, twos)
-        >>> twos = 0.5*twos
-
-        >>> # For the molecular Hamiltonian in physicist notation
-        >>> majorana_ham = fermionic_to_sparse_majorana([(ones, "+-"), (twos,"++--")])
-    """
-    total_ham: dict = {}
-    for coeffs, signature in hamiltonian_terms:
-        total_ham.update(
-            _hamiltonian_term_to_majorana(total_ham, coeffs=coeffs, signature=signature)
-        )
-
-    return {k: v for k, v in total_ham.items() if np.abs(v) > 1e-16}
-
-
 def setup_logs() -> None:
     """Initialise logging."""
     config_dict = {

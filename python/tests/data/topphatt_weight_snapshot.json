@@ -3,6 +3,6 @@
   "BK": { "pauli_weight": 0.985, "coefficient_pauli_weight": 0.667 },
   "PE": { "pauli_weight": 0.759, "coefficient_pauli_weight": 0.829 },
   "JKMN": { "pauli_weight": 0.936, "coefficient_pauli_weight": 0.792 },
-  "HATT": { "pauli_weight": 0.968, "coefficient_pauli_weight": 0.935 },
+  "HATT": { "pauli_weight": 0.951, "coefficient_pauli_weight": 0.851 },
   "Huffman": { "pauli_weight": 0.946, "coefficient_pauli_weight": 0.955 }
 }

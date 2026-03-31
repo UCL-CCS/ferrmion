@@ -483,12 +483,28 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         let output = PyDict::new(py);
         for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
-            let py_key = PyTuple::new(py, key.as_slice())?;
+            // γ_i² = 1: remove pairs of equal adjacent indices (keys are already sorted)
+            let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
+            for &idx in key.as_slice() {
+                if simplified.last() == Some(&idx) {
+                    simplified.pop();
+                } else {
+                    simplified.push(idx);
+                }
+            }
+            // Constant (identity) terms are tracked in hamiltonian.constant; skip them here
+            if simplified.is_empty() {
+                continue;
+            }
+            let py_key = PyTuple::new(py, simplified.as_slice())?;
             let existing: Option<numpy::Complex64> =
                 output.get_item(&py_key)?.map(|v| v.extract()).transpose()?;
-            match existing {
-                Some(prev) => output.set_item(&py_key, prev + val)?,
-                None => output.set_item(&py_key, val)?,
+            let new_val = match existing {
+                Some(prev) => prev + val,
+                None => val,
+            };
+            if new_val.norm() > 1e-16 {
+                output.set_item(&py_key, new_val)?;
             }
         }
         Ok(output)

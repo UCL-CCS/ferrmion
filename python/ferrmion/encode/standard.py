@@ -150,6 +150,7 @@ def _standard_topphatt(encoding: str, fham: FermionHamiltonian) -> QubitHamilton
         n_qubits=fham.n_modes,
         signatures=sigs,
         coeffs=coeffs,
+        parallelize=True,
     )
     return encode(
         ipowers=ipow,

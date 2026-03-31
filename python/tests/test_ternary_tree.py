@@ -669,7 +669,7 @@ def test_symplectic_matrix_roundtrip(flatpack):
 def test_core_python_symplectics_from_flatpack_equal(flatpack):
     python_tree = TernaryTree.from_flatpack(flatpack)
     py_ipow, py_sym = python_tree._build_symplectic_matrix()
-    rust_ipow, rust_sym, _ = flatpack_symplectic_matrix(flatpack)
+    rust_ipow, rust_sym, _ = flatpack_symplectic_matrix(flatpack, None)
 
     assert np.array_equal(py_ipow, rust_ipow)
     assert np.array_equal(py_sym, rust_sym)

@@ -1169,6 +1169,55 @@ mod tt_tests {
 
     use proptest::prelude::*;
 
+    fn arb_n_and_permutation(min: usize, max: usize) -> impl Strategy<Value = (usize, Vec<usize>)> {
+        (min..max).prop_flat_map(|n| {
+            let indices: Vec<usize> = (0..n).collect();
+            proptest::sample::subsequence(indices, n).prop_map(move |perm| (n, perm))
+        })
+    }
+
+    fn arb_ternary_tree(min: usize, max: usize) -> impl Strategy<Value = TernaryTree> {
+        (min..max).prop_flat_map(|n| {
+            proptest::collection::vec((0usize..n, 0u8..3), n.saturating_sub(1))
+                .prop_map(move |choices| {
+                    let mut tree = TernaryTree::new_naive(n);
+                    let mut placed = vec![0usize];
+                    for (node_idx, &(parent_pick, edge_pick)) in (1..n).zip(choices.iter()) {
+                        let edges = match edge_pick {
+                            0 => [Edge::X, Edge::Y, Edge::Z],
+                            1 => [Edge::Y, Edge::Z, Edge::X],
+                            _ => [Edge::Z, Edge::X, Edge::Y],
+                        };
+                        let preferred = parent_pick % placed.len();
+                        // Try preferred parent first, then all others
+                        let parent_order = (0..placed.len())
+                            .map(|i| placed[(preferred + i) % placed.len()])
+                            .collect::<Vec<_>>();
+                        let mut attached = false;
+                        for &parent in &parent_order {
+                            for e in edges {
+                                if tree
+                                    .add_child(
+                                        Parent::new(e, parent as u8),
+                                        Child::Node(node_idx as u8),
+                                    )
+                                    .is_ok()
+                                {
+                                    placed.push(node_idx);
+                                    attached = true;
+                                    break;
+                                }
+                            }
+                            if attached {
+                                break;
+                            }
+                        }
+                    }
+                    tree
+                })
+        })
+    }
+
     proptest! {
         #[test]
         fn test_new_naive_properties(n in 1..10usize) {
@@ -1209,6 +1258,39 @@ mod tt_tests {
             prop_assert!(tt.build_encoding(n).is_ok());
         }
 
+        #[test]
+        fn test_enumerated_jw_encodings_valid((n, perm) in arb_n_and_permutation(5, 30)) {
+            let tt = TernaryTree::naive_jordan_wigner(n);
+            let encoding = tt.build_encoding(n).unwrap();
+            let _enumerated = encoding.apply_mode_enumeration(perm);
+        }
+
+        #[test]
+        fn test_enumerated_parity_encodings_valid((n, perm) in arb_n_and_permutation(5, 30)) {
+            let tt = TernaryTree::naive_parity(n);
+            let encoding = tt.build_encoding(n).unwrap();
+            let _enumerated = encoding.apply_mode_enumeration(perm);
+        }
+
+        #[test]
+        fn test_enumerated_bk_encodings_valid((n, perm) in arb_n_and_permutation(5, 30)) {
+            let tt = TernaryTree::naive_bravyi_kitaev(n);
+            let encoding = tt.build_encoding(n).unwrap();
+            let _enumerated = encoding.apply_mode_enumeration(perm);
+        }
+
+        #[test]
+        fn test_enumerated_jkmn_encodings_valid((n, perm) in arb_n_and_permutation(5, 30)) {
+            let tt = TernaryTree::naive_jkmn(n);
+            let encoding = tt.build_encoding(n).unwrap();
+            let _enumerated = encoding.apply_mode_enumeration(perm);
+        }
+
+        #[test]
+        fn test_random_ternary_tree_encodings_valid(tt in arb_ternary_tree(5, 30)) {
+            let n = tt.n_nodes;
+            prop_assert!(tt.build_encoding(n).is_ok());
+        }
     }
 }
 

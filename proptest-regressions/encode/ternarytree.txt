@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9dadcc8d875471e7ae7bbc5d724efd4e5e33a822aad5515b202b41e087c9a5ff # shrinks to tt = TernaryTree { parent_of: [None, Some(Parent { edge: X, index: 0 }), Some(Parent { edge: Y, index: 0 }), Some(Parent { edge: Z, index: 0 }), None], x_child_of: [Some(Node(1)), Some(XLeaf(1)), Some(XLeaf(2)), Some(XLeaf(3)), Some(XLeaf(4))], y_child_of: [Some(Node(2)), Some(YLeaf(1)), Some(YLeaf(2)), Some(YLeaf(3)), Some(YLeaf(4))], z_child_of: [Some(Node(3)), Some(XLeaf(0)), Some(YLeaf(0)), None, None], y_parity_of: [Even, Even, Odd, Even, Even], n_nodes: 5, qubit_index_of: None }

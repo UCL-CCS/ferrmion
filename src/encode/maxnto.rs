@@ -103,6 +103,9 @@ pub fn maxnto_symplectic_matrix(n_modes: usize) -> Result<(Array1<u8>, Array2<bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::encode::encoding::MajoranaEncoding;
+    use crate::operators::SymplecticMatrix;
+    use ndarray::s;
 
     #[test]
     fn test_maxnto_symplectic_matrix_even_k_error() {
@@ -146,6 +149,26 @@ mod tests {
                 !symplectics[[0, 14 + j]],
                 "row 0 z_part col {j} should be false"
             );
+        }
+    }
+
+    /// Verify that the MaxNTO encoding has a well-defined vacuum state for all valid n_modes.
+    ///
+    /// Valid n_modes are those where k = n_modes - 1 is odd (i.e. n_modes is even).
+    /// The vacuum state is not necessarily all-false for MaxNTO; this test confirms
+    /// that `determine_vacuum_state` finds a consistent solution and that `from_operators`
+    /// produces a fully validated `MajoranaEncoding`.
+    #[test]
+    fn test_maxnto_has_well_defined_vacuum_state() {
+        for n_modes in [2, 4, 6, 14] {
+            let (ipowers, output) = maxnto_symplectic_matrix(n_modes).unwrap();
+            let x_block = output.slice(s![.., ..n_modes]).to_owned();
+            let z_block = output.slice(s![.., n_modes..]).to_owned();
+            let sym = SymplecticMatrix::with_ipowers(x_block, z_block, ipowers);
+            let enc = MajoranaEncoding::from_operators(sym)
+                .unwrap_or_else(|e| panic!("MaxNTO n_modes={n_modes} failed: {e}"));
+            assert_eq!(enc.n_modes, n_modes);
+            assert_eq!(enc.n_qubits, n_modes);
         }
     }
 }

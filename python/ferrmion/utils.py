@@ -347,56 +347,6 @@ def qubit_swap(symplectic, index_pair) -> NDArray[np.uint8]:
     return symplectic
 
 
-def check_trivial_overlap(symplectic) -> tuple[bool, NDArray[np.uint]]:
-    """Check the Non-trivial Overlap of a symplectic matrix.
-
-    Args:
-        symplectic (NDArray): The symplectic matrix.
-
-    Returns:
-        tuple[bool, NDArray[int]]: A boolean indicating if the overlap is trivial and the overlap matrix.
-
-    Example:
-        >>> import numpy as np
-        >>> from ferrmion.utils import check_trivial_overlap
-        >>> arr = np.eye((4, 4), dtype=bool)
-        >>> satisfied, nto = check_trivial_overlap(arr)
-        >>> isinstance(satisfied, bool)
-        True
-    """
-    symplectic = np.array(symplectic, dtype=np.uint8)
-    logger.debug(f"Checking trivial overlap\n{symplectic=}")
-    x_length = int(len(symplectic[0]) / 2)
-
-    symp_x = symplectic[:, :x_length]
-    symp_z = symplectic[:, x_length:]
-    symp_i = np.abs(symp_x - 1) * np.abs(symp_z - 1)
-    symp_y = symp_x * symp_z
-
-    symp_x = symp_x - symp_y
-    symp_z = symp_z - symp_y
-
-    i_trivial = symp_i @ symp_i.T
-    same_p_trivial = symp_x @ symp_x.T + symp_y @ symp_y.T + symp_z @ symp_z.T
-    one_i_trivial = (
-        symp_x @ symp_i.T
-        + symp_i @ symp_x.T
-        + symp_y @ symp_i.T
-        + symp_i @ symp_y.T
-        + symp_z @ symp_i.T
-        + symp_i @ symp_z.T
-    )
-    all_trivial = i_trivial + same_p_trivial + one_i_trivial
-
-    nto: NDArray[np.uint] = all_trivial.shape[0] / 2 - all_trivial
-
-    satisfied: bool = np.all((nto + np.eye(nto.shape[0])) % 2 == 1)
-
-    logger.debug(f"Trivial overlap satisfied: {satisfied}")
-    logger.debug(f"Trivial overlap matrix:\n{nto}")
-    return satisfied, nto
-
-
 def two_operator_product(creation: tuple[bool, bool], left, right) -> NDArray:
     """Calculate the product of two operators in symplectic form.
 

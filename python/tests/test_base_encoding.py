@@ -95,7 +95,7 @@ def test_edge_operator(four_mode_tt: TernaryTree):
     assert scaled_output == expected
 
 @given(scaler=st.complex_numbers(min_magnitude=1e-2, max_magnitude=1e5))
-def test_encode_fermion_product_coefficient_scaling_correct(scaler:np.complex64):
+def test_jw_encode_fermion_product_coefficient_scaling_correct(scaler:np.complex64):
     four_mode_tt = TernaryTree(4)
 
     jw_expected = {"IIII":0.5, "ZIII":-0.5}
@@ -106,6 +106,9 @@ def test_encode_fermion_product_coefficient_scaling_correct(scaler:np.complex64)
     assert set(jw_num_zero_scaled.keys()) == set(scaler_expected.keys())
     assert all([np.isclose(scaler_expected[k], jw_num_zero_scaled[k]) for k in jw_num_zero_scaled.keys()])
 
+@given(scaler=st.complex_numbers(min_magnitude=1e-2, max_magnitude=1e5))
+def test_bk_encode_fermion_product_coefficient_scaling_correct(scaler:np.complex64):
+    four_mode_tt = TernaryTree(4)
     bk_expected = {"IIII": 0.5, "ZZIZ":-0.5}
     bk_num_zero = four_mode_tt.BK()._encode_fermion_product("+-", [0,0],1.)
     bk_num_zero_scaled = four_mode_tt.BK()._encode_fermion_product("+-", [0,0],scaler)
@@ -114,10 +117,15 @@ def test_encode_fermion_product_coefficient_scaling_correct(scaler:np.complex64)
     assert set(bk_num_zero_scaled.keys()) == set(scaler_expected.keys())
     assert all([np.isclose(scaler_expected[k], bk_num_zero_scaled[k]) for k in bk_num_zero_scaled.keys()])
 
+
+@given(scaler=st.complex_numbers(min_magnitude=1e-2, max_magnitude=1e5))
+def test_maxnto_encode_fermion_product_coefficient_scaling_correct(scaler:np.complex64):
+    four_mode_tt = TernaryTree(4)
     maxnto_expected = {"IIII":0.5, "IZZZ":0.5}
-    maxnto_num_zero = MaxNTO(4)._encode_fermion_product( "+-", [0,0],1.)
-    maxnto_num_zero_scaled = MaxNTO(4)._encode_fermion_product( "+-", [0,0],scaler)
-    assert maxnto_expected == maxnto_num_zero
-    scaler_expected = {k:scaler*v for k,v in maxnto_expected.items()}
-    assert set(maxnto_num_zero_scaled.keys()) == set(scaler_expected.keys())
-    assert all([np.isclose(scaler_expected[k], maxnto_num_zero_scaled[k]) for k in maxnto_num_zero_scaled.keys()])
+    with pytest.raises(ValueError):
+        maxnto_num_zero = MaxNTO(4)._encode_fermion_product( "+-", [0,0],1.)
+        maxnto_num_zero_scaled = MaxNTO(4)._encode_fermion_product( "+-", [0,0],scaler)
+        assert maxnto_expected == maxnto_num_zero
+        scaler_expected = {k:scaler*v for k,v in maxnto_expected.items()}
+        assert set(maxnto_num_zero_scaled.keys()) == set(scaler_expected.keys())
+        assert all([np.isclose(scaler_expected[k], maxnto_num_zero_scaled[k]) for k in maxnto_num_zero_scaled.keys()])

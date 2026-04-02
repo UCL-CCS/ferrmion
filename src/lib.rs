@@ -27,14 +27,14 @@ use crate::optimise::topphatt;
 use crate::utils::*;
 pub mod hamiltonians;
 use crate::hamiltonians::QubitHamiltonian;
-pub mod encoding;
-use crate::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
+pub mod encode;
+use crate::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
 use crate::states::{FockState, State, ZBasisState};
 pub mod optimise;
+use crate::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
+use crate::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
 use crate::optimise::anneal_enumerations;
-pub mod ternarytree;
 use crate::optimise::ToppHattError;
-use crate::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
 
 impl From<MajoranaEncodingError> for PyErr {
     fn from(e: MajoranaEncodingError) -> PyErr {
@@ -59,6 +59,12 @@ impl From<FermionProductError> for PyErr {
         PyValueError::new_err(
             "Invalid FermionProduct: operators and indices must have equal length",
         )
+    }
+}
+
+impl From<MaxNTOError> for PyErr {
+    fn from(e: MaxNTOError) -> PyErr {
+        PyValueError::new_err(e.to_string())
     }
 }
 
@@ -918,5 +924,33 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         //     .expect("Should be able to convert QubitHamiltonian to PyDict."))
         // Ok(())
     }
+
+    /// Build the symplectic matrix of Majorana operators for the MaxNTO k-NTO encoding.
+    ///
+    /// Requires ``n_modes - 1`` to be odd.
+    ///
+    /// Args:
+    ///     n_modes: Number of fermionic modes.
+    ///
+    /// Returns:
+    ///     Tuple of ``(y_count, symplectic_matrix)`` where ``y_count`` is a 1D uint8 array
+    ///     of phase exponents (mod 4) of length ``2 * n_modes``, and ``symplectic_matrix``
+    ///     is a 2D boolean array of shape ``(2 * n_modes, 2 * n_modes)``.
+    ///
+    /// Example:
+    ///     ```python
+    ///     import ferrmion
+    ///     y_count, sympl = ferrmion.maxnto_symplectic_matrix(14)
+    ///     ```
+    #[pyfn(m)]
+    #[pyo3(name = "maxnto_symplectic_matrix")]
+    fn wrap_maxnto_symplectic_matrix(
+        py: Python<'_>,
+        n_modes: usize,
+    ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
+        let (y_count, output) = maxnto_symplectic_matrix(n_modes)?;
+        Ok((y_count.into_pyarray(py), output.into_pyarray(py)))
+    }
+
     Ok(())
 }

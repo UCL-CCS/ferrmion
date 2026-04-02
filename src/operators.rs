@@ -9,8 +9,8 @@
 //! - Sparse operators: Iterables containing product operator indices and coefficients.
 //! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
 //!
+use crate::encode::ternarytree::Edge;
 use crate::states::ZBasisState;
-use crate::ternarytree::Edge;
 use itertools::Itertools;
 use log::debug;
 use ndarray::{arr0, s, Dimension};
@@ -463,17 +463,12 @@ impl Mul<ZBasisState> for SymplecticOperatorView<'_> {
 
     fn mul(self, rhs: ZBasisState) -> Self::Output {
         let mut state = rhs.state;
-        let mut phase_factor = c64(-1., 0.).powi(
+        let phase_factor = c64(0., 1.).powi(
             self.z_block
                 .bitand(&state)
-                .fold(0, |acc, &n| if n { acc + 2 } else { acc })
+                .fold(self.ipower as i32, |acc, &n| if n { acc + 2 } else { acc })
                 % 4,
         );
-        let y_count: i32 =
-            self.x_block
-                .bitand(&self.z_block)
-                .fold(0, |acc, &n| if n { acc + 1 } else { acc });
-        phase_factor *= c64(0., 1.).powi(y_count);
 
         let coefficient = rhs.coefficient * phase_factor;
 

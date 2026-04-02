@@ -9,9 +9,9 @@ use crate::operators::{
 use crate::states::{FockState, ZBasisState};
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
-use log::debug;
+use log::{debug, error};
 use ndarray::Axis;
-use num_complex::{c64, Complex64, ComplexFloat};
+use num_complex::{c64, Complex64};
 use numpy::ndarray::{Array1, Array2};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -230,7 +230,7 @@ impl MajoranaEncoding {
                 .try_encode(FockState::new(occ, Complex64::ONE))
                 .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError)?;
             if state.is_none() {
-                debug!("Creation on mode {i} returns Null state.");
+                error!("Creation on mode {i} returns Null state.");
                 return Err(MajoranaEncodingError::InvalidVacuumStateError);
             }
         }
@@ -240,7 +240,7 @@ impl MajoranaEncoding {
             .try_encode(FockState::new(all_occ, Complex64::ONE))
             .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError)?;
         if state.is_none() {
-            debug!("Creation on all modes returns Null state.");
+            error!("Creation on all modes returns Null state.");
             return Err(MajoranaEncodingError::InvalidVacuumStateError);
         }
         Ok(())
@@ -358,6 +358,9 @@ impl Encode<FermionProduct> for MajoranaEncoding {
     }
 }
 
+/// Attempt to encode a [`FockState`] into a [`ZBasisState`] using the Majorana encoding.
+/// Only returns a result if the encoding is able to map a single [`FockState`] to a single [`ZBasisState`]
+/// so only number-preserving encodings will work.
 impl TryEncode<FockState> for MajoranaEncoding {
     type Output = Option<ZBasisState>;
 
@@ -396,14 +399,20 @@ impl TryEncode<FockState> for MajoranaEncoding {
                         zstate.state,
                     ));
                 }
-                let diff: num_complex::Complex64 =
-                    left.coefficient - Complex64::new(0., 1.) * right.coefficient;
-                debug!("Diff: {diff:?}");
-                debug!("Diff: {0:?}", Complex64::new(0., 0.));
-                if (diff.re() == 0.) & (diff.im() == 0.) {
+
+                if left.coefficient == Complex64::new(0., -1.) * right.coefficient {
+                    // Real-eigenvalued encodings
+                    maybe_state = Some(ZBasisState::new(left.state, left.coefficient));
+                } else if left.coefficient == Complex64::new(0., 1.) * right.coefficient {
+                    // Coeffs cancel, null state.
+                    error!("Fock state encoded to Null state in Z basis.");
                     maybe_state = None;
                 } else {
-                    maybe_state = Some(ZBasisState::new(left.state, diff));
+                    // Coeffs don't cancel, complex coefficients.
+                    maybe_state = Some(ZBasisState::new(
+                        left.state,
+                        left.coefficient - Complex64::new(0., -1.) * right.coefficient,
+                    ));
                 }
             };
         }

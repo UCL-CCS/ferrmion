@@ -435,11 +435,7 @@ impl TernaryTree {
                 self.qubit_index_of.clone(),
             ));
         }
-        let vacuum_state_fock: Array1<bool> = self
-            .y_parity_of
-            .iter()
-            .map(|v| !matches!(v, YParity::Even))
-            .collect();
+        let vacuum_state_fock: Array1<bool> = Array1::from_elem(self.n_nodes, false);
         let mut vacuum_state: ZBasisState = ZBasisState::new(vacuum_state_fock, Complex64::ONE);
 
         let mut x_block: Array2<bool> = Array2::from_elem((2 * self.n_nodes, self.n_nodes), false);
@@ -503,7 +499,10 @@ impl TernaryTree {
             z_block = padded_z;
             vacuum_state = padded_vacuum_state;
         }
-        Ok(MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block), vacuum_state)?)
+        Ok(MajoranaEncoding::new(
+            SymplecticMatrix::new(x_block, z_block),
+            vacuum_state,
+        )?)
     }
 }
 
@@ -1206,6 +1205,7 @@ mod tt_tests {
         #[test]
         fn test_jkmn_encodings_valid(n in 5usize..50) {
             let tt = TernaryTree::naive_jkmn(n);
+            debug!("{tt:#?}");
             prop_assert!(tt.build_encoding(n).is_ok());
         }
 

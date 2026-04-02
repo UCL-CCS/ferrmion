@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 340f677abfd8d2bec01b4261c3a5384df09f9c4980ee7633adbff98545a01326 # shrinks to hf_state = [false]
+cc 157c20d718ba786ced9c014463be8235b909e9aa978ed721c8af2c95ceabb13b # shrinks to hf_state = [false]
+cc ca50b546686482096491309f5991481b812856abdeaa3c102d587c832ad000d1 # shrinks to mode_op_map = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], n_electrons = 1
+cc 3daf74a469317e4cf887e0d5b13091c6a5e9e29291a245dbcff36da1eb96592c # shrinks to hf_state = [false]
+cc 83438937dc8f58a4e4b469f776e7c342d923da0b65b2d3387b8091a46fc8d9bb # shrinks to hf_state = [false]
+cc 50d84ee7bc984341dcaa9cb1cb6ad8654ea5970a98a3f0ce01f4f7c82f715b0a # shrinks to mode_op_map = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], n_electrons = 1

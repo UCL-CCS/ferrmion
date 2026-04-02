@@ -488,7 +488,7 @@ def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
     assert np.all(enumerated_qubit_hf_state == expected_emnumerated)
 
 @pytest.mark.skipif(symmer is None, reason="Dependency group test not installed.")
-@pytest.mark.parametrize("encoding", [JW, PE, BK])
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
 def test_naive_water_hf_energy_correct(encoding, water_data):
     fermionic_hf_state = np.array([True]*10 + [False] * 4, dtype=np.bool)
 

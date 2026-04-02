@@ -104,10 +104,38 @@ pub enum MajoranaEncodingError {
 }
 
 impl MajoranaEncoding {
-    /// Construct a new [`MajoranaEncoding`] from a symplectic matrix and vacuum state.
+    /// Construct a new [`MajoranaEncoding`] from a [`SymplecticMatrix`], automatically
+    /// determining the vacuum state via GF(2) constraint solving.
+    ///
+    /// Returns an error if the operators do not form a valid Majorana encoding or if
+    /// no consistent vacuum state can be determined.
+    ///
+    /// To supply the vacuum state explicitly, use [`Self::with_vacuum`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::encode::encoding::MajoranaEncoding;
+    /// use ferrmion::operators::SymplecticMatrix;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
+    ///
+    /// let tree = TernaryTree::naive_jordan_wigner(2);
+    /// let enc = MajoranaEncoding::new(tree.build_encoding(2).unwrap().operators).unwrap();
+    /// assert_eq!(enc.n_modes, 2);
+    /// assert_eq!(enc.n_qubits, 2);
+    /// ```
+    pub fn new(operators: SymplecticMatrix) -> Result<Self, MajoranaEncodingError> {
+        let vacuum_state = Self::determine_vacuum_state(&operators)?;
+        Self::with_vacuum(operators, vacuum_state)
+    }
+
+    /// Construct a [`MajoranaEncoding`] from a [`SymplecticMatrix`] and an explicit vacuum state.
     ///
     /// Returns an error if the operators do not form a valid Majorana encoding
-    /// (mismatched X/Z block shapes or odd number of operator rows).
+    /// (mismatched X/Z block shapes or odd number of operator rows), or if the
+    /// supplied vacuum state is not compatible.
+    ///
+    /// To have the vacuum state determined automatically, use [`Self::new`].
     ///
     /// # Examples
     ///
@@ -121,11 +149,11 @@ impl MajoranaEncoding {
     ///     arr2(&[[true, false], [true, false]]),
     ///     arr2(&[[false, false], [true, false]]),
     /// );
-    /// let enc = MajoranaEncoding::new(sym, ZBasisState::zeros(2)).unwrap();
+    /// let enc = MajoranaEncoding::with_vacuum(sym, ZBasisState::zeros(2)).unwrap();
     /// assert_eq!(enc.n_modes, 1);
     /// assert_eq!(enc.n_qubits, 2);
     /// ```
-    pub fn new(
+    pub fn with_vacuum(
         operators: SymplecticMatrix,
         vacuum_state: ZBasisState,
     ) -> Result<Self, MajoranaEncodingError> {
@@ -147,15 +175,6 @@ impl MajoranaEncoding {
         // Vacuum state
         encoding.validate_vacuum_state()?;
         Ok(encoding)
-    }
-
-    /// Construct a [`MajoranaEncoding`] from a [`SymplecticMatrix`], automatically
-    /// determining the vacuum state.
-    ///
-    /// Equivalent to calling [`Self::determine_vacuum_state`] then [`Self::new`].
-    pub fn from_operators(operators: SymplecticMatrix) -> Result<Self, MajoranaEncodingError> {
-        let vacuum_state = Self::determine_vacuum_state(&operators)?;
-        Self::new(operators, vacuum_state)
     }
 
     /// Automatically determine the vacuum state for the given Majorana operators.
@@ -380,7 +399,7 @@ impl MajoranaEncoding {
         let x_block: Array2<bool> = self.operators.x_block.select(Axis(0), &majorana_rows);
         let z_block: Array2<bool> = self.operators.z_block.select(Axis(0), &majorana_rows);
 
-        MajoranaEncoding::new(
+        MajoranaEncoding::with_vacuum(
             SymplecticMatrix {
                 x_block,
                 z_block,
@@ -578,7 +597,7 @@ mod owned_tests {
         let n_qubits = x_block.len_of(Axis(1));
         let sym = SymplecticMatrix::new(x_block, z_block);
         let encoding: MajoranaEncoding =
-            MajoranaEncoding::new(sym, ZBasisState::zeros(n_qubits)).unwrap();
+            MajoranaEncoding::with_vacuum(sym, ZBasisState::zeros(n_qubits)).unwrap();
 
         let mp = MajoranaProduct::new(vec![0], Complex64::new(1.0, 0.));
         let qham = encoding.encode(mp);
@@ -610,7 +629,7 @@ mod owned_tests {
         // γ₀=XII, γ₁=YII — 1-mode JW on 3 qubits; vacuum |000⟩ is valid
         let x_block = ndarray::arr2(&[[true, false, false], [true, false, false]]);
         let z_block = ndarray::arr2(&[[false, false, false], [true, false, false]]);
-        let encoding: MajoranaEncoding = MajoranaEncoding::new(
+        let encoding: MajoranaEncoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(3),
         )
@@ -629,7 +648,7 @@ mod owned_tests {
         // γ₀=XII, γ₁=YII — 1-mode JW (swapped) on 3 qubits; vacuum |000⟩ is valid
         let x_block = ndarray::arr2(&[[true, false, false], [true, false, false]]);
         let z_block = ndarray::arr2(&[[false, false, false], [true, false, false]]);
-        let encoding: MajoranaEncoding = MajoranaEncoding::new(
+        let encoding: MajoranaEncoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(3),
         )
@@ -659,7 +678,7 @@ mod owned_tests {
             [true, false, false],
             [true, true, false],
         ]);
-        let encoding: MajoranaEncoding = MajoranaEncoding::new(
+        let encoding: MajoranaEncoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(3),
         )
@@ -852,7 +871,7 @@ mod owned_tests {
     fn test_from_operators_matches_build_encoding() {
         let tree = TernaryTree::naive_jordan_wigner(3);
         let enc = tree.build_encoding(3).unwrap();
-        let enc2 = MajoranaEncoding::from_operators(enc.operators.clone()).unwrap();
+        let enc2 = MajoranaEncoding::new(enc.operators.clone()).unwrap();
         assert_eq!(enc.vacuum_state.state, enc2.vacuum_state.state);
     }
 
@@ -873,7 +892,7 @@ mod owned_tests {
         let x_block = ndarray::arr2(&[[true, false], [false, true], [true, true], [true, true]]);
         let z_block = ndarray::arr2(&[[false, true], [true, false], [true, true], [true, true]]);
         let sym = SymplecticMatrix::new(x_block, z_block);
-        assert!(MajoranaEncoding::new(sym, ZBasisState::zeros(2)).is_err());
+        assert!(MajoranaEncoding::with_vacuum(sym, ZBasisState::zeros(2)).is_err());
     }
 
     #[test]
@@ -881,7 +900,7 @@ mod owned_tests {
         let tree = TernaryTree::naive_jordan_wigner(2);
         let operators = tree.build_encoding(2).unwrap().operators;
         // Wrong number of qubits: encoding has 2 qubits but vacuum has 1.
-        let result = MajoranaEncoding::new(operators, ZBasisState::zeros(1));
+        let result = MajoranaEncoding::with_vacuum(operators, ZBasisState::zeros(1));
         assert!(matches!(
             result,
             Err(MajoranaEncodingError::InvalidVacuumStateError)

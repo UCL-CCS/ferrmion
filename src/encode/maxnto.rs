@@ -165,7 +165,7 @@ mod tests {
             let x_block = output.slice(s![.., ..n_modes]).to_owned();
             let z_block = output.slice(s![.., n_modes..]).to_owned();
             let sym = SymplecticMatrix::with_ipowers(x_block, z_block, ipowers);
-            let enc = MajoranaEncoding::from_operators(sym)
+            let enc = MajoranaEncoding::new(sym)
                 .unwrap_or_else(|e| panic!("MaxNTO n_modes={n_modes} failed: {e}"));
             assert_eq!(enc.n_modes, n_modes);
             assert_eq!(enc.n_qubits, n_modes);

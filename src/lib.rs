@@ -180,7 +180,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             Array1::from(vacuum_state.as_array().to_vec()),
             num_complex::Complex::ONE,
         );
-        let encoding = MajoranaEncoding::new(
+        let encoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
             vacuum,
         )?;
@@ -322,7 +322,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
-        let encoding = MajoranaEncoding::new(
+        let encoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::with_ipowers(x_block.clone(), z_block.clone(), ipowers),
             ZBasisState::zeros(n_qubits),
         )?;
@@ -336,7 +336,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
-        let encoding = MajoranaEncoding::new(
+        let encoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::new(x_block, z_block),
             ZBasisState::zeros(n_qubits),
         )?
@@ -570,7 +570,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
-        let encoding = MajoranaEncoding::new(
+        let encoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
             ZBasisState::zeros(n_qubits),
         )?;
@@ -628,7 +628,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
         let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
         let ipowers = ipowers.as_array().to_owned();
-        let encoding = MajoranaEncoding::new(
+        let encoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
             ZBasisState::zeros(n_qubits),
         )?;

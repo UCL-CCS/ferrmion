@@ -97,6 +97,8 @@ pub enum MajoranaEncodingError {
     InvalidOperatorsError,
     #[error("Vacuum state is not a valid vacuum for the given Majorana operators.")]
     InvalidVacuumStateError,
+    #[error("Cannot determine a valid vacuum state from the given Majorana operators.")]
+    NoVacuumStateError,
     #[error("Cannot apply operator 0.5({0:#?} - i{1:#?}) to state {2:?}.")]
     StateEncodingError((String, u8), (String, u8), Array1<bool>),
 }
@@ -145,6 +147,110 @@ impl MajoranaEncoding {
         // Vacuum state
         encoding.validate_vacuum_state()?;
         Ok(encoding)
+    }
+
+    /// Construct a [`MajoranaEncoding`] from a [`SymplecticMatrix`], automatically
+    /// determining the vacuum state.
+    ///
+    /// Equivalent to calling [`Self::determine_vacuum_state`] then [`Self::new`].
+    pub fn from_operators(operators: SymplecticMatrix) -> Result<Self, MajoranaEncodingError> {
+        let vacuum_state = Self::determine_vacuum_state(&operators)?;
+        Self::new(operators, vacuum_state)
+    }
+
+    /// Automatically determine the vacuum state for the given Majorana operators.
+    ///
+    /// Solves the GF(2) linear system arising from the requirement that each
+    /// creation operator `a†_i = 0.5(γ_{2i} − iγ_{2i+1})` produces a valid
+    /// (non-null) Z-basis state when applied to the vacuum.
+    ///
+    /// Returns [`MajoranaEncodingError::NoVacuumStateError`] if the operators
+    /// have no consistent Z-basis vacuum state (e.g. mismatched X-block rows or
+    /// contradictory phase constraints).
+    pub fn determine_vacuum_state(
+        operators: &SymplecticMatrix,
+    ) -> Result<ZBasisState, MajoranaEncodingError> {
+        let n_modes = operators.x_block.nrows() / 2;
+        let n_qubits = operators.x_block.ncols();
+
+        // Build GF(2) augmented matrix [A | b] of shape [n_modes, n_qubits + 1].
+        let mut mat: Vec<Vec<bool>> = Vec::with_capacity(n_modes);
+
+        for i in 0..n_modes {
+            let x0 = operators.x_block.row(2 * i);
+            let x1 = operators.x_block.row(2 * i + 1);
+
+            // Structural check: both γ operators for mode i must flip the same qubits,
+            // otherwise no Z-basis state can serve as the vacuum for this mode.
+            if x0 != x1 {
+                return Err(MajoranaEncodingError::NoVacuumStateError);
+            }
+
+            let z0 = operators.z_block.row(2 * i);
+            let z1 = operators.z_block.row(2 * i + 1);
+            let ip0 = operators.ipowers[2 * i] as i32;
+            let ip1 = operators.ipowers[2 * i + 1] as i32;
+
+            // Vacuum condition from try_encode:
+            //   γ_{2i}|v⟩ coefficient == -i * γ_{2i+1}|v⟩ coefficient
+            // => i^(ip0 + 2*<z0,v>) = -i * i^(ip1 + 2*<z1,v>)
+            // => 2*<(z0 XOR z1), v> ≡ ip1 − ip0 + 3  (mod 4)
+            let diff = (ip1 - ip0 + 3).rem_euclid(4) as u8;
+            // LHS is always even; if RHS is odd there is no solution.
+            if diff % 2 != 0 {
+                return Err(MajoranaEncodingError::NoVacuumStateError);
+            }
+            let b = (diff / 2) != 0;
+
+            let constraint: Vec<bool> = z0.iter().zip(z1.iter()).map(|(a, c)| a ^ c).collect();
+
+            // Zero constraint with b=true is immediately inconsistent (0 ≠ 1).
+            if constraint.iter().all(|&x| !x) && b {
+                return Err(MajoranaEncodingError::NoVacuumStateError);
+            }
+
+            let mut row = constraint;
+            row.push(b);
+            mat.push(row);
+        }
+
+        // Gaussian elimination over GF(2) on the augmented matrix.
+        let mut pivot_cols: Vec<Option<usize>> = vec![None; n_modes];
+        let mut pivot_row = 0usize;
+
+        for col in 0..n_qubits {
+            if let Some(swap) = (pivot_row..n_modes).find(|&r| mat[r][col]) {
+                mat.swap(swap, pivot_row);
+                pivot_cols[pivot_row] = Some(col);
+                let pivot_copy = mat[pivot_row].clone();
+                for r in 0..n_modes {
+                    if r != pivot_row && mat[r][col] {
+                        for c in 0..=n_qubits {
+                            mat[r][c] ^= pivot_copy[c];
+                        }
+                    }
+                }
+                pivot_row += 1;
+            }
+        }
+
+        // Check for inconsistent rows of the form [0...0 | 1].
+        for row in &mat {
+            if row[..n_qubits].iter().all(|&x| !x) && row[n_qubits] {
+                return Err(MajoranaEncodingError::NoVacuumStateError);
+            }
+        }
+
+        // Extract solution; free variables default to false (giving |000...0⟩ for
+        // all standard encodings: JW, Parity, Bravyi-Kitaev, JKMN).
+        let mut solution = vec![false; n_qubits];
+        for (r, &pivot_col) in pivot_cols.iter().enumerate() {
+            if let Some(col) = pivot_col {
+                solution[col] = mat[r][n_qubits];
+            }
+        }
+
+        Ok(ZBasisState::new(Array1::from(solution), Complex64::ONE))
     }
 
     fn validate_operator_shape(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
@@ -713,6 +819,52 @@ mod owned_tests {
             }
             prop_assert_eq!(enumerated_qubit_hf, Array1::from(expected));
         }
+    }
+
+    proptest! {
+        #[test]
+        fn test_all_standard_encodings_vacuum_is_all_false(
+            n in 1..=8usize,
+            encoding_idx in 0usize..4,
+        ) {
+            let tree = match encoding_idx {
+                0 => TernaryTree::naive_jordan_wigner(n),
+                1 => TernaryTree::naive_parity(n),
+                2 => TernaryTree::naive_bravyi_kitaev(n),
+                _ => TernaryTree::naive_jkmn(n),
+            };
+            let enc = tree.build_encoding(n).expect("valid encoding");
+            let vacuum = MajoranaEncoding::determine_vacuum_state(&enc.operators)
+                .expect("should determine vacuum state");
+            prop_assert!(vacuum.state.iter().all(|&b| !b));
+        }
+    }
+
+    #[test]
+    fn test_determine_vacuum_state_jw() {
+        let tree = TernaryTree::naive_jordan_wigner(2);
+        let enc = tree.build_encoding(2).unwrap();
+        let vacuum = MajoranaEncoding::determine_vacuum_state(&enc.operators).unwrap();
+        assert!(vacuum.state.iter().all(|&b| !b));
+    }
+
+    #[test]
+    fn test_from_operators_matches_build_encoding() {
+        let tree = TernaryTree::naive_jordan_wigner(3);
+        let enc = tree.build_encoding(3).unwrap();
+        let enc2 = MajoranaEncoding::from_operators(enc.operators.clone()).unwrap();
+        assert_eq!(enc.vacuum_state.state, enc2.vacuum_state.state);
+    }
+
+    #[test]
+    fn test_determine_vacuum_state_mismatched_x_blocks_rejected() {
+        let x_block = ndarray::arr2(&[[true, false], [false, true]]);
+        let z_block = ndarray::arr2(&[[false, false], [false, false]]);
+        let sym = SymplecticMatrix::new(x_block, z_block);
+        assert!(matches!(
+            MajoranaEncoding::determine_vacuum_state(&sym),
+            Err(MajoranaEncodingError::NoVacuumStateError)
+        ));
     }
 
     #[test]

@@ -499,7 +499,7 @@ impl TernaryTree {
             z_block = padded_z;
             vacuum_state = padded_vacuum_state;
         }
-        Ok(MajoranaEncoding::new(
+        Ok(MajoranaEncoding::with_vacuum(
             SymplecticMatrix::new(x_block, z_block),
             vacuum_state,
         )?)

@@ -483,6 +483,61 @@ impl Encode<FermionProduct> for MajoranaEncoding {
     }
 }
 
+impl MajoranaEncoding {
+    /// Decode a [`ZBasisState`] into the [`FockState`] that encodes to it.
+    ///
+    /// Applies the annihilation operators `aᵢ = 0.5*(γ_{2i} + i·γ_{2i+1})` in
+    /// reverse mode order, identifying occupied modes as those where the
+    /// annihilation coefficient is non-zero.  The returned [`FockState`] has
+    /// coefficient [`Complex64::ONE`] (global phase is ignored).
+    ///
+    /// Returns `None` if the input does not correspond to any valid [`FockState`]
+    /// in this encoding (the state cannot be wound back to the vacuum).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::encode::encoding::{MajoranaEncoding, TryEncode};
+    /// use ferrmion::states::FockState;
+    /// use ferrmion::encode::ternarytree::TernaryTree;
+    /// use ndarray::arr1;
+    /// use num_complex::Complex64;
+    ///
+    /// let tree = TernaryTree::naive_jordan_wigner(3);
+    /// let encoding = tree.build_encoding(3).unwrap();
+    /// let fock = FockState::new(arr1(&[true, false, true]), Complex64::ONE);
+    /// let encoded = encoding.try_encode(fock.clone()).unwrap().unwrap();
+    /// let decoded = encoding.decode_zbasis_state(encoded).unwrap();
+    /// assert_eq!(decoded.state, fock.state);
+    /// ```
+    pub fn decode_zbasis_state(&self, input: ZBasisState) -> Option<FockState> {
+        let mut current = input;
+        let mut occupation = vec![false; self.n_modes];
+
+        for i in (0..self.n_modes).rev() {
+            let left = self.operators.view_row(2 * i) * current.clone();
+            let right = self.operators.view_row(2 * i + 1) * current.clone();
+
+            if left.state != right.state {
+                return None;
+            }
+
+            let ann_coeff = left.coefficient + Complex64::new(0., 1.) * right.coefficient;
+
+            if ann_coeff.norm() > 1e-10 {
+                occupation[i] = true;
+                current = ZBasisState::new(left.state, ann_coeff);
+            }
+        }
+
+        if current.state != self.vacuum_state.state {
+            return None;
+        }
+
+        Some(FockState::new(Array1::from(occupation), Complex64::ONE))
+    }
+}
+
 /// Attempt to encode a [`FockState`] into a [`ZBasisState`] using the Majorana encoding.
 /// Only returns a result if the encoding is able to map a single [`FockState`] to a single [`ZBasisState`]
 /// so only number-preserving encodings will work.
@@ -905,5 +960,53 @@ mod owned_tests {
             result,
             Err(MajoranaEncodingError::InvalidVacuumStateError)
         ));
+    }
+
+    #[test]
+    fn test_decode_jw_roundtrip() {
+        let tree = TernaryTree::naive_jordan_wigner(4);
+        let encoding = tree.build_encoding(4).unwrap();
+        for bits in 0u8..16 {
+            let occ: Vec<bool> = (0..4).map(|i| (bits >> i) & 1 != 0).collect();
+            let fock = FockState::new(Array1::from(occ.clone()), Complex64::ONE);
+            let encoded = encoding.try_encode(fock).unwrap().unwrap();
+            let decoded = encoding.decode_zbasis_state(encoded).unwrap();
+            assert_eq!(decoded.state, Array1::from(occ));
+        }
+    }
+
+    #[test]
+    fn test_decode_parity_roundtrip() {
+        let tree = TernaryTree::naive_parity(4);
+        let encoding = tree.build_encoding(4).unwrap();
+        for bits in 0u8..16 {
+            let occ: Vec<bool> = (0..4).map(|i| (bits >> i) & 1 != 0).collect();
+            let fock = FockState::new(Array1::from(occ.clone()), Complex64::ONE);
+            let encoded = encoding.try_encode(fock).unwrap().unwrap();
+            let decoded = encoding.decode_zbasis_state(encoded).unwrap();
+            assert_eq!(decoded.state, Array1::from(occ));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_decode_roundtrip_all_standard_encodings(
+            hf_state in proptest::collection::vec(proptest::bool::ANY, 1..8usize),
+            encoding_idx in 0usize..4,
+        ) {
+            let n = hf_state.len();
+            let tree = match encoding_idx {
+                0 => TernaryTree::naive_jordan_wigner(n),
+                1 => TernaryTree::naive_parity(n),
+                2 => TernaryTree::naive_bravyi_kitaev(n),
+                _ => TernaryTree::naive_jkmn(n),
+            };
+            let encoding = tree.build_encoding(n).expect("valid encoding");
+            let fock = FockState::new(Array1::from(hf_state.clone()), Complex64::ONE);
+            let encoded = encoding.try_encode(fock).unwrap().unwrap();
+            let decoded = encoding.decode_zbasis_state(encoded).unwrap();
+            let expected: Array1<bool> = hf_state.into_iter().collect();
+            prop_assert_eq!(decoded.state, expected);
+        }
     }
 }

@@ -216,7 +216,7 @@ impl MajoranaEncoding {
             // => 2*<(z0 XOR z1), v> ≡ ip1 − ip0 + 3  (mod 4)
             let diff = (ip1 - ip0 + 3).rem_euclid(4) as u8;
             // LHS is always even; if RHS is odd there is no solution.
-            if diff % 2 != 0 {
+            if !diff.is_multiple_of(2) {
                 return Err(MajoranaEncodingError::NoVacuumStateError);
             }
             let b = (diff / 2) != 0;
@@ -242,10 +242,10 @@ impl MajoranaEncoding {
                 mat.swap(swap, pivot_row);
                 pivot_cols[pivot_row] = Some(col);
                 let pivot_copy = mat[pivot_row].clone();
-                for r in 0..n_modes {
-                    if r != pivot_row && mat[r][col] {
+                for (r, row) in mat.iter_mut().enumerate() {
+                    if r != pivot_row && row[col] {
                         for c in 0..=n_qubits {
-                            mat[r][c] ^= pivot_copy[c];
+                            row[c] ^= pivot_copy[c];
                         }
                     }
                 }
@@ -705,7 +705,7 @@ mod owned_tests {
         // γ₀²=I and γ₁²=I both contribute III with coeff 1 → total 2
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
         // γ₂γ₃ gives IZI with coeff i, γ₃γ₂ gives IZI with coeff -i → cancel to zero (filtered out)
-        assert!(qham.get("IZI").is_none());
+        assert!(!qham.contains_key("IZI"));
     }
 
     #[test]

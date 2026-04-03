@@ -32,7 +32,6 @@ extensions = ["sphinx.ext.autodoc",
     # "sphinx.ext.githubpages",
     "sphinx.ext.napoleon",
     "myst_nb",
-    "pydata_sphinx_theme",
     "myst_sphinx_gallery",
     ]
 

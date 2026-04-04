@@ -29,7 +29,7 @@ pub mod hamiltonians;
 use crate::hamiltonians::QubitHamiltonian;
 pub mod encode;
 use crate::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
-use crate::states::{FockState, State, ZBasisState};
+use crate::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 pub mod optimise;
 use crate::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
 use crate::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
@@ -199,6 +199,73 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             Ok(Some(state)) => Ok(PyArray1::from_owned_array(py, state.state)),
             Err(e) => Err(PyErr::from(e)),
         }
+    }
+
+    /// Decode an ensemble of Z-basis states into fermionic occupation vectors.
+    ///
+    /// Args:
+    ///     states: 2D boolean array of shape ``(n_states, n_qubits)``.  Each row
+    ///         is a Z-basis computational-basis state.
+    ///     ipowers: 1D uint8 array of length ``2 * n_modes`` — phase exponents for
+    ///         each Majorana operator row.
+    ///     symplectic_matrix: 2D boolean array of shape
+    ///         ``(2 * n_modes, 2 * n_qubits)``.  Left half is the X-block, right
+    ///         half is the Z-block (same layout as all other functions here).
+    ///     vacuum_state: 1D boolean array of length ``n_qubits``.
+    ///
+    /// Returns:
+    ///     2D boolean array of shape ``(n_states, n_modes)``.  Row ``j`` is the
+    ///     fermionic occupation vector decoded from ``states[j]``.
+    ///
+    /// Raises:
+    ///     ValueError: if any state cannot be decoded (i.e., does not correspond
+    ///         to a valid encoded Fock state for this encoding).
+    #[pyfn(m)]
+    #[pyo3(name = "decode")]
+    fn wrap_decode<'py>(
+        py: Python<'py>,
+        states: PyReadonlyArray2<bool>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectic_matrix: PyReadonlyArray2<bool>,
+        vacuum_state: PyReadonlyArray1<bool>,
+    ) -> PyResult<Bound<'py, PyArray2<bool>>> {
+        let states = states.as_array().to_owned();
+        let n_states = states.nrows();
+        let symplectic_matrix = symplectic_matrix.as_array();
+        let n_qubits = symplectic_matrix.ncols() / 2;
+        let x_block = symplectic_matrix
+            .slice(ndarray::s![.., ..n_qubits])
+            .to_owned();
+        let z_block = symplectic_matrix
+            .slice(ndarray::s![.., n_qubits..])
+            .to_owned();
+        let ipowers = ipowers.as_array().to_owned();
+        let vacuum = ZBasisState::new(
+            Array1::from(vacuum_state.as_array().to_vec()),
+            num_complex::Complex::ONE,
+        );
+        let encoding = MajoranaEncoding::with_vacuum(
+            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
+            vacuum,
+        )?;
+        let ensemble = ZBasisEnsemble::new(
+            states,
+            Array1::from_elem(n_states, num_complex::Complex::ONE),
+        );
+        let results = encoding.decode_zbasis_ensemble(&ensemble);
+        let n_modes = encoding.n_modes;
+        let mut occupations = numpy::ndarray::Array2::<bool>::default((n_states, n_modes));
+        for (j, result) in results.into_iter().enumerate() {
+            match result {
+                Some(fock) => occupations.row_mut(j).assign(&fock.state),
+                None => {
+                    return Err(PyValueError::new_err(format!(
+                        "state at index {j} could not be decoded"
+                    )))
+                }
+            }
+        }
+        Ok(PyArray2::from_owned_array(py, occupations))
     }
 
     /// Convert a symplectic operator representation to a Pauli string.

@@ -4,6 +4,7 @@ repos:
       - id: fmt
       - id: cargo-check
       - id: clippy
+        args: ["--", "-W", "clippy::all", "-W", "clippy::pedantic", "-W", "clippy::nursery", "-W", "clippy::restriction"]
     rev: v1.0
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

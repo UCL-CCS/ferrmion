@@ -1121,20 +1121,27 @@ mod owned_tests {
 
     #[test]
     fn test_decode_ensemble_matches_single_decode() {
-        let tree = TernaryTree::naive_jordan_wigner(4);
-        let encoding = tree.build_encoding(4).unwrap();
-        let encoded_states: Vec<ZBasisState> = (0u8..16)
-            .map(|bits| {
-                let occ: Vec<bool> = (0..4).map(|i| (bits >> i) & 1 != 0).collect();
-                let fock = FockState::new(Array1::from(occ), Complex64::ONE);
-                encoding.try_encode(fock).unwrap().unwrap()
-            })
-            .collect();
-        let ensemble = ZBasisEnsemble::from(encoded_states.clone());
-        let batch_results = encoding.decode_zbasis_ensemble(&ensemble);
-        for (single_state, batch_result) in encoded_states.into_iter().zip(batch_results) {
-            let single_result = encoding.decode_zbasis_state(single_state);
-            assert_eq!(single_result.map(|s| s.state), batch_result.map(|s| s.state));
+        let trees = [
+            TernaryTree::naive_jordan_wigner(4),
+            TernaryTree::naive_parity(4),
+            TernaryTree::naive_bravyi_kitaev(4),
+            TernaryTree::naive_jkmn(4),
+        ];
+        for tree in trees {
+            let encoding = tree.build_encoding(4).unwrap();
+            let encoded_states: Vec<ZBasisState> = (0u8..16)
+                .map(|bits| {
+                    let occ: Vec<bool> = (0..4).map(|i| (bits >> i) & 1 != 0).collect();
+                    let fock = FockState::new(Array1::from(occ), Complex64::ONE);
+                    encoding.try_encode(fock).unwrap().unwrap()
+                })
+                .collect();
+            let ensemble = ZBasisEnsemble::from(encoded_states.clone());
+            let batch_results = encoding.decode_zbasis_ensemble(&ensemble);
+            for (single_state, batch_result) in encoded_states.into_iter().zip(batch_results) {
+                let single_result = encoding.decode_zbasis_state(single_state);
+                assert_eq!(single_result.map(|s| s.state), batch_result.map(|s| s.state));
+            }
         }
     }
 

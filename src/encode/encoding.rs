@@ -600,10 +600,8 @@ impl MajoranaEncoding {
                 .map(|j| {
                     let row = current_states.row(j);
                     let coeff = current_coeffs[j];
-                    let par_l =
-                        row.iter().zip(z_l.iter()).filter(|(&a, &b)| a && b).count() % 2;
-                    let par_r =
-                        row.iter().zip(z_r.iter()).filter(|(&a, &b)| a && b).count() % 2;
+                    let par_l = row.iter().zip(z_l.iter()).filter(|(&a, &b)| a && b).count() % 2;
+                    let par_r = row.iter().zip(z_r.iter()).filter(|(&a, &b)| a && b).count() % 2;
                     let lc = coeff * phase_l[par_l];
                     let rc = coeff * phase_r[par_r];
                     lc + Complex64::new(0., 1.) * rc
@@ -611,8 +609,10 @@ impl MajoranaEncoding {
                 .collect();
 
             // Determine which states have mode i occupied.
-            let occupied: Vec<bool> =
-                ann_coeffs.iter().map(|c: &Complex64| c.norm() > 1e-10).collect();
+            let occupied: Vec<bool> = ann_coeffs
+                .iter()
+                .map(|c: &Complex64| c.norm() > 1e-10)
+                .collect();
 
             // Update occupations and accumulated coefficients.
             for (j, (&occ, &ann)) in occupied.iter().zip(ann_coeffs.iter()).enumerate() {
@@ -638,7 +638,10 @@ impl MajoranaEncoding {
         (0..n_states)
             .map(|j| {
                 if current_states.row(j) == vacuum.view() {
-                    Some(FockState::new(occupations.row(j).to_owned(), Complex64::ONE))
+                    Some(FockState::new(
+                        occupations.row(j).to_owned(),
+                        Complex64::ONE,
+                    ))
                 } else {
                     None
                 }
@@ -1140,7 +1143,10 @@ mod owned_tests {
             let batch_results = encoding.decode_zbasis_ensemble(&ensemble);
             for (single_state, batch_result) in encoded_states.into_iter().zip(batch_results) {
                 let single_result = encoding.decode_zbasis_state(single_state);
-                assert_eq!(single_result.map(|s| s.state), batch_result.map(|s| s.state));
+                assert_eq!(
+                    single_result.map(|s| s.state),
+                    batch_result.map(|s| s.state)
+                );
             }
         }
     }

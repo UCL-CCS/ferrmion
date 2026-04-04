@@ -6,13 +6,12 @@ use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
     FermionProduct, MajoranaProduct, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
 };
-use crate::states::{FockState, ZBasisState};
+use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
 use crate::utils::{self, icount_to_sign};
 use ahash::RandomState;
 use log::{debug, error};
-use ndarray::Axis;
+use ndarray::{Array1, Array2, Axis, Zip};
 use num_complex::{c64, Complex64};
-use numpy::ndarray::{Array1, Array2};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -536,6 +535,119 @@ impl MajoranaEncoding {
 
         Some(FockState::new(Array1::from(occupation), Complex64::ONE))
     }
+
+    /// Decode all states in a [`ZBasisEnsemble`] into [`FockState`]s.
+    ///
+    /// Applies each fermionic annihilation operator across all rows of the ensemble
+    /// before advancing to the next mode, avoiding per-state array clones.
+    /// Input coefficients on the ensemble states are ignored; all are treated as
+    /// [`Complex64::ONE`].
+    ///
+    /// Returns `None` for any row that does not correspond to a valid encoded state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion::encode::encoding::{MajoranaEncoding, TryEncode};
+    /// use ferrmion::states::{FockState, ZBasisEnsemble};
+    /// use ferrmion::encode::ternarytree::TernaryTree;
+    /// use ndarray::Array1;
+    /// use num_complex::Complex64;
+    ///
+    /// let tree = TernaryTree::naive_jordan_wigner(3);
+    /// let encoding = tree.build_encoding(3).unwrap();
+    /// let fock = FockState::new(Array1::from(vec![true, false, true]), Complex64::ONE);
+    /// let encoded = encoding.try_encode(fock.clone()).unwrap().unwrap();
+    /// let ensemble = ZBasisEnsemble::from(vec![encoded]);
+    /// let decoded = encoding.decode_zbasis_ensemble(&ensemble);
+    /// assert_eq!(decoded[0].as_ref().unwrap().state, fock.state);
+    /// ```
+    pub fn decode_zbasis_ensemble(&self, ensemble: &ZBasisEnsemble) -> Vec<Option<FockState>> {
+        let n_states = ensemble.states.nrows();
+
+        // Working state matrix mutated in-place; coefficients start at ONE (input ignored).
+        let mut current_states = ensemble.states.clone();
+        let mut current_coeffs = Array1::from_elem(n_states, Complex64::ONE);
+        let mut occupations = Array2::<bool>::default((n_states, self.n_modes));
+
+        for i in (0..self.n_modes).rev() {
+            let x_l = self.operators.x_block.row(2 * i);
+            let z_l = self.operators.z_block.row(2 * i);
+            let ip_l = self.operators.ipowers[2 * i];
+            let x_r = self.operators.x_block.row(2 * i + 1);
+            let z_r = self.operators.z_block.row(2 * i + 1);
+            let ip_r = self.operators.ipowers[2 * i + 1];
+
+            // Validity: left and right new states must agree; this is an encoding
+            // property (x_l == x_r), not per-state.
+            if x_l != x_r {
+                return vec![None; n_states];
+            }
+
+            // Precompute the two possible phases for each operator (parity even/odd).
+            let phase_l = [
+                c64(0., 1.).powi(ip_l as i32 % 4),
+                c64(0., 1.).powi((ip_l as i32 + 2) % 4),
+            ];
+            let phase_r = [
+                c64(0., 1.).powi(ip_r as i32 % 4),
+                c64(0., 1.).powi((ip_r as i32 + 2) % 4),
+            ];
+
+            // Compute annihilation coefficients for all states in parallel.
+            let ann_coeffs: Vec<Complex64> = (0..n_states)
+                .into_par_iter()
+                .map(|j| {
+                    let row = current_states.row(j);
+                    let coeff = current_coeffs[j];
+                    let par_l = row.iter().zip(z_l.iter()).filter(|(&a, &b)| a && b).count() % 2;
+                    let par_r = row.iter().zip(z_r.iter()).filter(|(&a, &b)| a && b).count() % 2;
+                    let lc = coeff * phase_l[par_l];
+                    let rc = coeff * phase_r[par_r];
+                    lc + Complex64::new(0., 1.) * rc
+                })
+                .collect();
+
+            // Determine which states have mode i occupied.
+            let occupied: Vec<bool> = ann_coeffs
+                .iter()
+                .map(|c: &Complex64| c.norm() > 1e-10)
+                .collect();
+
+            // Update occupations and accumulated coefficients.
+            for (j, (&occ, &ann)) in occupied.iter().zip(ann_coeffs.iter()).enumerate() {
+                if occ {
+                    occupations[[j, i]] = true;
+                    current_coeffs[j] = ann;
+                }
+            }
+
+            // In-place state update for occupied rows: XOR each row with x_l.
+            let occupied_arr = Array1::from(occupied);
+            Zip::from(current_states.rows_mut())
+                .and(&occupied_arr)
+                .for_each(|mut row, &occ| {
+                    if occ {
+                        row.zip_mut_with(&x_l, |a, &b| *a ^= b);
+                    }
+                });
+        }
+
+        // Validate final state matches encoding vacuum.
+        let vacuum = &self.vacuum_state.state;
+        (0..n_states)
+            .map(|j| {
+                if current_states.row(j) == vacuum.view() {
+                    Some(FockState::new(
+                        occupations.row(j).to_owned(),
+                        Complex64::ONE,
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 /// Attempt to encode a [`FockState`] into a [`ZBasisState`] using the Majorana encoding.
@@ -606,7 +718,7 @@ mod owned_tests {
 
     use crate::encode::ternarytree::TernaryTree;
     use crate::operators::LadderOperator;
-    use crate::states::State;
+    use crate::states::{State, ZBasisEnsemble};
     use ndarray::{arr1, Array1};
     use num_complex::c64;
     use numpy::Complex64;
@@ -1007,6 +1119,73 @@ mod owned_tests {
             let decoded = encoding.decode_zbasis_state(encoded).unwrap();
             let expected: Array1<bool> = hf_state.into_iter().collect();
             prop_assert_eq!(decoded.state, expected);
+        }
+    }
+
+    #[test]
+    fn test_decode_ensemble_matches_single_decode() {
+        let trees = [
+            TernaryTree::naive_jordan_wigner(4),
+            TernaryTree::naive_parity(4),
+            TernaryTree::naive_bravyi_kitaev(4),
+            TernaryTree::naive_jkmn(4),
+        ];
+        for tree in trees {
+            let encoding = tree.build_encoding(4).unwrap();
+            let encoded_states: Vec<ZBasisState> = (0u8..16)
+                .map(|bits| {
+                    let occ: Vec<bool> = (0..4).map(|i| (bits >> i) & 1 != 0).collect();
+                    let fock = FockState::new(Array1::from(occ), Complex64::ONE);
+                    encoding.try_encode(fock).unwrap().unwrap()
+                })
+                .collect();
+            let ensemble = ZBasisEnsemble::from(encoded_states.clone());
+            let batch_results = encoding.decode_zbasis_ensemble(&ensemble);
+            for (single_state, batch_result) in encoded_states.into_iter().zip(batch_results) {
+                let single_result = encoding.decode_zbasis_state(single_state);
+                assert_eq!(
+                    single_result.map(|s| s.state),
+                    batch_result.map(|s| s.state)
+                );
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_decode_ensemble_matches_single_decode_all_encodings(
+            hf_states in proptest::collection::vec(
+                proptest::collection::vec(proptest::bool::ANY, 1..8usize),
+                1..20usize,
+            ),
+            encoding_idx in 0usize..4,
+        ) {
+            let n = hf_states[0].len();
+            // Filter to same length so they form a valid ensemble matrix.
+            let hf_states: Vec<Vec<bool>> = hf_states.into_iter().filter(|s| s.len() == n).collect();
+            prop_assume!(!hf_states.is_empty());
+            let tree = match encoding_idx {
+                0 => TernaryTree::naive_jordan_wigner(n),
+                1 => TernaryTree::naive_parity(n),
+                2 => TernaryTree::naive_bravyi_kitaev(n),
+                _ => TernaryTree::naive_jkmn(n),
+            };
+            let encoding = tree.build_encoding(n).expect("valid encoding");
+            let encoded_states: Vec<ZBasisState> = hf_states.iter()
+                .map(|occ| {
+                    let fock = FockState::new(Array1::from(occ.clone()), Complex64::ONE);
+                    encoding.try_encode(fock).unwrap().unwrap()
+                })
+                .collect();
+            let ensemble = ZBasisEnsemble::from(encoded_states.clone());
+            let batch_results = encoding.decode_zbasis_ensemble(&ensemble);
+            for (single_input, batch_result) in encoded_states.into_iter().zip(batch_results) {
+                let single_result = encoding.decode_zbasis_state(single_input);
+                prop_assert_eq!(
+                    single_result.map(|s| s.state),
+                    batch_result.map(|s| s.state)
+                );
+            }
         }
     }
 }

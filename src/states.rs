@@ -1,6 +1,6 @@
 //! Structs representing quantum states.
 
-use ndarray::{s, Array1};
+use ndarray::{s, Array1, Array2};
 use num_complex::Complex64;
 use std::ops::Mul;
 use thiserror::Error;
@@ -225,6 +225,60 @@ mod zbasis_tests {
         reindexed_state.reindex(&[2, 0, 1]);
         assert_eq!(reindexed_state.state, zbasis_state.state);
         assert_eq!(reindexed_state.coefficient, zbasis_state.coefficient);
+    }
+}
+
+/// A collection of quantum states in the computational (Pauli Z) basis.
+///
+/// Holds `n` states as rows of a boolean matrix, paired with complex coefficients.
+/// Intended for efficient batch decoding via [`crate::encode::encoding::MajoranaEncoding::decode_zbasis_ensemble`].
+#[derive(Debug, Clone)]
+pub struct ZBasisEnsemble {
+    /// Each row is a Z-basis state (qubit occupation vector).
+    pub states: Array2<bool>,
+    /// Complex coefficient for each state.
+    pub coefficients: Array1<Complex64>,
+}
+
+impl ZBasisEnsemble {
+    /// Construct a [`ZBasisEnsemble`] from a states matrix and coefficient vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `states.nrows() != coefficients.len()`.
+    pub fn new(states: Array2<bool>, coefficients: Array1<Complex64>) -> Self {
+        assert_eq!(
+            states.nrows(),
+            coefficients.len(),
+            "states and coefficients must have the same length"
+        );
+        Self {
+            states,
+            coefficients,
+        }
+    }
+}
+
+impl From<Vec<ZBasisState>> for ZBasisEnsemble {
+    fn from(zbasis_states: Vec<ZBasisState>) -> Self {
+        let n = zbasis_states.len();
+        if n == 0 {
+            return Self {
+                states: Array2::default((0, 0)),
+                coefficients: Array1::default(0),
+            };
+        }
+        let n_qubits = zbasis_states[0].state.len();
+        let mut states = Array2::default((n, n_qubits));
+        let mut coefficients = Array1::zeros(n);
+        for (i, s) in zbasis_states.iter().enumerate() {
+            states.row_mut(i).assign(&s.state);
+            coefficients[i] = s.coefficient;
+        }
+        Self {
+            states,
+            coefficients,
+        }
     }
 }
 

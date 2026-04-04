@@ -9,6 +9,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from ferrmion.core import (
     anneal_enumerations,
+    decode,
     encode,
     encode_fermion_product,
 )
@@ -234,6 +235,30 @@ class FermionQubitEncoding(ABC):
             signatures=signatures,
             coeffs=coeffs,
             constant_energy=fham.constant_energy,
+        )
+
+    def decode(self, states: NDArray[np.bool]) -> NDArray[np.bool]:
+        """Decode Z-basis states into fermionic occupation vectors.
+
+        Decodes all rows of ``states`` in a single batch call to the Rust
+        implementation, which processes each annihilation operator across every
+        row before advancing to the next mode.
+
+        Args:
+            states: 2D boolean array of shape ``(n_states, n_qubits)``.
+
+        Returns:
+            2D boolean array of shape ``(n_states, n_modes)``.
+
+        Raises:
+            ValueError: if any state cannot be decoded for this encoding.
+        """
+        ipow, sym = self._build_symplectic_matrix()
+        return decode(
+            states=states,
+            ipowers=ipow,
+            symplectic_matrix=sym,
+            vacuum_state=self.vacuum_state.astype(bool),
         )
 
     @staticmethod

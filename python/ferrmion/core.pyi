@@ -91,3 +91,9 @@ def fermionic_to_sparse_majorana(
     coeffs: list[np.ndarray],
     constant_energy: float,
 ) -> dict: ...
+def decode(
+    states: npt.NDArray[np.bool],
+    ipowers: npt.NDArray[np.uint8],
+    symplectic_matrix: npt.NDArray[np.bool],
+    vacuum_state: npt.NDArray[np.bool],
+) -> npt.NDArray[np.bool]: ...

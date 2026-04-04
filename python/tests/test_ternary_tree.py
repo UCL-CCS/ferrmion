@@ -570,6 +570,18 @@ def test_benchmark_hartree_fock_state(benchmark, encoding,n_modes):
     benchmark(lambda: tree.hartree_fock_state(fermionic_hf_state=fermionic_hf_state))
 
 
+@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize("n_modes", [32, 64, 128])
+def test_benchmark_decode_zbasis_ensemble(benchmark, encoding, n_modes):
+    fermionic_hf_state = np.ones(n_modes, dtype=np.bool)
+    tree: TernaryTree = encoding(n_modes)
+    tree.enumeration_scheme = tree.default_enumeration_scheme()
+    qubit_state = tree.hartree_fock_state(fermionic_hf_state=fermionic_hf_state)
+    # Build an ensemble of 100 identical states.
+    states = np.tile(qubit_state, (100, 1))
+    benchmark(lambda: tree.decode(states))
+
+
 @st.composite
 def tt_flatpack_strategy(draw, n_nodes_strategy):
     n_nodes = draw(n_nodes_strategy)

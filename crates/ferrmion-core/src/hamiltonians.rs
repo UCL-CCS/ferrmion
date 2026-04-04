@@ -1,6 +1,6 @@
 use crate::operators::{CoefficientPauliWeight, PauliWeight};
 use ahash::RandomState;
-use numpy::Complex64;
+use num_complex::Complex64;
 use std::collections::HashMap;
 
 /// A qubit Hamiltonian represented as a sparse mapping from Pauli strings to complex coefficients.
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use ferrmion::hamiltonians::QubitHamiltonian;
+/// use ferrmion_core::hamiltonians::QubitHamiltonian;
 /// use num_complex::Complex64;
 ///
 /// let mut ham = QubitHamiltonian::default();

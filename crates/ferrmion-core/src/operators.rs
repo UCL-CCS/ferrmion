@@ -15,10 +15,10 @@ use itertools::Itertools;
 use log::debug;
 use ndarray::{arr0, s, Dimension};
 use num_complex::{c64, ComplexFloat};
-use numpy::ndarray::{
+use ndarray::{
     arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis, IntoDimension, Zip,
 };
-use numpy::Complex64;
+use num_complex::Complex64;
 use std::collections::HashMap;
 use std::iter::repeat_n;
 use std::ops::{BitAnd, BitXor, Mul};
@@ -199,7 +199,7 @@ impl SymplecticOperator {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::SymplecticOperator;
+    /// use ferrmion_core::operators::SymplecticOperator;
     /// use ndarray::arr1;
     ///
     /// let op = SymplecticOperator::new(0, arr1(&[true, false]), arr1(&[false, true]));
@@ -218,7 +218,7 @@ impl SymplecticOperator {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::{SymplecticOperator, PauliWeight};
+    /// use ferrmion_core::operators::{SymplecticOperator, PauliWeight};
     ///
     /// let id = SymplecticOperator::identity(3);
     /// assert_eq!(id.pauli_weight(), 0);
@@ -260,7 +260,7 @@ impl SymplecticOperator {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::SymplecticOperator;
+    /// use ferrmion_core::operators::SymplecticOperator;
     /// use ndarray::arr1;
     ///
     /// let op = SymplecticOperator::new(0, arr1(&[true, false]), arr1(&[false, true]));
@@ -332,7 +332,7 @@ impl SymplecticOperator {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::SymplecticOperator;
+    /// use ferrmion_core::operators::SymplecticOperator;
     /// use ndarray::arr1;
     ///
     /// let mut op = SymplecticOperator::identity(2);
@@ -396,7 +396,7 @@ impl Mul<ZBasisState> for SymplecticOperator {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::operators::SymplecticOperatorView;
+/// use ferrmion_core::operators::SymplecticOperatorView;
 /// use ndarray::arr1;
 ///
 /// let x = arr1(&[true, false]);
@@ -517,7 +517,7 @@ impl Mul<&mut ZBasisState> for SymplecticOperatorView<'_> {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::operators::{SymplecticMatrix, PauliWeight};
+/// use ferrmion_core::operators::{SymplecticMatrix, PauliWeight};
 /// use ndarray::arr2;
 ///
 /// let x = arr2(&[[true, false], [false, true]]);
@@ -538,7 +538,7 @@ impl SymplecticMatrix {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::SymplecticMatrix;
+    /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ndarray::arr2;
     ///
     /// let mat = SymplecticMatrix::new(
@@ -569,7 +569,7 @@ impl SymplecticMatrix {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::SymplecticMatrix;
+    /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ndarray::{arr1, arr2};
     ///
     /// let mat = SymplecticMatrix::with_ipowers(
@@ -592,7 +592,7 @@ impl SymplecticMatrix {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::{SymplecticMatrix, PauliWeight};
+    /// use ferrmion_core::operators::{SymplecticMatrix, PauliWeight};
     ///
     /// let id = SymplecticMatrix::identity(4, 3);
     /// assert_eq!(id.pauli_weight(), 0);
@@ -610,7 +610,7 @@ impl SymplecticMatrix {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::SymplecticMatrix;
+    /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ndarray::arr2;
     ///
     /// let mat = SymplecticMatrix::new(
@@ -742,7 +742,7 @@ impl FromStr for LadderOperator {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::LadderOperator;
+    /// use ferrmion_core::operators::LadderOperator;
     /// use std::str::FromStr;
     ///
     /// assert_eq!(LadderOperator::from_str("+").unwrap(), LadderOperator::Creation);
@@ -771,7 +771,7 @@ impl LadderOperator {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::LadderOperator;
+    /// use ferrmion_core::operators::LadderOperator;
     /// use num_complex::Complex64;
     ///
     /// let coeffs = LadderOperator::Creation.majorana_coefficients();
@@ -841,7 +841,7 @@ Fermion
 /// # Example
 ///
 /// ```
-/// use ferrmion::operators::{FermionProduct, LadderOperator};
+/// use ferrmion_core::operators::{FermionProduct, LadderOperator};
 /// use num_complex::Complex64;
 ///
 /// let fp = FermionProduct::new(
@@ -989,7 +989,7 @@ impl FermionSparse {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::{FermionSparse, LadderOperator};
+    /// use ferrmion_core::operators::{FermionSparse, LadderOperator};
     /// use ndarray::{arr1, arr2};
     /// use num_complex::Complex64;
     ///
@@ -1106,7 +1106,7 @@ mod fermion_tests {
 /// # Example
 ///
 /// ```
-/// use ferrmion::operators::MajoranaProduct;
+/// use ferrmion_core::operators::MajoranaProduct;
 /// use num_complex::Complex64;
 ///
 /// let mp = MajoranaProduct::new(vec![0, 1, 2, 3], Complex64::new(0.5, 0.5));
@@ -1219,9 +1219,9 @@ impl MajoranaHashMap {
 /// </div>
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparse {
-    pub(super) indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
-    pub(super) coefficients: Vec<Complex64>,
-    pub(super) constant: f64,
+    pub indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+    pub coefficients: Vec<Complex64>,
+    pub constant: f64,
 }
 
 /// Error type for failed construction of [`MajoranaSparse`]
@@ -1236,7 +1236,7 @@ impl MajoranaSparse {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::operators::MajoranaSparse;
+    /// use ferrmion_core::operators::MajoranaSparse;
     /// use num_complex::Complex64;
     /// use tinyvec::array_vec;
     ///

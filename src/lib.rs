@@ -20,8 +20,9 @@ use ferrmion_core::optimise::topphatt;
 use ferrmion_core::optimise::ToppHattError;
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ferrmion_core::utils::*;
+use ndarray::s;
 use log::debug;
-use numpy::ndarray::Array1;
+use numpy::ndarray::{Array1, Array2};
 use numpy::{
     Complex64, IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArrayDyn,
@@ -647,6 +648,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
         symplectics: PyReadonlyArray2<bool>,
+        vacuum_state: PyReadonlyArray1<bool>,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
@@ -660,6 +662,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let symplectics = symplectics.as_array();
         let n_qubits = symplectics.ncols() / 2;
         let n_modes = symplectics.nrows() / 2;
+        let vacuum_state = vacuum_state.as_array();
 
         if n_qubits < n_modes {
             return Err(CoreError::Value("n_qubits must be >= n_modes".to_string()));
@@ -675,7 +678,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let ipowers = ipowers.as_array().to_owned();
         let encoding = MajoranaEncoding::with_vacuum(
             SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
-            ZBasisState::zeros(n_qubits),
+            ZBasisState::new(vacuum_state.to_owned(), Complex64::ONE),
         )?;
         debug!("Got encoding");
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
@@ -914,10 +917,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_maxnto_symplectic_matrix(
         py: Python<'_>,
         n_modes: usize,
-    ) -> Result<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>), CoreError> {
+    ) -> Result<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>, Bound<'_, PyArray1<bool>>), CoreError> {
         let (y_count, output) = maxnto_symplectic_matrix(n_modes)?;
-        Ok((y_count.into_pyarray(py), output.into_pyarray(py)))
+        let x_block:Array2<bool> = output.slice(s![..,..output.ncols()/2]).to_owned();
+        let z_block:Array2<bool> = output.slice(s![..,output.ncols()/2..]).to_owned();
+        let encoding = MajoranaEncoding::new(SymplecticMatrix::new(x_block, z_block)).expect("Should be able to construct maxnto encoding.");
+        Ok((y_count.into_pyarray(py), output.into_pyarray(py), encoding.vacuum_state.state.into_pyarray(py)))
     }
-
     Ok(())
 }

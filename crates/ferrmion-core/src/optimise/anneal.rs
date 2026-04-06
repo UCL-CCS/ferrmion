@@ -102,6 +102,7 @@ pub fn anneal_enumerations(
     initial_guess: ArrayView1<usize>,
     coefficient_weighted: bool,
 ) -> Result<(f64, Array1<usize>), Error> {
+    assert_eq!(initial_guess.len(), encoding.operators.ipowers.len()/2, "Initial enumeration length is not n_modes");
     let operator = OptimalEnumeration::new(msparse, encoding, coefficient_weighted);
 
     // Define initial parameter vector

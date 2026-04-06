@@ -55,6 +55,7 @@ def encode_fermion_product(
 def encode(
     ipowers: npt.NDArray[np.uint8],
     symplectics: npt.NDArray[np.bool],
+    vacuum_state: npt.NDArray[np.bool],
     signatures: list[str],
     coeffs: list[np.ndarray],
     constant_energy: float,

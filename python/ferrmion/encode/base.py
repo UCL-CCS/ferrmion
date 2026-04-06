@@ -232,6 +232,7 @@ class FermionQubitEncoding(ABC):
         return encode(
             ipowers=ipowers,
             symplectics=symplectic,
+            vacuum_state=self.vacuum_state.astype(bool),
             signatures=signatures,
             coeffs=coeffs,
             constant_energy=fham.constant_energy,

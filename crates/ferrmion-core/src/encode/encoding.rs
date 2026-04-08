@@ -24,9 +24,9 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use ferrmion::encode::encoding::{Encode, MajoranaEncoding};
-/// use ferrmion::operators::MajoranaProduct;
-/// use ferrmion::encode::ternarytree::TernaryTree;
+/// use ferrmion_core::encode::encoding::{Encode, MajoranaEncoding};
+/// use ferrmion_core::operators::MajoranaProduct;
+/// use ferrmion_core::encode::ternarytree::TernaryTree;
 /// use num_complex::Complex64;
 ///
 /// let tree = TernaryTree::naive_jordan_wigner(2);
@@ -42,7 +42,7 @@ pub trait Encode<T> {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encode::encoding::Encode;
+    /// use ferrmion_core::encode::encoding::Encode;
     /// // Example usage would depend on the implementor
     /// ```
     fn encode(&self, input: T) -> Self::Output;
@@ -53,9 +53,9 @@ pub trait Encode<T> {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::encode::encoding::{TryEncode, MajoranaEncoding};
-/// use ferrmion::states::FockState;
-/// use ferrmion::encode::ternarytree::TernaryTree;
+/// use ferrmion_core::encode::encoding::{TryEncode, MajoranaEncoding};
+/// use ferrmion_core::states::FockState;
+/// use ferrmion_core::encode::ternarytree::TernaryTree;
 /// use ndarray::arr1;
 /// use num_complex::Complex64;
 ///
@@ -114,9 +114,9 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encode::encoding::MajoranaEncoding;
-    /// use ferrmion::operators::SymplecticMatrix;
-    /// use ferrmion::encode::ternarytree::TernaryTree;
+    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::operators::SymplecticMatrix;
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
     ///
     /// let tree = TernaryTree::naive_jordan_wigner(2);
     /// let enc = MajoranaEncoding::new(tree.build_encoding(2).unwrap().operators).unwrap();
@@ -139,9 +139,9 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encode::encoding::MajoranaEncoding;
-    /// use ferrmion::operators::SymplecticMatrix;
-    /// use ferrmion::states::ZBasisState;
+    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::operators::SymplecticMatrix;
+    /// use ferrmion_core::states::ZBasisState;
     /// use ndarray::arr2;
     ///
     /// let sym = SymplecticMatrix::new(
@@ -380,8 +380,8 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encode::encoding::MajoranaEncoding;
-    /// use ferrmion::encode::ternarytree::TernaryTree;
+    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
     ///
     /// let tree = TernaryTree::naive_jordan_wigner(3);
     /// let encoding = tree.build_encoding(3).unwrap();
@@ -496,9 +496,9 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encode::encoding::{MajoranaEncoding, TryEncode};
-    /// use ferrmion::states::FockState;
-    /// use ferrmion::encode::ternarytree::TernaryTree;
+    /// use ferrmion_core::encode::encoding::{MajoranaEncoding, TryEncode};
+    /// use ferrmion_core::states::FockState;
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ndarray::arr1;
     /// use num_complex::Complex64;
     ///
@@ -548,9 +548,9 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion::encode::encoding::{MajoranaEncoding, TryEncode};
-    /// use ferrmion::states::{FockState, ZBasisEnsemble};
-    /// use ferrmion::encode::ternarytree::TernaryTree;
+    /// use ferrmion_core::encode::encoding::{MajoranaEncoding, TryEncode};
+    /// use ferrmion_core::states::{FockState, ZBasisEnsemble};
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ndarray::Array1;
     /// use num_complex::Complex64;
     ///
@@ -721,7 +721,7 @@ mod owned_tests {
     use crate::states::{State, ZBasisEnsemble};
     use ndarray::{arr1, Array1};
     use num_complex::c64;
-    use numpy::Complex64;
+    use num_complex::Complex64;
     use tinyvec::array_vec;
 
     #[test]

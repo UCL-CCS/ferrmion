@@ -7,6 +7,19 @@
 //! This file contains the PyO3 interop layer which wraps rust functions and exposes
 //! these to a python API
 
+use ferrmion_core::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
+use ferrmion_core::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
+use ferrmion_core::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
+use ferrmion_core::hamiltonians::QubitHamiltonian;
+use ferrmion_core::operators::{
+    FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
+    SymplecticOperator,
+};
+use ferrmion_core::optimise::anneal_enumerations;
+use ferrmion_core::optimise::topphatt;
+use ferrmion_core::optimise::ToppHattError;
+use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
+use ferrmion_core::utils::*;
 use log::debug;
 use numpy::ndarray::Array1;
 use numpy::{
@@ -16,55 +29,65 @@ use numpy::{
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString, PyTuple};
 use pyo3::{prelude::*, pymodule, Bound};
-pub mod operators;
-pub mod states;
-pub mod utils;
-use crate::operators::{
-    FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
-    SymplecticOperator,
-};
-use crate::optimise::topphatt;
-use crate::utils::*;
-pub mod hamiltonians;
-use crate::hamiltonians::QubitHamiltonian;
-pub mod encode;
-use crate::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
-use crate::states::{FockState, State, ZBasisEnsemble, ZBasisState};
-pub mod optimise;
-use crate::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
-use crate::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
-use crate::optimise::anneal_enumerations;
-use crate::optimise::ToppHattError;
 
-impl From<MajoranaEncodingError> for PyErr {
-    fn from(e: MajoranaEncodingError) -> PyErr {
-        PyValueError::new_err(e.to_string())
+/// Local error type bridging `ferrmion_core` errors to `PyErr`.
+///
+/// The orphan rule prevents `impl From<ForeignError> for PyErr` when both
+/// types come from external crates. This local type acts as a bridge:
+/// `impl From<CoreError> for PyErr` is allowed (local → foreign), and
+/// `impl From<ForeignError> for CoreError` is allowed (foreign → local).
+#[derive(Debug)]
+enum CoreError {
+    Value(String),
+    Runtime(String),
+    Py(PyErr),
+}
+
+impl From<CoreError> for PyErr {
+    fn from(e: CoreError) -> PyErr {
+        match e {
+            CoreError::Value(s) => PyValueError::new_err(s),
+            CoreError::Runtime(s) => PyRuntimeError::new_err(s),
+            CoreError::Py(e) => e,
+        }
     }
 }
 
-impl From<TernaryTreeError> for PyErr {
-    fn from(e: TernaryTreeError) -> PyErr {
-        PyValueError::new_err(e.to_string())
+impl From<PyErr> for CoreError {
+    fn from(e: PyErr) -> Self {
+        CoreError::Py(e)
     }
 }
 
-impl From<ToppHattError> for PyErr {
-    fn from(e: ToppHattError) -> PyErr {
-        PyRuntimeError::new_err(e.to_string())
+impl From<MajoranaEncodingError> for CoreError {
+    fn from(e: MajoranaEncodingError) -> Self {
+        CoreError::Value(e.to_string())
     }
 }
 
-impl From<FermionProductError> for PyErr {
-    fn from(_: FermionProductError) -> PyErr {
-        PyValueError::new_err(
-            "Invalid FermionProduct: operators and indices must have equal length",
+impl From<TernaryTreeError> for CoreError {
+    fn from(e: TernaryTreeError) -> Self {
+        CoreError::Value(e.to_string())
+    }
+}
+
+impl From<ToppHattError> for CoreError {
+    fn from(e: ToppHattError) -> Self {
+        CoreError::Runtime(e.to_string())
+    }
+}
+
+impl From<FermionProductError> for CoreError {
+    fn from(_: FermionProductError) -> Self {
+        CoreError::Value(
+            "Invalid FermionProduct: operators and indices must have equal length".to_string(),
         )
     }
 }
 
-impl From<MaxNTOError> for PyErr {
-    fn from(e: MaxNTOError) -> PyErr {
-        PyValueError::new_err(e.to_string())
+impl From<MaxNTOError> for CoreError {
+    fn from(e: MaxNTOError) -> Self {
+        CoreError::Value(e.to_string())
     }
 }
 
@@ -104,7 +127,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         left: PyReadonlyArray1<bool>,
         right: PyReadonlyArray1<bool>,
-    ) -> PyResult<(usize, Bound<'py, PyArray1<bool>>)> {
+    ) -> Result<(usize, Bound<'py, PyArray1<bool>>), CoreError> {
         let left = left.as_array();
         let right = right.as_array();
         let n = left.len() / 2;
@@ -164,7 +187,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectic_matrix: PyReadonlyArray2<bool>,
         vacuum_state: PyReadonlyArray1<bool>,
-    ) -> PyResult<Bound<'py, PyArray1<bool>>> {
+    ) -> Result<Bound<'py, PyArray1<bool>>, CoreError> {
         let fermionic_hf_state = fermionic_hf_state.as_array();
         let mode_op_map = mode_op_map.as_array();
         let symplectic_matrix = symplectic_matrix.as_array();
@@ -195,9 +218,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         );
         let zstate = encoding.try_encode(fockstate);
         match zstate {
-            Ok(None) => Err(PyValueError::new_err("HF state encoded to null.")),
+            Ok(None) => Err(CoreError::Value("HF state encoded to null.".to_string())),
             Ok(Some(state)) => Ok(PyArray1::from_owned_array(py, state.state)),
-            Err(e) => Err(PyErr::from(e)),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -228,7 +251,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ipowers: PyReadonlyArray1<u8>,
         symplectic_matrix: PyReadonlyArray2<bool>,
         vacuum_state: PyReadonlyArray1<bool>,
-    ) -> PyResult<Bound<'py, PyArray2<bool>>> {
+    ) -> Result<Bound<'py, PyArray2<bool>>, CoreError> {
         let states = states.as_array().to_owned();
         let n_states = states.nrows();
         let symplectic_matrix = symplectic_matrix.as_array();
@@ -259,7 +282,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             match result {
                 Some(fock) => occupations.row_mut(j).assign(&fock.state),
                 None => {
-                    return Err(PyValueError::new_err(format!(
+                    return Err(CoreError::Value(format!(
                         "state at index {j} could not be decoded"
                     )))
                 }
@@ -283,7 +306,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
         ipower: u8,
-    ) -> PyResult<(Bound<'py, PyString>, Bound<'py, PyInt>)> {
+    ) -> Result<(Bound<'py, PyString>, Bound<'py, PyInt>), CoreError> {
         let symplectic = symplectic.as_array();
         let n = symplectic.len() / 2;
         let op = SymplecticOperator::new(
@@ -310,7 +333,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'_>,
         pauli: String,
         ipower: usize,
-    ) -> PyResult<(Bound<'_, PyArray1<bool>>, Bound<'_, PyInt>)> {
+    ) -> Result<(Bound<'_, PyArray1<bool>>, Bound<'_, PyInt>), CoreError> {
         let (symplectic, ipower) = pauli_to_symplectic(pauli, ipower);
         Ok((
             PyArray1::from_owned_array(py, symplectic),
@@ -334,11 +357,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
         ipower: usize,
-    ) -> PyResult<(
-        Bound<'py, PyString>,
-        Bound<'py, PyArray1<usize>>,
-        Bound<'py, PyComplex>,
-    )> {
+    ) -> Result<
+        (
+            Bound<'py, PyString>,
+            Bound<'py, PyArray1<usize>>,
+            Bound<'py, PyComplex>,
+        ),
+        CoreError,
+    > {
         let symplectic = symplectic.as_array();
         let (pauli_string, position_vec, coeff) = symplectic_to_sparse(symplectic, ipower);
         Ok((
@@ -376,7 +402,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         temperature: f64,
         initial_guess: PyReadonlyArray1<usize>,
         coefficient_weighted: bool,
-    ) -> PyResult<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>)> {
+    ) -> Result<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>), CoreError> {
         let initial_guess = initial_guess.as_array();
 
         let msparse = MajoranaSparse::from_signatures_and_coeffs(
@@ -438,11 +464,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'_>,
         flatpack: TTFlatPack,
         n_qubits: Option<usize>,
-    ) -> PyResult<(
-        Bound<'_, PyArray1<u8>>,
-        Bound<'_, PyArray2<bool>>,
-        Bound<'_, PyArray1<bool>>,
-    )> {
+    ) -> Result<
+        (
+            Bound<'_, PyArray1<u8>>,
+            Bound<'_, PyArray2<bool>>,
+            Bound<'_, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         // ) -> PyResult<()> {
         let flatplack_max_qubit_index: &usize = flatpack
             .iter()
@@ -451,8 +480,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .ok_or_else(|| PyValueError::new_err("Flatpack must be non-empty"))?;
 
         if n_qubits.unwrap_or(*flatplack_max_qubit_index + 1) < *flatplack_max_qubit_index {
-            return Err(PyValueError::new_err(
-                "Passed value of n_qubits less than existing flatpack qubit index.",
+            return Err(CoreError::Value(
+                "Passed value of n_qubits less than existing flatpack qubit index.".to_string(),
             ));
         }
 
@@ -493,11 +522,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'_>,
         encoding: String,
         n_modes: usize,
-    ) -> PyResult<(
-        Bound<'_, PyArray1<u8>>,
-        Bound<'_, PyArray2<bool>>,
-        Bound<'_, PyArray1<bool>>,
-    )> {
+    ) -> Result<
+        (
+            Bound<'_, PyArray1<u8>>,
+            Bound<'_, PyArray2<bool>>,
+            Bound<'_, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         // ) -> PyResult<()> {
 
         let tree: TernaryTree = match encoding.as_str() {
@@ -505,8 +537,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
             "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
             "JKMN" => TernaryTree::naive_jkmn(n_modes),
-            _ => return Err(PyValueError::new_err(
-                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.",
+            _ => return Err(CoreError::Value(
+                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.".to_string(),
             )),
         };
         debug!("Got Tree");
@@ -548,10 +580,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
-    ) -> PyResult<Bound<'py, PyDict>> {
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
         if signatures.len() != coeffs.len() {
-            return Err(PyValueError::new_err(
-                "signatures and coefficients must have equal length",
+            return Err(CoreError::Value(
+                "signatures and coefficients must have equal length".to_string(),
             ));
         }
 
@@ -610,11 +642,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: String,
         indices: Vec<usize>,
         coefficient: Complex64,
-    ) -> PyResult<Bound<'py, PyDict>> {
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
         // ) -> PyResult<()> {
         if signatures.len() != indices.len() {
-            return Err(PyValueError::new_err(
-                "signatures and indices must have equal length",
+            return Err(CoreError::Value(
+                "signatures and indices must have equal length".to_string(),
             ));
         }
         let symplectics = symplectics.as_array();
@@ -630,7 +662,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             .collect::<PyResult<Vec<_>>>()?;
 
         if n_qubits < n_modes {
-            return Err(PyValueError::new_err("n_qubits must be >= n_modes"));
+            return Err(CoreError::Value("n_qubits must be >= n_modes".to_string()));
         }
 
         let fproduct = FermionProduct::new(vec_sig, indices, coefficient)?;
@@ -646,7 +678,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got Hamiltonian");
 
         debug!("Got qham");
-        qham.into_py_dict(py)
+        Ok(qham.into_py_dict(py)?)
     }
 
     /// Encode a full fermionic Hamiltonian into a qubit Hamiltonian.
@@ -672,11 +704,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
-    ) -> PyResult<Bound<'py, PyDict>> {
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
         // ) -> PyResult<()> {
         if signatures.len() != coeffs.len() {
-            return Err(PyValueError::new_err(
-                "signatures and coefficients must have equal length",
+            return Err(CoreError::Value(
+                "signatures and coefficients must have equal length".to_string(),
             ));
         }
         let symplectics = symplectics.as_array();
@@ -684,7 +716,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let n_modes = symplectics.nrows() / 2;
 
         if n_qubits < n_modes {
-            return Err(PyValueError::new_err("n_qubits must be >= n_modes"));
+            return Err(CoreError::Value("n_qubits must be >= n_modes".to_string()));
         }
 
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
@@ -704,7 +736,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got Hamiltonian");
 
         debug!("Got qham");
-        qham.into_py_dict(py)
+        Ok(qham.into_py_dict(py)?)
         // Ok(())
     }
 
@@ -734,15 +766,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
-    ) -> PyResult<Bound<'py, PyDict>> {
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
         // ) -> PyResult<()> {
         if signatures.len() != coeffs.len() {
-            return Err(PyValueError::new_err(
-                "signatures and coefficients must have equal length",
+            return Err(CoreError::Value(
+                "signatures and coefficients must have equal length".to_string(),
             ));
         }
         if n_qubits < n_modes {
-            return Err(PyValueError::new_err("n_qubits must be >= n_modes"));
+            return Err(CoreError::Value("n_qubits must be >= n_modes".to_string()));
         }
 
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
@@ -757,8 +789,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
             "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
             "JKMN" => TernaryTree::naive_jkmn(n_modes),
-            _ => return Err(PyValueError::new_err(
-                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.",
+            _ => return Err(CoreError::Value(
+                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.".to_string(),
             )),
         };
         debug!("Got Tree");
@@ -772,7 +804,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         debug!("Got qham");
         debug!("Got qham {:?}", qham);
-        qham.into_py_dict(py)
+        Ok(qham.into_py_dict(py)?)
         // Ok(())
     }
 
@@ -800,11 +832,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         parallelize: bool,
-    ) -> PyResult<(
-        Bound<'py, PyArray1<u8>>,
-        Bound<'py, PyArray2<bool>>,
-        Bound<'py, PyArray1<bool>>,
-    )> {
+    ) -> Result<
+        (
+            Bound<'py, PyArray1<u8>>,
+            Bound<'py, PyArray2<bool>>,
+            Bound<'py, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         // ) -> PyResult<()> {
         debug!("Starting TOPPHATT");
         let flatpack: TTFlatPack = flatpack;
@@ -865,12 +900,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
         parallelize: bool,
-    ) -> PyResult<(
-        Bound<'py, PyArray1<u8>>,
-        Bound<'py, PyArray2<bool>>,
-        Bound<'py, PyDict>,
-        Bound<'py, PyArray1<bool>>,
-    )> {
+    ) -> Result<
+        (
+            Bound<'py, PyArray1<u8>>,
+            Bound<'py, PyArray2<bool>>,
+            Bound<'py, PyDict>,
+            Bound<'py, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         debug!("Starting TOPPHATT");
         let flatpack: TTFlatPack = flatpack;
         debug!("Got flatpack");
@@ -934,19 +972,22 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         parallelize: bool,
-    ) -> PyResult<(
-        Bound<'py, PyArray1<u8>>,
-        Bound<'py, PyArray2<bool>>,
-        Bound<'py, PyArray1<bool>>,
-    )> {
+    ) -> Result<
+        (
+            Bound<'py, PyArray1<u8>>,
+            Bound<'py, PyArray2<bool>>,
+            Bound<'py, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         // ) -> PyResult<Bound<'py, PyDict>> {
         if signatures.len() != coeffs.len() {
-            return Err(PyValueError::new_err(
-                "signatures and coefficients must have equal length",
+            return Err(CoreError::Value(
+                "signatures and coefficients must have equal length".to_string(),
             ));
         }
         if n_qubits < n_modes {
-            return Err(PyValueError::new_err("n_qubits must be >= n_modes"));
+            return Err(CoreError::Value("n_qubits must be >= n_modes".to_string()));
         }
 
         debug!("Starting TOPPHATT");
@@ -962,8 +1003,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
             "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
             "JKMN" => TernaryTree::naive_jkmn(n_modes),
-            _ => return Err(PyValueError::new_err(
-                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.",
+            _ => return Err(CoreError::Value(
+                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.".to_string(),
             )),
         };
         debug!("Got Tree");
@@ -1014,7 +1055,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     fn wrap_maxnto_symplectic_matrix(
         py: Python<'_>,
         n_modes: usize,
-    ) -> PyResult<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>)> {
+    ) -> Result<(Bound<'_, PyArray1<u8>>, Bound<'_, PyArray2<bool>>), CoreError> {
         let (y_count, output) = maxnto_symplectic_matrix(n_modes)?;
         Ok((y_count.into_pyarray(py), output.into_pyarray(py)))
     }

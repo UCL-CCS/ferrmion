@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "crates/ferrmion-core"]
+resolver = "2"
+
 [package]
 name = "ferrmion"
 version = "0.7.3"
@@ -9,21 +13,13 @@ name = "ferrmion"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-itertools = "0.14.0"
+ferrmion-core = { path = "crates/ferrmion-core" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
 numpy = "0.24.0"
-pyo3 = {version = "0.24.0", features = ["num-complex"]}
+pyo3 = { version = "0.24.0", features = ["num-complex"] }
 pyo3-log = "0.12.4"
-log = {version ="0.4", features = ["release_max_level_info"]}
-ahash = "0.8.12"
-rand = "0.9.2"
-rand_xoshiro = "0.7.0"
-argmin = "0.10.0"
+log = { version = "0.4", features = ["release_max_level_info"] }
 num-complex = "0.4.6"
-tinyvec = "1.10.0"
-thiserror = "2.0.17"
-rayon = "1.11.0"
-num_cpus = "1.17.0"
 
 [dev-dependencies]
 proptest = "1.9.0"

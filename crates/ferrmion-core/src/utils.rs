@@ -1,14 +1,14 @@
 //! Utility functions for symplectic and Pauli string conversions.
 use ndarray::{concatenate, Axis, Zip};
-use numpy::ndarray::{Array1, ArrayView1};
-use numpy::Complex64;
+use ndarray::{Array1, ArrayView1};
+use num_complex::Complex64;
 
 /// Converts an imaginary count to a complex sign.
 ///
 /// # Examples
 ///
 /// ```
-/// use ferrmion::utils::icount_to_sign;
+/// use ferrmion_core::utils::icount_to_sign;
 /// use num_complex::Complex64;
 /// assert_eq!(icount_to_sign(0), Complex64::new(1.0, 0.0));
 /// ```
@@ -27,7 +27,7 @@ pub fn icount_to_sign(icount: usize) -> Complex64 {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::utils::vector_kron;
+/// use ferrmion_core::utils::vector_kron;
 /// use ndarray::arr1;
 /// use num_complex::Complex64;
 /// let left = arr1(&[Complex64::new(1.0, 0.0)]);
@@ -50,7 +50,7 @@ pub fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array
 /// # Examples
 ///
 /// ```
-/// use ferrmion::utils::symplectic_to_sparse;
+/// use ferrmion_core::utils::symplectic_to_sparse;
 /// use ndarray::arr1;
 /// let symplectic = arr1(&[true, false, false, true]);
 /// let (pauli, indices, coeff) = symplectic_to_sparse(symplectic.view(), 0);
@@ -122,7 +122,7 @@ fn test_valid_pauli_string() {
 /// # Examples
 ///
 /// ```
-/// use ferrmion::utils::pauli_to_symplectic;
+/// use ferrmion_core::utils::pauli_to_symplectic;
 /// let (symplectic, ipower) = pauli_to_symplectic("XY".to_string(), 0);
 /// ```
 pub fn pauli_to_symplectic(pauli: String, ipower: usize) -> (Array1<bool>, usize) {

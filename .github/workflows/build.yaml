@@ -30,6 +30,8 @@ jobs:
           uv run pre-commit run -a
       - name: Run Pytest
         run: uv run pytest --cov=ferrmion --cov-report=xml --cov-report=term-missing
+      - name: Run cargo test
+        run: uv run cargo test --workspace
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: matrix.python-version == '3.13'

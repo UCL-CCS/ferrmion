@@ -2,7 +2,7 @@
 name = "ferrmion-core"
 version = "0.7.3"
 edition = "2021"
-description = "Core quantum chemistry fermion-qubit encoding algorithms"
+description = "Fast, easy and optimised fermion-qubit encodings."
 
 [lib]
 name = "ferrmion_core"

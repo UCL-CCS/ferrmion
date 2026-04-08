@@ -1,4 +1,4 @@
-//! Core quantum chemistry fermion-qubit encoding algorithms.
+//! Fermion-qubit encoding  methods.
 //!
 //! This crate provides the pure-Rust implementation of fermion-to-qubit
 //! encoding algorithms. It has no Python or PyO3 dependencies and can be

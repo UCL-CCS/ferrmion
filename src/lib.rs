@@ -7,6 +7,19 @@
 //! This file contains the PyO3 interop layer which wraps rust functions and exposes
 //! these to a python API
 
+use ferrmion_core::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
+use ferrmion_core::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
+use ferrmion_core::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
+use ferrmion_core::hamiltonians::QubitHamiltonian;
+use ferrmion_core::operators::{
+    FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
+    SymplecticOperator,
+};
+use ferrmion_core::optimise::anneal_enumerations;
+use ferrmion_core::optimise::topphatt;
+use ferrmion_core::optimise::ToppHattError;
+use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
+use ferrmion_core::utils::*;
 use log::debug;
 use numpy::ndarray::Array1;
 use numpy::{
@@ -16,19 +29,6 @@ use numpy::{
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString, PyTuple};
 use pyo3::{prelude::*, pymodule, Bound};
-use ferrmion_core::operators::{
-    FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
-    SymplecticOperator,
-};
-use ferrmion_core::optimise::topphatt;
-use ferrmion_core::utils::*;
-use ferrmion_core::hamiltonians::QubitHamiltonian;
-use ferrmion_core::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
-use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
-use ferrmion_core::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
-use ferrmion_core::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
-use ferrmion_core::optimise::anneal_enumerations;
-use ferrmion_core::optimise::ToppHattError;
 
 /// Local error type bridging `ferrmion_core` errors to `PyErr`.
 ///
@@ -357,11 +357,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'py>,
         symplectic: PyReadonlyArray1<bool>,
         ipower: usize,
-    ) -> Result<(
-        Bound<'py, PyString>,
-        Bound<'py, PyArray1<usize>>,
-        Bound<'py, PyComplex>,
-    ), CoreError> {
+    ) -> Result<
+        (
+            Bound<'py, PyString>,
+            Bound<'py, PyArray1<usize>>,
+            Bound<'py, PyComplex>,
+        ),
+        CoreError,
+    > {
         let symplectic = symplectic.as_array();
         let (pauli_string, position_vec, coeff) = symplectic_to_sparse(symplectic, ipower);
         Ok((
@@ -461,11 +464,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'_>,
         flatpack: TTFlatPack,
         n_qubits: Option<usize>,
-    ) -> Result<(
-        Bound<'_, PyArray1<u8>>,
-        Bound<'_, PyArray2<bool>>,
-        Bound<'_, PyArray1<bool>>,
-    ), CoreError> {
+    ) -> Result<
+        (
+            Bound<'_, PyArray1<u8>>,
+            Bound<'_, PyArray2<bool>>,
+            Bound<'_, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         // ) -> PyResult<()> {
         let flatplack_max_qubit_index: &usize = flatpack
             .iter()
@@ -516,11 +522,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py: Python<'_>,
         encoding: String,
         n_modes: usize,
-    ) -> Result<(
-        Bound<'_, PyArray1<u8>>,
-        Bound<'_, PyArray2<bool>>,
-        Bound<'_, PyArray1<bool>>,
-    ), CoreError> {
+    ) -> Result<
+        (
+            Bound<'_, PyArray1<u8>>,
+            Bound<'_, PyArray2<bool>>,
+            Bound<'_, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         // ) -> PyResult<()> {
 
         let tree: TernaryTree = match encoding.as_str() {
@@ -823,11 +832,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         parallelize: bool,
-    ) -> Result<(
-        Bound<'py, PyArray1<u8>>,
-        Bound<'py, PyArray2<bool>>,
-        Bound<'py, PyArray1<bool>>,
-    ), CoreError> {
+    ) -> Result<
+        (
+            Bound<'py, PyArray1<u8>>,
+            Bound<'py, PyArray2<bool>>,
+            Bound<'py, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         // ) -> PyResult<()> {
         debug!("Starting TOPPHATT");
         let flatpack: TTFlatPack = flatpack;
@@ -888,12 +900,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
         parallelize: bool,
-    ) -> Result<(
-        Bound<'py, PyArray1<u8>>,
-        Bound<'py, PyArray2<bool>>,
-        Bound<'py, PyDict>,
-        Bound<'py, PyArray1<bool>>,
-    ), CoreError> {
+    ) -> Result<
+        (
+            Bound<'py, PyArray1<u8>>,
+            Bound<'py, PyArray2<bool>>,
+            Bound<'py, PyDict>,
+            Bound<'py, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         debug!("Starting TOPPHATT");
         let flatpack: TTFlatPack = flatpack;
         debug!("Got flatpack");
@@ -957,11 +972,14 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         parallelize: bool,
-    ) -> Result<(
-        Bound<'py, PyArray1<u8>>,
-        Bound<'py, PyArray2<bool>>,
-        Bound<'py, PyArray1<bool>>,
-    ), CoreError> {
+    ) -> Result<
+        (
+            Bound<'py, PyArray1<u8>>,
+            Bound<'py, PyArray2<bool>>,
+            Bound<'py, PyArray1<bool>>,
+        ),
+        CoreError,
+    > {
         // ) -> PyResult<Bound<'py, PyDict>> {
         if signatures.len() != coeffs.len() {
             return Err(CoreError::Value(

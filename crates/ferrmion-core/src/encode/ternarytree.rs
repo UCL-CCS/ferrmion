@@ -1219,8 +1219,8 @@ mod integration_tests {
     use crate::hamiltonians::QubitHamiltonian;
     use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
     use ahash::HashMapExt;
-    use num_complex::c64;
     use ndarray::arr2;
+    use num_complex::c64;
 
     #[test]
     fn test_encode_identity_with_jw() {

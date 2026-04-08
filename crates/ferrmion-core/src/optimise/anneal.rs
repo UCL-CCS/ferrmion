@@ -8,8 +8,8 @@ use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
 };
-use ndarray::ArrayView1;
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use rand::{distr::Uniform, prelude::*};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::sync::{Arc, Mutex};

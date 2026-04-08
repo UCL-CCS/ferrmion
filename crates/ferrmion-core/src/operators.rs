@@ -14,11 +14,11 @@ use crate::states::ZBasisState;
 use itertools::Itertools;
 use log::debug;
 use ndarray::{arr0, s, Dimension};
-use num_complex::{c64, ComplexFloat};
 use ndarray::{
     arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis, IntoDimension, Zip,
 };
 use num_complex::Complex64;
+use num_complex::{c64, ComplexFloat};
 use std::collections::HashMap;
 use std::iter::repeat_n;
 use std::ops::{BitAnd, BitXor, Mul};
@@ -1040,7 +1040,7 @@ impl From<FermionMatrix> for FermionSparse {
 #[cfg(test)]
 mod fermion_tests {
     use crate::operators::*;
-    use crate::vector_kron;
+    use crate::utils::vector_kron;
     use ndarray::{arr1, arr2};
     use num_complex::c64;
 
@@ -1382,7 +1382,7 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
 #[cfg(test)]
 mod majorana_tests {
     use crate::operators::*;
-    use crate::vector_kron;
+    use crate::utils::vector_kron;
     use log::debug;
     use ndarray::{arr1, arr2};
     use num_complex::c64;

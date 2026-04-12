@@ -210,24 +210,32 @@ class TernaryTree(FermionQubitEncoding):
     def flatpack(self) -> TTFlatpack:
         """Create a TTFlatpack from the tree, which can be passed to rust functions.
 
+        Node children are represented by their qubit index (an int that also
+        appears as the first element of some flatpack entry).  Leaf children
+        with a known Majorana index are encoded as
+        ``majorana_index + max_node_index``, which is strictly greater than
+        every node qubit index and can therefore never be confused with a node.
+        Leaves without a known Majorana index are represented as ``None``.
+
         Returns:
-            list[tuple[int, tuple[int,int,int]]]
+            list[tuple[int, tuple[int | None, int | None, int | None]]]
         """
+        max_node_index: int = max(qubit for _, qubit in self.enumeration_scheme.values())
         flatpack: TTFlatpack = []
 
         to_flatten: list[TTNode] = [self.root_node]
         while len(to_flatten) > 0:
             node: TTNode = to_flatten.pop(0)
             children: list[int | None] = [None, None, None]
-            if isinstance(node.x, TTNode):
-                to_flatten.append(node.x)
-                children[0] = self.enumeration_scheme[node.x.root_path][1]
-            if isinstance(node.y, TTNode):
-                to_flatten.append(node.y)
-                children[1] = self.enumeration_scheme[node.y.root_path][1]
-            if isinstance(node.z, TTNode):
-                to_flatten.append(node.z)
-                children[2] = self.enumeration_scheme[node.z.root_path][1]
+            for i, edge in enumerate(["x", "y", "z"]):
+                child_node = getattr(node, edge)
+                if isinstance(child_node, TTNode):
+                    to_flatten.append(child_node)
+                    children[i] = self.enumeration_scheme[child_node.root_path][1]
+                else:
+                    majorana_idx = node.leaf_majorana_indices.get(edge)
+                    if majorana_idx is not None:
+                        children[i] = majorana_idx + max_node_index
 
             flatpack.append(
                 (
@@ -253,6 +261,8 @@ class TernaryTree(FermionQubitEncoding):
         """
         if not flatpack:
             raise ValueError("Flatpack cannot be empty")
+        node_qubit_indices: set[int] = {item[0] for item in flatpack}
+        max_node_index: int = max(node_qubit_indices)
         used_qubit_indices = [flatpack[0][0]]
         for item in flatpack:
             if item[0] not in used_qubit_indices:
@@ -262,23 +272,34 @@ class TernaryTree(FermionQubitEncoding):
                 raise TypeError("TTFlatpack nodes must have three optional children.")
             for child in children:
                 if isinstance(child, int):
-                    used_qubit_indices.append(child)
+                    if child in node_qubit_indices:
+                        used_qubit_indices.append(child)
+                    elif child > max_node_index:
+                        pass  # leaf: Majorana index = child - max_node_index
+                    else:
+                        raise TypeError(
+                            f"TTFlatpack child {child} is not a node qubit index and is "
+                            f"<= max_node_index ({max_node_index}); leaf values must be "
+                            "> max_node_index (i.e. majorana_index + max_node_index)."
+                        )
                 elif child is None:
                     continue
                 else:
                     raise TypeError(
-                        "TTFlatpack contains child node which is not int | None."
+                        "TTFlatpack contains child which is not int | None."
                     )
 
         ipow, sym, vacuum = core.flatpack_symplectic_matrix(flatpack, None)
-        max_id = max(item[0] for item in flatpack)
+        max_id = max_node_index
         nodes = [TTNode() for _ in range(max_id + 1)]
         for qubit_index, children in flatpack:
             node = nodes[qubit_index]
             node.qubit_index = qubit_index
-            node.x = nodes[children[0]] if children[0] is not None else None
-            node.y = nodes[children[1]] if children[1] is not None else None
-            node.z = nodes[children[2]] if children[2] is not None else None
+            for edge, child in zip(["x", "y", "z"], children):
+                if isinstance(child, int) and child in node_qubit_indices:
+                    setattr(node, edge, nodes[child])
+                elif isinstance(child, int) and child > max_node_index:
+                    node.leaf_majorana_indices[edge] = child - max_node_index
         root = nodes[flatpack[0][0]]
         enumeration_scheme = {}
         mode_counter = [0]

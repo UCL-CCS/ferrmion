@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 
 """Instructions to build a TernaryTree.
 
-The first item in the list gives the qubit-index of the  root node,
-followed by the qubit indices of its child nodes (ordered X, Y, Z).
-If no child exists, None is used.
+Each node in the tree is represented as a tuple of (qubit_index, (x_child, y_child, z_child)).
+
+To ensure there are no clashes between qubit indices and majorana indices,
+majorana indices should be offset by max(qubit_indices) + 1.
 """
 type TTFlatpack = list[tuple[int, tuple[int | None, int | None, int | None]]]
 
@@ -157,7 +158,15 @@ class TernaryTree(FermionQubitEncoding):
     def encode_topphatt(
         self, fham: FermionHamiltonian, parallelize: bool = True
     ) -> QubitHamiltonian:
-        """Encode a Hamiltonian, using TOPP-HATT optimisation."""
+        """Encode a Hamiltonian, using TOPP-HATT optimisation.
+
+        Args:
+            fham: The FermionHamiltonian to encode.
+            parallelize: Whether to parallelize the encoding.
+
+        Returns:
+            The encoded QubitHamiltonian.
+        """
         sigs, coeffs = fham.signatures_and_coefficients
         ipow, sym, qham, vacuum = core.encode_topphatt(
             flatpack=self.flatpack(),
@@ -208,7 +217,7 @@ class TernaryTree(FermionQubitEncoding):
         )
 
     def flatpack(self) -> TTFlatpack:
-        """Create a TTFlatpack from the tree, which can be passed to rust functions.
+        """Create a TTFlatpack from the tree, which can be saved or passed to rust functions.
 
         Node children are represented by their qubit index (an int that also
         appears as the first element of some flatpack entry).  Leaf children
@@ -220,8 +229,14 @@ class TernaryTree(FermionQubitEncoding):
 
         Returns:
             list[tuple[int, tuple[int | None, int | None, int | None]]]
+
+        Example:
+            >>> TernaryTree(4).JW().flatpack()
+            >>> [(0, (4, 5,1)), (1, (6,7,2)), (2, (8,9,3)), (3, (10,11,4))]
         """
-        max_node_index: int = max(qubit for _, qubit in self.enumeration_scheme.values())
+        max_node_index: int = max(
+            qubit for _, qubit in self.enumeration_scheme.values()
+        )
         flatpack: TTFlatpack = []
 
         to_flatten: list[TTNode] = [self.root_node]
@@ -291,8 +306,7 @@ class TernaryTree(FermionQubitEncoding):
                     )
 
         ipow, sym, vacuum = core.flatpack_symplectic_matrix(flatpack, None)
-        max_id = max_node_index
-        nodes = [TTNode() for _ in range(max_id + 1)]
+        nodes = [TTNode() for _ in range(max_node_index + 1)]
         for qubit_index, children in flatpack:
             node = nodes[qubit_index]
             node.qubit_index = qubit_index
@@ -301,6 +315,7 @@ class TernaryTree(FermionQubitEncoding):
                     setattr(node, edge, nodes[child])
                 elif isinstance(child, int) and child > max_node_index:
                     node.leaf_majorana_indices[edge] = child - (max_node_index + 1)
+
         root = nodes[flatpack[0][0]]
         enumeration_scheme = {}
         mode_counter = [0]

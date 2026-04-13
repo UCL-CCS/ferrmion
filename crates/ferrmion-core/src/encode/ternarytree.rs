@@ -319,7 +319,8 @@ impl TernaryTree {
                         // c is not a node — decode as a leaf.
                         // Majorana index m = c - (max_node_index + 1).
                         // Even m → XLeaf(m/2), odd m → YLeaf((m-1)/2).
-                        let m = c.checked_sub(max_node_index + 1)
+                        let m = c
+                            .checked_sub(max_node_index + 1)
                             .ok_or_else(|| TernaryTreeError::FlatPackError(flatpack.clone()))?;
                         let leaf = if m % 2 == 0 {
                             Child::XLeaf((m / 2) as u8)

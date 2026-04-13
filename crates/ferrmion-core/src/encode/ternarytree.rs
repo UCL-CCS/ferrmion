@@ -249,11 +249,14 @@ impl TernaryTree {
     pub fn from_flatpack(flatpack: &TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new(n_nodes);
-        tree.add_children_from_flatpack(flatpack)?;
+        tree.add_children_from_flatpack(flatpack, true)?;
         Ok(tree)
     }
 
     /// Builds a naive enumeration TernaryTree from a flatpack representation.
+    ///
+    /// Leaf child values in the flatpack are ignored; the naive default leaf
+    /// assignment (`XLeaf(i)` / `YLeaf(i)` for each node `i`) is applied as usual.
     ///
     /// # Examples
     ///
@@ -265,13 +268,18 @@ impl TernaryTree {
     pub fn from_flatpack_naive(flatpack: &TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new_naive(n_nodes);
-        tree.add_children_from_flatpack(flatpack)?;
+        tree.add_children_from_flatpack(flatpack, false)?;
         Ok(tree)
     }
 
+    /// `process_leaves`: when `true`, child values not found in `qubit_node_map` are
+    /// decoded as leaves (`child_value - max_node_index` gives the Majorana index).
+    /// When `false` (naive mode), such values are silently ignored and the existing
+    /// default leaf assignment is left intact.
     fn add_children_from_flatpack(
         &mut self,
         flatpack: &TTFlatPack,
+        process_leaves: bool,
     ) -> Result<(), TernaryTreeError> {
         let n_nodes = self.n_nodes;
         let qubit_index_of: Vec<usize> = flatpack.iter().map(|v| v.0).collect();
@@ -288,20 +296,44 @@ impl TernaryTree {
 
         debug!("Flatpack nodes have qubit indices {:?}", &qubit_node_map);
 
-        for &(parent, children) in flatpack.iter() {
+        // Leaf values are encoded as Majorana_index + max_node_index + 1.
+        // The +1 ensures that even Majorana index 0 maps to a value strictly greater
+        // than max_node_index and can therefore never be confused with a node qubit index.
+        // Node qubit indices may be non-contiguous (e.g. from the bonsai algorithm).
+        let max_node_index = qubit_node_map.keys().copied().max().unwrap_or(0);
+
+        for (qubit_index, children) in flatpack.iter() {
             let parent = *qubit_node_map
-                .get(&parent)
+                .get(qubit_index)
                 .ok_or_else(|| TernaryTreeError::FlatPackError(flatpack.clone()))?
                 as u8;
             for (child, edge) in std::iter::zip(
                 [children.0, children.1, children.2],
                 [Edge::X, Edge::Y, Edge::Z],
             ) {
-                if let Some(index) = child {
-                    let index = *qubit_node_map
-                        .get(&index)
-                        .ok_or_else(|| TernaryTreeError::FlatPackError(flatpack.clone()))?;
-                    self.add_child(Parent::new(edge, parent), Child::Node(index as u8))?
+                if let Some(c) = child {
+                    if let Some(&node_idx) = qubit_node_map.get(&c) {
+                        // c is a known node qubit index — add as a Node child.
+                        self.add_child(Parent::new(edge, parent), Child::Node(node_idx as u8))?;
+                    } else if process_leaves {
+                        // c is not a node — decode as a leaf.
+                        // Majorana index m = c - (max_node_index + 1).
+                        // Even m → XLeaf(m/2), odd m → YLeaf((m-1)/2).
+                        let m = c
+                            .checked_sub(max_node_index + 1)
+                            .ok_or_else(|| TernaryTreeError::FlatPackError(flatpack.clone()))?;
+                        let leaf = if m % 2 == 0 {
+                            Child::XLeaf((m / 2) as u8)
+                        } else {
+                            Child::YLeaf(((m - 1) / 2) as u8)
+                        };
+                        match edge {
+                            Edge::X => self.x_child_of[parent as usize] = Some(leaf),
+                            Edge::Y => self.y_child_of[parent as usize] = Some(leaf),
+                            Edge::Z => self.z_child_of[parent as usize] = Some(leaf),
+                        }
+                    }
+                    // else: not process_leaves — unknown index silently ignored (naive mode)
                 }
             }
         }

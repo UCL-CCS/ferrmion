@@ -296,7 +296,9 @@ impl TernaryTree {
 
         debug!("Flatpack nodes have qubit indices {:?}", &qubit_node_map);
 
-        // Leaf values are encoded as Majorana_index + max_node_index.
+        // Leaf values are encoded as Majorana_index + max_node_index + 1.
+        // The +1 ensures that even Majorana index 0 maps to a value strictly greater
+        // than max_node_index and can therefore never be confused with a node qubit index.
         // Node qubit indices may be non-contiguous (e.g. from the bonsai algorithm).
         let max_node_index = qubit_node_map.keys().copied().max().unwrap_or(0);
 
@@ -315,9 +317,9 @@ impl TernaryTree {
                         self.add_child(Parent::new(edge, parent), Child::Node(node_idx as u8))?;
                     } else if process_leaves {
                         // c is not a node — decode as a leaf.
-                        // Majorana index m = c - max_node_index.
+                        // Majorana index m = c - (max_node_index + 1).
                         // Even m → XLeaf(m/2), odd m → YLeaf((m-1)/2).
-                        let m = c.checked_sub(max_node_index)
+                        let m = c.checked_sub(max_node_index + 1)
                             .ok_or_else(|| TernaryTreeError::FlatPackError(flatpack.clone()))?;
                         let leaf = if m % 2 == 0 {
                             Child::XLeaf((m / 2) as u8)

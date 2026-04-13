@@ -213,8 +213,9 @@ class TernaryTree(FermionQubitEncoding):
         Node children are represented by their qubit index (an int that also
         appears as the first element of some flatpack entry).  Leaf children
         with a known Majorana index are encoded as
-        ``majorana_index + max_node_index``, which is strictly greater than
-        every node qubit index and can therefore never be confused with a node.
+        ``majorana_index + max_node_index + 1``, which is strictly greater than
+        every node qubit index (including when the Majorana index is 0) and can
+        therefore never be confused with a node.
         Leaves without a known Majorana index are represented as ``None``.
 
         Returns:
@@ -235,7 +236,7 @@ class TernaryTree(FermionQubitEncoding):
                 else:
                     majorana_idx = node.leaf_majorana_indices.get(edge)
                     if majorana_idx is not None:
-                        children[i] = majorana_idx + max_node_index
+                        children[i] = majorana_idx + max_node_index + 1
 
             flatpack.append(
                 (
@@ -275,12 +276,12 @@ class TernaryTree(FermionQubitEncoding):
                     if child in node_qubit_indices:
                         used_qubit_indices.append(child)
                     elif child > max_node_index:
-                        pass  # leaf: Majorana index = child - max_node_index
+                        pass  # leaf: Majorana index = child - (max_node_index + 1)
                     else:
                         raise TypeError(
                             f"TTFlatpack child {child} is not a node qubit index and is "
                             f"<= max_node_index ({max_node_index}); leaf values must be "
-                            "> max_node_index (i.e. majorana_index + max_node_index)."
+                            "> max_node_index (i.e. majorana_index + max_node_index + 1)."
                         )
                 elif child is None:
                     continue
@@ -299,7 +300,7 @@ class TernaryTree(FermionQubitEncoding):
                 if isinstance(child, int) and child in node_qubit_indices:
                     setattr(node, edge, nodes[child])
                 elif isinstance(child, int) and child > max_node_index:
-                    node.leaf_majorana_indices[edge] = child - max_node_index
+                    node.leaf_majorana_indices[edge] = child - (max_node_index + 1)
         root = nodes[flatpack[0][0]]
         enumeration_scheme = {}
         mode_counter = [0]

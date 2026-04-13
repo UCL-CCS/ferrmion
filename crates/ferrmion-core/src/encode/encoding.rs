@@ -344,10 +344,13 @@ impl MajoranaEncoding {
 
     fn validate_vacuum_state(&self) -> Result<(), MajoranaEncodingError> {
         if self.vacuum_state.state.len() != self.n_qubits {
-            error!("Vacuum state length {0:?} not same as n_qubits {1:?}",
-            self.vacuum_state.state,
-            self.n_qubits,);
-            return Err(MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone()));
+            error!(
+                "Vacuum state length {0:?} not same as n_qubits {1:?}",
+                self.vacuum_state.state, self.n_qubits,
+            );
+            return Err(MajoranaEncodingError::InvalidVacuumStateError(
+                self.vacuum_state.state.clone(),
+            ));
         }
         // Check each singly-occupied FockState can be encoded ( a_i†|Ω⟩ is well-defined).
         for i in 0..self.n_modes {
@@ -355,20 +358,28 @@ impl MajoranaEncoding {
             occ[i] = true;
             let state = self
                 .try_encode(FockState::new(occ, Complex64::ONE))
-                .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone()))?;
+                .map_err(|_| {
+                    MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone())
+                })?;
             if state.is_none() {
                 error!("Creation on mode {i} returns Null state.");
-                return Err(MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone()));
+                return Err(MajoranaEncodingError::InvalidVacuumStateError(
+                    self.vacuum_state.state.clone(),
+                ));
             }
         }
         // Check the fully-occupied FockState can also be encoded.
         let all_occ = Array1::from_elem(self.n_modes, true);
         let state = self
             .try_encode(FockState::new(all_occ, Complex64::ONE))
-            .map_err(|_| MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone()))?;
+            .map_err(|_| {
+                MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone())
+            })?;
         if state.is_none() {
             error!("Creation on all modes returns Null state.");
-            return Err(MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone()));
+            return Err(MajoranaEncodingError::InvalidVacuumStateError(
+                self.vacuum_state.state.clone(),
+            ));
         }
         Ok(())
     }
@@ -392,7 +403,15 @@ impl MajoranaEncoding {
     /// assert_eq!(swapped.n_modes, 3);
     /// ```
     pub fn apply_mode_enumeration(&self, mode_op_map: Vec<usize>) -> MajoranaEncoding {
-        assert_eq!(2 * mode_op_map.len(), self.operators.ipowers.len(), "{}", format!("Mode op map not same length as ipowers {0:?}",self.operators.ipowers.len()));
+        assert_eq!(
+            2 * mode_op_map.len(),
+            self.operators.ipowers.len(),
+            "{}",
+            format_args!(
+                "Mode op map not same length as ipowers {0:?}",
+                self.operators.ipowers.len()
+            )
+        );
         let majorana_rows: Vec<usize> = mode_op_map
             .iter()
             .flat_map(|v| [2 * v, 2 * v + 1])

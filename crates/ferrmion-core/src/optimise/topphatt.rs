@@ -333,7 +333,7 @@ impl NodeDependencies {
             debug!("RD {:?}", root_distances);
             debug!("UC {:?}", children_without_leaves);
             if let Some(node) = nodes_to_check.pop_front() {
-                assert!(children_without_leaves
+                debug_assert!(children_without_leaves
                     .insert(node, ArrayVec::new())
                     .is_none());
                 match tree.parent_of[node] {

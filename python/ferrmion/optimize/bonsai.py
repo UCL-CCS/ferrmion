@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 def bonsai_algorithm(
-    graph: rx.PyGraph, homogenous: bool = True, max_nodes: None | int = None,
+    graph: rx.PyGraph,
+    homogenous: bool = False,
+    max_nodes: None | int = None,
 ) -> TernaryTree:
     """Create a TernaryTree encoding using the Bonsai Algorithm.
 

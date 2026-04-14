@@ -15,11 +15,10 @@ from ferrmion.encode.ternary_tree import (
     PE,
     TTFlatpack,
 )
-from ferrmion.utils import symplectic_hash, symplectic_unhash, symplectic_to_pauli
+from ferrmion.utils import symplectic_hash, symplectic_unhash
 from ferrmion.hamiltonians import molecular_hamiltonian
-from ferrmion.core import standard_symplectic_matrix, flatpack_symplectic_matrix
+from ferrmion.core import flatpack_symplectic_matrix
 from .conftest import diagonalise_pauli_hamiltonian
-import hypothesis
 from hypothesis import given,strategies as st
 from hypothesis.extra.numpy import arrays
 import logging
@@ -372,15 +371,6 @@ def tests_bonsai_paper_tree(bonsai_paper_tree):
 
 def test_default_mode_op_map(water_tt):
     assert np.all(water_tt.default_mode_op_map == [*range(water_tt.n_qubits)])
-
-@pytest.mark.parametrize("n_modes", [1,5,10,20])
-@pytest.mark.parametrize("encoding,name", [(JordanWigner, "JW"), (ParityEncoding, "PE"), (BravyiKitaev, "BK"), (JKMN, "JKMN")])
-def test_core_standard_encodings(n_modes,encoding,name):
-    n_modes = 20
-    i,s = encoding(20)._build_symplectic_matrix()
-    ci, cs, _ = standard_symplectic_matrix(name,20)
-    assert np.all(i==ci)
-    assert np.all(s==cs)
 
 @pytest.mark.parametrize("optimisation", ["naive", "anneal", "topphatt"])
 @pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])

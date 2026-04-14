@@ -829,7 +829,7 @@ mod test_topphatt {
     use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
     use crate::encode::encoding::MajoranaEncoding;
-    use crate::encode::ternarytree::TTFlatPack;
+    use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
     use crate::optimise::topphatt::NodeDependencies;
     use crate::optimise::topphatt::TreeRestrictions;
@@ -1080,7 +1080,7 @@ mod test_topphatt {
             0.,
         )
         .unwrap();
-        let flatpack: TTFlatPack = vec![
+        let flatpack: TTFlatpack = vec![
             (1, (None, None, Some(2))),
             (2, (None, None, Some(3))),
             (3, (None, None, None)),

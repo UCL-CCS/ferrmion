@@ -41,29 +41,10 @@ def topphatt(
     coeffs: list[np.ndarray],
     parallelize: bool,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
-def topphatt_standard(
-    encoding: str,
-    n_modes: int,
-    n_qubits: int,
-    signatures: list[str],
-    coeffs: list[np.ndarray],
-    parallelize: bool,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def flatpack_symplectic_matrix(
     flatpack: TTFlatpack,
     n_qubits: None | int,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
-def standard_symplectic_matrix(
-    encoding: str, n_modes: int
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
-def encode_standard(
-    encoding: str,
-    n_modes: int,
-    n_qubits: int,
-    signatures: list[str],
-    coeffs: list[np.ndarray],
-    constant_energy: float,
-) -> dict: ...
 def encode_fermion_product(
     ipowers: npt.NDArray[np.uint8],
     symplectics: npt.NDArray[np.bool],

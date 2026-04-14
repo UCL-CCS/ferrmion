@@ -2,7 +2,12 @@
 
 from .base import FermionQubitEncoding, MajoranaStringEncoding
 from .maxnto import MaxNTO
-from .standard import (
+from .ternary_tree import (
+    JKMN,
+    BravyiKitaev,
+    JordanWigner,
+    ParityEncoding,
+    TernaryTree,
     bravyi_kitaev,
     bravyi_kitaev_annealed,
     bravyi_kitaev_topphatt,
@@ -15,9 +20,6 @@ from .standard import (
     parity,
     parity_annealed,
     parity_topphatt,
-)
-from .ternary_tree import (
-    TernaryTree,
 )
 
 __all__ = [
@@ -37,4 +39,8 @@ __all__ = [
     "jkmn",
     "jkmn_annealed",
     "jkmn_topphatt",
+    "JordanWigner",
+    "BravyiKitaev",
+    "ParityEncoding",
+    "JKMN",
 ]

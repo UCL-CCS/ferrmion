@@ -7,9 +7,14 @@ rust functions before importing functions from the python module.
 from .core import hartree_fock_state, maxnto_symplectic_matrix, symplectic_product
 from .encode import FermionQubitEncoding, MajoranaStringEncoding
 from .encode.maxnto import MaxNTO
-from .encode.ternary_tree import TernaryTree
 from .encode.ternary_tree_node import TTNode, node_sorter
-from .encode.standard import (
+
+from .encode.ternary_tree import(
+    TernaryTree,
+    JordanWigner,
+    BravyiKitaev,
+    ParityEncoding,
+    JKMN,
     jordan_wigner,
     jordan_wigner_annealed,
     jordan_wigner_topphatt,
@@ -47,7 +52,6 @@ __all__ = [
     "symplectic_unhash",
     "symplectic_product",
     "icount_to_sign",
-    "MaxNTO",
     "maxnto_symplectic_matrix",
     "hartree_fock_state",
     "two_operator_product",
@@ -56,6 +60,10 @@ __all__ = [
     "hubbard_hamiltonian",
     "FermionQubitEncoding",
     "TernaryTree",
+    "JordanWigner",
+    "BravyiKitaev",
+    "ParityEncoding",
+    "JKMN",
     "MaxNTO",
     "jordan_wigner",
     "jordan_wigner_annealed",

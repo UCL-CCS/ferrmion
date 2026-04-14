@@ -88,27 +88,6 @@ class TernaryTree(FermionQubitEncoding):
         self._enumeration_scheme = {}
         super().__init__(self.n_modes, self.n_qubits)
 
-    @classmethod
-    def from_hamiltonian_coefficients(cls, coeffs: tuple) -> "TernaryTree":
-        """Create an encoding by passing coefficients.
-
-        Args:
-            coeffs (tuple): The electron integrals for some hamiltonian.
-
-        Returns:
-            FermionQubitEncoding: An initialised encoding.
-
-        Example:
-            >>> import numpy as np
-            >>> from ferrmion.encode.ternary_tree import TernaryTree
-            >>> coeffs = (np.zeros((4, 4)), np.zeros((4, 4, 4, 4)))
-            >>> tree = TernaryTree.from_hamiltonian_coefficients(coeffs)
-        """
-        if not all([set(coeff.shape) == set(coeffs[0].shape) for coeff in coeffs]):
-            logger.error("Coeff axes must be of equal size for all terms.")
-
-        return cls(coeffs[0].shape[0])
-
     @property
     def enumeration_scheme(self) -> dict[str, tuple[int, int]]:
         """Get the enumeration scheme for the tree.
@@ -779,3 +758,187 @@ def JKMN(n_modes: int) -> TernaryTree:
         branches = sorted(list(new_branches), key=node_sorter)
     new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
     return new_tree
+
+
+def jordan_wigner(fham: FermionHamiltonian) -> QubitHamiltonian:
+    """Naive Jordan-Wigner Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return JordanWigner(fham.n_modes).encode(fham)
+
+
+def bravyi_kitaev(fham: FermionHamiltonian) -> QubitHamiltonian:
+    """Naive Bravyi-Kitaev Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return BravyiKitaev(fham.n_modes).encode(fham)
+
+
+def parity(fham: FermionHamiltonian) -> QubitHamiltonian:
+    """Naive Parity Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return ParityEncoding(fham.n_modes).encode(fham)
+
+
+def jkmn(fham: FermionHamiltonian) -> QubitHamiltonian:
+    """Naive Jiang-Kalev-Mruczkiewicz-Neven Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return JKMN(fham.n_modes).encode(fham)
+
+
+def jordan_wigner_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
+    """TOPP-HATT optimised Jordan-Wigner Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return JordanWigner(fham.n_modes).encode_topphatt(fham)
+
+
+def bravyi_kitaev_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
+    """TOPP-HATT optimised Bravyi-Kitaev Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return BravyiKitaev(fham.n_modes).encode_topphatt(fham)
+
+
+def parity_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
+    """TOPP-HATT optimised Parity Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return ParityEncoding(fham.n_modes).encode_topphatt(fham)
+
+
+def jkmn_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
+    """TOPP-HATT optimised Jiang-Kalev-Mruczkiewicz-Neven Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return JKMN(fham.n_modes).encode_topphatt(fham)
+
+
+def jordan_wigner_annealed(
+    fham: FermionHamiltonian,
+    temperature: int | None = None,
+    initial_guess: list[int] | None = None,
+    coefficient_weighted: bool = True,
+) -> QubitHamiltonian:
+    """TOPP-HATT optimised Jordan-Wigner Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+        temperature (Optional[int]): Initial annealing temperature.
+        initial_guess (Optional[list[int]]): Initial mode enumeration.
+        coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return JordanWigner(fham.n_modes).encode_annealed(
+        fham, temperature, initial_guess, coefficient_weighted
+    )
+
+
+def bravyi_kitaev_annealed(
+    fham: FermionHamiltonian,
+    temperature: int | None = None,
+    initial_guess: list[int] | None = None,
+    coefficient_weighted: bool = True,
+) -> QubitHamiltonian:
+    """TOPP-HATT optimised Bravyi-Kitaev Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+        temperature (Optional[int]): Initial annealing temperature.
+        initial_guess (Optional[list[int]]): Initial mode enumeration.
+        coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return BravyiKitaev(fham.n_modes).encode_annealed(
+        fham, temperature, initial_guess, coefficient_weighted
+    )
+
+
+def parity_annealed(
+    fham: FermionHamiltonian,
+    temperature: int | None = None,
+    initial_guess: list[int] | None = None,
+    coefficient_weighted: bool = True,
+) -> QubitHamiltonian:
+    """TOPP-HATT optimised Parity Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+        temperature (Optional[int]): Initial annealing temperature.
+        initial_guess (Optional[list[int]]): Initial mode enumeration.
+        coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return ParityEncoding(fham.n_modes).encode_annealed(
+        fham, temperature, initial_guess, coefficient_weighted
+    )
+
+
+def jkmn_annealed(
+    fham: FermionHamiltonian,
+    temperature: int | None = None,
+    initial_guess: list[int] | None = None,
+    coefficient_weighted: bool = True,
+) -> QubitHamiltonian:
+    """TOPP-HATT optimised Jiang-Kalev-Mruczkiewicz-Neven Encoding.
+
+    Args:
+        fham (FermionHamiltonian): Hamiltonian to encode.
+        temperature (Optional[int]): Initial annealing temperature.
+        initial_guess (Optional[list[int]]): Initial mode enumeration.
+        coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+
+    Returns:
+        QubitHamiltonian: Encoded Hamiltonian.
+    """
+    return JKMN(fham.n_modes).encode_annealed(
+        fham, temperature, initial_guess, coefficient_weighted
+    )

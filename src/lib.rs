@@ -9,7 +9,7 @@
 
 use ferrmion_core::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
 use ferrmion_core::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
-use ferrmion_core::encode::ternarytree::{TTFlatPack, TernaryTree, TernaryTreeError};
+use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeError};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{
     FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
@@ -462,7 +462,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "flatpack_symplectic_matrix")]
     fn wrap_flatpack_symplectic_matrix(
         py: Python<'_>,
-        flatpack: TTFlatPack,
+        flatpack: TTFlatpack,
         n_qubits: Option<usize>,
     ) -> Result<
         (
@@ -773,7 +773,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "topphatt")]
     fn wrap_topphatt<'py>(
         py: Python<'py>,
-        flatpack: TTFlatPack,
+        flatpack: TTFlatpack,
         n_qubits: usize,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
@@ -788,7 +788,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     > {
         // ) -> PyResult<()> {
         debug!("Starting TOPPHATT");
-        let flatpack: TTFlatPack = flatpack;
+        let flatpack: TTFlatpack = flatpack;
         debug!("Got flatpack");
 
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
@@ -840,7 +840,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyo3(name = "encode_topphatt")]
     fn wrap_encode_topphatt<'py>(
         py: Python<'py>,
-        flatpack: TTFlatPack,
+        flatpack: TTFlatpack,
         n_qubits: usize,
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
@@ -856,7 +856,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         CoreError,
     > {
         debug!("Starting TOPPHATT");
-        let flatpack: TTFlatPack = flatpack;
+        let flatpack: TTFlatpack = flatpack;
         debug!("Got flatpack");
 
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
@@ -890,93 +890,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             qham.into_py_dict(py)?,
             encoding.vacuum_state.state.into_pyarray(py),
         ))
-    }
-
-    /// Run TOPPHATT using a standard named encoding as the initial tree.
-    ///
-    /// Constructs the ternary tree for the named encoding and then runs the
-    /// TOPPHATT optimisation algorithm to minimise Pauli weight.
-    ///
-    /// Args:
-    ///     encoding: One of ``"Jordan-Wigner"`` / ``"JW"``, ``"Bravyi-Kitaev"`` / ``"BK"``,
-    ///         ``"Parity"`` / ``"PE"``, or ``"JKMN"``.
-    ///     n_modes: Number of fermionic modes.
-    ///     n_qubits: Total number of qubits (must be >= ``n_modes``).
-    ///     signatures: List of fermionic operator signature strings.
-    ///     coeffs: List of coefficient arrays, one per signature.
-    ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
-    ///
-    /// Returns:
-    ///     Tuple of ``(ipowers, symplectic_matrix)`` for the optimised encoding.
-    #[pyfn(m)]
-    #[pyo3(name = "topphatt_standard")]
-    fn wrap_topphatt_standard<'py>(
-        py: Python<'py>,
-        encoding: String,
-        n_modes: usize,
-        n_qubits: usize,
-        signatures: Vec<String>,
-        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
-        parallelize: bool,
-    ) -> Result<
-        (
-            Bound<'py, PyArray1<u8>>,
-            Bound<'py, PyArray2<bool>>,
-            Bound<'py, PyArray1<bool>>,
-        ),
-        CoreError,
-    > {
-        // ) -> PyResult<Bound<'py, PyDict>> {
-        if signatures.len() != coeffs.len() {
-            return Err(CoreError::Value(
-                "signatures and coefficients must have equal length".to_string(),
-            ));
-        }
-        if n_qubits < n_modes {
-            return Err(CoreError::Value("n_qubits must be >= n_modes".to_string()));
-        }
-
-        debug!("Starting TOPPHATT");
-        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
-            signatures,
-            coeffs.iter().map(|v| v.as_array()).collect(),
-            0.,
-        );
-        debug!("Got MSparse");
-        debug!("Got Hamiltonian");
-        let mut tree: TernaryTree = match encoding.as_str() {
-            "Jordan-Wigner" | "JW" => TernaryTree::naive_jordan_wigner(n_modes),
-            "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
-            "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
-            "JKMN" => TernaryTree::naive_jkmn(n_modes),
-            _ => return Err(CoreError::Value(
-                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.".to_string(),
-            )),
-        };
-        debug!("Got Tree");
-        debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian.clone(), tree, parallelize)?;
-        let encoding = tree.build_encoding(n_qubits)?;
-        debug!("Got encoding");
-        let combined = ndarray::concatenate(
-            ndarray::Axis(1),
-            &[
-                encoding.operators.x_block.view(),
-                encoding.operators.z_block.view(),
-            ],
-        )
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        Ok((
-            encoding.operators.ipowers.into_pyarray(py),
-            combined.into_pyarray(py),
-            encoding.vacuum_state.state.into_pyarray(py),
-        ))
-        // let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
-        // debug!("Got qham");
-        // Ok(qham
-        //     .into_py_dict(py)
-        //     .expect("Should be able to convert QubitHamiltonian to PyDict."))
-        // Ok(())
     }
 
     /// Build the symplectic matrix of Majorana operators for the MaxNTO k-NTO encoding.

@@ -18,7 +18,7 @@ use thiserror::Error;
 ///
 /// Beginning with the root node at index 0, each node's children
 /// are given as a tuple (X,Y,Z).
-pub type TTFlatPack = Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>;
+pub type TTFlatpack = Vec<(usize, (Option<usize>, Option<usize>, Option<usize>))>;
 
 /// Possible outward edges of nodes.
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
@@ -178,7 +178,7 @@ pub struct TernaryTree {
 #[derive(Debug, Error)]
 pub enum TernaryTreeError {
     #[error("Could not build Ternary Tree from Node Map: {0:?}")]
-    FlatPackError(TTFlatPack),
+    FlatPackError(TTFlatpack),
     #[error("Child cannot be assigned parent.")]
     InvalidChildError(Parent, Child),
     #[error("Parent cannot be assigned child.")]
@@ -242,11 +242,11 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::ternarytree::{TernaryTree, TTFlatPack};
-    /// let flatpack: TTFlatPack = vec![];
+    /// use ferrmion_core::encode::ternarytree::{TernaryTree, TTFlatpack};
+    /// let flatpack: TTFlatpack = vec![];
     /// let tree = TernaryTree::from_flatpack(&flatpack).unwrap();
     /// ```
-    pub fn from_flatpack(flatpack: &TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
+    pub fn from_flatpack(flatpack: &TTFlatpack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new(n_nodes);
         tree.add_children_from_flatpack(flatpack, true)?;
@@ -261,11 +261,11 @@ impl TernaryTree {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::ternarytree::{TernaryTree, TTFlatPack};
-    /// let flatpack: TTFlatPack = vec![];
+    /// use ferrmion_core::encode::ternarytree::{TernaryTree, TTFlatpack};
+    /// let flatpack: TTFlatpack = vec![];
     /// let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
     /// ```
-    pub fn from_flatpack_naive(flatpack: &TTFlatPack) -> Result<TernaryTree, TernaryTreeError> {
+    pub fn from_flatpack_naive(flatpack: &TTFlatpack) -> Result<TernaryTree, TernaryTreeError> {
         let n_nodes = flatpack.len();
         let mut tree = TernaryTree::new_naive(n_nodes);
         tree.add_children_from_flatpack(flatpack, false)?;
@@ -278,7 +278,7 @@ impl TernaryTree {
     /// default leaf assignment is left intact.
     fn add_children_from_flatpack(
         &mut self,
-        flatpack: &TTFlatPack,
+        flatpack: &TTFlatpack,
         process_leaves: bool,
     ) -> Result<(), TernaryTreeError> {
         let n_nodes = self.n_nodes;
@@ -763,7 +763,7 @@ mod tt_tests {
 
     #[test]
     fn test_from_empty_flatpack() {
-        let flatpack: TTFlatPack = vec![
+        let flatpack: TTFlatpack = vec![
             (0, (None, None, None)),
             (1, (None, None, None)),
             (2, (None, None, None)),
@@ -777,7 +777,7 @@ mod tt_tests {
 
     #[test]
     fn test_from_empty_flatpack_naive() {
-        let flatpack: TTFlatPack = vec![
+        let flatpack: TTFlatpack = vec![
             (0, (None, None, None)),
             (1, (None, None, None)),
             (2, (None, None, None)),
@@ -797,7 +797,7 @@ mod tt_tests {
 
     #[test]
     fn test_from_flatpack_naive_standard_encodings() {
-        let jw_flatpack: TTFlatPack = vec![
+        let jw_flatpack: TTFlatpack = vec![
             (0, (None, None, Some(1))),
             (1, (None, None, Some(2))),
             (2, (None, None, None)),
@@ -808,7 +808,7 @@ mod tt_tests {
             TernaryTree::from_flatpack_naive(&jw_flatpack).unwrap(),
             expected
         );
-        let pe_flatpack: TTFlatPack = vec![
+        let pe_flatpack: TTFlatpack = vec![
             (0, (Some(1), None, None)),
             (1, (Some(2), None, None)),
             (2, (None, None, None)),
@@ -819,7 +819,7 @@ mod tt_tests {
             TernaryTree::from_flatpack_naive(&pe_flatpack).unwrap(),
             expected
         );
-        let bk_flatpack: TTFlatPack = vec![
+        let bk_flatpack: TTFlatpack = vec![
             (0, (Some(1), None, None)),
             (1, (Some(2), None, Some(3))),
             (2, (None, None, None)),
@@ -831,7 +831,7 @@ mod tt_tests {
             TernaryTree::from_flatpack_naive(&bk_flatpack).unwrap(),
             expected
         );
-        let jkmn_flatpack: TTFlatPack = vec![
+        let jkmn_flatpack: TTFlatpack = vec![
             (0, (Some(1), Some(2), Some(3))),
             (1, (None, None, None)),
             (2, (None, None, None)),
@@ -847,7 +847,7 @@ mod tt_tests {
 
     #[test]
     fn test_from_flatpack_with_qubit_labels() {
-        let flatpack: TTFlatPack = vec![
+        let flatpack: TTFlatpack = vec![
             (9, (Some(10), Some(11), Some(12))),
             (10, (None, None, None)),
             (11, (None, None, None)),
@@ -1074,7 +1074,7 @@ mod tt_tests {
 
     #[test]
     fn test_jw_flatpack_build_encoding() {
-        let flatpack: TTFlatPack = Vec::from(&[
+        let flatpack: TTFlatpack = Vec::from(&[
             (0, (None, None, Some(1))),
             (1, (None, None, Some(2))),
             (2, (None, None, None)),

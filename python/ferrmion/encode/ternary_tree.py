@@ -771,6 +771,7 @@ def jordan_wigner(fham: FermionHamiltonian) -> QubitHamiltonian:
     """
     return JordanWigner(fham.n_modes).encode(fham)
 
+
 def bravyi_kitaev(fham: FermionHamiltonian) -> QubitHamiltonian:
     """Naive Bravyi-Kitaev Encoding.
 
@@ -782,6 +783,7 @@ def bravyi_kitaev(fham: FermionHamiltonian) -> QubitHamiltonian:
     """
     return BravyiKitaev(fham.n_modes).encode(fham)
 
+
 def parity(fham: FermionHamiltonian) -> QubitHamiltonian:
     """Naive Parity Encoding.
 
@@ -792,6 +794,7 @@ def parity(fham: FermionHamiltonian) -> QubitHamiltonian:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return ParityEncoding(fham.n_modes).encode(fham)
+
 
 def jkmn(fham: FermionHamiltonian) -> QubitHamiltonian:
     """Naive Jiang-Kalev-Mruczkiewicz-Neven Encoding.
@@ -814,7 +817,6 @@ def jordan_wigner_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
-
     return JordanWigner(fham.n_modes).encode_topphatt(fham)
 
 
@@ -840,6 +842,7 @@ def parity_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return ParityEncoding(fham.n_modes).encode_topphatt(fham)
+
 
 def jkmn_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
     """TOPP-HATT optimised Jiang-Kalev-Mruczkiewicz-Neven Encoding.
@@ -870,7 +873,9 @@ def jordan_wigner_annealed(
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
-    return JordanWigner(fham.n_modes).encode_annealed(fham, temperature, initial_guess, coefficient_weighted)
+    return JordanWigner(fham.n_modes).encode_annealed(
+        fham, temperature, initial_guess, coefficient_weighted
+    )
 
 
 def bravyi_kitaev_annealed(
@@ -890,7 +895,9 @@ def bravyi_kitaev_annealed(
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
-    return BravyiKitaev(fham.n_modes).encode_annealed(fham, temperature, initial_guess, coefficient_weighted)
+    return BravyiKitaev(fham.n_modes).encode_annealed(
+        fham, temperature, initial_guess, coefficient_weighted
+    )
 
 
 def parity_annealed(
@@ -910,7 +917,9 @@ def parity_annealed(
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
-    return ParityEncoding(fham.n_modes).encode_annealed(fham, temperature, initial_guess, coefficient_weighted)
+    return ParityEncoding(fham.n_modes).encode_annealed(
+        fham, temperature, initial_guess, coefficient_weighted
+    )
 
 
 def jkmn_annealed(
@@ -930,5 +939,6 @@ def jkmn_annealed(
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
-    return JKMN(fham.n_modes).encode_annealed(fham, temperature, initial_guess, coefficient_weighted)
-
+    return JKMN(fham.n_modes).encode_annealed(
+        fham, temperature, initial_guess, coefficient_weighted
+    )

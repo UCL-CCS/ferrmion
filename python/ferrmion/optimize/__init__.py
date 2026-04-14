@@ -1,6 +1,6 @@
 """Init Optimize Submodule."""
 
-from ..core import anneal_enumerations, topphatt, topphatt_standard
+from ..core import anneal_enumerations, topphatt
 from .bonsai import bonsai_algorithm
 from .cost_functions import (
     coefficient_pauli_weight,
@@ -25,5 +25,4 @@ __all__ = [
     "reduced_entanglement_ternary_tree",
     "hamiltonian_adaptive_ternary_tree",
     "topphatt",
-    "topphatt_standard",
 ]

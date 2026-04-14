@@ -10,7 +10,7 @@ from ferrmion.encode.ternary_tree import (
 )
 import numpy as np
 import pytest
-from ferrmion.core import topphatt_standard, encode, fermionic_to_sparse_majorana
+from ferrmion.core import encode, fermionic_to_sparse_majorana
 from ferrmion.optimize.huffman import huffman_ternary_tree
 from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree, fast_hatt
 from openfermion import QubitOperator, get_sparse_operator

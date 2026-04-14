@@ -507,60 +507,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
-    /// Build the symplectic encoding matrix for a standard named encoding.
-    ///
-    /// Args:
-    ///     encoding: One of ``"Jordan-Wigner"`` / ``"JW"``, ``"Bravyi-Kitaev"`` / ``"BK"``,
-    ///         ``"Parity"`` / ``"PE"``, or ``"JKMN"``.
-    ///     n_modes: Number of fermionic modes.
-    ///
-    /// Returns:
-    ///     Tuple of ``(ipowers, symplectic_matrix)``.
-    #[pyfn(m)]
-    #[pyo3(name = "standard_symplectic_matrix")]
-    fn wrap_standard_symplectic_matrix(
-        py: Python<'_>,
-        encoding: String,
-        n_modes: usize,
-    ) -> Result<
-        (
-            Bound<'_, PyArray1<u8>>,
-            Bound<'_, PyArray2<bool>>,
-            Bound<'_, PyArray1<bool>>,
-        ),
-        CoreError,
-    > {
-        // ) -> PyResult<()> {
-
-        let tree: TernaryTree = match encoding.as_str() {
-            "Jordan-Wigner" | "JW" => TernaryTree::naive_jordan_wigner(n_modes),
-            "Bravyi-Kitaev" | "BK" => TernaryTree::naive_bravyi_kitaev(n_modes),
-            "Parity" | "PE" => TernaryTree::naive_parity(n_modes),
-            "JKMN" => TernaryTree::naive_jkmn(n_modes),
-            _ => return Err(CoreError::Value(
-                "Encoding must be one of 'Jordan-Wigner'/'JW', 'Bravyi-Kitaev'/'BK', 'Parity'/'PE', or 'JKMN'.".to_string(),
-            )),
-        };
-        debug!("Got Tree");
-        let encoding = tree.build_encoding(n_modes)?;
-        debug!("Got encoding");
-
-        debug!("Got qham");
-        let combined = ndarray::concatenate(
-            ndarray::Axis(1),
-            &[
-                encoding.operators.x_block.view(),
-                encoding.operators.z_block.view(),
-            ],
-        )
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        Ok((
-            encoding.operators.ipowers.into_pyarray(py),
-            combined.into_pyarray(py),
-            encoding.vacuum_state.state.into_pyarray(py),
-        ))
-    }
-
     /// Convert a fermionic Hamiltonian to a sparse Majorana representation.
     ///
     /// Decomposes the fermionic Hamiltonian expressed via ladder operator signatures

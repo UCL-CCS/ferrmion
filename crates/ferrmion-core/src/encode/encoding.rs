@@ -4,7 +4,8 @@
 //! for transforming fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    FermionProduct, MajoranaProduct, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
+    CoefficientPauliWeight, FermionProduct, MajoranaProduct, MajoranaSparse, PauliWeight,
+    SymplecticMatrix, SymplecticOperator,
 };
 use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
 use crate::utils::{self, icount_to_sign};
@@ -429,6 +430,65 @@ impl MajoranaEncoding {
             self.vacuum_state.clone(),
         )
         .expect("Reindexing a valid encoding should never fail.")
+    }
+
+    /// Encode a fermionic Hamiltonian with multiple mode permutations and return
+    /// the Pauli weight for each.
+    ///
+    /// Each permutation is encoded independently in parallel using Rayon.
+    /// This is significantly faster than calling [`Encode::encode`] and
+    /// [`PauliWeight::pauli_weight`] separately for each permutation from Python.
+    ///
+    /// # Arguments
+    ///
+    /// * `msparse` - The fermionic Hamiltonian in Majorana sparse form.
+    /// * `permutations` - Slice of mode-to-operator-pair permutations.  Each
+    ///   inner `Vec<usize>` must have length `n_modes` and contain a permutation
+    ///   of `0..n_modes`.
+    /// * `coefficient_weighted` - If `true`, return the coefficient-weighted
+    ///   Pauli weight; otherwise return the plain Pauli weight.
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<f64>` with one weight per input permutation, in the same order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
+    /// use ferrmion_core::operators::MajoranaSparse;
+    /// use num_complex::Complex64;
+    /// use tinyvec::array_vec;
+    ///
+    /// let tree = TernaryTree::naive_jordan_wigner(2);
+    /// let encoding = tree.build_encoding(2).unwrap();
+    /// let ms = MajoranaSparse::new(
+    ///     vec![array_vec!([u16; 7] => 0, 1)],
+    ///     vec![Complex64::new(1.0, 0.)],
+    ///     0.,
+    /// ).unwrap();
+    /// let weights = encoding.batch_pauli_weights(&ms, &[vec![0, 1], vec![1, 0]], false);
+    /// assert_eq!(weights.len(), 2);
+    /// ```
+    pub fn batch_pauli_weights(
+        &self,
+        msparse: &MajoranaSparse,
+        permutations: &[Vec<usize>],
+        coefficient_weighted: bool,
+    ) -> Vec<f64> {
+        permutations
+            .par_iter()
+            .map(|perm| {
+                let enumerated_encoding = self.apply_mode_enumeration(perm.clone());
+                let qham = enumerated_encoding.encode(msparse);
+                if coefficient_weighted {
+                    qham.coeff_pauli_weight()
+                } else {
+                    qham.pauli_weight() as f64
+                }
+            })
+            .collect()
     }
 }
 
@@ -1209,5 +1269,71 @@ mod owned_tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+    use crate::encode::ternarytree::TernaryTree;
+    use crate::operators::{CoefficientPauliWeight, PauliWeight};
+    use num_complex::Complex64;
+    use tinyvec::array_vec;
+
+    #[test]
+    fn test_batch_pauli_weights_matches_individual() {
+        let tree = TernaryTree::naive_jordan_wigner(2);
+        let encoding = tree.build_encoding(2).unwrap();
+        let ms = MajoranaSparse::new(
+            vec![array_vec!([u16; 7] => 0, 1), array_vec!([u16; 7] => 2, 3)],
+            vec![Complex64::new(0.5, 0.), Complex64::new(0.25, 0.)],
+            0.,
+        )
+        .unwrap();
+        let perms = vec![vec![0, 1], vec![1, 0]];
+        let batch = encoding.batch_pauli_weights(&ms, &perms, false);
+
+        assert_eq!(batch.len(), 2);
+        for (perm, &batch_weight) in perms.iter().zip(batch.iter()) {
+            let enumerated = encoding.apply_mode_enumeration(perm.clone());
+            let qham = enumerated.encode(&ms);
+            assert_eq!(qham.pauli_weight() as f64, batch_weight);
+        }
+    }
+
+    #[test]
+    fn test_batch_pauli_weights_empty() {
+        let tree = TernaryTree::naive_jordan_wigner(2);
+        let encoding = tree.build_encoding(2).unwrap();
+        let ms = MajoranaSparse::new(
+            vec![array_vec!([u16; 7] => 0, 1)],
+            vec![Complex64::new(1.0, 0.)],
+            0.,
+        )
+        .unwrap();
+        let weights = encoding.batch_pauli_weights(&ms, &[], false);
+        assert!(weights.is_empty());
+    }
+
+    #[test]
+    fn test_batch_pauli_weights_coefficient_weighted() {
+        let tree = TernaryTree::naive_jordan_wigner(2);
+        let encoding = tree.build_encoding(2).unwrap();
+        let ms = MajoranaSparse::new(
+            vec![array_vec!([u16; 7] => 0, 1), array_vec!([u16; 7] => 2, 3)],
+            vec![Complex64::new(2.0, 0.), Complex64::new(0.5, 0.)],
+            0.,
+        )
+        .unwrap();
+        let perms = vec![vec![0, 1]];
+        let unweighted = encoding.batch_pauli_weights(&ms, &perms, false);
+        let weighted = encoding.batch_pauli_weights(&ms, &perms, true);
+
+        let enumerated = encoding.apply_mode_enumeration(vec![0, 1]);
+        let qham = enumerated.encode(&ms);
+        assert_eq!(unweighted[0], qham.pauli_weight() as f64);
+        assert_eq!(weighted[0], qham.coeff_pauli_weight());
+        // Non-uniform coefficients (2.0 vs 0.5) mean weighted ≠ unweighted
+        assert_ne!(unweighted[0], weighted[0]);
     }
 }

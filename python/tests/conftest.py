@@ -20,6 +20,15 @@ def water_data():
     data["twos"] = np.array(data["twos"])
     return data
 
+@fixture(scope="module")
+def h2_631g_data():
+    folder = Path(__file__).parent
+    with open(folder.joinpath("./data/h2_6-31g.json"), "rb") as file:
+        data = json.load(file)
+    data["ones"] = np.array(data["ones"])
+    data["twos"] = np.array(data["twos"])
+    return data
+
 @fixture(scope="module", params=["h2_sto-3g","h2_6-31g"])
 def h2_mol_data_sets(request):
     folder = Path(__file__).parent

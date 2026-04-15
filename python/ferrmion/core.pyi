@@ -34,6 +34,15 @@ def anneal_enumerations(
     initial_guess: npt.NDArray[np.uint],
     coefficient_weighted: bool,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
+def batch_pauli_weights(
+    ipowers: npt.NDArray[np.uint8],
+    symplectics: npt.NDArray[np.bool],
+    vacuum_state: npt.NDArray[np.bool],
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+    permutations: npt.NDArray[np.uint],
+    coefficient_weighted: bool,
+) -> npt.NDArray[np.float64]: ...
 def topphatt(
     flatpack: list[tuple[np.uint, tuple[np.uint, np.uint, np.uint]]],
     n_qubits: int,

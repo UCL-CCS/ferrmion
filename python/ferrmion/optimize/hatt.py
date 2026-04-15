@@ -1,5 +1,4 @@
 """Code to Geneate Hamiltonian Adaptive Ternary Tree from Majorana Hamiltonian."""
-from webbrowser import get
 
 import logging
 from itertools import permutations
@@ -167,7 +166,7 @@ def hamiltonian_adaptive_ternary_tree(
 
     # For TTFlatpack we need to remove the all-z leaf.
     node = root
-    while isinstance(getattr(node, "z", None),TTNode):
+    while isinstance(getattr(node, "z", None), TTNode):
         node = node.z
     node.leaf_majorana_indices["z"] = None
 

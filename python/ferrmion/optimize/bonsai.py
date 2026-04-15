@@ -102,7 +102,6 @@ def bonsai_algorithm(
     logger.debug("Creating encoding.")
 
     n_nodes = graph.num_nodes() if max_nodes is None else max_nodes
-    print(f"Created tree with {n_nodes} nodes.")
     tree = TernaryTree(
         n_modes=n_nodes, n_qubits=graph.num_nodes(), root_node=nodes[root_index]
     )

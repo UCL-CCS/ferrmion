@@ -1092,7 +1092,7 @@ mod owned_tests {
         let result = MajoranaEncoding::with_vacuum(operators, ZBasisState::zeros(1));
         assert!(matches!(
             result,
-            Err(MajoranaEncodingError::InvalidVacuumStateError)
+            Err(MajoranaEncodingError::InvalidVacuumStateError(_))
         ));
     }
 

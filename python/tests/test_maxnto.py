@@ -4,7 +4,7 @@ from ferrmion.core import maxnto_symplectic_matrix
 import numpy as np
 
 def test_max_nto():
-    ipowers, symplectics = maxnto_symplectic_matrix(14)
+    ipowers, symplectics, _ = maxnto_symplectic_matrix(14)
 
     assert np.all(
         ipowers

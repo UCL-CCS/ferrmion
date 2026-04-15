@@ -11,8 +11,6 @@ from ferrmion.encode.ternary_tree import (
 import numpy as np
 import pytest
 from ferrmion.core import anneal_enumerations, encode
-from ferrmion.optimize.huffman import huffman_ternary_tree
-from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree, fast_hatt
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
 
@@ -26,9 +24,10 @@ def test_core_anneal_standard_h2_eigvals_equal_expected(encoding, coeff_weight, 
     e_nuc = h2_mol_data_sets["constant_energy"]
     n_modes = ones.shape[0]
 
-    ipow, sym = encoding(n_modes)._build_symplectic_matrix()
+    tree = encoding(n_modes)
+    ipow, sym = tree._build_symplectic_matrix()
     anneal_enumerations(ipow, sym, ["+-","++--"], [ones, twos], n_modes, np.array([*range(n_modes)], dtype=np.uint), coeff_weight)
-    qham = encode(ipow, sym, ["+-","++--"],[ones, twos], e_nuc)
+    qham = encode(ipowers=ipow,symplectics= sym, vacuum_state=tree.vacuum_state.astype(bool), signatures=["+-","++--"], coeffs=[ones, twos], constant_energy=e_nuc)
 
 
     ofop = QubitOperator()

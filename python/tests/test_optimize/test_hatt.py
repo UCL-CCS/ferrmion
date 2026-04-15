@@ -28,7 +28,7 @@ def test_hatt():
     assert hatt.as_dict() == {
         "x": {"x": 2, "y": 3, "z": 4},
         "y": 5,
-        "z": {"x": 0, "y": 1, "z": 6},
+        "z": {"x": 0, "y": 1, "z": None},
     }
     assert hatt.enumeration_scheme == {"": (0, 2), "x": (1, 1), "z": (2, 0)}
     assert hatt.root_node.branch_majorana_map == {
@@ -38,5 +38,5 @@ def test_hatt():
         "xz": 4,
         "zx": 0,
         "zy": 1,
-        "zz": 6,
+        "zz": None,
     }

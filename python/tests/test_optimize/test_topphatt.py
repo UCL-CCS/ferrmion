@@ -7,6 +7,7 @@ from ferrmion.encode.ternary_tree import (
     BravyiKitaev,
     ParityEncoding,
     JKMN,
+    TernaryTree,
 )
 import numpy as np
 import pytest
@@ -23,7 +24,8 @@ def test_topphatt_preserves_topology(encoding, water_data):
     twos = water_data["twos"]
     e_nuc = water_data["constant_energy"]
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
-    tree = encoding(14)
+    tree : TernaryTree= encoding(14)
+    print(tree.flatpack())
     _ = tree.encode_topphatt(fham)
     assert tree.root_node.child_strings == encoding(14).root_node.child_strings
     assert tree.root_node.branch_strings == encoding(14).root_node.branch_strings

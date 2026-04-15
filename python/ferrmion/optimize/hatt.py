@@ -164,6 +164,12 @@ def hamiltonian_adaptive_ternary_tree(
     else:
         raise ValueError("Hatt root node is not a TTNode object.")
 
+    # For TTFlatpack we need to remove the all-z leaf.
+    node = root
+    while isinstance(getattr(node, "z", None), TTNode):
+        node = node.z
+    node.leaf_majorana_indices["z"] = None
+
     tree = TernaryTree(n_modes=n_modes, root_node=root)
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     tree.pauli_weight = total_weight

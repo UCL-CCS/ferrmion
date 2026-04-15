@@ -42,4 +42,6 @@ class MaxNTO(FermionQubitEncoding):
             >>> MaxNTO = MaxNTO(5)
             >>> y_count, sympl = MaxNTO._build_symplectic_matrix()
         """
-        return maxnto_symplectic_matrix(self.n_modes)
+        ipow, sym, vacuum = maxnto_symplectic_matrix(self.n_modes)
+        self.vacuum_state = vacuum
+        return ipow, sym

@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ## [0.8.0] - 2026-04-15
+### Added
+- `decode` function for encodings to transform a set of Z-basis measurements into fock states.
+
 ### Changed
 - `flatpack_symplectic_matrix` now returns the vacuum state as well as the ipower and symplectic matrix.
 - `encode` and `core.topphatt` now take the vacuum state as input.

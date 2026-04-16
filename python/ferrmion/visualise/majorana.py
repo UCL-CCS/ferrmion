@@ -4,15 +4,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
 
+from ferrmion.encode import FermionQubitEncoding
 
-def symplectic_matshow(symplectics, title: str | None = None):
+
+def symplectic_matshow(encoding: FermionQubitEncoding, title: str | None = None):
     """Colourised Matplotlib matshow of a symplectic array.
 
     Args:
-        symplectics: A 2D array in symplectic (XZ) format.
+        encoding (FermionQubitEncoding): A fermion-qubit encoding.
         title (str | None): Optional plot title.
     """
-    # Crear el mapa de colores cualitativo
+    _, symplectics = encoding._build_symplectic_matrix()
     colors = ["linen", "tab:red", "tab:blue", "tab:purple"]
 
     left, right = np.hsplit(symplectics, 2)

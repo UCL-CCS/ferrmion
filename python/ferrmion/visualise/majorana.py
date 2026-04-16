@@ -30,3 +30,4 @@ def symplectic_matshow(symplectics, title: str | None = None):
     plt.tick_params(labeltop=False, labelbottom=True)
     plt.ylabel(r"Majorana $\gamma$")
     plt.yticks(range(symplectics.shape[0]))
+    return plt.gcf()

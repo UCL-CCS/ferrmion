@@ -4,7 +4,8 @@
 //! for transforming fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    FermionProduct, MajoranaProduct, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
+    FermionProduct, MajoranaProduct, MajoranaSparse, PauliKey, PauliWeight, SymplecticMatrix,
+    SymplecticOperator,
 };
 use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
 use crate::utils::{self, icount_to_sign};
@@ -502,6 +503,109 @@ impl Encode<FermionProduct> for MajoranaEncoding {
         let msparse = MajoranaSparse::from(input);
         self.encode(&msparse)
     }
+}
+
+impl MajoranaEncoding {
+    /// Aggregate Majorana products into a bit-packed Pauli map.
+    ///
+    /// Each Majorana index in `input` is translated through `index_map` before
+    /// looking up the Majorana operator row, so the same routine serves both
+    /// the un-permuted encoding and the permuted (annealing) variant without
+    /// cloning the [`SymplecticMatrix`]. The constant term is intentionally
+    /// omitted because it only ever lands on the identity Pauli, which has
+    /// zero weight under both [`PauliWeight`] and `CoefficientPauliWeight`.
+    fn aggregate_pauli_keys<F>(
+        &self,
+        input: &MajoranaSparse,
+        index_map: F,
+    ) -> HashMap<PauliKey, Complex64, RandomState>
+    where
+        F: Fn(usize) -> usize + Sync,
+    {
+        let keys_ipowers: Vec<(PauliKey, u8)> = input
+            .indices
+            .par_iter()
+            .map(|indices| {
+                let mut operator = SymplecticOperator::identity(self.n_qubits);
+                for &ind in indices.iter() {
+                    let row = self.operators.view_row(index_map(ind as usize));
+                    operator.mul_assign_view(&row);
+                }
+                operator.to_pauli_key()
+            })
+            .collect();
+
+        let mut acc: HashMap<PauliKey, Complex64, RandomState> =
+            HashMap::with_capacity_and_hasher(keys_ipowers.len(), RandomState::new());
+        for ((key, ipower), coef) in keys_ipowers.into_iter().zip(&input.coefficients) {
+            *acc.entry(key).or_insert(Complex64::new(0., 0.)) +=
+                coef * icount_to_sign(ipower as usize);
+        }
+        acc
+    }
+
+    /// Encode `input` and return its Pauli weight directly, without ever
+    /// materialising a string-keyed [`QubitHamiltonian`].
+    ///
+    /// This is the fast path used by the simulated-annealing cost function
+    /// in [`crate::optimise::anneal_enumerations`].
+    pub fn encode_pauli_weight(&self, input: &MajoranaSparse) -> usize {
+        let acc = self.aggregate_pauli_keys(input, |i| i);
+        sum_pauli_weight(&acc)
+    }
+
+    /// Encode `input` and return its coefficient-weighted Pauli weight
+    /// directly, without ever materialising a string-keyed
+    /// [`QubitHamiltonian`].
+    pub fn encode_coeff_pauli_weight(&self, input: &MajoranaSparse) -> f64 {
+        let acc = self.aggregate_pauli_keys(input, |i| i);
+        sum_coeff_pauli_weight(&acc)
+    }
+
+    /// Encode `input` under the mode permutation `mode_op_map` and return
+    /// its Pauli weight, without cloning the underlying [`SymplecticMatrix`].
+    ///
+    /// `mode_op_map` has the same semantics as
+    /// [`MajoranaEncoding::apply_mode_enumeration`]: mode `i` is read from
+    /// the Majorana operator pair at `mode_op_map[i]`. The returned value
+    /// equals
+    /// `self.apply_mode_enumeration(mode_op_map.to_vec()).encode_pauli_weight(input)`.
+    pub fn encode_pauli_weight_permuted(
+        &self,
+        input: &MajoranaSparse,
+        mode_op_map: &[usize],
+    ) -> usize {
+        let acc =
+            self.aggregate_pauli_keys(input, |ind| 2 * mode_op_map[ind / 2] + (ind % 2));
+        sum_pauli_weight(&acc)
+    }
+
+    /// Encode `input` under the mode permutation `mode_op_map` and return
+    /// its coefficient-weighted Pauli weight, without cloning the underlying
+    /// [`SymplecticMatrix`].
+    pub fn encode_coeff_pauli_weight_permuted(
+        &self,
+        input: &MajoranaSparse,
+        mode_op_map: &[usize],
+    ) -> f64 {
+        let acc =
+            self.aggregate_pauli_keys(input, |ind| 2 * mode_op_map[ind / 2] + (ind % 2));
+        sum_coeff_pauli_weight(&acc)
+    }
+}
+
+fn sum_pauli_weight(acc: &HashMap<PauliKey, Complex64, RandomState>) -> usize {
+    acc.iter()
+        .filter(|(_, v)| v.norm() > 1e-16)
+        .map(|(k, _)| k.pauli_weight())
+        .sum()
+}
+
+fn sum_coeff_pauli_weight(acc: &HashMap<PauliKey, Complex64, RandomState>) -> f64 {
+    acc.iter()
+        .filter(|(_, v)| v.norm() > 1e-16)
+        .map(|(k, v)| k.pauli_weight() as f64 * v.norm())
+        .sum()
 }
 
 impl MajoranaEncoding {
@@ -1208,6 +1312,136 @@ mod owned_tests {
                     batch_result.map(|s| s.state)
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod weight_fastpath_tests {
+    use super::*;
+    use crate::encode::ternarytree::TernaryTree;
+    use crate::operators::{CoefficientPauliWeight, PauliWeight};
+    use num_complex::Complex64;
+    use proptest::prelude::*;
+    use tinyvec::ArrayVec;
+
+    fn sample_msparse(n_modes: usize, terms: &[(Vec<u16>, (f64, f64))]) -> MajoranaSparse {
+        let indices = terms
+            .iter()
+            .map(|(t, _)| {
+                let mut av: ArrayVec<[u16; 7]> = ArrayVec::new();
+                for &i in t {
+                    av.push(i.min((2 * n_modes as u16).saturating_sub(1)));
+                }
+                av
+            })
+            .collect();
+        let coefficients = terms
+            .iter()
+            .map(|(_, (re, im))| Complex64::new(*re, *im))
+            .collect();
+        MajoranaSparse::new(indices, coefficients, 0.7).unwrap()
+    }
+
+    #[test]
+    fn fastpath_matches_string_path_simple() {
+        let n_modes = 3;
+        let encoding = TernaryTree::naive_jordan_wigner(n_modes)
+            .build_encoding(n_modes)
+            .unwrap();
+        let ms = sample_msparse(
+            n_modes,
+            &[
+                (vec![0, 1], (1.0, 0.0)),
+                (vec![2, 3], (0.5, 0.25)),
+                (vec![0, 2, 1, 3], (-0.3, 0.0)),
+                (vec![1, 0], (1.0, 0.0)), // cancels with [0, 1] up to a sign
+            ],
+        );
+
+        let qham = encoding.encode(&ms);
+        assert_eq!(
+            encoding.encode_pauli_weight(&ms),
+            qham.pauli_weight(),
+            "pauli weight fast path disagrees with string path",
+        );
+        assert!(
+            (encoding.encode_coeff_pauli_weight(&ms) - qham.coeff_pauli_weight()).abs() < 1e-12,
+            "coeff weight fast path disagrees with string path",
+        );
+    }
+
+    #[test]
+    fn permuted_fastpath_matches_apply_mode_enumeration() {
+        let n_modes = 4;
+        let encoding = TernaryTree::naive_jordan_wigner(n_modes)
+            .build_encoding(n_modes)
+            .unwrap();
+        let ms = sample_msparse(
+            n_modes,
+            &[
+                (vec![0, 3], (1.0, 0.0)),
+                (vec![1, 2, 4, 7], (0.5, -0.5)),
+                (vec![5, 6], (0.25, 0.0)),
+                (vec![2, 5, 1, 6], (-0.75, 0.1)),
+            ],
+        );
+        let perm = vec![3usize, 1, 2, 0];
+
+        let permuted = encoding.apply_mode_enumeration(perm.clone());
+        let qham = permuted.encode(&ms);
+
+        assert_eq!(
+            encoding.encode_pauli_weight_permuted(&ms, &perm),
+            qham.pauli_weight(),
+        );
+        assert!(
+            (encoding.encode_coeff_pauli_weight_permuted(&ms, &perm)
+                - qham.coeff_pauli_weight())
+            .abs()
+                < 1e-12,
+        );
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 32, ..ProptestConfig::default() })]
+
+        #[test]
+        fn fastpath_matches_string_path_random(
+            seed in any::<u64>(),
+            n_terms in 1usize..12,
+        ) {
+            let n_modes = 4usize;
+            let n_majoranas = 2 * n_modes;
+            let encoding = TernaryTree::naive_jordan_wigner(n_modes)
+                .build_encoding(n_modes)
+                .unwrap();
+
+            // Deterministic LCG-style index/coefficient generation from `seed`.
+            let mut state = seed.wrapping_add(1);
+            let mut next = || {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                state
+            };
+            let terms: Vec<(Vec<u16>, (f64, f64))> = (0..n_terms)
+                .map(|_| {
+                    let len = (next() % 4 + 1) as usize;
+                    let idxs: Vec<u16> = (0..len)
+                        .map(|_| (next() % n_majoranas as u64) as u16)
+                        .collect();
+                    let re = ((next() % 200) as f64 - 100.0) / 50.0;
+                    let im = ((next() % 200) as f64 - 100.0) / 50.0;
+                    (idxs, (re, im))
+                })
+                .collect();
+            let ms = sample_msparse(n_modes, &terms);
+
+            let qham = encoding.encode(&ms);
+            prop_assert_eq!(encoding.encode_pauli_weight(&ms), qham.pauli_weight());
+            prop_assert!(
+                (encoding.encode_coeff_pauli_weight(&ms) - qham.coeff_pauli_weight()).abs()
+                    < 1e-9,
+            );
         }
     }
 }

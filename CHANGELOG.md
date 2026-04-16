@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `PauliKey`, a bit-packed Pauli operator suitable for hash-map keys, plus
+  `SymplecticOperator::to_pauli_key` / `SymplecticOperatorView::to_pauli_key`.
+- `MajoranaEncoding::encode_pauli_weight`,
+  `encode_coeff_pauli_weight`, and their `_permuted` variants — direct
+  weight evaluations that bypass the string-keyed `QubitHamiltonian`.
+- `benches/anneal_cost.rs` criterion benchmark comparing the legacy
+  string-keyed encode path with the new bit-packed path.
+
+### Changed
+- Simulated-annealing cost evaluation
+  (`OptimalEnumeration::cost`) now uses the bit-packed encode path and
+  routes the mode permutation directly into the encoder, avoiding both
+  the per-iteration `SymplecticMatrix` clone and all string allocations.
+  Measured 13-19% wall-time reduction on representative inputs.
 
 ## [0.8.0] - 2026-04-15
 ### Added

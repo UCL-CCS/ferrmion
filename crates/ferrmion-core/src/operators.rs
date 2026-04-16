@@ -656,6 +656,125 @@ impl Mul<&mut ZBasisState> for SymplecticMatrix {
     }
 }
 
+/// Bit-packed Pauli operator suitable for use as a hash-map key.
+///
+/// A `PauliKey` represents the Pauli content of an operator (without its
+/// `i`-power phase) as a contiguous slice of `u64` words. The first
+/// `n_words = (n_qubits + 63) / 64` words pack the X bits and the next
+/// `n_words` words pack the Z bits, with the bit for qubit `q` stored at
+/// position `q % 64` of word `q / 64` within its block.
+///
+/// Compared to the string representation `"XYZII"`, a `PauliKey`:
+/// - allocates `2 * n_words * 8` bytes regardless of qubit count (e.g. 16 B
+///   for ≤64 qubits) instead of `n_qubits` bytes plus String overhead;
+/// - hashes word-at-a-time rather than byte-at-a-time;
+/// - computes Pauli weight via `popcount(x | z)` rather than scanning chars.
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+pub struct PauliKey {
+    n_words: u32,
+    bits: Box<[u64]>,
+}
+
+impl PauliKey {
+    /// Construct a zero-initialised (identity) [`PauliKey`] for `n_qubits` qubits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::operators::{PauliKey, PauliWeight};
+    ///
+    /// let key = PauliKey::identity(70);
+    /// assert_eq!(key.pauli_weight(), 0);
+    /// ```
+    pub fn identity(n_qubits: usize) -> Self {
+        let n_words = n_qubits.div_ceil(64);
+        Self {
+            n_words: n_words as u32,
+            bits: vec![0u64; 2 * n_words].into_boxed_slice(),
+        }
+    }
+
+    fn n_words(&self) -> usize {
+        self.n_words as usize
+    }
+}
+
+impl PauliWeight for PauliKey {
+    fn pauli_weight(&self) -> usize {
+        let n = self.n_words();
+        let (x_words, z_words) = self.bits.split_at(n);
+        x_words
+            .iter()
+            .zip(z_words)
+            .map(|(x, z)| (x | z).count_ones() as usize)
+            .sum()
+    }
+}
+
+impl SymplecticOperator {
+    /// Convert to a bit-packed [`PauliKey`] and return its `i`-power.
+    ///
+    /// Equivalent to [`Self::to_pauli_string`] but produces a compact
+    /// integer-keyed representation suitable for use as a hash-map key on the
+    /// annealing hot path. The returned `i`-power matches `to_pauli_string`'s.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::operators::{SymplecticOperator, PauliWeight};
+    /// use ndarray::arr1;
+    ///
+    /// let op = SymplecticOperator::new(0, arr1(&[true, true]), arr1(&[true, false]));
+    /// let (key, ipower) = op.to_pauli_key();
+    /// assert_eq!(key.pauli_weight(), 2);
+    /// // Y at qubit 0 contributes ipower += 3.
+    /// assert_eq!(ipower, 3);
+    /// ```
+    pub fn to_pauli_key(&self) -> (PauliKey, u8) {
+        pauli_key_from_blocks(&self.x_block.view(), &self.z_block.view(), self.ipower)
+    }
+}
+
+impl SymplecticOperatorView<'_> {
+    /// Convert to a bit-packed [`PauliKey`] and return its `i`-power.
+    ///
+    /// See [`SymplecticOperator::to_pauli_key`] for layout details.
+    pub fn to_pauli_key(&self) -> (PauliKey, u8) {
+        pauli_key_from_blocks(&self.x_block, &self.z_block, self.ipower)
+    }
+}
+
+fn pauli_key_from_blocks(
+    x_block: &ArrayView1<'_, bool>,
+    z_block: &ArrayView1<'_, bool>,
+    ipower: u8,
+) -> (PauliKey, u8) {
+    let n_qubits = x_block.len();
+    let n_words = n_qubits.div_ceil(64);
+    let mut bits = vec![0u64; 2 * n_words];
+    let (x_words, z_words) = bits.split_at_mut(n_words);
+
+    let mut y_count: u64 = 0;
+    let mut iter = x_block.iter().zip(z_block.iter()).enumerate();
+    for (q, (&x, &z)) in &mut iter {
+        let word = q >> 6;
+        let bit = q & 63;
+        let xi = x as u64;
+        let zi = z as u64;
+        x_words[word] |= xi << bit;
+        z_words[word] |= zi << bit;
+        y_count += xi & zi;
+    }
+    let new_ipower = (ipower as u64 + 3 * y_count) & 3;
+    (
+        PauliKey {
+            n_words: n_words as u32,
+            bits: bits.into_boxed_slice(),
+        },
+        new_ipower as u8,
+    )
+}
+
 #[cfg(test)]
 mod symplectic_tests {
     use super::*;
@@ -681,6 +800,35 @@ mod symplectic_tests {
         assert_eq!(result.ipower(), 2);
         assert_eq!(result.x_block(), ndarray::arr1(&[true, true, true]).view());
         assert_eq!(result.z_block(), ndarray::arr1(&[true, true, true]).view());
+    }
+
+    #[test]
+    fn test_pauli_key_matches_string_weight_and_ipower() {
+        for n_qubits in [0usize, 1, 5, 64, 65, 127, 130] {
+            let mut x = vec![false; n_qubits];
+            let mut z = vec![false; n_qubits];
+            for q in 0..n_qubits {
+                // Mix all four Pauli types deterministically.
+                x[q] = q % 3 != 0;
+                z[q] = q % 2 == 1;
+            }
+            let op = SymplecticOperator::new(
+                1,
+                ndarray::Array1::from(x),
+                ndarray::Array1::from(z),
+            );
+
+            let (pauli_string, ip_string) = op.to_pauli_string();
+            let (key, ip_key) = op.to_pauli_key();
+            assert_eq!(ip_string, ip_key, "ipower mismatch at n_qubits={}", n_qubits);
+            let expected_weight = pauli_string.chars().filter(|c| *c != 'I').count();
+            assert_eq!(
+                key.pauli_weight(),
+                expected_weight,
+                "weight mismatch at n_qubits={}",
+                n_qubits
+            );
+        }
     }
 
     #[test]

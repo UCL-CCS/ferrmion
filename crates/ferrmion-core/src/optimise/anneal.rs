@@ -1,9 +1,8 @@
 //! Simulated annealing optimisation of fermionic mode enumerations.
 
-use crate::encode::encoding::Encode;
 use crate::encode::encoding::MajoranaEncoding;
 
-use crate::operators::{CoefficientPauliWeight, MajoranaSparse, PauliWeight};
+use crate::operators::MajoranaSparse;
 use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
@@ -41,11 +40,16 @@ impl CostFunction for OptimalEnumeration {
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
-        let enumerated_encoding = self.encoding.apply_mode_enumeration(param.to_vec());
-        let qham = enumerated_encoding.encode(&self.msparse);
-        let weight = match self.coefficient_weighted {
-            true => qham.coeff_pauli_weight(),
-            false => qham.pauli_weight() as f64,
+        // Fast path: feed the permutation directly into a bit-packed encoder
+        // so every cost evaluation avoids cloning the SymplecticMatrix and
+        // never allocates a String / String-keyed HashMap.
+        let perm = param.as_slice().expect("annealing param must be contiguous");
+        let weight = if self.coefficient_weighted {
+            self.encoding
+                .encode_coeff_pauli_weight_permuted(&self.msparse, perm)
+        } else {
+            self.encoding
+                .encode_pauli_weight_permuted(&self.msparse, perm) as f64
         };
         Ok(weight)
     }

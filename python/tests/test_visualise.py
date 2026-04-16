@@ -1,8 +1,6 @@
 """Tests for visualisation functions."""
 
 import sys
-import types
-from unittest.mock import patch
 
 import pytest
 
@@ -21,7 +19,6 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_symplectic_matshow_returns_figure():
-    import matplotlib
     import matplotlib.pyplot as plt
 
     enc = JordanWigner(4)
@@ -32,7 +29,6 @@ def test_symplectic_matshow_returns_figure():
 
 
 def test_symplectic_matshow_with_title():
-    import matplotlib
     import matplotlib.pyplot as plt
 
     enc = JordanWigner(4)
@@ -43,7 +39,6 @@ def test_symplectic_matshow_with_title():
 
 
 def test_visualise_operators_returns_figure():
-    import matplotlib
     import matplotlib.pyplot as plt
 
     enc = JordanWigner(4)
@@ -52,20 +47,8 @@ def test_visualise_operators_returns_figure():
     plt.close(fig)
 
 
-def test_visualise_operators_with_title():
-    import matplotlib
-    import matplotlib.pyplot as plt
-
-    enc = JordanWigner(4)
-    fig = enc.visualise_operators(title="My Encoding")
-    assert isinstance(fig, matplotlib.figure.Figure)
-    plt.close(fig)
-
-
 def test_visualise_operators_raises_without_viz(monkeypatch):
     """ImportError with install hint when viz extra is absent."""
-    import ferrmion.visualise as viz_module
-
     monkeypatch.setitem(sys.modules, "ferrmion.visualise", None)
     enc = JordanWigner(4)
     with pytest.raises(ImportError, match="ferrmion\\[viz\\]"):

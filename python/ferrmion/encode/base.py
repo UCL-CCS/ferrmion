@@ -218,13 +218,10 @@ class FermionQubitEncoding(ABC):
         dict_output["symplectics"] = sym.tolist()
         return dict_output
 
-    def visualise_operators(self, title: str | None = None):
+    def visualise_operators(self):
         """Visualise the encoding as a colourised Pauli operator matrix.
 
         Requires the ``viz`` extra (``pip install ferrmion[viz]``).
-
-        Args:
-            title (str | None): Optional plot title.
 
         Returns:
             matplotlib.figure.Figure: The rendered figure.
@@ -237,7 +234,7 @@ class FermionQubitEncoding(ABC):
             ) from exc
 
         _, symplectics = self._build_symplectic_matrix()
-        return symplectic_matshow(symplectics, title=title)
+        return symplectic_matshow(symplectics)
 
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
         """Encode a fermionic Hamiltonian into a qubit Hamiltonian.

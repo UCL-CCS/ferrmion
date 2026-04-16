@@ -451,9 +451,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
 
     /// Encode a fermionic Hamiltonian under multiple mode permutations and return
-    /// the Pauli weight for each in a single parallelised Rust call.
+    /// both Pauli weight vectors in a single parallelised Rust call.
     ///
-    /// This is equivalent to calling ``encode`` followed by computing the Pauli weight
+    /// This is equivalent to calling ``encode`` followed by computing the Pauli weights
     /// for each permutation individually, but significantly faster because all
     /// encodings run in parallel on the Rust side.
     ///
@@ -466,13 +466,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     coeffs: List of coefficient arrays, one per signature.
     ///     permutations: 2D uint array of shape ``(n_perms, n_modes)``.
     ///         Each row is a permutation of ``range(n_modes)``.
-    ///     coefficient_weighted: If ``True``, return the coefficient-weighted
-    ///         Pauli weight; otherwise return the plain Pauli weight.
     ///
     /// Returns:
-    ///     1D float64 array of length ``n_perms`` — one Pauli weight per
-    ///     permutation, in the same order as the input rows.
-    #[allow(clippy::too_many_arguments)]
+    ///     Tuple ``(plain, weighted)`` of two 1D float64 arrays of length
+    ///     ``n_perms``.  ``plain[i]`` is the plain Pauli weight and
+    ///     ``weighted[i]`` is the coefficient-weighted Pauli weight for
+    ///     permutation ``i``, in the same order as the input rows.
     #[pyfn(m)]
     #[pyo3(name = "batch_pauli_weights")]
     fn wrap_batch_pauli_weights<'py>(
@@ -483,8 +482,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         permutations: PyReadonlyArray2<usize>,
-        coefficient_weighted: bool,
-    ) -> Result<Bound<'py, PyArray1<f64>>, CoreError> {
+    ) -> Result<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>), CoreError> {
         let symplectics = symplectics.as_array();
         let n_qubits = symplectics.ncols() / 2;
         let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
@@ -505,8 +503,11 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         );
         let permutations = permutations.as_array();
         let perms: Vec<Vec<usize>> = permutations.outer_iter().map(|row| row.to_vec()).collect();
-        let weights = encoding.batch_pauli_weights(&msparse, &perms, coefficient_weighted);
-        Ok(PyArray1::from_owned_array(py, Array1::from(weights)))
+        let (plain, weighted) = encoding.batch_pauli_weights(&msparse, &perms);
+        Ok((
+            PyArray1::from_owned_array(py, Array1::from(plain)),
+            PyArray1::from_owned_array(py, Array1::from(weighted)),
+        ))
     }
 
     /// Build a symplectic encoding matrix from a ternary-tree flatpack representation.

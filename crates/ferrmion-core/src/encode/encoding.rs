@@ -433,11 +433,11 @@ impl MajoranaEncoding {
     }
 
     /// Encode a fermionic Hamiltonian with multiple mode permutations and return
-    /// the Pauli weight for each.
+    /// both the plain and coefficient-weighted Pauli weights for each.
     ///
     /// Each permutation is encoded independently in parallel using Rayon.
-    /// This is significantly faster than calling [`Encode::encode`] and
-    /// [`PauliWeight::pauli_weight`] separately for each permutation from Python.
+    /// This is significantly faster than calling [`Encode::encode`] and the
+    /// weight traits separately for each permutation from Python.
     ///
     /// # Arguments
     ///
@@ -445,12 +445,13 @@ impl MajoranaEncoding {
     /// * `permutations` - Slice of mode-to-operator-pair permutations.  Each
     ///   inner `Vec<usize>` must have length `n_modes` and contain a permutation
     ///   of `0..n_modes`.
-    /// * `coefficient_weighted` - If `true`, return the coefficient-weighted
-    ///   Pauli weight; otherwise return the plain Pauli weight.
     ///
     /// # Returns
     ///
-    /// A `Vec<f64>` with one weight per input permutation, in the same order.
+    /// A pair `(plain, weighted)` where both are `Vec<f64>` of length equal to
+    /// the number of input permutations.  `plain[i]` is the plain Pauli weight
+    /// and `weighted[i]` is the coefficient-weighted Pauli weight for permutation
+    /// `i`, in the same order as the input.
     ///
     /// # Examples
     ///
@@ -468,27 +469,23 @@ impl MajoranaEncoding {
     ///     vec![Complex64::new(1.0, 0.)],
     ///     0.,
     /// ).unwrap();
-    /// let weights = encoding.batch_pauli_weights(&ms, &[vec![0, 1], vec![1, 0]], false);
-    /// assert_eq!(weights.len(), 2);
+    /// let (plain, weighted) = encoding.batch_pauli_weights(&ms, &[vec![0, 1], vec![1, 0]]);
+    /// assert_eq!(plain.len(), 2);
+    /// assert_eq!(weighted.len(), 2);
     /// ```
     pub fn batch_pauli_weights(
         &self,
         msparse: &MajoranaSparse,
         permutations: &[Vec<usize>],
-        coefficient_weighted: bool,
-    ) -> Vec<f64> {
+    ) -> (Vec<f64>, Vec<f64>) {
         permutations
             .par_iter()
             .map(|perm| {
                 let enumerated_encoding = self.apply_mode_enumeration(perm.clone());
                 let qham = enumerated_encoding.encode(msparse);
-                if coefficient_weighted {
-                    qham.coeff_pauli_weight()
-                } else {
-                    qham.pauli_weight() as f64
-                }
+                (qham.pauli_weight() as f64, qham.coeff_pauli_weight())
             })
-            .collect()
+            .unzip()
     }
 }
 
@@ -1324,7 +1321,7 @@ mod batch_tests {
     }
 
     proptest! {
-        /// The number of output weights always equals the number of input permutations.
+        /// Both output vectors always have length equal to the number of input permutations.
         #[test]
         fn test_batch_length_matches_permutation_count(
             n_modes in 2usize..=5,
@@ -1342,13 +1339,15 @@ mod batch_tests {
             let perms: Vec<Vec<usize>> = (0..n_perms)
                 .map(|_| (0..n_modes).collect())
                 .collect();
-            let weights = encoding.batch_pauli_weights(&ms, &perms, false);
-            prop_assert_eq!(weights.len(), n_perms);
+            let (plain, weighted) = encoding.batch_pauli_weights(&ms, &perms);
+            prop_assert_eq!(plain.len(), n_perms);
+            prop_assert_eq!(weighted.len(), n_perms);
         }
 
-        /// Each plain weight from `batch_pauli_weights` equals `pauli_weight()` computed individually.
+        /// Each plain weight equals `pauli_weight()` and each coefficient-weighted weight
+        /// equals `coeff_pauli_weight()`, both computed individually, for all permutations.
         #[test]
-        fn test_batch_plain_matches_individual(
+        fn test_batch_both_weights_match_individual(
             (n_modes, perms, ms) in (2usize..=4).prop_flat_map(|n| {
                 (
                     Just(n),
@@ -1360,40 +1359,19 @@ mod batch_tests {
             let tree = TernaryTree::naive_jordan_wigner(n_modes);
             let encoding = tree.build_encoding(n_modes).unwrap();
 
-            let batch = encoding.batch_pauli_weights(&ms, &perms, false);
+            let (plain, weighted) = encoding.batch_pauli_weights(&ms, &perms);
 
-            prop_assert_eq!(batch.len(), perms.len());
-            for (perm, &batch_weight) in perms.iter().zip(batch.iter()) {
+            prop_assert_eq!(plain.len(), perms.len());
+            prop_assert_eq!(weighted.len(), perms.len());
+            for (perm, (&plain_weight, &coeff_weight)) in
+                perms.iter().zip(plain.iter().zip(weighted.iter()))
+            {
                 let enumerated = encoding.apply_mode_enumeration(perm.clone());
                 let qham = enumerated.encode(&ms);
-                prop_assert_eq!(qham.pauli_weight() as f64, batch_weight);
-            }
-        }
-
-        /// Each coefficient-weighted weight from `batch_pauli_weights` equals
-        /// `coeff_pauli_weight()` computed individually.
-        #[test]
-        fn test_batch_coeff_weighted_matches_individual(
-            (n_modes, perms, ms) in (2usize..=4).prop_flat_map(|n| {
-                (
-                    Just(n),
-                    proptest::collection::vec(arb_perm(n), 1..=4usize),
-                    arb_majorana_sparse(n),
-                )
-            }),
-        ) {
-            let tree = TernaryTree::naive_jordan_wigner(n_modes);
-            let encoding = tree.build_encoding(n_modes).unwrap();
-
-            let batch = encoding.batch_pauli_weights(&ms, &perms, true);
-
-            prop_assert_eq!(batch.len(), perms.len());
-            for (perm, &batch_weight) in perms.iter().zip(batch.iter()) {
-                let enumerated = encoding.apply_mode_enumeration(perm.clone());
-                let qham = enumerated.encode(&ms);
+                prop_assert_eq!(qham.pauli_weight() as f64, plain_weight);
                 prop_assert!(
-                    (qham.coeff_pauli_weight() - batch_weight).abs() < 1e-10,
-                    "expected {}, got {}", qham.coeff_pauli_weight(), batch_weight
+                    (qham.coeff_pauli_weight() - coeff_weight).abs() < 1e-10,
+                    "expected coeff weight {}, got {}", qham.coeff_pauli_weight(), coeff_weight
                 );
             }
         }

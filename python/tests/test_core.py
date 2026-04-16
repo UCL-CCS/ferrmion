@@ -58,9 +58,10 @@ def test_batch_pauli_weights_matches_individual_encode(encoding_cls, h2_631g_dat
         dtype=np.uintp,
     )  # 100 permutations total
 
-    batch = batch_pauli_weights(ipow, sym, vacuum, sigs, coeffs, perms, False)
+    plain, weighted = batch_pauli_weights(ipow, sym, vacuum, sigs, coeffs, perms)
 
-    assert len(batch) == 100
+    assert len(plain) == 100
+    assert len(weighted) == 100
     # Cross-check a sample of permutations against individual encode calls
     for i in [0, 1, 25, 50, 99]:
         mperm = np.array([2 * perms[i], 2 * perms[i] + 1]).T.flatten()
@@ -72,7 +73,7 @@ def test_batch_pauli_weights_matches_individual_encode(encoding_cls, h2_631g_dat
             coeffs=coeffs,
             constant_energy=0.0,
         )
-        assert batch[i] == pytest.approx(_pauli_weight(qham))
+        assert plain[i] == pytest.approx(_pauli_weight(qham))
 
 
 def test_batch_pauli_weights_returns_correct_length(h2_631g_data):
@@ -86,8 +87,9 @@ def test_batch_pauli_weights_returns_correct_length(h2_631g_data):
     rng = np.random.default_rng(0)
     perms = np.array([rng.permutation(n_modes) for _ in range(100)], dtype=np.uintp)
 
-    result = batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms, False)
-    assert result.shape == (100,)
+    plain, weighted = batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms)
+    assert plain.shape == (100,)
+    assert weighted.shape == (100,)
 
 
 def test_batch_pauli_weights_coefficient_weighted_differs(h2_631g_data):
@@ -100,8 +102,7 @@ def test_batch_pauli_weights_coefficient_weighted_differs(h2_631g_data):
     vacuum = enc.vacuum_state.astype(bool)
     perms = np.array([np.arange(n_modes)], dtype=np.uintp)
 
-    plain = batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms, False)
-    weighted = batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms, True)
+    plain, weighted = batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms)
     assert not np.allclose(plain, weighted)
 
 
@@ -114,8 +115,9 @@ def test_batch_pauli_weights_empty_permutations(h2_631g_data):
     vacuum = enc.vacuum_state.astype(bool)
     perms = np.empty((0, n_modes), dtype=np.uintp)
 
-    result = batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms, False)
-    assert result.shape == (0,)
+    plain, weighted = batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms)
+    assert plain.shape == (0,)
+    assert weighted.shape == (0,)
 
 
 @pytest.mark.parametrize("encoding_cls", [JordanWigner, BravyiKitaev])
@@ -129,4 +131,4 @@ def test_benchmark_batch_pauli_weights(benchmark, encoding_cls, n_perms, water_d
     vacuum = enc.vacuum_state.astype(bool)
     rng = np.random.default_rng(seed=0)
     perms = np.array([rng.permutation(n_modes) for _ in range(n_perms)], dtype=np.uintp)
-    benchmark(lambda: batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms, False))
+    benchmark(lambda: batch_pauli_weights(ipow, sym, vacuum, ["+-", "++--"], [ones, twos], perms))

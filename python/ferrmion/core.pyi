@@ -41,8 +41,7 @@ def batch_pauli_weights(
     signatures: list[str],
     coeffs: list[np.ndarray],
     permutations: npt.NDArray[np.uint],
-    coefficient_weighted: bool,
-) -> npt.NDArray[np.float64]: ...
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
 def topphatt(
     flatpack: list[tuple[np.uint, tuple[np.uint, np.uint, np.uint]]],
     n_qubits: int,

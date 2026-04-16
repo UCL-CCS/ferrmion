@@ -35,8 +35,6 @@ pub fn icount_to_sign(icount: usize) -> Complex64 {
 /// let result = vector_kron(&left, &right);
 /// ```
 ///
-// This is not actually dead code, it's used in tests.
-#[allow(dead_code)]
 pub fn vector_kron(left: &Array1<Complex64>, right: &Array1<Complex64>) -> Array1<Complex64> {
     concatenate![
         Axis(0),

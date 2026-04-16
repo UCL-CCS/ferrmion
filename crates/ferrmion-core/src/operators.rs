@@ -42,7 +42,6 @@ pub trait CoefficientPauliWeight: PauliWeight {
 }
 
 /// Operators of the Pauli-basis.
-#[allow(dead_code)]
 #[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub(super) enum Pauli {
     #[default]

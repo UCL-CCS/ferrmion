@@ -63,18 +63,6 @@ pub enum YParity {
     Even,
 }
 
-impl YParity {
-    /// Used to define the offset of Majorana indices in [`TernaryTree::majorana_index`].
-    /// The pair of majorana indices for fermionic mode "i" are:
-    /// 2*i(+0) and 2*i+1.
-    fn as_u8(&self) -> u8 {
-        match self {
-            Self::Even => 0,
-            Self::Odd => 1,
-        }
-    }
-}
-
 /// Swaps between each [`YParity`].
 ///
 /// # Example
@@ -539,15 +527,6 @@ impl TernaryTree {
 }
 
 impl TernaryTree {
-    #[allow(dead_code)]
-    fn real_eigenvalue_majorana_index(&self, child: Child) -> u8 {
-        match child {
-            Child::XLeaf(ind) => 2 * ind + self.y_parity_of[child.usize_index()].as_u8(),
-            Child::YLeaf(ind) => 2 * ind + (!self.y_parity_of[child.usize_index()]).as_u8(),
-            Child::Node(ind) => 2 * self.n_nodes as u8 + 1 + ind,
-        }
-    }
-
     fn vacuum_preserving_majorana_index(&self, child: Child) -> u8 {
         match child {
             Child::XLeaf(ind) => 2 * ind,

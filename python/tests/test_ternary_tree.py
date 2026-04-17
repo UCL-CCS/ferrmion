@@ -566,11 +566,10 @@ def test_benchmark_decode_zbasis_ensemble(benchmark, encoding, n_modes):
     fermionic_hf_state = np.ones(n_modes, dtype=np.bool)
     tree: TernaryTree = encoding(n_modes)
     tree.enumeration_scheme = tree.default_enumeration_scheme()
-    qubit_state = tree.hartree_fock_state(fermionic_hf_state=fermionic_hf_state)
-    # Build an ensemble of 100 identical states.
-    states = np.tile(qubit_state, (100, 1))
+    # Build an ensemble of 10000 identical states.
+    rng = np.random.default_rng(seed=17042026)
+    states = rng.choice([False, True], size=(10000, n_modes), p=[0.5, 0.5])
     benchmark(lambda: tree.decode(states))
-
 
 @st.composite
 def tt_flatpack_strategy(draw, n_nodes_strategy):

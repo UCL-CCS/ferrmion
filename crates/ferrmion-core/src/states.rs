@@ -19,11 +19,9 @@ pub trait State: Mul<Complex64> {
     fn normalize(&mut self);
 
     /// Return the dimension of the state space.
-    #[allow(dead_code)]
     fn dimension(&self) -> usize;
 
     /// Return the adjoint (dagger) of the state.
-    #[allow(dead_code)]
     fn adjoint(self) -> Self;
 
     /// Reindex the state according to the given permutation.

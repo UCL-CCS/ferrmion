@@ -315,12 +315,14 @@ class FermionQubitEncoding(ABC):
         self,
         edge_indices: tuple[int, int],
         coeff: float | np.complex64 = np.complex64(1.0, 0.0),
+        with_conjugate: bool = False,
     ) -> QubitHamiltonian:
         """Return the edge operator of a pair of modes for this encoding.
 
         Args:
             edge_indices (tuple[int, int]): The mode index to obtain a number operator for.
             coeff (float): Optional complex coefficient
+            with_conjugate (bool): Return the operator together with its hermitian conjugate.
 
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
@@ -331,6 +333,7 @@ class FermionQubitEncoding(ABC):
             signature="+-",
             mode_indices=list(edge_indices),
             coeff=coeff,
+            with_conjugate=with_conjugate,
         )
 
     def interaction_operator(
@@ -338,6 +341,7 @@ class FermionQubitEncoding(ABC):
         mode_indices: tuple[int, int, int, int],
         coeff: float | np.complex64 = np.complex64(1.0, 0.0),
         physicist_notation=True,
+        with_conjugate: bool = False,
     ) -> QubitHamiltonian:
         """Return an interaction operator of four modes for this encoding.
 
@@ -345,6 +349,7 @@ class FermionQubitEncoding(ABC):
             mode_indices (tuple[int, int, int, int]): The mode index to obtain an interaction operator for.
             coeff (float): Optional complex coefficient
             physicist_notation (bool): Use Physicist's notation, Chemist's if False.
+            with_conjugate (bool): Return the operator together with its hermitian conjugate.
 
         Example:
             >>> from ferrmion.encode.ternary_tree import TernaryTree
@@ -352,15 +357,20 @@ class FermionQubitEncoding(ABC):
             >>> tree.interaction_operator((0, 1, 2, 3))
         """
         if physicist_notation:
-            return self._encode_fermion_product("++--", list(mode_indices), coeff=coeff)
+            return self._encode_fermion_product(
+                "++--", list(mode_indices), coeff=coeff, with_conjugate=with_conjugate
+            )
         else:
-            return self._encode_fermion_product("+-+-", list(mode_indices), coeff=coeff)
+            return self._encode_fermion_product(
+                "+-+-", list(mode_indices), coeff=coeff, with_conjugate=with_conjugate
+            )
 
     def _encode_fermion_product(
         self,
         signature: str,
         mode_indices: list[int],
         coeff: np.complex64 | float,
+        with_conjugate: bool = False,
     ) -> QubitHamiltonian:
         """Returns the sparse pauli form of a double fermionic operator.
 
@@ -368,6 +378,7 @@ class FermionQubitEncoding(ABC):
             signature (str): The fermionic operator signature, composed of "+" and "-".
             mode_indices (list[int]): The mode indices to obtain a number operator for.
             coeff (float): The operator coefficient.
+            with_conjugate (bool): Return the operator together with its hermitian conjugate.
 
         Returns:
             list[tuple[str, NDArray, np.complexfloating]]: A list of tuples each containing a Pauli string, its qubit indices and a complex coefficient.
@@ -383,9 +394,16 @@ class FermionQubitEncoding(ABC):
             raise ValueError("Signature and indices must be same length.")
         if isinstance(coeff, float | int):
             coeff = np.complex64(coeff, 0.0)
-        return encode_fermion_product(
+
+        op = encode_fermion_product(
             *self._build_symplectic_matrix(), signature, mode_indices, coeff
         )
+        if with_conjugate:
+            hc = encode_fermion_product(
+                *self._build_symplectic_matrix(), signature, mode_indices[::-1], coeff
+            )
+            return {k: op[k] + hc[k] for k in op if op[k] + hc[k] != 0.0}
+        return op
 
 
 class MajoranaStringEncoding(FermionQubitEncoding):

@@ -94,6 +94,24 @@ def test_edge_operator(four_mode_tt: TernaryTree):
 
     assert scaled_output == expected
 
+@given(left=st.integers(min_value=0, max_value=9), right=st.integers(min_value=0, max_value=9))
+@pytest.mark.parametrize("encoding", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
+def test_conjugate_values_real(left: int, right: int, encoding: Callable[[int], TernaryTree]):
+    tree = encoding(10)
+    lr = tree.edge_operator((left, right), with_conjugate=True)
+    assert np.all(np.isreal([*lr.values()]))
+
+@given(left=st.integers(min_value=0, max_value=9), right=st.integers(min_value=0, max_value=9))
+@pytest.mark.parametrize("encoding", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
+def test_with_conjugate_ordering_equivalent(left: int, right: int, encoding: Callable[[int], TernaryTree]):
+    tree = encoding(10)
+    lr = tree.edge_operator((left, right), with_conjugate=True)
+    rl = tree.edge_operator((right, left), with_conjugate=True)
+    assert lr == rl
+
+
+
+
 @given(scaler=st.complex_numbers(min_magnitude=1e-2, max_magnitude=1e5))
 def test_jw_encode_fermion_product_coefficient_scaling_correct(scaler:np.complex64):
     four_mode_tt = TernaryTree(4)

@@ -4,7 +4,8 @@
 //! for transforming fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    FermionProduct, MajoranaProduct, MajoranaSparse, SymplecticMatrix, SymplecticOperator,
+    CoefficientPauliWeight, FermionProduct, MajoranaProduct, MajoranaSparse, PauliWeight,
+    SymplecticMatrix, SymplecticOperator,
 };
 use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
 use crate::utils::{self, icount_to_sign};
@@ -429,6 +430,62 @@ impl MajoranaEncoding {
             self.vacuum_state.clone(),
         )
         .expect("Reindexing a valid encoding should never fail.")
+    }
+
+    /// Encode a fermionic Hamiltonian with multiple mode permutations and return
+    /// both the plain and coefficient-weighted Pauli weights for each.
+    ///
+    /// Each permutation is encoded independently in parallel using Rayon.
+    /// This is significantly faster than calling [`Encode::encode`] and the
+    /// weight traits separately for each permutation from Python.
+    ///
+    /// # Arguments
+    ///
+    /// * `msparse` - The fermionic Hamiltonian in Majorana sparse form.
+    /// * `permutations` - Slice of mode-to-operator-pair permutations.  Each
+    ///   inner `Vec<usize>` must have length `n_modes` and contain a permutation
+    ///   of `0..n_modes`.
+    ///
+    /// # Returns
+    ///
+    /// A pair `(plain, weighted)` where both are `Vec<f64>` of length equal to
+    /// the number of input permutations.  `plain[i]` is the plain Pauli weight
+    /// and `weighted[i]` is the coefficient-weighted Pauli weight for permutation
+    /// `i`, in the same order as the input.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
+    /// use ferrmion_core::operators::MajoranaSparse;
+    /// use num_complex::Complex64;
+    /// use tinyvec::array_vec;
+    ///
+    /// let tree = TernaryTree::naive_jordan_wigner(2);
+    /// let encoding = tree.build_encoding(2).unwrap();
+    /// let ms = MajoranaSparse::new(
+    ///     vec![array_vec!([u16; 7] => 0, 1)],
+    ///     vec![Complex64::new(1.0, 0.)],
+    ///     0.,
+    /// ).unwrap();
+    /// let (plain, weighted) = encoding.batch_pauli_weights(&ms, &[vec![0, 1], vec![1, 0]]);
+    /// assert_eq!(plain.len(), 2);
+    /// assert_eq!(weighted.len(), 2);
+    /// ```
+    pub fn batch_pauli_weights(
+        &self,
+        msparse: &MajoranaSparse,
+        permutations: &[Vec<usize>],
+    ) -> (Vec<f64>, Vec<f64>) {
+        permutations
+            .par_iter()
+            .map(|perm| {
+                let enumerated_encoding = self.apply_mode_enumeration(perm.clone());
+                let qham = enumerated_encoding.encode(msparse);
+                (qham.pauli_weight() as f64, qham.coeff_pauli_weight())
+            })
+            .unzip()
     }
 }
 
@@ -1206,6 +1263,115 @@ mod owned_tests {
                 prop_assert_eq!(
                     single_result.map(|s| s.state),
                     batch_result.map(|s| s.state)
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+    use crate::encode::ternarytree::TernaryTree;
+    use crate::operators::{CoefficientPauliWeight, PauliWeight};
+    use num_complex::Complex64;
+    use proptest::prelude::*;
+    use tinyvec::array_vec;
+
+    /// Generates a permutation of `0..n` by sorting indices by random keys.
+    ///
+    /// Using keys from `0..n*2` reduces collisions so more orderings are explored,
+    /// while still always producing a valid permutation regardless of ties.
+    fn arb_perm(n: usize) -> impl Strategy<Value = Vec<usize>> {
+        proptest::collection::vec(0usize..n * 2, n).prop_map(move |keys| {
+            let mut perm: Vec<usize> = (0..n).collect();
+            perm.sort_by_key(|&i| keys[i]);
+            perm
+        })
+    }
+
+    /// Generates a [`MajoranaSparse`] with 1–3 pair-terms whose indices lie in `0..2*n_modes`.
+    ///
+    /// Coefficients are non-zero integers (±1..=5) to avoid the zero-filtering in
+    /// [`MajoranaSparse::new`].
+    fn arb_majorana_sparse(n_modes: usize) -> impl Strategy<Value = MajoranaSparse> {
+        let n_ops = 2 * n_modes;
+        proptest::collection::vec(
+            (0..n_ops, 0..n_ops, 1i32..=5i32, any::<bool>())
+                .prop_filter("indices must be distinct", |(a, b, _, _)| a != b)
+                .prop_map(move |(a, b, abs_coeff, neg)| {
+                    let coeff = if neg {
+                        -(abs_coeff as f64)
+                    } else {
+                        abs_coeff as f64
+                    };
+                    let (lo, hi) = if a < b {
+                        (a as u16, b as u16)
+                    } else {
+                        (b as u16, a as u16)
+                    };
+                    (array_vec!([u16; 7] => lo, hi), Complex64::new(coeff, 0.))
+                }),
+            1..=3usize,
+        )
+        .prop_map(|terms| {
+            let (indices, coeffs): (Vec<_>, Vec<_>) = terms.into_iter().unzip();
+            MajoranaSparse::new(indices, coeffs, 0.).unwrap()
+        })
+    }
+
+    proptest! {
+        /// Both output vectors always have length equal to the number of input permutations.
+        #[test]
+        fn test_batch_length_matches_permutation_count(
+            n_modes in 2usize..=5,
+            n_perms in 0usize..=5,
+        ) {
+            let tree = TernaryTree::naive_jordan_wigner(n_modes);
+            let encoding = tree.build_encoding(n_modes).unwrap();
+            let ms = MajoranaSparse::new(
+                vec![array_vec!([u16; 7] => 0, 1)],
+                vec![Complex64::new(1.0, 0.)],
+                0.,
+            )
+            .unwrap();
+            // Repeat the identity permutation n_perms times to decouple from n_modes.
+            let perms: Vec<Vec<usize>> = (0..n_perms)
+                .map(|_| (0..n_modes).collect())
+                .collect();
+            let (plain, weighted) = encoding.batch_pauli_weights(&ms, &perms);
+            prop_assert_eq!(plain.len(), n_perms);
+            prop_assert_eq!(weighted.len(), n_perms);
+        }
+
+        /// Each plain weight equals `pauli_weight()` and each coefficient-weighted weight
+        /// equals `coeff_pauli_weight()`, both computed individually, for all permutations.
+        #[test]
+        fn test_batch_both_weights_match_individual(
+            (n_modes, perms, ms) in (2usize..=4).prop_flat_map(|n| {
+                (
+                    Just(n),
+                    proptest::collection::vec(arb_perm(n), 1..=4usize),
+                    arb_majorana_sparse(n),
+                )
+            }),
+        ) {
+            let tree = TernaryTree::naive_jordan_wigner(n_modes);
+            let encoding = tree.build_encoding(n_modes).unwrap();
+
+            let (plain, weighted) = encoding.batch_pauli_weights(&ms, &perms);
+
+            prop_assert_eq!(plain.len(), perms.len());
+            prop_assert_eq!(weighted.len(), perms.len());
+            for (perm, (&plain_weight, &coeff_weight)) in
+                perms.iter().zip(plain.iter().zip(weighted.iter()))
+            {
+                let enumerated = encoding.apply_mode_enumeration(perm.clone());
+                let qham = enumerated.encode(&ms);
+                prop_assert_eq!(qham.pauli_weight() as f64, plain_weight);
+                prop_assert!(
+                    (qham.coeff_pauli_weight() - coeff_weight).abs() < 1e-10,
+                    "expected coeff weight {}, got {}", qham.coeff_pauli_weight(), coeff_weight
                 );
             }
         }

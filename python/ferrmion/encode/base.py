@@ -175,7 +175,7 @@ class FermionQubitEncoding(ABC):
         ipow, sym = self._build_symplectic_matrix()
 
         if temperature is None:
-            temperature = fham.n_modes
+            temperature = fham.n_modes // 2
 
         if isinstance(initial_guess, list):
             initial_guess: NDArray[np.uint] = np.array(initial_guess, dtype=np.uint)

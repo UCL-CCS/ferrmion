@@ -450,6 +450,66 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
+    /// Encode a fermionic Hamiltonian under multiple mode permutations and return
+    /// both Pauli weight vectors in a single parallelised Rust call.
+    ///
+    /// This is equivalent to calling ``encode`` followed by computing the Pauli weights
+    /// for each permutation individually, but significantly faster because all
+    /// encodings run in parallel on the Rust side.
+    ///
+    /// Args:
+    ///     ipowers: 1D uint8 array — phase exponents for each encoding operator.
+    ///     symplectics: 2D boolean array — symplectic encoding matrix
+    ///         of shape ``(2 * n_modes, 2 * n_qubits)``.
+    ///     vacuum_state: 1D boolean array of length ``n_qubits``.
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     permutations: 2D uint array of shape ``(n_perms, n_modes)``.
+    ///         Each row is a permutation of ``range(n_modes)``.
+    ///
+    /// Returns:
+    ///     Tuple ``(plain, weighted)`` of two 1D float64 arrays of length
+    ///     ``n_perms``.  ``plain[i]`` is the plain Pauli weight and
+    ///     ``weighted[i]`` is the coefficient-weighted Pauli weight for
+    ///     permutation ``i``, in the same order as the input rows.
+    #[pyfn(m)]
+    #[pyo3(name = "batch_pauli_weights")]
+    fn wrap_batch_pauli_weights<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+        vacuum_state: PyReadonlyArray1<bool>,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+        permutations: PyReadonlyArray2<usize>,
+    ) -> Result<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>), CoreError> {
+        let symplectics = symplectics.as_array();
+        let n_qubits = symplectics.ncols() / 2;
+        let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
+        let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
+        let ipowers = ipowers.as_array().to_owned();
+        let vacuum = ZBasisState::new(
+            Array1::from(vacuum_state.as_array().to_vec()),
+            Complex64::ONE,
+        );
+        let encoding = MajoranaEncoding::with_vacuum(
+            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
+            vacuum,
+        )?;
+        let msparse = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            0.,
+        );
+        let permutations = permutations.as_array();
+        let perms: Vec<Vec<usize>> = permutations.outer_iter().map(|row| row.to_vec()).collect();
+        let (plain, weighted) = encoding.batch_pauli_weights(&msparse, &perms);
+        Ok((
+            PyArray1::from_owned_array(py, Array1::from(plain)),
+            PyArray1::from_owned_array(py, Array1::from(weighted)),
+        ))
+    }
+
     /// Build a symplectic encoding matrix from a ternary-tree flatpack representation.
     ///
     /// Args:

@@ -49,6 +49,11 @@ def topphatt(
     coeffs: list[np.ndarray],
     parallelize: bool,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
+def hatt(
+    n_modes: int,
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+) -> tuple[TTFlatpack, int]: ...
 def flatpack_symplectic_matrix(
     flatpack: TTFlatpack,
     n_qubits: None | int,

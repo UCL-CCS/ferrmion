@@ -2,12 +2,15 @@
 
 import logging
 from itertools import permutations
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
 
 from ferrmion.encode import TernaryTree
 from ferrmion.encode.ternary_tree_node import TTNode
+
+if TYPE_CHECKING:
+    from ferrmion.hamiltonians import FermionHamiltonian
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +95,9 @@ def hamiltonian_adaptive_ternary_tree(
         parent = nodes[parent_index]
 
         min = np.inf
-        for comb in permutations(unassigned, 2):
+        # Iterate in sorted order so the greedy tie-break is deterministic
+        # across Python versions and matches the Rust HATT implementation.
+        for comb in permutations(sorted(unassigned), 2):
             small_y = None
             small_x = None
             # This way x index will be higher term - more often node.
@@ -173,6 +178,41 @@ def hamiltonian_adaptive_ternary_tree(
     tree = TernaryTree(n_modes=n_modes, root_node=root)
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     tree.pauli_weight = total_weight
+    return tree
+
+
+def fast_hatt_rust(fham: "FermionHamiltonian", n_modes: int) -> TernaryTree:
+    """Construct an adaptive ternary tree using the Rust HATT implementation.
+
+    This is the fast-path equivalent of :func:`hamiltonian_adaptive_ternary_tree`:
+    the greedy tree construction runs in native Rust, and a Python
+    :class:`TernaryTree` is rebuilt from the returned flatpack.
+
+    Args:
+        fham (FermionHamiltonian): The Hamiltonian whose terms drive the greedy
+            Pauli-weight minimisation. Its ``signatures`` and ``coefficients``
+            are passed through to Rust which converts them to a Majorana
+            sparse representation internally.
+        n_modes (int): Number of fermionic modes in the system.
+
+    Returns:
+        TernaryTree: The constructed tree with ``pauli_weight`` populated.
+    """
+    from ferrmion import core
+    from ferrmion.encode.ternary_tree_node import node_sorter
+
+    sigs, coeffs = fham.signatures_and_coefficients
+    flatpack, weight = core.hatt(n_modes, sigs, coeffs)
+    tree = TernaryTree.from_flatpack(flatpack)
+    # `from_flatpack` installs a DFS-ordered enumeration; Python's
+    # `hamiltonian_adaptive_ternary_tree` calls `default_enumeration_scheme`,
+    # which sorts paths by `node_sorter` (BFS-like). Re-sort the modes so the
+    # two paths produce identical enumeration schemes.
+    sorted_paths = sorted(tree.enumeration_scheme.keys(), key=node_sorter)
+    tree.enumeration_scheme = {
+        p: (mode, tree.enumeration_scheme[p][1]) for mode, p in enumerate(sorted_paths)
+    }
+    tree.pauli_weight = weight
     return tree
 
 

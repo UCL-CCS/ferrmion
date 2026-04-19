@@ -5,5 +5,8 @@
 
 mod anneal;
 pub use anneal::*;
+mod common;
+mod hatt;
+pub use hatt::*;
 mod topphatt;
 pub use topphatt::*;

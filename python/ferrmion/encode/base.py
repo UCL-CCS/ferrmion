@@ -9,6 +9,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from ferrmion.core import (
     anneal_enumerations,
+    batch_pauli_weights,
     decode,
     encode,
     encode_fermion_product,
@@ -404,6 +405,28 @@ class FermionQubitEncoding(ABC):
             )
             return {k: op[k] + hc[k] for k in op if op[k] + hc[k] != 0.0}
         return op
+
+    def _batch_pauli_weights(
+        self,
+        fham: FermionHamiltonian,
+        n_enumerations: int = 100,
+        enumerations: NDArray[np.uint] | None = None,
+        rng_seed: int = 0,
+    ):
+        """Calculate Pauli-weight and coefficient Pauli-weight for rendom mode enumerations."""
+        rng = np.random.default_rng(rng_seed)
+
+        if enumerations is None or len(enumerations) < n_enumerations:
+            enumerations = np.tile(
+                np.arange(fham.n_modes, dtype=np.uint), (n_enumerations, 1)
+            )
+            enumerations = rng.permuted(enumerations, axis=1)
+
+        ipow, sym = self._build_symplectic_matrix()
+        sig, coeff = fham.signatures_and_coefficients
+        return batch_pauli_weights(
+            ipow, sym, self.vacuum_state.astype(np.bool), sig, coeff, enumerations
+        )
 
 
 class MajoranaStringEncoding(FermionQubitEncoding):

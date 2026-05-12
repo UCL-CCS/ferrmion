@@ -1,6 +1,6 @@
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
-use log::debug;
+use log::{debug, info};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::zip;
 use std::ops::BitXorAssign;
@@ -450,7 +450,7 @@ fn reduce_hamiltonian(
     majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
     parent_majorana_index: u16,
     selection: [u16; 3],
-) -> Vec<ArrayVec<[u16; MAJORANA_MAX]>> {
+) -> (Vec<ArrayVec<[u16; MAJORANA_MAX]>>, usize) {
     // could also filter here by terms that
     // only contain indices in pairs.
     let mut result: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = majorana_terms
@@ -470,7 +470,11 @@ fn reduce_hamiltonian(
     // avoids per-element tree insertion overhead.
     result.sort_unstable();
     result.dedup();
-    result
+    let retained_count = result
+        .iter()
+        .filter(|term| term.contains(&parent_majorana_index))
+        .count();
+    (result, retained_count)
 }
 
 /// Toplogy-Preserving Hamiltonian-Adaptive Ternary Tree
@@ -495,6 +499,7 @@ pub fn topphatt(
     // Reversing the direction tends to give better results for molecules
     let mut unassigned_modes: BTreeSet<usize> = BTreeSet::from_iter(0..tree.n_nodes);
     let mut total_weight = 0;
+    let mut overlap_counts: Vec<usize> = Vec::with_capacity(tree.n_nodes);
     debug!(
         "Number of hamiltonian terms {:?}",
         hamiltonian.indices.len()
@@ -795,11 +800,13 @@ pub fn topphatt(
 
         let parent_majorana_index = selection.min_parent + n_leaves;
         debug!("Parent Majorana Index {parent_majorana_index}.");
-        hamiltonian.indices = reduce_hamiltonian(
+        let (new_indices, retained_count) = reduce_hamiltonian(
             hamiltonian.indices,
             parent_majorana_index as u16,
             selection.leaf_indices,
         );
+        hamiltonian.indices = new_indices;
+        overlap_counts.push(retained_count);
         if hamiltonian.indices.len() < 1000 {
             n_threads = 1;
         }
@@ -815,6 +822,8 @@ pub fn topphatt(
     debug!("Unassigned {:?}", unassigned_modes);
     debug!("Total weight: {:}", total_weight);
     debug!("Tree {:?}", tree);
+    debug!("Overlap counts per iteration: {:?}", overlap_counts);
+    info!("Overlap counts per iteration: {:?}", overlap_counts);
 
     debug!("Update tree");
     restrictions.update_tree(&mut tree)?;
@@ -1104,18 +1113,18 @@ mod test_topphatt {
 
     #[test]
     fn test_reduce_hamiltonian_substitutes_inplace() {
-        let mut hamiltonian = vec![
+        let hamiltonian = vec![
             array_vec!([u16;7] => 0,1,2,3),
             array_vec!([u16;7] => 0,2,3,4),
         ];
 
-        hamiltonian = reduce_hamiltonian(hamiltonian, 999, [2, 3, 55]);
+        let (result, _) = reduce_hamiltonian(hamiltonian, 999, [2, 3, 55]);
 
         let expected = vec![
             array_vec!([u16;7] => 0,1,999,999),
             array_vec!([u16;7] => 0,4,999,999),
         ];
 
-        assert_eq!(hamiltonian, expected);
+        assert_eq!(result, expected);
     }
 }

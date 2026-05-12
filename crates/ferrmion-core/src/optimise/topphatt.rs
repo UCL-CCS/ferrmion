@@ -450,7 +450,7 @@ fn reduce_hamiltonian(
     majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
     parent_majorana_index: u16,
     selection: [u16; 3],
-) -> (Vec<ArrayVec<[u16; MAJORANA_MAX]>>, usize) {
+) -> (Vec<ArrayVec<[u16; MAJORANA_MAX]>>, f64) {
     // could also filter here by terms that
     // only contain indices in pairs.
     let mut result: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = majorana_terms
@@ -470,11 +470,17 @@ fn reduce_hamiltonian(
     // avoids per-element tree insertion overhead.
     result.sort_unstable();
     result.dedup();
+    let total = result.len();
     let retained_count = result
         .iter()
         .filter(|term| term.contains(&parent_majorana_index))
         .count();
-    (result, retained_count)
+    let fraction = if total == 0 {
+        0.0
+    } else {
+        retained_count as f64 / total as f64
+    };
+    (result, fraction)
 }
 
 /// Toplogy-Preserving Hamiltonian-Adaptive Ternary Tree
@@ -499,7 +505,7 @@ pub fn topphatt(
     // Reversing the direction tends to give better results for molecules
     let mut unassigned_modes: BTreeSet<usize> = BTreeSet::from_iter(0..tree.n_nodes);
     let mut total_weight = 0;
-    let mut overlap_counts: Vec<usize> = Vec::with_capacity(tree.n_nodes);
+    let mut overlap_counts: Vec<f64> = Vec::with_capacity(tree.n_nodes);
     debug!(
         "Number of hamiltonian terms {:?}",
         hamiltonian.indices.len()

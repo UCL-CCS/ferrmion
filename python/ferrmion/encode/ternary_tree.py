@@ -135,13 +135,24 @@ class TernaryTree(FermionQubitEncoding):
         self._enumeration_scheme = enumeration_dict
 
     def encode_topphatt(
-        self, fham: FermionHamiltonian, parallelize: bool = True
+        self,
+        fham: FermionHamiltonian,
+        parallelize: bool = True,
+        heuristic: str = "z_first",
+        seed: int | None = None,
     ) -> QubitHamiltonian:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
         Args:
             fham: The FermionHamiltonian to encode.
             parallelize: Whether to parallelize the encoding.
+            heuristic: Node-selection strategy. One of ``"min_weight"``
+                (evaluate every active node and keep the lowest Pauli weight),
+                ``"x_first"`` (lowest-indexed active node), ``"z_first"``
+                (highest-indexed active node — the default), or ``"random"``
+                (uniformly random active node using ``seed``).
+            seed: RNG seed for ``heuristic="random"``. Ignored otherwise;
+                defaults to ``0`` when omitted.
 
         Returns:
             The encoded QubitHamiltonian.
@@ -154,6 +165,8 @@ class TernaryTree(FermionQubitEncoding):
             coeffs=deepcopy(coeffs),
             constant_energy=fham.constant_energy,
             parallelize=parallelize,
+            heuristic=heuristic,
+            seed=seed,
         )
         self.vacuum_state = vacuum
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)

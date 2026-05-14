@@ -130,3 +130,95 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, parallelize, wate
 
     assert np.isclose(float(pauli_weight(qham)[0]/pauli_weight(qham_naive)[0]),topphatt_weight_snapshot[encoding]["pauli_weight"], atol=0.01)
     assert np.isclose(float(coefficient_pauli_weight(qham)[0]/coefficient_pauli_weight(qham_naive)[0]), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"], atol=0.01)
+
+
+@pytest.mark.parametrize("heuristic", ["min_weight", "x_first", "z_first", "random"])
+def test_topphatt_heuristics_run(heuristic, h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
+    tree = JKMN(fham.n_modes)
+    qham = tree.encode_topphatt(fham, parallelize=False, heuristic=heuristic, seed=42)
+    assert len(qham) > 0
+
+
+def test_topphatt_random_seed_is_reproducible(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
+
+    qham_a = JKMN(fham.n_modes).encode_topphatt(
+        fham, parallelize=False, heuristic="random", seed=7
+    )
+    qham_b = JKMN(fham.n_modes).encode_topphatt(
+        fham, parallelize=False, heuristic="random", seed=7
+    )
+    assert qham_a == qham_b
+
+
+def test_topphatt_unknown_heuristic_raises(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
+    with pytest.raises(ValueError):
+        JKMN(fham.n_modes).encode_topphatt(fham, heuristic="not_a_strategy")
+
+
+def test_topphatt_heuristic_distribution_h2o_jkmn(water_data):
+    """Compare Pauli weights produced by each heuristic on JKMN(14) + H2O sto-3g.
+
+    Runs MinWeight / XFirst / ZFirst once each and Random across 10 seeds,
+    then surfaces the comparison via stdout and checks that random selection
+    does not systematically beat the best deterministic strategy in
+    expectation.
+    """
+    ones = water_data["ones"]
+    twos = water_data["twos"]
+    e_nuc = water_data["constant_energy"]
+    fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
+    n_modes = fham.n_modes
+
+    def run(heuristic: str, seed: int | None = None) -> float:
+        qham = JKMN(n_modes).encode_topphatt(
+            fham, parallelize=False, heuristic=heuristic, seed=seed
+        )
+        return float(pauli_weight(qham)[0])
+
+    weight_min_weight = run("min_weight")
+    weight_x_first = run("x_first")
+    weight_z_first = run("z_first")
+    random_weights = np.array([run("random", seed=s) for s in range(10)])
+
+    deterministic_min = min(weight_min_weight, weight_x_first, weight_z_first)
+
+    print(
+        "JKMN H2O sto-3g — min_weight=%.3f x_first=%.3f z_first=%.3f "
+        "random: min=%.3f max=%.3f mean=%.3f std=%.3f n_unique=%d"
+        % (
+            weight_min_weight,
+            weight_x_first,
+            weight_z_first,
+            random_weights.min(),
+            random_weights.max(),
+            random_weights.mean(),
+            random_weights.std(),
+            np.unique(random_weights).size,
+        )
+    )
+
+    # All weights are positive and finite — every heuristic produced a usable encoding.
+    assert weight_min_weight > 0 and np.isfinite(weight_min_weight)
+    assert weight_x_first > 0 and np.isfinite(weight_x_first)
+    assert weight_z_first > 0 and np.isfinite(weight_z_first)
+    assert np.all(np.isfinite(random_weights)) and np.all(random_weights > 0)
+
+    # Random seeds should explore more than one outcome on a branched tree.
+    assert np.unique(random_weights).size >= 2
+    assert random_weights.std() > 0
+
+    # The best deterministic heuristic on this dataset should match or beat the
+    # mean of uniformly-random node selection.
+    assert deterministic_min <= random_weights.mean()

@@ -33,6 +33,7 @@ def anneal_enumerations(
     temperature: float,
     initial_guess: npt.NDArray[np.uint],
     coefficient_weighted: bool,
+    seed: int | None = None,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
 def batch_pauli_weights(
     ipowers: npt.NDArray[np.uint8],
@@ -48,6 +49,8 @@ def topphatt(
     signatures: list[str],
     coeffs: list[np.ndarray],
     parallelize: bool,
+    heuristic: str = "min_weight",
+    seed: int | None = None,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def flatpack_symplectic_matrix(
     flatpack: TTFlatpack,
@@ -75,6 +78,8 @@ def encode_topphatt(
     coeffs: list[np.ndarray],
     constant_energy: float,
     parallelize: bool,
+    heuristic: str = "min_weight",
+    seed: int | None = None,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], dict, npt.NDArray[np.bool]]: ...
 def fermionic_to_sparse_majorana(
     signatures: list[str],
@@ -86,4 +91,7 @@ def decode(
     ipowers: npt.NDArray[np.uint8],
     symplectic_matrix: npt.NDArray[np.bool],
     vacuum_state: npt.NDArray[np.bool],
+) -> npt.NDArray[np.bool]: ...
+def maxnto_symplectic_matrix(
+    n_modes: int,
 ) -> npt.NDArray[np.bool]: ...

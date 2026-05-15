@@ -1,6 +1,9 @@
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use log::debug;
+use rand::seq::IteratorRandom;
+use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::zip;
 use std::ops::BitXorAssign;
@@ -11,6 +14,81 @@ const MAJORANA_MAX: usize = 7;
 
 use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
 use crate::operators::MajoranaSparse;
+
+/// Strategy for selecting which active node to expand at each TOPP-HATT step.
+///
+/// `MinWeight` reproduces the original algorithm: every active node is
+/// evaluated and the one yielding the lowest Pauli weight is kept. The
+/// remaining variants pre-filter `active_nodes` to a single candidate, so the
+/// inner weight search only ranges over leaf-index combinations of that one
+/// node.
+#[derive(Debug, Clone, Copy)]
+pub enum NodeOrderHeuristic {
+    /// Try every active node, keep the (node, leaves) with the lowest weight.
+    MinWeight,
+    /// Pick the lowest-indexed active node, then minimise weight over its leaves.
+    XFirst,
+    /// Pick the highest-indexed active node, then minimise weight over its leaves.
+    ZFirst,
+    /// Pick a uniformly random active node using a seeded RNG.
+    Random { seed: u64 },
+}
+
+impl NodeOrderHeuristic {
+    /// Build a heuristic from a name
+    /// (`"min_weight" | "x_first" | "z_first" | "random"`) and an optional
+    /// seed. The seed is only used for `random`; for other variants it is
+    /// ignored. When `random` is requested without a seed, the RNG is seeded
+    /// with `0` for reproducibility.
+    pub fn parse(name: &str, seed: Option<u64>) -> Result<Self, String> {
+        match name {
+            "min_weight" => Ok(NodeOrderHeuristic::MinWeight),
+            "x_first" => Ok(NodeOrderHeuristic::XFirst),
+            "z_first" => Ok(NodeOrderHeuristic::ZFirst),
+            "random" => Ok(NodeOrderHeuristic::Random {
+                seed: seed.unwrap_or(0),
+            }),
+            other => Err(format!(
+                "unknown TOPP-HATT heuristic: {other:?} (expected one of \
+                 \"min_weight\", \"x_first\", \"z_first\", \"random\")"
+            )),
+        }
+    }
+
+    /// Reduce `active_nodes` in place according to this heuristic.
+    ///
+    /// `MinWeight` leaves `active_nodes` untouched (every candidate is later
+    /// evaluated). The other variants trim it to a single chosen index, so the
+    /// inner search only ranges over leaf-index combinations of one node.
+    ///
+    /// `rng` must be `Some` whenever `self` is `Random`. It is constructed
+    /// once outside the assignment loop so a single seeded stream is consumed
+    /// across all iterations.
+    pub fn apply(&self, active_nodes: &mut Vec<usize>, rng: Option<&mut Xoshiro256PlusPlus>) {
+        match self {
+            NodeOrderHeuristic::MinWeight => {}
+            NodeOrderHeuristic::XFirst => {
+                if let Some(&n) = active_nodes.iter().min() {
+                    active_nodes.clear();
+                    active_nodes.push(n);
+                }
+            }
+            NodeOrderHeuristic::ZFirst => {
+                if let Some(&n) = active_nodes.iter().max() {
+                    active_nodes.clear();
+                    active_nodes.push(n);
+                }
+            }
+            NodeOrderHeuristic::Random { .. } => {
+                let rng = rng.expect("RNG must be provided for Random heuristic.");
+                if let Some(&n) = active_nodes.iter().choose(rng) {
+                    active_nodes.clear();
+                    active_nodes.push(n);
+                }
+            }
+        }
+    }
+}
 
 /// Error types possible during TOPP-HATT
 #[derive(Debug, Error)]
@@ -481,6 +559,7 @@ pub fn topphatt(
     mut hamiltonian: MajoranaSparse,
     mut tree: TernaryTree,
     parallelize: bool,
+    heuristic: NodeOrderHeuristic,
 ) -> Result<TernaryTree, ToppHattError> {
     let mut restrictions = TreeRestrictions::new(&tree);
     let mut node_dependencies = NodeDependencies::new(&tree);
@@ -490,6 +569,13 @@ pub fn topphatt(
         num_cpus::get()
     } else {
         1
+    };
+
+    // Created once outside the assignment loop so a single RNG stream is
+    // consumed across all iterations, rather than reseeded each step.
+    let mut rng = match heuristic {
+        NodeOrderHeuristic::Random { seed } => Some(Xoshiro256PlusPlus::seed_from_u64(seed)),
+        _ => None,
     };
 
     // Reversing the direction tends to give better results for molecules
@@ -528,6 +614,8 @@ pub fn topphatt(
             .filter(|&((_, rd), &uc)| (rd == max_root_distance) & (uc == ArrayVec::new()))
             .map(|((&ind, _), _)| ind)
             .collect();
+
+        heuristic.apply(&mut active_nodes, rng.as_mut());
 
         // This is an optimisation for the case when there are multiple terminal
         // nodes at the same length.
@@ -1055,7 +1143,7 @@ mod test_topphatt {
         .unwrap();
         let tree = TernaryTree::naive_jordan_wigner(3);
 
-        let jw_topphatt = topphatt(hamiltonian, tree, true).unwrap();
+        let jw_topphatt = topphatt(hamiltonian, tree, true, NodeOrderHeuristic::MinWeight).unwrap();
         let encoding: MajoranaEncoding = jw_topphatt.build_encoding(3).unwrap();
         assert_eq!(encoding.operators.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
@@ -1086,7 +1174,7 @@ mod test_topphatt {
         ];
 
         let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
-        let jw_topphatt = topphatt(hamiltonian, tree, true).unwrap();
+        let jw_topphatt = topphatt(hamiltonian, tree, true, NodeOrderHeuristic::MinWeight).unwrap();
         let encoding = jw_topphatt.build_encoding(4).unwrap();
         assert_eq!(encoding.operators.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
@@ -1100,6 +1188,103 @@ mod test_topphatt {
         //         [false, false, true, false, false, true, true, false],
         //     ])
         // );
+    }
+
+    /// Multi-term Hamiltonian on a JKMN(7) tree. JKMN has four leaf-only nodes
+    /// at the deepest level on the first assignment iteration, so the heuristic
+    /// has a non-trivial choice to make.
+    fn multi_active_fixture() -> (MajoranaSparse, TernaryTree) {
+        let hamiltonian = MajoranaSparse::new(
+            vec![
+                array_vec!([u16; 7] => 0, 1, 2, 3),
+                array_vec!([u16; 7] => 4, 5, 6, 7),
+                array_vec!([u16; 7] => 2, 3, 8, 9),
+                array_vec!([u16; 7] => 10, 11, 12, 13),
+            ],
+            vec![
+                Complex64::new(1., 0.),
+                Complex64::new(1., 0.),
+                Complex64::new(1., 0.),
+                Complex64::new(1., 0.),
+            ],
+            0.,
+        )
+        .unwrap();
+        let tree = TernaryTree::naive_jkmn(7);
+        (hamiltonian, tree)
+    }
+
+    #[test]
+    fn test_topphatt_x_first_and_z_first_diverge() {
+        let (h_x, tree_x) = multi_active_fixture();
+        let (h_z, tree_z) = multi_active_fixture();
+
+        let x_tree = topphatt(h_x, tree_x, false, NodeOrderHeuristic::XFirst).unwrap();
+        let z_tree = topphatt(h_z, tree_z, false, NodeOrderHeuristic::ZFirst).unwrap();
+
+        let x_enc = x_tree.build_encoding(7).unwrap();
+        let z_enc = z_tree.build_encoding(7).unwrap();
+
+        // Both heuristics still produce valid 7-mode encodings.
+        assert_eq!(x_enc.operators.ipowers.len(), 14);
+        assert_eq!(z_enc.operators.ipowers.len(), 14);
+
+        // The two heuristics walk active_nodes from opposite ends, so on a
+        // branched tree the resulting symplectic matrix should differ.
+        assert_ne!(
+            x_enc.operators.x_block, z_enc.operators.x_block,
+            "XFirst and ZFirst should produce distinct encodings on JKMN(7)"
+        );
+    }
+
+    #[test]
+    fn test_topphatt_random_reproducible() {
+        let (h_a, tree_a) = multi_active_fixture();
+        let (h_b, tree_b) = multi_active_fixture();
+
+        let tree_first =
+            topphatt(h_a, tree_a, false, NodeOrderHeuristic::Random { seed: 42 }).unwrap();
+        let tree_second =
+            topphatt(h_b, tree_b, false, NodeOrderHeuristic::Random { seed: 42 }).unwrap();
+
+        let enc_first = tree_first.build_encoding(7).unwrap();
+        let enc_second = tree_second.build_encoding(7).unwrap();
+
+        assert_eq!(enc_first.operators.ipowers, enc_second.operators.ipowers);
+        assert_eq!(enc_first.operators.x_block, enc_second.operators.x_block);
+        assert_eq!(enc_first.operators.z_block, enc_second.operators.z_block);
+    }
+
+    #[test]
+    fn test_topphatt_random_seeds_can_differ() {
+        // With four active leaf nodes per step on JKMN(7), distinct seeds
+        // should pick different active-node sequences and yield different
+        // encodings for at least one of these probe seeds.
+        let (h_ref, tree_ref) = multi_active_fixture();
+        let reference = topphatt(
+            h_ref,
+            tree_ref,
+            false,
+            NodeOrderHeuristic::Random { seed: 0 },
+        )
+        .unwrap();
+        let ref_enc = reference.build_encoding(7).unwrap();
+
+        let probe_seeds = [1u64, 7, 13, 42, 99, 1234];
+        let mut found_difference = false;
+        for seed in probe_seeds {
+            let (h, tree) = multi_active_fixture();
+            let other = topphatt(h, tree, false, NodeOrderHeuristic::Random { seed }).unwrap();
+            let other_enc = other.build_encoding(7).unwrap();
+            if other_enc.operators.x_block != ref_enc.operators.x_block {
+                found_difference = true;
+                break;
+            }
+        }
+        assert!(
+            found_difference,
+            "At least one of the probe seeds should diverge from seed=0"
+        );
     }
 
     #[test]

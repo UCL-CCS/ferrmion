@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `NodeOrderHeuristic`s for TOPP-HATT.
+  - `min_weight` (default): evaluate every active node and keep the one with the lowest weight.
+  - `x_first`: Pick the x-most node on the tree.
+  - `z_first`: Pick the z-most node on the tree.
+  - `random`: Pick a random node on the tree. Allows for a random seed to be passed.
+
+### Changed
+- `encode_annealed` now takes a random `seed` argument.
 
 ## [0.8.0] - 2026-04-15
 ### Added

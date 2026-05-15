@@ -28,7 +28,7 @@ from .encode.ternary_tree import(
     jkmn_annealed,
     jkmn_topphatt,
 )
-from .hamiltonians import FermionHamiltonian, molecular_hamiltonian, hubbard_hamiltonian
+from .hamiltonians import FermionHamiltonian, QubitHamiltonian, molecular_hamiltonian, hubbard_hamiltonian
 from .utils import (
     icount_to_sign,
     pauli_to_symplectic,
@@ -56,6 +56,7 @@ __all__ = [
     "hartree_fock_state",
     "two_operator_product",
     "FermionHamiltonian",
+    "QubitHamiltonian",
     "molecular_hamiltonian",
     "hubbard_hamiltonian",
     "FermionQubitEncoding",

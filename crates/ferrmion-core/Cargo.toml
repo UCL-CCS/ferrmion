@@ -17,6 +17,11 @@ log = { version = "0.4", features = ["release_max_level_info"] }
 argmin = "0.10.0"
 rand = "0.9.2"
 rand_xoshiro = "0.7.0"
+# argmin 0.10 pins rand_xoshiro 0.6 internally; the solver's `new_with_rng`
+# requires an RNG implementing the older `rand_core::RngCore`. We expose this
+# alongside the modern crate so we can seed argmin's solver deterministically.
+rand_xoshiro_legacy = { package = "rand_xoshiro", version = "0.6.0" }
+rand_core_legacy = { package = "rand_core", version = "0.6.4" }
 ahash = "0.8.12"
 tinyvec = "1.10.0"
 thiserror = "2.0.17"

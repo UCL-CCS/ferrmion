@@ -11,7 +11,9 @@ use argmin::{
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use rand::{distr::Uniform, prelude::*};
+use rand_core_legacy::SeedableRng as LegacySeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use rand_xoshiro_legacy::Xoshiro256PlusPlus as LegacyXoshiro256PlusPlus;
 use std::sync::{Arc, Mutex};
 
 struct OptimalEnumeration {
@@ -26,12 +28,13 @@ impl OptimalEnumeration {
         msparse: MajoranaSparse,
         encoding: MajoranaEncoding,
         coefficient_weighted: bool,
+        seed: u64,
     ) -> Self {
         OptimalEnumeration {
             msparse,
             encoding,
             coefficient_weighted,
-            rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(1017))),
+            rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(seed))),
         }
     }
 }
@@ -91,6 +94,7 @@ impl Anneal for OptimalEnumeration {
 /// * `temperature` - Initial temperature for the annealing schedule.
 /// * `initial_guess` - Starting permutation of mode indices.
 /// * `coefficient_weighted` - If `true`, minimise coefficient-weighted Pauli weight.
+/// * `seed` - Seed for the `Xoshiro256PlusPlus` RNG driving permutation moves.
 ///
 /// # Returns
 ///
@@ -101,53 +105,37 @@ pub fn anneal_enumerations(
     temperature: f64,
     initial_guess: ArrayView1<usize>,
     coefficient_weighted: bool,
+    seed: u64,
 ) -> Result<(f64, Array1<usize>), Error> {
     assert_eq!(
         initial_guess.len(),
         encoding.operators.ipowers.len() / 2,
         "Initial enumeration length is not n_modes"
     );
-    let operator = OptimalEnumeration::new(msparse, encoding, coefficient_weighted);
 
-    // Define initial parameter vector
+    // Derive two decorrelated child seeds from the user-provided seed so the
+    // permutation-move RNG (inside `OptimalEnumeration`) and the argmin solver
+    // RNG (which drives acceptance decisions) consume independent streams
+    // while remaining fully reproducible.
+    let mut master = Xoshiro256PlusPlus::seed_from_u64(seed);
+    let operator_seed: u64 = master.next_u64();
+    let solver_seed: u64 = master.next_u64();
 
-    // Set up simulated annealing solver
-    // An alternative random number generator (RNG) can be provided to `new_with_rng`:
-    // SimulatedAnnealing::new_with_rng(temp, Xoshiro256PlusPlus::from_entropy())?
-    let solver = SimulatedAnnealing::new(temperature)?
-        // Optional: Define temperature function (defaults to `SATempFunc::TemperatureFast`)
-        .with_temp_func(SATempFunc::Boltzmann)
-        /////////////////////////
-        // Stopping criteria   //
-        /////////////////////////
-        // Optional: stop if there was no new best solution after 1000 iterations
-        .with_stall_best(250);
-    // Optional: stop if there was no accepted solution after 1000 iterations
-    // .with_stall_accepted(1000);
-    /////////////////////////
-    // Reannealing         //
-    /////////////////////////
-    // Optional: Reanneal after 1000 iterations (resets temperature to initial temperature)
-    // .with_reannealing_fixed(1000)
-    // Optional: Reanneal after no accepted solution has been found for `iter` iterations
-    // .with_reannealing_accepted(500)
-    // Optional: Start reannealing after no new best solution has been found for 800 iterations
-    // .with_reannealing_best(800);
+    let operator = OptimalEnumeration::new(msparse, encoding, coefficient_weighted, operator_seed);
 
-    /////////////////////////
-    // Run solver          //
-    /////////////////////////
+    // Set up simulated annealing solver with our seeded RNG. The default
+    // `SimulatedAnnealing::new` would seed from entropy, breaking
+    // reproducibility. We use the rand_xoshiro 0.6 RNG type because argmin
+    // 0.10's solver expects the older `rand_core 0.6::RngCore` trait.
+    let solver = SimulatedAnnealing::new_with_rng(
+        temperature,
+        LegacyXoshiro256PlusPlus::seed_from_u64(solver_seed),
+    )?
+    .with_temp_func(SATempFunc::Boltzmann)
+    .with_stall_best(250);
+
     let res = Executor::new(operator, solver)
-        .configure(|state| {
-            state
-                .param(initial_guess.to_owned())
-                // Optional: Set maximum number of iterations (defaults to `std::u64::MAX`)
-                .max_iters(1_000)
-            // Optional: Set target cost function value (defaults to `std::f64::NEG_INFINITY`)
-            // .target_cost(0.0)
-        })
-        // Optional: Attach a observer
-        // .add_observer(SlogLogger::term(), ObserverMode::Never)
+        .configure(|state| state.param(initial_guess.to_owned()).max_iters(1_000))
         .run()?;
 
     let final_state = res.state();

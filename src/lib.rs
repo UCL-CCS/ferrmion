@@ -100,6 +100,36 @@ impl From<MaxNTOError> for CoreError {
     }
 }
 
+/// Apply γ²=1 simplification, merge duplicate Majorana keys, and drop
+/// terms whose summed coefficient falls below the near-zero threshold.
+///
+/// Both `fermionic_to_sparse_majorana` and `wrap_hatt` consume the result;
+/// going through a single helper guarantees they see identical term sets
+/// (a per-entry accumulate-and-filter loop can leave stale entries when a
+/// running coefficient cancels below the threshold).
+fn simplified_majorana_terms(
+    hamiltonian: MajoranaSparse,
+) -> std::collections::BTreeMap<Vec<u16>, Complex64> {
+    let mut merged: std::collections::BTreeMap<Vec<u16>, Complex64> =
+        std::collections::BTreeMap::new();
+    for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
+        let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
+        for &idx in key.as_slice() {
+            if simplified.last() == Some(&idx) {
+                simplified.pop();
+            } else {
+                simplified.push(idx);
+            }
+        }
+        if simplified.is_empty() {
+            continue;
+        }
+        *merged.entry(simplified).or_insert(Complex64::new(0., 0.)) += val;
+    }
+    merged.retain(|_, v| v.norm() > 1e-16);
+    merged
+}
+
 /// A Python module implemented in Rust.
 #[allow(clippy::type_complexity)]
 #[pymodule]
@@ -623,30 +653,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         );
 
         let output = PyDict::new(py);
-        for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
-            // γ_i² = 1: remove pairs of equal adjacent indices (keys are already sorted)
-            let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
-            for &idx in key.as_slice() {
-                if simplified.last() == Some(&idx) {
-                    simplified.pop();
-                } else {
-                    simplified.push(idx);
-                }
-            }
-            // Constant (identity) terms are tracked in hamiltonian.constant; skip them here
-            if simplified.is_empty() {
-                continue;
-            }
-            let py_key = PyTuple::new(py, simplified.as_slice())?;
-            let existing: Option<numpy::Complex64> =
-                output.get_item(&py_key)?.map(|v| v.extract()).transpose()?;
-            let new_val = match existing {
-                Some(prev) => prev + val,
-                None => val,
-            };
-            if new_val.norm() > 1e-16 {
-                output.set_item(&py_key, new_val)?;
-            }
+        for (key, val) in simplified_majorana_terms(hamiltonian) {
+            output.set_item(PyTuple::new(py, key.as_slice())?, val)?;
         }
         Ok(output)
     }
@@ -935,37 +943,17 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.iter().map(|v| v.as_array()).collect(),
             0.,
         );
-        // Apply γ²=1 simplification and merge/filter duplicate keys — matches
-        // the post-processing inside `fermionic_to_sparse_majorana` so the
-        // Rust HATT consumes the same Majorana Hamiltonian the Python path
-        // sees.
-        use std::collections::BTreeMap;
-        let mut merged: BTreeMap<Vec<u16>, Complex64> = BTreeMap::new();
-        for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
-            let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
-            for &idx in key.as_slice() {
-                if simplified.last() == Some(&idx) {
-                    simplified.pop();
-                } else {
-                    simplified.push(idx);
-                }
-            }
-            if simplified.is_empty() {
-                continue;
-            }
-            *merged.entry(simplified).or_insert(Complex64::new(0., 0.)) += val;
-        }
-        let simplified_terms: Vec<tinyvec::ArrayVec<[u16; 7]>> = merged
-            .into_iter()
-            .filter(|(_, v)| v.norm() > 1e-16)
-            .map(|(k, _)| {
-                let mut av = tinyvec::ArrayVec::<[u16; 7]>::new();
-                for idx in k {
-                    av.push(idx);
-                }
-                av
-            })
-            .collect();
+        let simplified_terms: Vec<tinyvec::ArrayVec<[u16; 7]>> =
+            simplified_majorana_terms(hamiltonian)
+                .into_keys()
+                .map(|k| {
+                    let mut av = tinyvec::ArrayVec::<[u16; 7]>::new();
+                    for idx in k {
+                        av.push(idx);
+                    }
+                    av
+                })
+                .collect();
         let (flatpack, weight) = core_hatt(simplified_terms, n_modes)?;
         debug!("HATT finished with weight {weight}");
         Ok((flatpack, weight))

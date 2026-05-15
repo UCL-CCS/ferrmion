@@ -389,12 +389,25 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     temperature: Annealing temperature (higher = more random exploration).
     ///     initial_guess: 1D uint array — initial mode-to-qubit permutation.
     ///     coefficient_weighted: If ``True``, weight moves by Hamiltonian coefficients.
+    ///     seed: Seed for the RNG driving permutation moves. Defaults to ``1017``.
     ///
     /// Returns:
     ///     Tuple of ``(ipowers, symplectics)`` for the best encoding found.
     #[allow(clippy::too_many_arguments)]
     #[pyfn(m)]
-    #[pyo3(name = "anneal_enumerations")]
+    #[pyo3(
+        name = "anneal_enumerations",
+        signature = (
+            ipowers,
+            symplectics,
+            signatures,
+            coeffs,
+            temperature,
+            initial_guess,
+            coefficient_weighted,
+            seed = None,
+        ),
+    )]
     fn wrap_anneal_enumerations<'py>(
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
@@ -404,6 +417,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         temperature: f64,
         initial_guess: PyReadonlyArray1<usize>,
         coefficient_weighted: bool,
+        seed: Option<u64>,
     ) -> Result<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>), CoreError> {
         let initial_guess = initial_guess.as_array();
 
@@ -428,6 +442,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             temperature,
             initial_guess,
             coefficient_weighted,
+            seed.unwrap_or(1017),
         )
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 

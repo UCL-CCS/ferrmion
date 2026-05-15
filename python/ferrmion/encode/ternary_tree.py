@@ -138,7 +138,7 @@ class TernaryTree(FermionQubitEncoding):
         self,
         fham: FermionHamiltonian,
         parallelize: bool = True,
-        heuristic: str = "z_first",
+        heuristic: str = "min_weight",
         seed: int | None = None,
     ) -> QubitHamiltonian:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
@@ -874,6 +874,7 @@ def jordan_wigner_annealed(
     temperature: int | None = None,
     initial_guess: list[int] | None = None,
     coefficient_weighted: bool = True,
+    seed: int | None = None,
 ) -> QubitHamiltonian:
     """TOPP-HATT optimised Jordan-Wigner Encoding.
 
@@ -882,12 +883,14 @@ def jordan_wigner_annealed(
         temperature (Optional[int]): Initial annealing temperature.
         initial_guess (Optional[list[int]]): Initial mode enumeration.
         coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
+            when omitted, preserving prior behaviour.
 
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return JordanWigner(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted
+        fham, temperature, initial_guess, coefficient_weighted, seed
     )
 
 
@@ -896,6 +899,7 @@ def bravyi_kitaev_annealed(
     temperature: int | None = None,
     initial_guess: list[int] | None = None,
     coefficient_weighted: bool = True,
+    seed: int | None = None,
 ) -> QubitHamiltonian:
     """TOPP-HATT optimised Bravyi-Kitaev Encoding.
 
@@ -904,12 +908,14 @@ def bravyi_kitaev_annealed(
         temperature (Optional[int]): Initial annealing temperature.
         initial_guess (Optional[list[int]]): Initial mode enumeration.
         coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
+            when omitted, preserving prior behaviour.
 
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return BravyiKitaev(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted
+        fham, temperature, initial_guess, coefficient_weighted, seed
     )
 
 
@@ -918,6 +924,7 @@ def parity_annealed(
     temperature: int | None = None,
     initial_guess: list[int] | None = None,
     coefficient_weighted: bool = True,
+    seed: int | None = None,
 ) -> QubitHamiltonian:
     """TOPP-HATT optimised Parity Encoding.
 
@@ -926,12 +933,14 @@ def parity_annealed(
         temperature (Optional[int]): Initial annealing temperature.
         initial_guess (Optional[list[int]]): Initial mode enumeration.
         coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
+            when omitted, preserving prior behaviour.
 
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return ParityEncoding(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted
+        fham, temperature, initial_guess, coefficient_weighted, seed
     )
 
 
@@ -940,6 +949,7 @@ def jkmn_annealed(
     temperature: int | None = None,
     initial_guess: list[int] | None = None,
     coefficient_weighted: bool = True,
+    seed: int | None = None,
 ) -> QubitHamiltonian:
     """TOPP-HATT optimised Jiang-Kalev-Mruczkiewicz-Neven Encoding.
 
@@ -948,10 +958,12 @@ def jkmn_annealed(
         temperature (Optional[int]): Initial annealing temperature.
         initial_guess (Optional[list[int]]): Initial mode enumeration.
         coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
+            when omitted, preserving prior behaviour.
 
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return JKMN(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted
+        fham, temperature, initial_guess, coefficient_weighted, seed
     )

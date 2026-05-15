@@ -160,6 +160,7 @@ class FermionQubitEncoding(ABC):
         temperature: int | None = None,
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
+        seed: int | None = None,
     ):
         """Encode a Hamiltonian, optimising mode enumeration via simulated annealing.
 
@@ -168,6 +169,9 @@ class FermionQubitEncoding(ABC):
             temperature (int | None): Initial annealing temperature. Defaults to `fham.n_modes`.
             initial_guess (list[int] | None): Starting permutation. Defaults to identity.
             coefficient_weighted (bool): If True, minimise coefficient-weighted Pauli weight.
+            seed (int | None): Seed for the RNG driving permutation moves.
+                Defaults to ``1017`` (the historical hardcoded value) when
+                omitted, so existing callers see no change in behaviour.
 
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian with optimised enumeration.
@@ -193,6 +197,7 @@ class FermionQubitEncoding(ABC):
             temperature=temperature,
             initial_guess=initial_guess,
             coefficient_weighted=coefficient_weighted,
+            seed=seed,
         )
 
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)

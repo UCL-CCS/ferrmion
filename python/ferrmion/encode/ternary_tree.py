@@ -135,13 +135,24 @@ class TernaryTree(FermionQubitEncoding):
         self._enumeration_scheme = enumeration_dict
 
     def encode_topphatt(
-        self, fham: FermionHamiltonian, parallelize: bool = True
+        self,
+        fham: FermionHamiltonian,
+        parallelize: bool = True,
+        heuristic: str = "min_weight",
+        seed: int | None = None,
     ) -> QubitHamiltonian:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
         Args:
             fham: The FermionHamiltonian to encode.
             parallelize: Whether to parallelize the encoding.
+            heuristic: Node-selection strategy. One of ``"min_weight"``
+                (evaluate every active node and keep the lowest Pauli weight),
+                ``"x_first"`` (lowest-indexed active node), ``"z_first"``
+                (highest-indexed active node — the default), or ``"random"``
+                (uniformly random active node using ``seed``).
+            seed: RNG seed for ``heuristic="random"``. Ignored otherwise;
+                defaults to ``0`` when omitted.
 
         Returns:
             The encoded QubitHamiltonian.
@@ -154,6 +165,8 @@ class TernaryTree(FermionQubitEncoding):
             coeffs=deepcopy(coeffs),
             constant_energy=fham.constant_energy,
             parallelize=parallelize,
+            heuristic=heuristic,
+            seed=seed,
         )
         self.vacuum_state = vacuum
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
@@ -861,6 +874,7 @@ def jordan_wigner_annealed(
     temperature: int | None = None,
     initial_guess: list[int] | None = None,
     coefficient_weighted: bool = True,
+    seed: int | None = None,
 ) -> QubitHamiltonian:
     """TOPP-HATT optimised Jordan-Wigner Encoding.
 
@@ -869,12 +883,14 @@ def jordan_wigner_annealed(
         temperature (Optional[int]): Initial annealing temperature.
         initial_guess (Optional[list[int]]): Initial mode enumeration.
         coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
+            when omitted, preserving prior behaviour.
 
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return JordanWigner(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted
+        fham, temperature, initial_guess, coefficient_weighted, seed
     )
 
 
@@ -883,6 +899,7 @@ def bravyi_kitaev_annealed(
     temperature: int | None = None,
     initial_guess: list[int] | None = None,
     coefficient_weighted: bool = True,
+    seed: int | None = None,
 ) -> QubitHamiltonian:
     """TOPP-HATT optimised Bravyi-Kitaev Encoding.
 
@@ -891,12 +908,14 @@ def bravyi_kitaev_annealed(
         temperature (Optional[int]): Initial annealing temperature.
         initial_guess (Optional[list[int]]): Initial mode enumeration.
         coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
+            when omitted, preserving prior behaviour.
 
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return BravyiKitaev(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted
+        fham, temperature, initial_guess, coefficient_weighted, seed
     )
 
 
@@ -905,6 +924,7 @@ def parity_annealed(
     temperature: int | None = None,
     initial_guess: list[int] | None = None,
     coefficient_weighted: bool = True,
+    seed: int | None = None,
 ) -> QubitHamiltonian:
     """TOPP-HATT optimised Parity Encoding.
 
@@ -913,12 +933,14 @@ def parity_annealed(
         temperature (Optional[int]): Initial annealing temperature.
         initial_guess (Optional[list[int]]): Initial mode enumeration.
         coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
+            when omitted, preserving prior behaviour.
 
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return ParityEncoding(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted
+        fham, temperature, initial_guess, coefficient_weighted, seed
     )
 
 
@@ -927,6 +949,7 @@ def jkmn_annealed(
     temperature: int | None = None,
     initial_guess: list[int] | None = None,
     coefficient_weighted: bool = True,
+    seed: int | None = None,
 ) -> QubitHamiltonian:
     """TOPP-HATT optimised Jiang-Kalev-Mruczkiewicz-Neven Encoding.
 
@@ -935,10 +958,12 @@ def jkmn_annealed(
         temperature (Optional[int]): Initial annealing temperature.
         initial_guess (Optional[list[int]]): Initial mode enumeration.
         coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
+        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
+            when omitted, preserving prior behaviour.
 
     Returns:
         QubitHamiltonian: Encoded Hamiltonian.
     """
     return JKMN(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted
+        fham, temperature, initial_guess, coefficient_weighted, seed
     )

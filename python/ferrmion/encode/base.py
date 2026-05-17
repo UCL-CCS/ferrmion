@@ -9,6 +9,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from ferrmion.core import (
     anneal_enumerations,
+    batch_pauli_weights,
     decode,
     encode,
     encode_fermion_product,
@@ -159,6 +160,7 @@ class FermionQubitEncoding(ABC):
         temperature: int | None = None,
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
+        seed: int | None = None,
     ):
         """Encode a Hamiltonian, optimising mode enumeration via simulated annealing.
 
@@ -167,6 +169,9 @@ class FermionQubitEncoding(ABC):
             temperature (int | None): Initial annealing temperature. Defaults to `fham.n_modes`.
             initial_guess (list[int] | None): Starting permutation. Defaults to identity.
             coefficient_weighted (bool): If True, minimise coefficient-weighted Pauli weight.
+            seed (int | None): Seed for the RNG driving permutation moves.
+                Defaults to ``1017`` (the historical hardcoded value) when
+                omitted, so existing callers see no change in behaviour.
 
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian with optimised enumeration.
@@ -192,6 +197,7 @@ class FermionQubitEncoding(ABC):
             temperature=temperature,
             initial_guess=initial_guess,
             coefficient_weighted=coefficient_weighted,
+            seed=seed,
         )
 
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
@@ -404,6 +410,28 @@ class FermionQubitEncoding(ABC):
             )
             return {k: op[k] + hc[k] for k in op if op[k] + hc[k] != 0.0}
         return op
+
+    def _batch_pauli_weights(
+        self,
+        fham: FermionHamiltonian,
+        n_enumerations: int = 100,
+        enumerations: NDArray[np.uint] | None = None,
+        rng_seed: int = 0,
+    ):
+        """Calculate Pauli-weight and coefficient Pauli-weight for rendom mode enumerations."""
+        rng = np.random.default_rng(rng_seed)
+
+        if enumerations is None or len(enumerations) < n_enumerations:
+            enumerations = np.tile(
+                np.arange(fham.n_modes, dtype=np.uint), (n_enumerations, 1)
+            )
+            enumerations = rng.permuted(enumerations, axis=1)
+
+        ipow, sym = self._build_symplectic_matrix()
+        sig, coeff = fham.signatures_and_coefficients
+        return batch_pauli_weights(
+            ipow, sym, self.vacuum_state.astype(np.bool), sig, coeff, enumerations
+        )
 
 
 class MajoranaStringEncoding(FermionQubitEncoding):

@@ -19,6 +19,7 @@ use ferrmion_core::optimise::anneal_enumerations;
 use ferrmion_core::optimise::hatt as core_hatt;
 use ferrmion_core::optimise::topphatt;
 use ferrmion_core::optimise::HattError;
+use ferrmion_core::optimise::NodeOrderHeuristic;
 use ferrmion_core::optimise::ToppHattError;
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ferrmion_core::utils::*;
@@ -426,12 +427,25 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     temperature: Annealing temperature (higher = more random exploration).
     ///     initial_guess: 1D uint array — initial mode-to-qubit permutation.
     ///     coefficient_weighted: If ``True``, weight moves by Hamiltonian coefficients.
+    ///     seed: Seed for the RNG driving permutation moves. Defaults to ``1017``.
     ///
     /// Returns:
     ///     Tuple of ``(ipowers, symplectics)`` for the best encoding found.
     #[allow(clippy::too_many_arguments)]
     #[pyfn(m)]
-    #[pyo3(name = "anneal_enumerations")]
+    #[pyo3(
+        name = "anneal_enumerations",
+        signature = (
+            ipowers,
+            symplectics,
+            signatures,
+            coeffs,
+            temperature,
+            initial_guess,
+            coefficient_weighted,
+            seed = None,
+        ),
+    )]
     fn wrap_anneal_enumerations<'py>(
         py: Python<'py>,
         ipowers: PyReadonlyArray1<u8>,
@@ -441,6 +455,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         temperature: f64,
         initial_guess: PyReadonlyArray1<usize>,
         coefficient_weighted: bool,
+        seed: Option<u64>,
     ) -> Result<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>), CoreError> {
         let initial_guess = initial_guess.as_array();
 
@@ -465,6 +480,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             temperature,
             initial_guess,
             coefficient_weighted,
+            seed.unwrap_or(1017),
         )
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
@@ -859,11 +875,30 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     signatures: List of fermionic operator signature strings.
     ///     coeffs: List of coefficient arrays, one per signature.
     ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
+    ///     heuristic: Node-selection strategy. One of ``"min_weight"``
+    ///         (default — try every active node and keep the lowest Pauli
+    ///         weight), ``"x_first"`` (lowest-indexed active node),
+    ///         ``"z_first"`` (highest-indexed active node), or ``"random"``
+    ///         (uniformly random active node using ``seed``).
+    ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
+    ///         Defaults to ``0`` when not provided.
     ///
     /// Returns:
     ///     Tuple of ``(ipowers, symplectic_matrix)`` for the optimised encoding.
     #[pyfn(m)]
-    #[pyo3(name = "topphatt")]
+    #[pyo3(
+        name = "topphatt",
+        signature = (
+            flatpack,
+            n_qubits,
+            signatures,
+            coeffs,
+            parallelize = true,
+            heuristic = "min_weight",
+            seed = None,
+        ),
+    )]
+    #[allow(clippy::too_many_arguments)]
     fn wrap_topphatt<'py>(
         py: Python<'py>,
         flatpack: TTFlatpack,
@@ -871,6 +906,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         signatures: Vec<String>,
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         parallelize: bool,
+        heuristic: &str,
+        seed: Option<u64>,
     ) -> Result<
         (
             Bound<'py, PyArray1<u8>>,
@@ -884,6 +921,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let flatpack: TTFlatpack = flatpack;
         debug!("Got flatpack");
 
+        let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
+
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
             signatures,
             coeffs.iter().map(|v| v.as_array()).collect(),
@@ -895,7 +934,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)?;
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian, tree, parallelize)?;
+        tree = topphatt(hamiltonian, tree, parallelize, heuristic)?;
 
         let encoding = tree.build_encoding(n_qubits)?;
         debug!("Got encoding");
@@ -971,11 +1010,31 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     coeffs: List of coefficient arrays, one per signature.
     ///     constant_energy: Constant energy offset to include in the result.
     ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
+    ///     heuristic: Node-selection strategy. One of ``"min_weight"``
+    ///         (default — try every active node and keep the lowest Pauli
+    ///         weight), ``"x_first"`` (lowest-indexed active node),
+    ///         ``"z_first"`` (highest-indexed active node), or ``"random"``
+    ///         (uniformly random active node using ``seed``).
+    ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
+    ///         Defaults to ``0`` when not provided.
     ///
     /// Returns:
     ///     Tuple of ``(ipowers, symplectic_matrix, hamiltonian_dict)``.
     #[pyfn(m)]
-    #[pyo3(name = "encode_topphatt")]
+    #[pyo3(
+        name = "encode_topphatt",
+        signature = (
+            flatpack,
+            n_qubits,
+            signatures,
+            coeffs,
+            constant_energy,
+            parallelize = true,
+            heuristic = "min_weight",
+            seed = None,
+        ),
+    )]
+    #[allow(clippy::too_many_arguments)]
     fn wrap_encode_topphatt<'py>(
         py: Python<'py>,
         flatpack: TTFlatpack,
@@ -984,6 +1043,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         coeffs: Vec<PyReadonlyArrayDyn<f64>>,
         constant_energy: f64,
         parallelize: bool,
+        heuristic: &str,
+        seed: Option<u64>,
     ) -> Result<
         (
             Bound<'py, PyArray1<u8>>,
@@ -997,6 +1058,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let flatpack: TTFlatpack = flatpack;
         debug!("Got flatpack");
 
+        let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
+
         let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
             signatures,
             coeffs.iter().map(|v| v.as_array()).collect(),
@@ -1008,7 +1071,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let mut tree: TernaryTree = TernaryTree::from_flatpack_naive(&flatpack)?;
         debug!("Got Tree");
         debug!("Hamiltonian {:?}", hamiltonian);
-        tree = topphatt(hamiltonian.clone(), tree, parallelize)?;
+        tree = topphatt(hamiltonian.clone(), tree, parallelize, heuristic)?;
 
         let encoding = tree.build_encoding(n_qubits)?;
         debug!("Got encoding");

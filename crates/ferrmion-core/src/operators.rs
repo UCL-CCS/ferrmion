@@ -877,6 +877,18 @@ impl FermionProduct {
             })
         }
     }
+
+    pub fn action(&self) -> &[LadderOperator] {
+        &self.action
+    }
+
+    pub fn indices(&self) -> &[usize] {
+        &self.indices
+    }
+
+    pub fn coefficient(&self) -> Complex64 {
+        self.coefficient
+    }
 }
 /// Fermion operator with coefficients in matrix form.
 ///
@@ -885,6 +897,7 @@ impl FermionProduct {
 /// For spatial orbital index "i", the spin-up mode is at $2i$ and the spin down mode is at $2i+1$
 /// </div>
 ///
+#[derive(Clone)]
 pub struct FermionMatrix {
     action: Vec<LadderOperator>,
     coefficients: ArrayD<f64>,
@@ -966,12 +979,20 @@ impl FermionMatrix {
             }
         }
     }
+
+    pub fn action(&self) -> &[LadderOperator] {
+        &self.action
+    }
+
+    pub fn coefficients(&self) -> &ArrayD<f64> {
+        &self.coefficients
+    }
 }
 
 /// Fermion operator in sparse form.
 ///
 /// Each index is non-empty and each coefficient is non-zero.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct FermionSparse {
     action: Vec<LadderOperator>,
     indices: Array2<usize>,
@@ -1013,6 +1034,18 @@ impl FermionSparse {
             indices,
             coefficients,
         })
+    }
+
+    pub fn action(&self) -> &[LadderOperator] {
+        &self.action
+    }
+
+    pub fn indices(&self) -> &Array2<usize> {
+        &self.indices
+    }
+
+    pub fn coefficients(&self) -> &Array1<Complex64> {
+        &self.coefficients
     }
 }
 
@@ -1265,6 +1298,21 @@ impl MajoranaSparse {
             coefficients: c,
             constant,
         })
+    }
+
+    /// Constructor that accepts plain `Vec<Vec<u16>>` indices, converting them to the
+    /// internal `ArrayVec` representation. Returns an error if any inner vec exceeds
+    /// `MAX_MAJORANAS` elements or if `indices` and `coefficients` differ in length.
+    pub fn from_index_vecs(
+        indices: Vec<Vec<u16>>,
+        coefficients: Vec<Complex64>,
+        constant: f64,
+    ) -> Result<Self, MajoranaSparseError> {
+        let avc: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> = indices
+            .into_iter()
+            .map(|v| v.into_iter().collect())
+            .collect();
+        Self::new(avc, coefficients, constant)
     }
 
     /// Constructor which takes two vectors, one for operator signatures and another for coefficient matrices.

@@ -1,10 +1,13 @@
 """Class and methods to easily build general Fermion Hamiltonians."""
 
 import logging
+from typing import Union
 
 import numpy as np
 import numpy.typing as npt
 from numpy.typing import NDArray
+
+from ferrmion.core import FermionProduct, MatrixFermion, SparseFermion
 
 logger = logging.getLogger(__name__)
 
@@ -13,73 +16,129 @@ Type alias for qubit hamiltonians.
 """
 type QubitHamiltonian = dict[str, float]
 
+FermionTerm = Union[FermionProduct, SparseFermion, MatrixFermion]
+
 
 class FermionHamiltonian:
-    """Class for building Fermionic Hamiltonians."""
+    """Class for building Fermionic Hamiltonians.
 
-    def __init__(self, *, terms: dict[str, NDArray] = {}, constant_energy: float = 0.0):
+    A container of one or more FermionProduct, SparseFermion, or MatrixFermion
+    terms, with an optional constant energy offset.
+
+    The ``terms`` constructor argument accepts either:
+    - a ``list`` of operator objects (FermionProduct, SparseFermion, MatrixFermion), or
+    - a ``dict[str, NDArray]`` for backward compatibility with the previous API.
+    """
+
+    def __init__(
+        self,
+        *,
+        terms: Union[list[FermionTerm], dict[str, NDArray], None] = None,
+        constant_energy: float = 0.0,
+    ):
         """Initialiser for FermionHamiltonian."""
         logger.debug("Initialising FermionHamiltonian")
-        self._terms: dict[str, NDArray] = terms
         self.constant_energy = constant_energy
-        self._next_term = ""
-        self.n_modes = 0
-        self._check_and_set_n_modes()
+        self._term_list: list[FermionTerm] = []
+        self._next_action: list[str] = []
+        self.n_modes: int = 0
 
-    def _check_and_set_n_modes(self):
-        if len(self._terms) == 0:
-            pass
-        elif len(self._terms) > 0 and self.n_modes == 0:
-            logger.debug(f"Setting n_modes: {[*self._terms.values()][0]}")
-            self.n_modes = [*self._terms.values()][0].shape[0]
+        if terms is None:
+            terms = {}
+
+        if isinstance(terms, dict):
+            for sig, coeff in terms.items():
+                action = list(sig)
+                self._add_term(MatrixFermion(action, np.asarray(coeff, dtype=float)))
         else:
-            for term in self._terms.values():
-                if np.any([side != self.n_modes for side in term.shape]):
-                    logger.error(
-                        f"Hamiltonian coefficient {term.shape} must have constant length {self.n_modes} on all dimensions.\n"
-                    )
-                    raise ValueError(
-                        f"Hamiltonian coefficient {term.shape} must have constant length {self.n_modes} on all dimensions."
-                    )
+            for term in terms:
+                self._add_term(term)
 
-    def __repr__(self):
+    def _add_term(self, term: FermionTerm) -> None:
+        self._term_list.append(term)
+        if isinstance(term, MatrixFermion):
+            n = term.coefficients.shape[0]
+            if self.n_modes == 0:
+                self.n_modes = n
+            elif n != self.n_modes:
+                raise ValueError(
+                    f"Hamiltonian coefficient shape {term.coefficients.shape} is "
+                    f"inconsistent with n_modes={self.n_modes}."
+                )
+
+    @property
+    def _terms(self) -> dict[str, NDArray]:
+        """Dict view of MatrixFermion terms for backward compatibility."""
+        result: dict[str, NDArray] = {}
+        for term in self._term_list:
+            if isinstance(term, MatrixFermion):
+                sig = "".join(term.action)
+                result[sig] = term.coefficients
+        return result
+
+    def __repr__(self) -> str:
         """String representation of FermionHamiltonian."""
-        terms = ", ".join([*self._terms])
-        return f"FermionHamiltonian({terms}, {self.n_modes} modes, constant {self.constant_energy})"
+        n_terms = len(self._term_list)
+        return f"FermionHamiltonian({n_terms} terms, {self.n_modes} modes, constant {self.constant_energy})"
 
     @property
     def signatures_and_coefficients(self) -> tuple[list[str], list[NDArray]]:
-        """Return the signature and coefficient of all terms."""
+        """Return signature strings and coefficient arrays for all terms.
+
+        MatrixFermion terms map directly. SparseFermion and FermionProduct terms
+        are densified into NDArrays using ``n_modes``.
+        """
         sigs: list[str] = []
         coeffs: list[NDArray] = []
-        for k, v in self._terms.items():
-            sigs.append(k)
-            coeffs.append(v)
-
+        for term in self._term_list:
+            if isinstance(term, MatrixFermion):
+                sigs.append("".join(term.action))
+                coeffs.append(term.coefficients)
+            elif isinstance(term, SparseFermion):
+                sig = "".join(term.action)
+                rank = len(term.action)
+                arr = np.zeros((self.n_modes,) * rank, dtype=float)
+                for idx_row, coeff in zip(term.indices, term.coefficients):
+                    arr[tuple(idx_row)] += coeff.real
+                sigs.append(sig)
+                coeffs.append(arr)
+            elif isinstance(term, FermionProduct):
+                sig = "".join(term.action)
+                rank = len(term.action)
+                arr = np.zeros((self.n_modes,) * rank, dtype=float)
+                arr[tuple(term.indices)] += term.coefficient.real
+                sigs.append(sig)
+                coeffs.append(arr)
         return (sigs, coeffs)
 
+    def add_term(self, term: FermionTerm) -> "FermionHamiltonian":
+        """Add a FermionProduct, SparseFermion, or MatrixFermion term."""
+        self._add_term(term)
+        return self
+
     def creation(self) -> "FermionHamiltonian":
-        """Add a creation term."""
-        self._next_term += "+"
+        """Append a creation operator to the current builder action."""
+        self._next_action.append("+")
         return self
 
     def annihilation(self) -> "FermionHamiltonian":
-        """Add an annihilation term."""
-        self._next_term += "-"
+        """Append an annihilation operator to the current builder action."""
+        self._next_action.append("-")
         return self
 
     def with_coefficients(self, coefficients: NDArray) -> "FermionHamiltonian":
-        """Add coefficients to the Hamiltonian terms."""
-        if coefficients.ndim != len(self._next_term):
-            logger.error(f"Cannot apply coefficents to term {self._next_term}")
+        """Finalise the current builder action with a dense coefficient array."""
+        if coefficients.ndim != len(self._next_action):
+            logger.error(f"Cannot apply coefficients to action {self._next_action}")
         else:
-            self._terms[self._next_term] = coefficients
-            self._next_term = ""
-            self._check_and_set_n_modes()
+            self._add_term(
+                MatrixFermion(self._next_action, np.asarray(coefficients, dtype=float))
+            )
+            self._next_action = []
         return self
 
     def add_constant(self, constant_energy: float) -> "FermionHamiltonian":
-        """Add a constant term to the Hamiltonian."""
+        """Add a constant energy offset."""
         self.constant_energy += constant_energy
         return self
 

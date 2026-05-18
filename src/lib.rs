@@ -12,7 +12,8 @@ use ferrmion_core::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeError};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{
-    FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
+    FermionMatrix, FermionMatrixError, FermionProduct, FermionProductError, FermionSparse,
+    FermionSparseError, LadderOperator, MajoranaSparse, MajoranaSparseError, SymplecticMatrix,
     SymplecticOperator,
 };
 use ferrmion_core::optimise::anneal_enumerations;
@@ -101,6 +102,34 @@ impl From<MaxNTOError> for CoreError {
     }
 }
 
+impl From<FermionSparseError> for CoreError {
+    fn from(_: FermionSparseError) -> Self {
+        CoreError::Value(
+            "Invalid SparseFermion: action length must equal number of index columns, \
+             and coefficients length must equal number of index rows"
+                .to_string(),
+        )
+    }
+}
+
+impl From<FermionMatrixError> for CoreError {
+    fn from(_: FermionMatrixError) -> Self {
+        CoreError::Value(
+            "Invalid MatrixFermion: action length must equal coefficient array rank, \
+             and the coefficient array must be square on all dimensions"
+                .to_string(),
+        )
+    }
+}
+
+impl From<MajoranaSparseError> for CoreError {
+    fn from(_: MajoranaSparseError) -> Self {
+        CoreError::Value(
+            "Invalid SparseMajorana: indices and coefficients must have equal length".to_string(),
+        )
+    }
+}
+
 /// Apply γ²=1 simplification, merge duplicate Majorana keys, and drop
 /// terms whose summed coefficient falls below the near-zero threshold.
 ///
@@ -129,6 +158,182 @@ fn simplified_majorana_terms(
     }
     merged.retain(|_, v| v.norm() > 1e-16);
     merged
+}
+
+fn parse_action(action: &[String]) -> Result<Vec<LadderOperator>, CoreError> {
+    action
+        .iter()
+        .map(|s| {
+            s.parse::<LadderOperator>().map_err(|_| {
+                CoreError::Value(format!("Invalid action string: '{s}' (use '+' or '-')"))
+            })
+        })
+        .collect()
+}
+
+fn action_to_strings(action: &[LadderOperator]) -> Vec<String> {
+    action
+        .iter()
+        .map(|op| match op {
+            LadderOperator::Creation => "+".to_string(),
+            LadderOperator::Annihilation => "-".to_string(),
+        })
+        .collect()
+}
+
+/// Python wrapper for a product of fermionic ladder operators.
+#[pyclass(name = "FermionProduct")]
+struct PyFermionProduct(FermionProduct);
+
+#[pymethods]
+impl PyFermionProduct {
+    #[new]
+    fn new(
+        action: Vec<String>,
+        indices: Vec<usize>,
+        coefficient: Complex64,
+    ) -> Result<Self, CoreError> {
+        let action = parse_action(&action)?;
+        Ok(Self(FermionProduct::new(action, indices, coefficient)?))
+    }
+
+    #[getter]
+    fn action(&self) -> Vec<String> {
+        action_to_strings(self.0.action())
+    }
+
+    #[getter]
+    fn indices(&self) -> Vec<usize> {
+        self.0.indices().to_vec()
+    }
+
+    #[getter]
+    fn coefficient(&self) -> Complex64 {
+        self.0.coefficient()
+    }
+
+    fn to_sparse_majorana(&self) -> PyMajoranaSparse {
+        PyMajoranaSparse(MajoranaSparse::from(self.0.clone()))
+    }
+}
+
+/// Python wrapper for a fermion operator in sparse (COO) form.
+#[pyclass(name = "SparseFermion")]
+struct PyFermionSparse(FermionSparse);
+
+#[pymethods]
+impl PyFermionSparse {
+    #[new]
+    fn new(
+        action: Vec<String>,
+        indices: PyReadonlyArray2<i64>,
+        coefficients: PyReadonlyArray1<Complex64>,
+    ) -> Result<Self, CoreError> {
+        let action = parse_action(&action)?;
+        let indices = indices.as_array().mapv(|v| v as usize);
+        let coefficients = coefficients.as_array().to_owned();
+        Ok(Self(FermionSparse::new(action, indices, coefficients)?))
+    }
+
+    #[getter]
+    fn action(&self) -> Vec<String> {
+        action_to_strings(self.0.action())
+    }
+
+    #[getter]
+    fn indices<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<usize>> {
+        PyArray2::from_owned_array(py, self.0.indices().clone())
+    }
+
+    #[getter]
+    fn coefficients<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<Complex64>> {
+        PyArray1::from_owned_array(py, self.0.coefficients().clone())
+    }
+
+    fn to_sparse_majorana(&self) -> PyMajoranaSparse {
+        PyMajoranaSparse(MajoranaSparse::from(self.0.clone()))
+    }
+}
+
+/// Python wrapper for a fermion operator with coefficients in dense matrix form.
+#[pyclass(name = "MatrixFermion")]
+struct PyFermionMatrix(FermionMatrix);
+
+#[pymethods]
+impl PyFermionMatrix {
+    #[new]
+    fn new(action: Vec<String>, coefficients: PyReadonlyArrayDyn<f64>) -> Result<Self, CoreError> {
+        let action = parse_action(&action)?;
+        let coefficients = coefficients.as_array().to_owned();
+        Ok(Self(FermionMatrix::new(action, coefficients)?))
+    }
+
+    #[getter]
+    fn action(&self) -> Vec<String> {
+        action_to_strings(self.0.action())
+    }
+
+    #[getter]
+    fn coefficients<'py>(&self, py: Python<'py>) -> Bound<'py, numpy::PyArrayDyn<f64>> {
+        numpy::PyArrayDyn::from_owned_array(py, self.0.coefficients().clone())
+    }
+
+    fn to_sparse(&self) -> PyFermionSparse {
+        PyFermionSparse(FermionSparse::from(self.0.clone()))
+    }
+
+    fn to_sparse_majorana(&self) -> PyMajoranaSparse {
+        PyMajoranaSparse(MajoranaSparse::from(FermionSparse::from(self.0.clone())))
+    }
+}
+
+/// Python wrapper for a Majorana operator in sparse form.
+#[pyclass(name = "SparseMajorana")]
+struct PyMajoranaSparse(MajoranaSparse);
+
+#[pymethods]
+impl PyMajoranaSparse {
+    #[new]
+    fn new(
+        indices: Vec<Vec<u16>>,
+        coefficients: Vec<Complex64>,
+        constant: f64,
+    ) -> Result<Self, CoreError> {
+        Ok(Self(MajoranaSparse::from_index_vecs(
+            indices,
+            coefficients,
+            constant,
+        )?))
+    }
+
+    #[getter]
+    fn indices(&self) -> Vec<Vec<u16>> {
+        self.0.indices.iter().map(|av| av.to_vec()).collect()
+    }
+
+    #[getter]
+    fn coefficients(&self) -> Vec<Complex64> {
+        self.0.coefficients.clone()
+    }
+
+    #[getter]
+    fn constant(&self) -> f64 {
+        self.0.constant
+    }
+
+    #[classmethod]
+    fn from_signatures_and_coeffs(
+        _cls: &pyo3::Bound<'_, pyo3::types::PyType>,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+        constant_energy: f64,
+    ) -> Self {
+        Self(MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            constant_energy,
+        ))
+    }
 }
 
 /// A Python module implemented in Rust.
@@ -1134,5 +1339,10 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             encoding.vacuum_state.state.into_pyarray(py),
         ))
     }
+
+    m.add_class::<PyFermionProduct>()?;
+    m.add_class::<PyFermionSparse>()?;
+    m.add_class::<PyFermionMatrix>()?;
+    m.add_class::<PyMajoranaSparse>()?;
     Ok(())
 }

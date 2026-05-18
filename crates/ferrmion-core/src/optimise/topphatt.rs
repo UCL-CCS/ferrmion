@@ -12,7 +12,7 @@ use tinyvec::ArrayVec;
 
 use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
 use crate::operators::MajoranaSparse;
-use crate::optimise::common::{qubit_term_weight, reduce_hamiltonian};
+use crate::optimise::hatt::{qubit_term_weight, reduce_hamiltonian};
 
 /// Strategy for selecting which active node to expand at each TOPP-HATT step.
 ///

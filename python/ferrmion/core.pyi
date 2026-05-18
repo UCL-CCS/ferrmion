@@ -3,6 +3,70 @@ import numpy.typing as npt
 
 from .encode.ternary_tree import TTFlatpack
 
+class FermionProduct:
+    def __init__(
+        self,
+        action: list[str],
+        indices: list[int],
+        coefficient: complex,
+    ) -> None: ...
+    @property
+    def action(self) -> list[str]: ...
+    @property
+    def indices(self) -> list[int]: ...
+    @property
+    def coefficient(self) -> complex: ...
+    def to_sparse_majorana(self) -> SparseMajorana: ...
+
+class SparseFermion:
+    def __init__(
+        self,
+        action: list[str],
+        indices: npt.NDArray[np.int64],
+        coefficients: npt.NDArray[np.complex128],
+    ) -> None: ...
+    @property
+    def action(self) -> list[str]: ...
+    @property
+    def indices(self) -> npt.NDArray[np.uintp]: ...
+    @property
+    def coefficients(self) -> npt.NDArray[np.complex128]: ...
+    def to_sparse_majorana(self) -> SparseMajorana: ...
+
+class MatrixFermion:
+    def __init__(
+        self,
+        action: list[str],
+        coefficients: npt.NDArray[np.float64],
+    ) -> None: ...
+    @property
+    def action(self) -> list[str]: ...
+    @property
+    def coefficients(self) -> npt.NDArray[np.float64]: ...
+    def to_sparse(self) -> SparseFermion: ...
+    def to_sparse_majorana(self) -> SparseMajorana: ...
+
+class SparseMajorana:
+    def __init__(
+        self,
+        indices: list[list[int]],
+        coefficients: list[complex],
+        constant: float,
+    ) -> None: ...
+    @property
+    def indices(self) -> list[list[int]]: ...
+    @property
+    def coefficients(self) -> list[complex]: ...
+    @property
+    def constant(self) -> float: ...
+    @classmethod
+    def from_signatures_and_coeffs(
+        cls,
+        signatures: list[str],
+        coeffs: list[np.ndarray],
+        constant_energy: float,
+    ) -> SparseMajorana: ...
+
 # Rust-accelerated functions exposed to Python
 
 def symplectic_product(

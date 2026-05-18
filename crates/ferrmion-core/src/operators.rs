@@ -1158,6 +1158,16 @@ impl MajoranaProduct {
             coefficient,
         }
     }
+    /// Return the Majorana mode indices of this product.
+    pub fn indices(&self) -> &[usize] {
+        &self.indices
+    }
+
+    /// Return the complex coefficient of this product.
+    pub fn coefficient(&self) -> Complex64 {
+        self.coefficient
+    }
+
     /// Sorts indices, applying a -1 coefficient for each swap of unequal indices.
     ///
     /// Majorana operators obey the commutation relation:
@@ -1393,6 +1403,14 @@ impl From<MajoranaHashMap> for MajoranaSparse {
         debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
         MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
             .expect("Indices and coefficients should be same length.")
+    }
+}
+
+impl From<MajoranaProduct> for MajoranaSparse {
+    fn from(mp: MajoranaProduct) -> Self {
+        let key: ArrayVec<[u16; MAX_MAJORANAS]> = mp.indices.iter().map(|&i| i as u16).collect();
+        MajoranaSparse::new(vec![key], vec![mp.coefficient], 0.0)
+            .expect("Single-term MajoranaSparse construction cannot fail.")
     }
 }
 

@@ -13,8 +13,8 @@ use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeErr
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{
     FermionMatrix, FermionMatrixError, FermionProduct, FermionProductError, FermionSparse,
-    FermionSparseError, LadderOperator, MajoranaSparse, MajoranaSparseError, SymplecticMatrix,
-    SymplecticOperator,
+    FermionSparseError, LadderOperator, MajoranaProduct, MajoranaSparse, MajoranaSparseError,
+    SymplecticMatrix, SymplecticOperator,
 };
 use ferrmion_core::optimise::anneal_enumerations;
 use ferrmion_core::optimise::hatt as core_hatt;
@@ -284,6 +284,51 @@ impl PyFermionMatrix {
 
     fn to_sparse_majorana(&self) -> PyMajoranaSparse {
         PyMajoranaSparse(MajoranaSparse::from(FermionSparse::from(self.0.clone())))
+    }
+}
+
+/// Python wrapper for a product of Majorana operators with a complex coefficient.
+#[pyclass(name = "MajoranaProduct")]
+struct PyMajoranaProduct(MajoranaProduct);
+
+#[pymethods]
+impl PyMajoranaProduct {
+    #[new]
+    fn new(indices: Vec<usize>, coefficient: Complex64) -> Self {
+        Self(MajoranaProduct::new(indices, coefficient))
+    }
+
+    #[getter]
+    fn indices(&self) -> Vec<usize> {
+        self.0.indices().to_vec()
+    }
+
+    #[getter]
+    fn coefficient(&self) -> Complex64 {
+        self.0.coefficient()
+    }
+
+    fn to_sparse_majorana(&self) -> PyMajoranaSparse {
+        PyMajoranaSparse(MajoranaSparse::from(self.0.clone()))
+    }
+
+    fn encode<'py>(
+        &self,
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
+        let symplectics = symplectics.as_array();
+        let n_qubits = symplectics.ncols() / 2;
+        let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
+        let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
+        let ipowers = ipowers.as_array().to_owned();
+        let encoding = MajoranaEncoding::with_vacuum(
+            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
+            ZBasisState::zeros(n_qubits),
+        )?;
+        let qham = encoding.encode(self.0.clone());
+        Ok(qham.into_py_dict(py)?)
     }
 }
 
@@ -1343,6 +1388,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFermionProduct>()?;
     m.add_class::<PyFermionSparse>()?;
     m.add_class::<PyFermionMatrix>()?;
+    m.add_class::<PyMajoranaProduct>()?;
     m.add_class::<PyMajoranaSparse>()?;
     Ok(())
 }

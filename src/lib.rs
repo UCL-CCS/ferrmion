@@ -443,6 +443,129 @@ impl PyMajoranaEncoding {
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok(PyArray2::from_owned_array(py, combined))
     }
+
+    fn encode<'py>(
+        &self,
+        py: Python<'py>,
+        fham: &Bound<'_, PyAny>,
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
+        let (signatures, coeffs): (Vec<String>, Vec<PyReadonlyArrayDyn<f64>>) =
+            fham.getattr("signatures_and_coefficients")?.extract()?;
+        let constant_energy: f64 = fham.getattr("constant_energy")?.extract()?;
+        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            constant_energy,
+        );
+        let qham: QubitHamiltonian = self.0.encode(&hamiltonian);
+        Ok(qham.into_py_dict(py)?)
+    }
+
+    fn decode<'py>(
+        &self,
+        py: Python<'py>,
+        states: PyReadonlyArray2<bool>,
+    ) -> Result<Bound<'py, PyArray2<bool>>, CoreError> {
+        let states = states.as_array().to_owned();
+        let n_states = states.nrows();
+        let ensemble = ZBasisEnsemble::new(
+            states,
+            Array1::from_elem(n_states, num_complex::Complex::ONE),
+        );
+        let results = self.0.decode_zbasis_ensemble(&ensemble);
+        let n_modes = self.0.n_modes;
+        let mut occupations = numpy::ndarray::Array2::<bool>::default((n_states, n_modes));
+        for (j, result) in results.into_iter().enumerate() {
+            match result {
+                Some(fock) => occupations.row_mut(j).assign(&fock.state),
+                None => {
+                    return Err(CoreError::Value(format!(
+                        "state at index {j} could not be decoded"
+                    )))
+                }
+            }
+        }
+        Ok(PyArray2::from_owned_array(py, occupations))
+    }
+
+    #[pyo3(signature = (fham, temperature=None, initial_guess=None, coefficient_weighted=true, seed=None))]
+    fn encode_annealed<'py>(
+        &mut self,
+        py: Python<'py>,
+        fham: &Bound<'_, PyAny>,
+        temperature: Option<f64>,
+        initial_guess: Option<Vec<usize>>,
+        coefficient_weighted: bool,
+        seed: Option<u64>,
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
+        let (signatures, coeffs): (Vec<String>, Vec<PyReadonlyArrayDyn<f64>>) =
+            fham.getattr("signatures_and_coefficients")?.extract()?;
+        let constant_energy: f64 = fham.getattr("constant_energy")?.extract()?;
+        let temperature = temperature.unwrap_or(self.0.n_modes as f64 / 2.0);
+        let ig: Array1<usize> = match initial_guess {
+            Some(ig) => Array1::from(ig),
+            None => Array1::from_iter(0..self.0.n_modes),
+        };
+        let msparse = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            constant_energy,
+        );
+        let annealing_encoding = MajoranaEncoding::with_vacuum(
+            SymplecticMatrix::with_ipowers(
+                self.0.operators.x_block.clone(),
+                self.0.operators.z_block.clone(),
+                self.0.operators.ipowers.clone(),
+            ),
+            ZBasisState::new(self.0.vacuum_state.state.clone(), Complex64::ONE),
+        )?;
+        let (_, best_mode_enumeration) = anneal_enumerations(
+            msparse.clone(),
+            annealing_encoding,
+            temperature,
+            ig.view(),
+            coefficient_weighted,
+            seed.unwrap_or(1017),
+        )
+        .map_err(|e| CoreError::Runtime(e.to_string()))?;
+        self.0 = MajoranaEncoding::with_vacuum(
+            SymplecticMatrix::new(
+                self.0.operators.x_block.clone(),
+                self.0.operators.z_block.clone(),
+            ),
+            ZBasisState::zeros(self.0.n_qubits),
+        )?
+        .apply_mode_enumeration(best_mode_enumeration.to_vec());
+        let qham: QubitHamiltonian = self.0.encode(&msparse);
+        Ok(qham.into_py_dict(py)?)
+    }
+
+    fn to_json<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyDict>, CoreError> {
+        let combined = ndarray::concatenate(
+            ndarray::Axis(1),
+            &[
+                self.0.operators.x_block.view(),
+                self.0.operators.z_block.view(),
+            ],
+        )
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        let dict = PyDict::new(py);
+        dict.set_item("ipowers", self.0.operators.ipowers.clone().into_pyarray(py))?;
+        dict.set_item("symplectics", combined.into_pyarray(py))?;
+        Ok(dict)
+    }
+
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
+        if let Ok(other_enc) = other.extract::<PyRef<PyMajoranaEncoding>>() {
+            self.0.n_modes == other_enc.0.n_modes
+                && self.0.n_qubits == other_enc.0.n_qubits
+                && self.0.operators.ipowers == other_enc.0.operators.ipowers
+                && self.0.operators.x_block == other_enc.0.operators.x_block
+                && self.0.operators.z_block == other_enc.0.operators.z_block
+        } else {
+            false
+        }
+    }
 }
 
 /// A Python module implemented in Rust.

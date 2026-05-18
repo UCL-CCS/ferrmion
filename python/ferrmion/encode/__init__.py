@@ -1,6 +1,7 @@
 """Init for encodings."""
 
-from .base import FermionQubitEncoding, MajoranaStringEncoding
+from ..core import MajoranaEncoding as MajoranaStringEncoding
+from .base import FermionQubitEncoding
 from .maxnto import MaxNTO
 from .ternary_tree import (
     JKMN,

@@ -1279,6 +1279,78 @@ mod tt_tests {
             prop_assert!(tt.build_encoding(n).is_ok());
         }
 
+        /// `from_flatpack` and `to_flatpack` are inverses on valid flatpacks.
+        ///
+        /// Given a randomly-shaped valid flatpack, building a tree from it
+        /// and re-serialising must produce the original flatpack byte-for-byte
+        /// (and the rebuilt tree must equal the first one).
+        #[test]
+        fn test_flatpack_roundtrip(n_nodes in 1usize..=8, seed in any::<u64>()) {
+            let fp1 = random_flatpack(n_nodes, seed);
+            let tree1 = TernaryTree::from_flatpack(&fp1).unwrap();
+            let fp2 = tree1.to_flatpack();
+            prop_assert_eq!(&fp1, &fp2);
+            let tree2 = TernaryTree::from_flatpack(&fp2).unwrap();
+            prop_assert_eq!(tree1, tree2);
+        }
+    }
+
+    /// Construct a valid [`TTFlatpack`] of `n_nodes` nodes for round-trip
+    /// testing. Each non-root node attaches to a random free edge slot of an
+    /// earlier node; remaining free edges are filled with leaves at uniquely
+    /// numbered Majorana indices, or left empty. Output is BFS-from-root —
+    /// the order [`TernaryTree::to_flatpack`] also produces.
+    fn random_flatpack(n_nodes: usize, seed: u64) -> TTFlatpack {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(seed);
+        let leaf_offset = n_nodes; // max_node_index (= n_nodes - 1) + 1
+
+        // children[node][edge] = Some(qubit_index_of_child_node | leaf_encoded)
+        let mut children: Vec<[Option<usize>; 3]> = vec![[None; 3]; n_nodes];
+
+        // Attach each non-root node to a random free edge slot of some earlier node.
+        for i in 1..n_nodes {
+            loop {
+                let p = rng.random_range(0..i);
+                let e = rng.random_range(0..3usize);
+                if children[p][e].is_none() {
+                    children[p][e] = Some(i);
+                    break;
+                }
+            }
+        }
+
+        // Fill some remaining empty edges with sequentially-numbered leaves.
+        let mut next_majorana: usize = 0;
+        for slot in children.iter_mut().take(n_nodes) {
+            for edge in slot.iter_mut() {
+                if edge.is_none() && rng.random_bool(0.5) {
+                    *edge = Some(next_majorana + leaf_offset);
+                    next_majorana += 1;
+                }
+            }
+        }
+
+        // Emit BFS from the root (node 0).
+        let mut fp = TTFlatpack::with_capacity(n_nodes);
+        let mut queue = std::collections::VecDeque::from([0usize]);
+        let mut visited = vec![false; n_nodes];
+        while let Some(n) = queue.pop_front() {
+            if visited[n] {
+                continue;
+            }
+            visited[n] = true;
+            let c = children[n];
+            fp.push((n, (c[0], c[1], c[2])));
+            for slot in c.iter() {
+                if let Some(s) = slot {
+                    if *s < n_nodes {
+                        queue.push_back(*s);
+                    }
+                }
+            }
+        }
+        fp
     }
 }
 

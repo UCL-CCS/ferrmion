@@ -345,6 +345,65 @@ impl TernaryTree {
 
 // Standard Encodings
 impl TernaryTree {
+    /// Serialise the tree to a [`TTFlatpack`].
+    ///
+    /// The flatpack is BFS-ordered starting from the root (the node whose
+    /// `parent_of` entry is `None`); the first entry is therefore always the
+    /// root, matching the convention assumed by [`TernaryTree::from_flatpack`]
+    /// and by Python's `TernaryTree.from_flatpack`. Leaf children are encoded
+    /// as `majorana_index + max_qubit_index + 1`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `qubit_index_of` has not been set (e.g. on a `new` tree that
+    /// has never had `set_qubit_indices` called on it).
+    pub fn to_flatpack(&self) -> TTFlatpack {
+        let qubit_index_of = self
+            .qubit_index_of
+            .as_ref()
+            .expect("to_flatpack requires qubit_index_of to be set");
+        let max_qubit_index = qubit_index_of.iter().copied().max().unwrap_or(0);
+        let leaf_offset = max_qubit_index + 1;
+
+        let root = self
+            .parent_of
+            .iter()
+            .position(Option::is_none)
+            .expect("TernaryTree must have a root");
+
+        let mut flatpack: TTFlatpack = Vec::with_capacity(self.n_nodes);
+        let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+        queue.push_back(root);
+
+        while let Some(node) = queue.pop_front() {
+            let encode = |child: Option<Child>| -> Option<usize> {
+                match child {
+                    None => None,
+                    Some(Child::Node(idx)) => Some(qubit_index_of[idx as usize]),
+                    Some(Child::XLeaf(m)) => Some(2 * m as usize + leaf_offset),
+                    Some(Child::YLeaf(m)) => Some((2 * m as usize + 1) + leaf_offset),
+                }
+            };
+            let x = encode(self.x_child_of[node]);
+            let y = encode(self.y_child_of[node]);
+            let z = encode(self.z_child_of[node]);
+
+            // Walk into node children in BFS order.
+            for slot in [
+                self.x_child_of[node],
+                self.y_child_of[node],
+                self.z_child_of[node],
+            ] {
+                if let Some(Child::Node(idx)) = slot {
+                    queue.push_back(idx as usize);
+                }
+            }
+
+            flatpack.push((qubit_index_of[node], (x, y, z)));
+        }
+        flatpack
+    }
+
     /// Creates a naive Jordan-Wigner TernaryTree.
     ///
     /// # Examples

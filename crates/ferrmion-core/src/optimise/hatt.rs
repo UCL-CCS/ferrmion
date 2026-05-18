@@ -12,7 +12,7 @@ use std::ops::BitXorAssign;
 use thiserror::Error;
 use tinyvec::ArrayVec;
 
-use crate::encode::ternarytree::TTFlatpack;
+use crate::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeError};
 pub(crate) const MAJORANA_MAX: usize = 7;
 
 /// Errors produced during HATT construction.
@@ -22,6 +22,8 @@ pub enum HattError {
     NoSelectionMade(usize),
     #[error("Expected exactly one unassigned entity after HATT; got {0}.")]
     UnassignedRemainder(usize),
+    #[error("Failed to materialise the resulting TernaryTree: {0}")]
+    TreeConstruction(#[from] TernaryTreeError),
 }
 
 /// Find the weight of a term on the qubit of a single node.
@@ -119,11 +121,12 @@ pub(crate) fn reduce_hamiltonian(
 /// - Nodes: `2*n_modes+1..3*n_modes+1`. The node at ID `2*n_modes+1+i` has
 ///   qubit label `i`; the node created in the final iteration is the root.
 ///
-/// Returns the constructed tree as a [`TTFlatpack`] plus the total Pauli weight.
+/// Returns the constructed [`TernaryTree`] plus the total Pauli weight.
+/// A flatpack is recoverable from the tree via [`TernaryTree::to_flatpack`].
 pub fn hatt(
     majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
     n_modes: usize,
-) -> Result<(TTFlatpack, usize), HattError> {
+) -> Result<(TernaryTree, usize), HattError> {
     let n_leaves = 2 * n_modes + 1;
     let total_entities = n_leaves + n_modes;
 
@@ -284,7 +287,8 @@ pub fn hatt(
         flatpack.push((qubit_label, (encoded[0], encoded[1], encoded[2])));
     }
 
-    Ok((flatpack, total_weight))
+    let tree = TernaryTree::from_flatpack(&flatpack)?;
+    Ok((tree, total_weight))
 }
 
 #[cfg(test)]
@@ -303,9 +307,10 @@ mod tests {
             array_vec!([u16; 7] => 4u16, 5),
             array_vec!([u16; 7] => 2u16, 3, 4, 5),
         ];
-        let (flatpack, _weight) = hatt(terms, 3).unwrap();
+        let (tree, _weight) = hatt(terms, 3).unwrap();
 
-        assert_eq!(flatpack.len(), 3);
+        assert_eq!(tree.n_nodes, 3);
+        let flatpack = tree.to_flatpack();
         let labels: BTreeSet<usize> = flatpack.iter().map(|(q, _)| *q).collect();
         assert_eq!(labels, (0..3).collect::<BTreeSet<_>>());
     }
@@ -316,9 +321,10 @@ mod tests {
             array_vec!([u16; 7] => 0u16, 1),
             array_vec!([u16; 7] => 2u16, 3),
         ];
-        let (flatpack, _weight) = hatt(terms, 2).unwrap();
+        let (tree, _weight) = hatt(terms, 2).unwrap();
         // Exactly one (qubit, (x, y, z)) entry in the flatpack must have a
         // None z-child: the all-Z terminator leaf, stripped post-pass.
+        let flatpack = tree.to_flatpack();
         let none_z_count = flatpack.iter().filter(|(_, (_, _, z))| z.is_none()).count();
         assert_eq!(none_z_count, 1);
     }

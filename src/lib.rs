@@ -993,9 +993,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                     av
                 })
                 .collect();
-        let (flatpack, weight) = core_hatt(simplified_terms, n_modes)?;
+        let (tree, weight) = core_hatt(simplified_terms, n_modes)?;
         debug!("HATT finished with weight {weight}");
-        Ok((flatpack, weight))
+        Ok((tree.to_flatpack(), weight))
     }
 
     /// Run TOPPHATT optimisation and return both the encoding and the encoded Hamiltonian.

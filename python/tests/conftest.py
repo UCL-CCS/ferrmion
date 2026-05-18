@@ -65,7 +65,6 @@ def water_eigenvalues(water_data) -> list[float]:
 
 @fixture(scope="module")
 def water_fham(water_data) -> FermionHamiltonian:
-    ones, twos = water_data
     return FermionHamiltonian(terms={"+-":water_data["ones"], "++--":water_data["twos"]})
 
 @fixture(scope="module")

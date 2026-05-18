@@ -11,9 +11,9 @@ from ferrmion.encode.ternary_tree import (
 )
 import numpy as np
 import pytest
-from ferrmion.core import encode, fermionic_to_sparse_majorana
+from ferrmion.core import encode
 from ferrmion.optimize.huffman import huffman_ternary_tree
-from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree, fast_hatt
+from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
 
@@ -47,23 +47,10 @@ def test_topphatt_hatt(water_data):
     twos = water_data["twos"]
     e_nuc = water_data["constant_energy"]
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
-    test_tree = hamiltonian_adaptive_ternary_tree(fermionic_to_sparse_majorana(["+-", "++--"], [water_data["ones"], water_data["twos"]], 0), n_modes=14)
+    test_tree = hamiltonian_adaptive_ternary_tree(fham, n_modes=14)
     initial_children = test_tree.root_node.child_strings
     initial_branches = test_tree.root_node.branch_strings
     _ = test_tree.encode_topphatt(fham)
-    assert test_tree.root_node.child_strings == initial_children
-    assert test_tree.root_node.branch_strings == initial_branches
-
-def test_topphatt_fasthatt(water_data):
-    ones = water_data["ones"]
-    twos = water_data["twos"]
-    e_nuc = water_data["constant_energy"]
-    fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
-    ones, twos = water_data["ones"], water_data["twos"]
-    test_tree = fast_hatt(fermionic_to_sparse_majorana(["+-", "++--"], [ones, twos], 0), n_modes=14)
-    initial_children = test_tree.root_node.child_strings
-    initial_branches = test_tree.root_node.branch_strings
-    _ =test_tree.encode_topphatt(fham)
     assert test_tree.root_node.child_strings == initial_children
     assert test_tree.root_node.branch_strings == initial_branches
 
@@ -120,9 +107,7 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, parallelize, wate
         case "JKMN":
             tree = tree.JKMN()
         case "HATT":
-            tree = hamiltonian_adaptive_ternary_tree(
-                fermionic_to_sparse_majorana(*fham.signatures_and_coefficients, fham.constant_energy),
-                fham.n_modes)
+            tree = hamiltonian_adaptive_ternary_tree(fham, fham.n_modes)
         case "Huffman":
             tree = huffman_ternary_tree(ones, twos)
     qham_naive = tree.encode(fham)

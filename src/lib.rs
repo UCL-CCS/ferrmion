@@ -16,7 +16,9 @@ use ferrmion_core::operators::{
     SymplecticOperator,
 };
 use ferrmion_core::optimise::anneal_enumerations;
+use ferrmion_core::optimise::hatt as core_hatt;
 use ferrmion_core::optimise::topphatt;
+use ferrmion_core::optimise::HattError;
 use ferrmion_core::optimise::NodeOrderHeuristic;
 use ferrmion_core::optimise::ToppHattError;
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
@@ -79,6 +81,12 @@ impl From<ToppHattError> for CoreError {
     }
 }
 
+impl From<HattError> for CoreError {
+    fn from(e: HattError) -> Self {
+        CoreError::Runtime(e.to_string())
+    }
+}
+
 impl From<FermionProductError> for CoreError {
     fn from(_: FermionProductError) -> Self {
         CoreError::Value(
@@ -91,6 +99,36 @@ impl From<MaxNTOError> for CoreError {
     fn from(e: MaxNTOError) -> Self {
         CoreError::Value(e.to_string())
     }
+}
+
+/// Apply γ²=1 simplification, merge duplicate Majorana keys, and drop
+/// terms whose summed coefficient falls below the near-zero threshold.
+///
+/// Both `fermionic_to_sparse_majorana` and `wrap_hatt` consume the result;
+/// going through a single helper guarantees they see identical term sets
+/// (a per-entry accumulate-and-filter loop can leave stale entries when a
+/// running coefficient cancels below the threshold).
+fn simplified_majorana_terms(
+    hamiltonian: MajoranaSparse,
+) -> std::collections::BTreeMap<Vec<u16>, Complex64> {
+    let mut merged: std::collections::BTreeMap<Vec<u16>, Complex64> =
+        std::collections::BTreeMap::new();
+    for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
+        let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
+        for &idx in key.as_slice() {
+            if simplified.last() == Some(&idx) {
+                simplified.pop();
+            } else {
+                simplified.push(idx);
+            }
+        }
+        if simplified.is_empty() {
+            continue;
+        }
+        *merged.entry(simplified).or_insert(Complex64::new(0., 0.)) += val;
+    }
+    merged.retain(|_, v| v.norm() > 1e-16);
+    merged
 }
 
 /// A Python module implemented in Rust.
@@ -631,30 +669,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         );
 
         let output = PyDict::new(py);
-        for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
-            // γ_i² = 1: remove pairs of equal adjacent indices (keys are already sorted)
-            let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
-            for &idx in key.as_slice() {
-                if simplified.last() == Some(&idx) {
-                    simplified.pop();
-                } else {
-                    simplified.push(idx);
-                }
-            }
-            // Constant (identity) terms are tracked in hamiltonian.constant; skip them here
-            if simplified.is_empty() {
-                continue;
-            }
-            let py_key = PyTuple::new(py, simplified.as_slice())?;
-            let existing: Option<numpy::Complex64> =
-                output.get_item(&py_key)?.map(|v| v.extract()).transpose()?;
-            let new_val = match existing {
-                Some(prev) => prev + val,
-                None => val,
-            };
-            if new_val.norm() > 1e-16 {
-                output.set_item(&py_key, new_val)?;
-            }
+        for (key, val) in simplified_majorana_terms(hamiltonian) {
+            output.set_item(PyTuple::new(py, key.as_slice())?, val)?;
         }
         Ok(output)
     }
@@ -935,6 +951,51 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             combined.into_pyarray(py),
             encoding.vacuum_state.state.into_pyarray(py),
         ))
+    }
+
+    /// Run the HATT algorithm to construct a ternary-tree encoding adapted to a Hamiltonian.
+    ///
+    /// HATT (Hamiltonian-Adaptive Ternary Tree) greedily constructs a ternary
+    /// tree that minimises the Pauli weight of the encoded Hamiltonian. Unlike
+    /// ``topphatt``, which optimises an existing tree, HATT builds the tree
+    /// from scratch.
+    ///
+    /// Args:
+    ///     n_modes: Number of fermionic modes in the system.
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///
+    /// Returns:
+    ///     Tuple of ``(flatpack, total_pauli_weight)`` where ``flatpack`` is
+    ///     the ternary-tree flatpack representation and the weight is the
+    ///     total Pauli weight of the greedy selections.
+    #[pyfn(m)]
+    #[pyo3(name = "hatt")]
+    fn wrap_hatt(
+        n_modes: usize,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+    ) -> Result<(TTFlatpack, usize), CoreError> {
+        debug!("Starting HATT");
+        let hamiltonian = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            0.,
+        );
+        let simplified_terms: Vec<tinyvec::ArrayVec<[u16; 7]>> =
+            simplified_majorana_terms(hamiltonian)
+                .into_keys()
+                .map(|k| {
+                    let mut av = tinyvec::ArrayVec::<[u16; 7]>::new();
+                    for idx in k {
+                        av.push(idx);
+                    }
+                    av
+                })
+                .collect();
+        let (tree, weight) = core_hatt(simplified_terms, n_modes)?;
+        debug!("HATT finished with weight {weight}");
+        Ok((tree.to_flatpack(), weight))
     }
 
     /// Run TOPPHATT optimisation and return both the encoding and the encoded Hamiltonian.

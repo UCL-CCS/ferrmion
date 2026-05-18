@@ -381,6 +381,70 @@ impl PyMajoranaSparse {
     }
 }
 
+/// Python wrapper for the Majorana encoding.
+#[pyclass(name = "MajoranaEncoding")]
+struct PyMajoranaEncoding(MajoranaEncoding);
+
+#[pymethods]
+impl PyMajoranaEncoding {
+    #[new]
+    #[pyo3(signature = (ipowers, symplectics, vacuum_state=None))]
+    fn new(
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+        vacuum_state: Option<PyReadonlyArray1<bool>>,
+    ) -> Result<Self, CoreError> {
+        let symplectics = symplectics.as_array();
+        let n_qubits = symplectics.ncols() / 2;
+        let x_block = symplectics.slice(ndarray::s![.., ..n_qubits]).to_owned();
+        let z_block = symplectics.slice(ndarray::s![.., n_qubits..]).to_owned();
+        let ipowers = ipowers.as_array().to_owned();
+        let sm = SymplecticMatrix::with_ipowers(x_block, z_block, ipowers);
+        let encoding = match vacuum_state {
+            Some(vac) => {
+                let vac_arr = Array1::from(vac.as_array().to_vec());
+                let vacuum = ZBasisState::new(vac_arr, num_complex::Complex::ONE);
+                MajoranaEncoding::with_vacuum(sm, vacuum)?
+            }
+            None => MajoranaEncoding::new(sm)?,
+        };
+        Ok(Self(encoding))
+    }
+
+    #[getter]
+    fn n_modes(&self) -> usize {
+        self.0.n_modes
+    }
+
+    #[getter]
+    fn n_qubits(&self) -> usize {
+        self.0.n_qubits
+    }
+
+    #[getter]
+    fn vacuum_state<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<bool>> {
+        PyArray1::from_owned_array(py, self.0.vacuum_state.state.clone())
+    }
+
+    #[getter]
+    fn ipowers<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<u8>> {
+        PyArray1::from_owned_array(py, self.0.operators.ipowers.clone())
+    }
+
+    #[getter]
+    fn symplectics<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyArray2<bool>>, CoreError> {
+        let combined = ndarray::concatenate(
+            ndarray::Axis(1),
+            &[
+                self.0.operators.x_block.view(),
+                self.0.operators.z_block.view(),
+            ],
+        )
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        Ok(PyArray2::from_owned_array(py, combined))
+    }
+}
+
 /// A Python module implemented in Rust.
 #[allow(clippy::type_complexity)]
 #[pymodule]
@@ -1390,5 +1454,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFermionMatrix>()?;
     m.add_class::<PyMajoranaProduct>()?;
     m.add_class::<PyMajoranaSparse>()?;
+    m.add_class::<PyMajoranaEncoding>()?;
     Ok(())
 }

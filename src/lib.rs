@@ -7,7 +7,7 @@
 //! This file contains the PyO3 interop layer which wraps rust functions and exposes
 //! these to a python API
 
-use ferrmion_core::encode::encoding::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
+use ferrmion_core::encode::majorana::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
 use ferrmion_core::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeError};
 use ferrmion_core::hamiltonians::QubitHamiltonian;

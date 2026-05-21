@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `encode_annealed` now takes a random `seed` argument.
+- `MajoranaEncoding.try_encode` applies operators in order of decreasing index to match expected output for encodings as linear combinations of fock states.
 
 ## [0.8.0] - 2026-04-15
 ### Added

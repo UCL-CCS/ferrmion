@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use ferrmion_core::encode::encoding::{MajoranaEncoding, TryEncode};
+use ferrmion_core::encode::majorana::{MajoranaEncoding, TryEncode};
 use ferrmion_core::encode::ternarytree::TernaryTree;
 use ferrmion_core::states::{FockState, ZBasisEnsemble, ZBasisState};
 use ndarray::Array1;

@@ -828,7 +828,7 @@ mod test_topphatt {
     use super::Edge::{X, Y, Z};
     use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
-    use crate::encode::encoding::MajoranaEncoding;
+    use crate::encode::majorana::MajoranaEncoding;
     use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
     use crate::optimise::topphatt::NodeDependencies;

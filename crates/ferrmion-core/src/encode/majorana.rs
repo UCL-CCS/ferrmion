@@ -732,6 +732,10 @@ impl MajoranaEncoding {
 /// Attempt to encode a [`FockState`] into a [`ZBasisState`] using the Majorana encoding.
 /// Only returns a result if the encoding is able to map a single [`FockState`] to a single [`ZBasisState`]
 /// so only number-preserving encodings will work.
+///
+/// Note this does not prepare a slater determinant, but rather a single [`ZBasisState`].
+/// This function can therefore be used to convert from a [`MajoranaEncoding`] to an
+/// encoding as a linear combination of fock states.
 impl TryEncode<FockState> for MajoranaEncoding {
     type Output = Option<ZBasisState>;
 
@@ -743,8 +747,11 @@ impl TryEncode<FockState> for MajoranaEncoding {
         #[allow(unused_assignments)]
         let mut right = self.vacuum_state.clone();
         debug!("Vacuum: {left:?}");
-        for (idx, occ) in input.state.iter().enumerate() {
-            if !*occ {
+
+        // Applying in reverse order ensures JW maps to all +1 states
+        // https://arxiv.org/abs/2412.07578v1
+        for idx in (0..input.state.len()).rev() {
+            if !input.state[idx] {
                 continue;
             }
             debug!("ZState: {maybe_state:?}");

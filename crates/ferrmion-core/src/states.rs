@@ -229,7 +229,7 @@ mod zbasis_tests {
 /// A collection of quantum states in the computational (Pauli Z) basis.
 ///
 /// Holds `n` states as rows of a boolean matrix, paired with complex coefficients.
-/// Intended for efficient batch decoding via [`crate::encode::encoding::MajoranaEncoding::decode_zbasis_ensemble`].
+/// Intended for efficient batch decoding via [`crate::encode::majorana::MajoranaEncoding::decode_zbasis_ensemble`].
 #[derive(Debug, Clone)]
 pub struct ZBasisEnsemble {
     /// Each row is a Z-basis state (qubit occupation vector).

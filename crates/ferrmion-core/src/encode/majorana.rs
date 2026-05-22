@@ -25,7 +25,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use ferrmion_core::encode::encoding::{Encode, MajoranaEncoding};
+/// use ferrmion_core::encode::majorana::{Encode, MajoranaEncoding};
 /// use ferrmion_core::operators::MajoranaProduct;
 /// use ferrmion_core::encode::ternarytree::TernaryTree;
 /// use num_complex::Complex64;
@@ -43,7 +43,7 @@ pub trait Encode<T> {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::Encode;
+    /// use ferrmion_core::encode::majorana::Encode;
     /// // Example usage would depend on the implementor
     /// ```
     fn encode(&self, input: T) -> Self::Output;
@@ -54,7 +54,7 @@ pub trait Encode<T> {
 /// # Examples
 ///
 /// ```
-/// use ferrmion_core::encode::encoding::{TryEncode, MajoranaEncoding};
+/// use ferrmion_core::encode::majorana::{TryEncode, MajoranaEncoding};
 /// use ferrmion_core::states::FockState;
 /// use ferrmion_core::encode::ternarytree::TernaryTree;
 /// use ndarray::arr1;
@@ -115,7 +115,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     ///
@@ -140,7 +140,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ferrmion_core::states::ZBasisState;
     /// use ndarray::arr2;
@@ -395,7 +395,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     ///
     /// let tree = TernaryTree::naive_jordan_wigner(3);
@@ -456,7 +456,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ferrmion_core::operators::MajoranaSparse;
     /// use num_complex::Complex64;
@@ -575,7 +575,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::{MajoranaEncoding, TryEncode};
+    /// use ferrmion_core::encode::majorana::{MajoranaEncoding, TryEncode};
     /// use ferrmion_core::states::FockState;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ndarray::arr1;
@@ -627,7 +627,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::{MajoranaEncoding, TryEncode};
+    /// use ferrmion_core::encode::majorana::{MajoranaEncoding, TryEncode};
     /// use ferrmion_core::states::{FockState, ZBasisEnsemble};
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ndarray::Array1;

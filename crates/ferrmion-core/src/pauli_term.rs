@@ -1,14 +1,16 @@
 //! Fixed-capacity SIMD-friendly representation of a Majorana operator term.
 //!
-//! A [`PauliTerm`] holds up to 8 Majorana indices in a 128-bit
-//! `[u16; 8]` backing array. Absent slots carry `u16::MAX` — the niche
-//! value of [`nonmax::NonMaxU16`] — so the same byte pattern serves as
-//! both "no entry" and the SIMD-compare sentinel used by
-//! `qubit_term_weight` in the TOPP-HATT optimiser.
+//! A [`PauliTerm`] holds up to 8 Majorana indices. The first `len` entries
+//! of the backing `[u16; 8]` slot array carry the present indices; the
+//! remaining slots are always set to `u16::MAX` — the niche value of
+//! [`nonmax::NonMaxU16`] — so the same byte pattern serves as both
+//! "no entry" and the SIMD-compare sentinel used by `qubit_term_weight`
+//! in the TOPP-HATT optimiser.
 //!
-//! Compared to the previous `tinyvec::ArrayVec<[u16; 7]>` (14-byte data
-//! plus 2-byte length = 16 bytes), this drops the runtime length field,
-//! keeps the 128-bit footprint, and allows a single aligned SIMD load.
+//! Compared to the previous `tinyvec::ArrayVec<[u16; 7]>` (2-byte length
+//! plus 14-byte data = 16 bytes), this widens the data array from 7 to 8
+//! lanes so the whole term fits in a single 128-bit SIMD register, at
+//! a cost of 2 extra bytes per term.
 
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
@@ -18,9 +20,19 @@ use wide::i16x8;
 
 /// Stack-allocated, fixed-capacity Majorana index set used as a single
 /// Hamiltonian term.
+///
+/// # Invariants
+/// - `len <= CAPACITY`
+/// - `slots[len..]` is always [`SENTINEL`](Self::SENTINEL).
+///
+/// The trailing-sentinel invariant lets [`as_lanes`](Self::as_lanes)
+/// hand the whole array to a single SIMD compare without needing a
+/// length mask — padding lanes never equal a real Majorana index
+/// (`idx < 2 * n_modes < 2^15`).
 #[derive(Clone, Copy)]
-#[repr(C, align(16))]
+#[repr(C)]
 pub struct PauliTerm {
+    len: u16,
     slots: [u16; PauliTerm::CAPACITY],
 }
 
@@ -32,8 +44,9 @@ impl PauliTerm {
     /// satisfy `idx < 2 * n_modes`, so they never collide with this.
     pub const SENTINEL: u16 = u16::MAX;
 
-    /// The empty term (all slots set to [`Self::SENTINEL`]).
+    /// The empty term.
     pub const EMPTY: Self = Self {
+        len: 0,
         slots: [Self::SENTINEL; Self::CAPACITY],
     };
 
@@ -43,19 +56,26 @@ impl PauliTerm {
         Self::EMPTY
     }
 
-    /// Number of present (non-sentinel) slots.
+    /// Number of present indices.
     #[inline]
     pub fn len(&self) -> usize {
-        self.slots.iter().filter(|&&v| v != Self::SENTINEL).count()
+        self.len as usize
     }
 
     /// `true` iff no indices are present.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.slots.iter().all(|&v| v == Self::SENTINEL)
+        self.len == 0
     }
 
-    /// Append an index into the first sentinel slot.
+    /// Borrow the present indices as a slice.
+    #[inline]
+    pub fn as_slice(&self) -> &[u16] {
+        // SAFETY: invariant `len <= CAPACITY` guarantees this index is in bounds.
+        unsafe { self.slots.get_unchecked(..self.len as usize) }
+    }
+
+    /// Append an index.
     ///
     /// # Panics
     /// - if `idx == u16::MAX` (reserved as the sentinel)
@@ -63,81 +83,82 @@ impl PauliTerm {
     #[inline]
     pub fn push(&mut self, idx: u16) {
         let nz = NonMaxU16::new(idx).expect("u16::MAX is reserved as the sentinel");
-        for slot in &mut self.slots {
-            if *slot == Self::SENTINEL {
-                *slot = nz.get();
-                return;
-            }
-        }
-        panic!("PauliTerm overflow (capacity = {})", Self::CAPACITY);
+        let len = self.len as usize;
+        assert!(
+            len < Self::CAPACITY,
+            "PauliTerm overflow (capacity = {})",
+            Self::CAPACITY
+        );
+        self.slots[len] = nz.get();
+        self.len += 1;
     }
 
-    /// Remove every present index for which `pred` returns `false`.
-    ///
-    /// Removed slots are set back to [`Self::SENTINEL`]; the relative
-    /// order of surviving slots is preserved (a following
-    /// [`Self::sort_unstable`] will compact them to the front).
+    /// Remove every present index for which `pred` returns `false`,
+    /// re-compacting the survivors and restoring the trailing-sentinel
+    /// invariant.
     #[inline]
     pub fn retain(&mut self, mut pred: impl FnMut(u16) -> bool) {
-        for slot in &mut self.slots {
-            if *slot != Self::SENTINEL && !pred(*slot) {
-                *slot = Self::SENTINEL;
+        let len = self.len as usize;
+        let mut write = 0usize;
+        for read in 0..len {
+            let v = self.slots[read];
+            if pred(v) {
+                self.slots[write] = v;
+                write += 1;
             }
         }
+        for slot in &mut self.slots[write..len] {
+            *slot = Self::SENTINEL;
+        }
+        self.len = write as u16;
     }
 
-    /// Sort present indices ascending.
-    ///
-    /// Sentinel slots automatically come last because `u16::MAX` is the
-    /// largest value, so after the sort the layout is
-    /// `[idx_0, idx_1, ..., idx_{n-1}, MAX, ..., MAX]`.
+    /// Sort present indices ascending. The trailing-sentinel slots are
+    /// untouched (they were already at the end and remain `SENTINEL`).
     #[inline]
     pub fn sort_unstable(&mut self) {
-        self.slots.sort_unstable();
+        let len = self.len as usize;
+        self.slots[..len].sort_unstable();
     }
 
     /// Iterate over present indices.
     #[inline]
-    pub fn iter(&self) -> Iter<'_> {
-        Iter {
-            inner: self.slots.iter(),
-        }
+    pub fn iter(&self) -> core::iter::Copied<core::slice::Iter<'_, u16>> {
+        self.as_slice().iter().copied()
     }
 
-    /// Smallest present index, if any.
+    /// First (smallest after `sort_unstable`) present index, if any.
     #[inline]
     pub fn first(&self) -> Option<u16> {
-        self.iter().next()
+        self.as_slice().first().copied()
     }
 
-    /// Largest present index, if any.
+    /// Last (largest after `sort_unstable`) present index, if any.
     #[inline]
     pub fn last(&self) -> Option<u16> {
-        self.iter().next_back()
+        self.as_slice().last().copied()
     }
 
     /// `true` iff `idx` is present.
     #[inline]
     pub fn contains(&self, idx: u16) -> bool {
-        idx != Self::SENTINEL && self.slots.contains(&idx)
+        self.as_slice().contains(&idx)
     }
 
-    /// `true` iff the present indices are in non-decreasing order. The
-    /// trailing sentinels never violate sortedness because they hold
-    /// the largest possible `u16`.
+    /// `true` iff present indices are in non-decreasing order.
     #[inline]
     pub fn is_sorted(&self) -> bool {
-        self.slots.is_sorted()
+        self.as_slice().is_sorted()
     }
 
     /// Load all 8 lanes as a SIMD vector for the
     /// `qubit_term_weight` hot-path.
     ///
     /// The vector is typed as [`i16x8`] because the wide-crate's
-    /// `move_mask` / `reduce_add` helpers live on the signed variant.
-    /// Bit-patterns are preserved: `SENTINEL` (= `u16::MAX`) is `-1i16`,
-    /// and real Majorana indices satisfy `idx < 2 * n_modes < 2^15`, so
-    /// they round-trip through the cast unchanged.
+    /// `move_mask` helper lives on the signed variant. Bit-patterns are
+    /// preserved: `SENTINEL` (= `u16::MAX`) is `-1i16`, and real Majorana
+    /// indices satisfy `idx < 2 * n_modes < 2^15`, so they round-trip
+    /// through the cast unchanged.
     #[inline(always)]
     pub fn as_lanes(&self) -> i16x8 {
         // SAFETY: `[u16; 8]` and `[i16; 8]` have identical size, alignment,
@@ -158,7 +179,9 @@ impl Default for PauliTerm {
 impl PartialEq for PauliTerm {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.slots == other.slots
+        // The trailing-sentinel invariant means the full slots arrays
+        // are equal iff the present indices match.
+        self.len == other.len && self.slots == other.slots
     }
 }
 impl Eq for PauliTerm {}
@@ -166,7 +189,7 @@ impl Eq for PauliTerm {}
 impl Hash for PauliTerm {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.slots.hash(state);
+        self.as_slice().hash(state);
     }
 }
 
@@ -177,9 +200,12 @@ impl PartialOrd for PauliTerm {
     }
 }
 impl Ord for PauliTerm {
+    /// Lexicographic order on the present indices — matches the previous
+    /// `tinyvec::ArrayVec` behaviour, so a prefix sorts before its
+    /// extension: `[0, 1] < [0, 1, 2]`.
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        self.slots.cmp(&other.slots)
+        self.as_slice().cmp(other.as_slice())
     }
 }
 
@@ -192,17 +218,8 @@ impl core::fmt::Debug for PauliTerm {
 impl FromIterator<u16> for PauliTerm {
     fn from_iter<I: IntoIterator<Item = u16>>(iter: I) -> Self {
         let mut term = Self::EMPTY;
-        for (i, idx) in iter.into_iter().enumerate() {
-            assert!(
-                i < Self::CAPACITY,
-                "PauliTerm overflow (capacity = {})",
-                Self::CAPACITY
-            );
-            assert!(
-                idx != Self::SENTINEL,
-                "u16::MAX is reserved as the sentinel"
-            );
-            term.slots[i] = idx;
+        for idx in iter {
+            term.push(idx);
         }
         term
     }
@@ -210,41 +227,11 @@ impl FromIterator<u16> for PauliTerm {
 
 impl<'a> IntoIterator for &'a PauliTerm {
     type Item = u16;
-    type IntoIter = Iter<'a>;
+    type IntoIter = core::iter::Copied<core::slice::Iter<'a, u16>>;
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
 }
-
-/// Iterator over the present (non-sentinel) indices of a [`PauliTerm`].
-pub struct Iter<'a> {
-    inner: core::slice::Iter<'a, u16>,
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = u16;
-    #[inline]
-    fn next(&mut self) -> Option<u16> {
-        self.inner
-            .by_ref()
-            .find(|&&v| v != PauliTerm::SENTINEL)
-            .copied()
-    }
-}
-
-impl<'a> DoubleEndedIterator for Iter<'a> {
-    #[inline]
-    fn next_back(&mut self) -> Option<u16> {
-        self.inner
-            .by_ref()
-            .rfind(|&&v| v != PauliTerm::SENTINEL)
-            .copied()
-    }
-}
-
-// Compile-time sanity: the struct must be exactly one 128-bit register.
-const _: () = assert!(core::mem::size_of::<PauliTerm>() == 16);
-const _: () = assert!(core::mem::align_of::<PauliTerm>() == 16);
 
 /// Construct a [`PauliTerm`] from a list of integer literals.
 ///
@@ -310,11 +297,21 @@ mod tests {
     }
 
     #[test]
-    fn is_sorted_true_for_compacted_sentinels() {
-        let mut t = PauliTerm::EMPTY;
-        t.push(1);
-        t.push(3);
-        t.push(5);
+    fn retain_preserves_sentinel_invariant() {
+        let mut t = pauli_term![0, 1, 2, 3];
+        t.retain(|i| i != 1);
+        // slots[..len] are present indices in original order; slots[len..] sentinels.
+        let collected: Vec<u16> = t.iter().collect();
+        assert_eq!(collected, vec![0, 2, 3]);
+        // The slot array used by `as_lanes` must have sentinels in trailing positions.
+        let lanes = t.as_lanes().to_array();
+        assert_eq!(lanes, [0, 2, 3, -1, -1, -1, -1, -1]);
+    }
+
+    #[test]
+    fn is_sorted_true_after_sort() {
+        let mut t = pauli_term![5, 1, 3];
+        t.sort_unstable();
         assert!(t.is_sorted());
     }
 
@@ -354,9 +351,14 @@ mod tests {
     }
 
     #[test]
-    fn ordering_matches_lexicographic_on_slots() {
-        let a = pauli_term![0, 1, 2];
-        let b = pauli_term![0, 1, 3];
+    fn ordering_matches_lexicographic_on_present_indices() {
+        // A shorter prefix sorts before its extension; matches the previous
+        // tinyvec semantics.
+        let a = pauli_term![0, 1];
+        let b = pauli_term![0, 1, 2];
         assert!(a < b);
+
+        let c = pauli_term![0, 1, 3];
+        assert!(b < c);
     }
 }

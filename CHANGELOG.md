@@ -12,9 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `x_first`: Pick the x-most node on the tree.
   - `z_first`: Pick the z-most node on the tree.
   - `random`: Pick a random node on the tree. Allows for a random seed to be passed.
+- `PauliTerm`: fixed-capacity 16-byte representation of a Majorana operator term, using `u16::MAX` as the absent-slot sentinel (the niche value of `NonMaxU16`). Replaces `tinyvec::ArrayVec<[u16; 7]>` for Hamiltonian terms.
 
 ### Changed
 - `encode_annealed` now takes a random `seed` argument.
+- `qubit_term_weight` (the hot path of the TOPP-HATT optimiser) now uses a SIMD kernel via the `wide` crate, evaluating all three children with constant-work `i16x8` compares regardless of term length.
 
 ## [0.8.0] - 2026-04-15
 ### Added

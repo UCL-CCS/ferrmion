@@ -21,6 +21,7 @@ use ferrmion_core::optimise::topphatt;
 use ferrmion_core::optimise::HattError;
 use ferrmion_core::optimise::NodeOrderHeuristic;
 use ferrmion_core::optimise::ToppHattError;
+use ferrmion_core::pauli_term::PauliTerm;
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ferrmion_core::utils::*;
 use log::debug;
@@ -115,7 +116,7 @@ fn simplified_majorana_terms(
         std::collections::BTreeMap::new();
     for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
         let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
-        for &idx in key.as_slice() {
+        for idx in key.iter() {
             if simplified.last() == Some(&idx) {
                 simplified.pop();
             } else {
@@ -982,17 +983,16 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.iter().map(|v| v.as_array()).collect(),
             0.,
         );
-        let simplified_terms: Vec<tinyvec::ArrayVec<[u16; 7]>> =
-            simplified_majorana_terms(hamiltonian)
-                .into_keys()
-                .map(|k| {
-                    let mut av = tinyvec::ArrayVec::<[u16; 7]>::new();
-                    for idx in k {
-                        av.push(idx);
-                    }
-                    av
-                })
-                .collect();
+        let simplified_terms: Vec<PauliTerm> = simplified_majorana_terms(hamiltonian)
+            .into_keys()
+            .map(|k| {
+                let mut term = PauliTerm::EMPTY;
+                for idx in k {
+                    term.push(idx);
+                }
+                term
+            })
+            .collect();
         let (tree, weight) = core_hatt(simplified_terms, n_modes)?;
         debug!("HATT finished with weight {weight}");
         Ok((tree.to_flatpack(), weight))

@@ -15,7 +15,7 @@ use ferrmion_core::operators::{
     FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
     SymplecticOperator,
 };
-use ferrmion_core::optimise::anneal_enumerations;
+use ferrmion_core::optimise::{anneal_enumerations, apply_clifford_chain, clifford_heuristic_optimisation};
 use ferrmion_core::optimise::hatt as core_hatt;
 use ferrmion_core::optimise::topphatt;
 use ferrmion_core::optimise::HattError;
@@ -502,6 +502,91 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
         ))
+    }
+
+    /// Optimise a fermion-qubit encoding by searching over Clifford circuits.
+    ///
+    /// Runs a simulated annealing search over sequences of ``(H, CNOT)`` gate pairs
+    /// and returns the encoded qubit Hamiltonian for the best circuit found.
+    ///
+    /// The Clifford circuit transforms the encoding operators; because ``encode``
+    /// does not depend on the vacuum state, the result is always well-defined even
+    /// when the transformed operators do not admit a Z-basis vacuum.
+    ///
+    /// Args:
+    ///     ipowers: 1D uint8 array — phase exponents for each encoding operator.
+    ///     symplectics: 2D boolean array — symplectic encoding matrix.
+    ///     signatures: List of fermionic operator signature strings.
+    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     temperature: Annealing temperature (higher = more random exploration).
+    ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
+    ///     constant_energy: Constant energy offset added to the identity term. Defaults to ``0.``.
+    ///     seed: Seed for the RNG driving gate choices. Defaults to ``1017``.
+    ///
+    /// Returns:
+    ///     Dictionary mapping Pauli strings to complex coefficients.
+    #[allow(clippy::too_many_arguments)]
+    #[pyfn(m)]
+    #[pyo3(
+        name = "clifford_heuristic_encoding",
+        signature = (
+            ipowers,
+            symplectics,
+            signatures,
+            coeffs,
+            temperature,
+            coefficient_weighted,
+            constant_energy = 0.,
+            seed = None,
+        ),
+    )]
+    fn wrap_clifford_heuristic_encoding<'py>(
+        py: Python<'py>,
+        ipowers: PyReadonlyArray1<u8>,
+        symplectics: PyReadonlyArray2<bool>,
+        signatures: Vec<String>,
+        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+        temperature: f64,
+        coefficient_weighted: bool,
+        constant_energy: f64,
+        seed: Option<u64>,
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
+        // constant_energy does not affect Pauli weight, so msparse is reused for both
+        // the optimisation and the final encode.
+        let msparse = MajoranaSparse::from_signatures_and_coeffs(
+            signatures,
+            coeffs.iter().map(|v| v.as_array()).collect(),
+            constant_energy,
+        );
+        let symplectics_arr = symplectics.as_array();
+        let n_qubits = symplectics_arr.ncols() / 2;
+        let x_block = symplectics_arr.slice(s![.., ..n_qubits]).to_owned();
+        let z_block = symplectics_arr.slice(s![.., n_qubits..]).to_owned();
+        let ipowers_arr = ipowers.as_array().to_owned();
+        let encoding = MajoranaEncoding::with_vacuum(
+            SymplecticMatrix::with_ipowers(x_block.clone(), z_block.clone(), ipowers_arr),
+            ZBasisState::zeros(n_qubits),
+        )?;
+        let (_, best_chain) = clifford_heuristic_optimisation(
+            msparse.clone(),
+            encoding,
+            temperature,
+            coefficient_weighted,
+            seed.unwrap_or(1017),
+        )
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+        let base_encoding = MajoranaEncoding::with_vacuum(
+            SymplecticMatrix::new(x_block, z_block),
+            ZBasisState::zeros(n_qubits),
+        )?;
+        let final_encoding = apply_clifford_chain(base_encoding, &best_chain);
+
+        // `encode` on MajoranaEncoding does not use the vacuum state, so the
+        // Clifford-modified operators produce the correct Hamiltonian even though
+        // the stored vacuum is stale after the circuit is applied.
+        let qham: QubitHamiltonian = final_encoding.encode(&msparse);
+        Ok(qham.into_py_dict(py)?)
     }
 
     /// Encode a fermionic Hamiltonian under multiple mode permutations and return

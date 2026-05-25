@@ -183,7 +183,7 @@ impl CostFunction for CliffordHeuristic {
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
         let mut copy_encoding: MajoranaEncoding = self
             .encoding
-            .apply_mode_enumeration((0..2 * self.encoding.n_modes).collect());
+            .apply_mode_enumeration((0..self.encoding.n_modes).collect());
         let mut transpose = copy_encoding.operators.transpose();
         for (control, target) in param.iter() {
             transpose.haddamard(*control);
@@ -206,9 +206,9 @@ impl Anneal for CliffordHeuristic {
 
     fn anneal(&self, param: &Vec<(usize, usize)>, temp: f64) -> Result<Vec<(usize, usize)>, Error> {
         let mut next_param = param.clone();
-        let n_modes = next_param.len();
+        let n_qubits = self.encoding.n_qubits;
         let mut rng = self.rng.lock().unwrap();
-        let distr = Uniform::try_from(0..n_modes).unwrap();
+        let distr = Uniform::try_from(0..n_qubits).unwrap();
         let temp_int = temp.floor() as usize + 1;
 
         for _ in 0..temp_int {
@@ -264,4 +264,22 @@ pub fn clifford_heuristic_optimisation(
     info!("Best clifford operators: {:#?}", best_clifford_chain);
 
     Ok((final_state.best_cost, best_clifford_chain))
+}
+
+/// Apply a sequence of (control, target) Clifford gate pairs to an encoding.
+///
+/// Each pair applies H on `control` then CNOT with `control` as control,
+/// matching the `CliffordHeuristic` cost function.
+pub fn apply_clifford_chain(
+    encoding: MajoranaEncoding,
+    chain: &[(usize, usize)],
+) -> MajoranaEncoding {
+    let mut enc = encoding.apply_mode_enumeration((0..encoding.n_modes).collect());
+    let mut transpose = enc.operators.transpose();
+    for &(control, target) in chain {
+        transpose.haddamard(control);
+        transpose.cnot(control, target);
+    }
+    drop(transpose);
+    enc
 }

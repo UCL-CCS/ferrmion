@@ -777,7 +777,7 @@ impl<'inner> SymplecticMatrixTranspose<'inner> {
         );
         Zip::from(self.x_block.row_mut(qubit))
             .and(self.z_block.row_mut(qubit))
-            .for_each(|x, z| std::mem::swap(x, z));
+            .for_each(std::mem::swap);
     }
     /// Apply the Clifford S operator.
     // $P \to S P S$

@@ -75,8 +75,7 @@ impl SymplecticHamiltonian {
 
         for (i, (pauli_str, coeff)) in qham.iter().enumerate() {
             // returns ([x_block | z_block], n_Y % 4)
-            let (symplectic, ipower) =
-                crate::utils::pauli_to_symplectic(pauli_str.clone(), 0);
+            let (symplectic, ipower) = crate::utils::pauli_to_symplectic(pauli_str.clone(), 0);
             x_data.extend(symplectic.iter().take(n_qubits).copied());
             z_data.extend(symplectic.iter().skip(n_qubits).copied());
             ipowers[i] = ipower as u8;

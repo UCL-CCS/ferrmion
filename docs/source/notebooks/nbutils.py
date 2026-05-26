@@ -11,7 +11,7 @@ def get_water_data():
     # with open(folder.joinpath("h2o_6-31g.json"), 'r') as file:
     #     data = json.load(file)
 
-    with open(folder.joinpath("h2o_6-31g.json"), "r") as file:
+    with open(folder.joinpath("h2o_6-31g.json")) as file:
         data = json.load(file)
 
     ones = np.array(data["ones"])
@@ -118,4 +118,3 @@ def get_clifford_heuristic_result(tree,fham,coef_weight, temperature=1, n_seeds=
         sdmeans["scaled"].append(result[1])
         sdmeans["length"].append(result[2])
     return sdmeans
-

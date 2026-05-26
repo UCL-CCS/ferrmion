@@ -9,7 +9,7 @@
 //! Changes to make it match:
 //! - Anneal needs to be updated to only add one operator at a time
 //! - Acceptance of new operators takes probability
-//!     $e^{-\beta(t)[C(G^{\dagger}BG - B)]}$
+//!   $e^{-\beta(t)[C(G^{\dagger}BG - B)]}$
 //!   where B is the previous generation hamiltonian
 //!   and G is the sampled clifford operator.
 use crate::hamiltonians::SymplecticHamiltonian;
@@ -167,6 +167,5 @@ pub fn apply_clifford_chain(
             CNOT { control, target } => transpose.cnot(*control, *target),
         }
     }
-    drop(transpose);
     hamiltonian
 }

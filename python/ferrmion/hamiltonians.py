@@ -13,6 +13,7 @@ Type alias for qubit hamiltonians.
 """
 type QubitHamiltonian = dict[str, float]
 
+
 class FermionHamiltonian:
     """Class for building Fermionic Hamiltonians."""
 

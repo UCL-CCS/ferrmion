@@ -50,11 +50,7 @@ For more details, see the [interop documentation](https://ferrmion.readthedocs.i
     Only works for systems with even numbers of modes (i.e. all spin-orbit Hamiltonians)
 
 
-## Optimizations
-
-### Enumeration Scheme
-- $(\lambda+\mu)$ [Evolutionary Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#evolutionary-optimisation)
-- [Simulated Annealing](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#simulated-annealing)
+## Encoding Optimizations
 
 ### Ternary Trees
 
@@ -64,6 +60,9 @@ For more details, see the [interop documentation](https://ferrmion.readthedocs.i
 - [Huffman-code Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/huffman.html)
 - [Hamiltonian Adaptive Ternary Tree](https://ferrmion.readthedocs.io/en/latest/notebooks/hatt.html)
 
+### Mode Enumeration Scheme
+- $(\lambda+\mu)$ [Evolutionary Algorithm](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#evolutionary-optimisation)
+- [Simulated Annealing](https://ferrmion.readthedocs.io/en/latest/notebooks/pauli_weight.html#simulated-annealing)
 
 ## Hamiltonians
 Arbitrary fermionic Hamiltonians can be built with the `FermionHamiltonian` class in `ferrmion.hamiltonians`. Additionally there are named functions for:
@@ -72,6 +71,10 @@ Arbitrary fermionic Hamiltonians can be built with the `FermionHamiltonian` clas
 - Hubbard Hamiltonian (3D Square lattice)
 
 See the [example notebook](https://ferrmion.readthedocs.io/en/latest/notebooks/encoding_hamiltonians.html#) for more information.
+
+### Hamiltonian Optimization
+
+- [Clifford Heuristic](https://ferrmion.readthedocs.io/en/latest/notebooks/clifford_heuristic.html#)
 
 ## Development
 For information on development, check out the project [documentation](https://ferrmion.readthedocs.io/en/latest/development.html).

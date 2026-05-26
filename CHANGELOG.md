@@ -12,8 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `x_first`: Pick the x-most node on the tree.
   - `z_first`: Pick the z-most node on the tree.
   - `random`: Pick a random node on the tree. Allows for a random seed to be passed.
+- `SymplecticHamiltonian` added to `core`.
+- Clifford heuristic optimisation of qubit hamiltonians.
 
 ### Changed
+- `clifford_heuristic_encoding`: encodes the fermionic Hamiltonian once and
+  optimises Clifford circuits directly on the qubit operators (`SymplecticHamiltonian`),
+  avoiding a full re-encode at each annealing step. The `constant_energy` offset
+  is correctly preserved as the all-identity term.
 - `encode_annealed` now takes a random `seed` argument.
 - `MajoranaEncoding.try_encode` applies operators in order of decreasing index to match expected output for encodings as linear combinations of fock states.
 

@@ -238,7 +238,7 @@ class FermionQubitEncoding(ABC):
         ipow, sym = self._build_symplectic_matrix()
 
         if temperature is None:
-            temperature = float(fham.n_modes)
+            temperature = 2 * float(fham.n_modes)
 
         return clifford_heuristic_encoding(
             ipowers=ipow,

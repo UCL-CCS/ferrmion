@@ -185,10 +185,11 @@ mod test_pauli {
 }
 
 /// Clifford operator.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliffordOperator {
-    H,
-    S,
-    CNOT,
+    H(usize),
+    S(usize),
+    CNOT { control: usize, target: usize },
 }
 
 /// Pauli operator in symplectic form.

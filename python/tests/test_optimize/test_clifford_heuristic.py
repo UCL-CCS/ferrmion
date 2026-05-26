@@ -113,6 +113,34 @@ def test_clifford_heuristic_seed_is_reproducible(h2_mol_data_sets):
     assert run(42) == run(42)
 
 
+def test_clifford_heuristic_preserves_constant_energy(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    n_modes = ones.shape[0]
+    constant_energy = 3.14
+
+    enc = JKMN(n_modes)
+    ipow, sym = enc._build_symplectic_matrix()
+
+    common_kwargs = dict(
+        ipowers=ipow,
+        symplectics=sym,
+        signatures=["+-", "++--"],
+        coeffs=[ones, twos],
+        temperature=float(n_modes),
+        coefficient_weighted=False,
+        seed=42,
+    )
+
+    qham_base = clifford_heuristic_encoding(**common_kwargs)
+    qham = clifford_heuristic_encoding(**common_kwargs, constant_energy=constant_energy)
+
+    identity_key = "I" * (sym.shape[1] // 2)
+    base_identity = qham_base.get(identity_key, complex(0)).real
+    assert identity_key in qham
+    assert abs(qham[identity_key].real - base_identity - constant_energy) < 1e-10
+
+
 def test_encode_clifford_heuristic_method_preserves_eigenvalues(h2_mol_data_sets):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]

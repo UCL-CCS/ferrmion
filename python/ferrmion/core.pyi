@@ -25,6 +25,16 @@ def symplectic_to_sparse(
     symplectic: npt.NDArray[np.bool],
     ipower: int,
 ) -> tuple[str, npt.NDArray[np.uintp], complex]: ...
+def clifford_heuristic_encoding(
+    ipowers: npt.NDArray[np.uint8],
+    symplectics: npt.NDArray[np.bool],
+    signatures: list[str],
+    coeffs: list[np.ndarray],
+    temperature: float,
+    coefficient_weighted: bool,
+    constant_energy: float = ...,
+    seed: int | None = None,
+) -> dict: ...
 def anneal_enumerations(
     ipowers: npt.NDArray[np.uint8],
     symplectics: npt.NDArray[np.bool],

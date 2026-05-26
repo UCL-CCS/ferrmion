@@ -10,17 +10,19 @@
 use ferrmion_core::encode::majorana::{Encode, MajoranaEncoding, MajoranaEncodingError, TryEncode};
 use ferrmion_core::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeError};
-use ferrmion_core::hamiltonians::QubitHamiltonian;
+use ferrmion_core::hamiltonians::{QubitHamiltonian, SymplecticHamiltonian};
 use ferrmion_core::operators::{
     FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
     SymplecticOperator,
 };
-use ferrmion_core::optimise::{anneal_enumerations, apply_clifford_chain, clifford_heuristic_optimisation};
 use ferrmion_core::optimise::hatt as core_hatt;
 use ferrmion_core::optimise::topphatt;
 use ferrmion_core::optimise::HattError;
 use ferrmion_core::optimise::NodeOrderHeuristic;
 use ferrmion_core::optimise::ToppHattError;
+use ferrmion_core::optimise::{
+    anneal_enumerations, apply_clifford_chain, clifford_heuristic_optimisation,
+};
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ferrmion_core::utils::*;
 use log::debug;
@@ -551,8 +553,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         constant_energy: f64,
         seed: Option<u64>,
     ) -> Result<Bound<'py, PyDict>, CoreError> {
-        // constant_energy does not affect Pauli weight, so msparse is reused for both
-        // the optimisation and the final encode.
         let msparse = MajoranaSparse::from_signatures_and_coeffs(
             signatures,
             coeffs.iter().map(|v| v.as_array()).collect(),
@@ -564,29 +564,24 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let z_block = symplectics_arr.slice(s![.., n_qubits..]).to_owned();
         let ipowers_arr = ipowers.as_array().to_owned();
         let encoding = MajoranaEncoding::with_vacuum(
-            SymplecticMatrix::with_ipowers(x_block.clone(), z_block.clone(), ipowers_arr),
+            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers_arr),
             ZBasisState::zeros(n_qubits),
         )?;
+
+        // Encode once; constant_energy appears as the all-identity row.
+        let qham: QubitHamiltonian = encoding.encode(&msparse);
+        let sym_ham = SymplecticHamiltonian::from_qubit_hamiltonian(&qham, n_qubits);
+
         let (_, best_chain) = clifford_heuristic_optimisation(
-            msparse.clone(),
-            encoding,
+            sym_ham.clone(),
             temperature,
             coefficient_weighted,
             seed.unwrap_or(1017),
         )
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
-        let base_encoding = MajoranaEncoding::with_vacuum(
-            SymplecticMatrix::new(x_block, z_block),
-            ZBasisState::zeros(n_qubits),
-        )?;
-        let final_encoding = apply_clifford_chain(base_encoding, &best_chain);
-
-        // `encode` on MajoranaEncoding does not use the vacuum state, so the
-        // Clifford-modified operators produce the correct Hamiltonian even though
-        // the stored vacuum is stale after the circuit is applied.
-        let qham: QubitHamiltonian = final_encoding.encode(&msparse);
-        Ok(qham.into_py_dict(py)?)
+        let opt_sym_ham = apply_clifford_chain(sym_ham, &best_chain);
+        Ok(opt_sym_ham.to_qubit_hamiltonian().into_py_dict(py)?)
     }
 
     /// Encode a fermionic Hamiltonian under multiple mode permutations and return

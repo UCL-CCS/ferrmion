@@ -459,13 +459,13 @@ impl MajoranaEncoding {
     /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ferrmion_core::operators::MajoranaSparse;
+    /// use ferrmion_core::majorana_term;
     /// use num_complex::Complex64;
-    /// use tinyvec::array_vec;
     ///
     /// let tree = TernaryTree::naive_jordan_wigner(2);
     /// let encoding = tree.build_encoding(2).unwrap();
     /// let ms = MajoranaSparse::new(
-    ///     vec![array_vec!([u16; 7] => 0, 1)],
+    ///     vec![majorana_term![0, 1]],
     ///     vec![Complex64::new(1.0, 0.)],
     ///     0.,
     /// ).unwrap();
@@ -526,7 +526,7 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
                 // Each mul_assign_view reuses the accumulator's arrays instead of
                 // allocating 2 new Array1<bool> per call.
                 let mut operator = SymplecticOperator::identity(self.n_qubits);
-                for &ind in indices.iter() {
+                for ind in indices.iter() {
                     let row = self.operators.view_row(ind as usize);
                     operator.mul_assign_view(&row);
                 }
@@ -803,12 +803,12 @@ mod owned_tests {
     use super::*;
 
     use crate::encode::ternarytree::TernaryTree;
+    use crate::majorana_term;
     use crate::operators::LadderOperator;
     use crate::states::{State, ZBasisEnsemble};
     use ndarray::{arr1, Array1};
     use num_complex::c64;
     use num_complex::Complex64;
-    use tinyvec::array_vec;
 
     #[test]
     fn test_encode_fermion_product() {
@@ -888,7 +888,7 @@ mod owned_tests {
         )
         .unwrap();
         let ms = MajoranaSparse::new(
-            vec![array_vec!([u16; 7] =>0, 1), array_vec!([u16; 7] =>1,0)],
+            vec![majorana_term![0, 1], majorana_term![1, 0]],
             vec![Complex64::new(1.0, 0.), Complex64::new(1.0, 0.)],
             0.,
         )
@@ -907,7 +907,7 @@ mod owned_tests {
         )
         .unwrap();
         let ms = MajoranaSparse::new(
-            vec![array_vec!([u16; 7] =>0, 1), array_vec!([u16; 7] =>1,0)],
+            vec![majorana_term![0, 1], majorana_term![1, 0]],
             vec![Complex64::new(1.0, 0.), Complex64::new(-1.0, 0.)],
             0.,
         )
@@ -938,10 +938,10 @@ mod owned_tests {
         .unwrap();
         let ms = MajoranaSparse::new(
             vec![
-                array_vec!([u16; 7] =>0,0),
-                array_vec!([u16; 7] =>1,1),
-                array_vec!([u16; 7] =>2,3),
-                array_vec!([u16; 7] =>3,2),
+                majorana_term![0, 0],
+                majorana_term![1, 1],
+                majorana_term![2, 3],
+                majorana_term![3, 2],
             ],
             vec![
                 Complex64::new(1.0, 0.),
@@ -1280,10 +1280,10 @@ mod owned_tests {
 mod batch_tests {
     use super::*;
     use crate::encode::ternarytree::TernaryTree;
+    use crate::majorana_term;
     use crate::operators::{CoefficientPauliWeight, PauliWeight};
     use num_complex::Complex64;
     use proptest::prelude::*;
-    use tinyvec::array_vec;
 
     /// Generates a permutation of `0..n` by sorting indices by random keys.
     ///
@@ -1317,7 +1317,7 @@ mod batch_tests {
                     } else {
                         (b as u16, a as u16)
                     };
-                    (array_vec!([u16; 7] => lo, hi), Complex64::new(coeff, 0.))
+                    (majorana_term![lo, hi], Complex64::new(coeff, 0.))
                 }),
             1..=3usize,
         )
@@ -1337,7 +1337,7 @@ mod batch_tests {
             let tree = TernaryTree::naive_jordan_wigner(n_modes);
             let encoding = tree.build_encoding(n_modes).unwrap();
             let ms = MajoranaSparse::new(
-                vec![array_vec!([u16; 7] => 0, 1)],
+                vec![majorana_term![0, 1]],
                 vec![Complex64::new(1.0, 0.)],
                 0.,
             )

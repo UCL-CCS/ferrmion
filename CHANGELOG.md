@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `random`: Pick a random node on the tree. Allows for a random seed to be passed.
 - `SymplecticHamiltonian` added to `core`.
 - Clifford heuristic optimisation of qubit hamiltonians.
+- `MajoranaTerm`: fixed-capacity 16-byte representation of a Majorana operator term, using `u16::MAX` as the absent-slot sentinel (the niche value of `NonMaxU16`). Replaces `tinyvec::ArrayVec<[u16; 7]>` for Hamiltonian terms.
 
 ### Changed
 - `clifford_heuristic_encoding`: encodes the fermionic Hamiltonian once and
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is correctly preserved as the all-identity term.
 - `encode_annealed` now takes a random `seed` argument.
 - `MajoranaEncoding.try_encode` applies operators in order of decreasing index to match expected output for encodings as linear combinations of fock states.
+- `qubit_term_weight` (the hot path of the TOPP-HATT optimiser) now uses a SIMD kernel via the `wide` crate, evaluating all three children with constant-work `i16x8` compares regardless of term length.
 
 ## [0.8.0] - 2026-04-15
 ### Added

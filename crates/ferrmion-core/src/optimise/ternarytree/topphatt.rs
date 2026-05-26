@@ -628,8 +628,8 @@ pub fn topphatt(
                                 };
                                 let mut sorted_comb: [u16; 3] = comb;
                                 sorted_comb.sort_unstable();
-                                let comb_min = unsafe { sorted_comb.get_unchecked(0) };
-                                let comb_max = unsafe { sorted_comb.get_unchecked(2) };
+                                let comb_min = sorted_comb[0];
+                                let comb_max = sorted_comb[2];
 
                                 let read_guard = selection
                                     .read()
@@ -831,6 +831,7 @@ mod test_topphatt {
     use crate::encode::majorana::MajoranaEncoding;
     use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
+    use crate::majorana_term;
     use log::debug;
     use ndarray::arr1;
     use num_complex::Complex64;
@@ -838,27 +839,36 @@ mod test_topphatt {
 
     #[test]
     fn test_qubit_term_weight() {
-        assert_eq!(qubit_term_weight(&array_vec!(0u16), &[0u16, 1u16, 2u16]), 1);
-        assert_eq!(qubit_term_weight(&array_vec!(1u16), &[0u16, 1u16, 2u16]), 1);
-        assert_eq!(qubit_term_weight(&array_vec!(2u16), &[0u16, 1u16, 2u16]), 1);
         assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 0u16), &[0u16, 1u16, 2u16]),
-            0
-        );
-        assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 1u16, 2u16), &[0u16, 1u16, 2u16]),
-            0
-        );
-        assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 1u16), &[0u16, 1u16, 2u16]),
+            qubit_term_weight(&majorana_term![0], &[0u16, 1u16, 2u16]),
             1
         );
         assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 3u16, 4u16, 5u16), &[0u16, 1u16, 2u16]),
+            qubit_term_weight(&majorana_term![1], &[0u16, 1u16, 2u16]),
             1
         );
         assert_eq!(
-            qubit_term_weight(&array_vec!(0u16, 0u16, 0u16, 0u16), &[0u16, 1u16, 2u16]),
+            qubit_term_weight(&majorana_term![2], &[0u16, 1u16, 2u16]),
+            1
+        );
+        assert_eq!(
+            qubit_term_weight(&majorana_term![0, 0], &[0u16, 1u16, 2u16]),
+            0
+        );
+        assert_eq!(
+            qubit_term_weight(&majorana_term![0, 1, 2], &[0u16, 1u16, 2u16]),
+            0
+        );
+        assert_eq!(
+            qubit_term_weight(&majorana_term![0, 1], &[0u16, 1u16, 2u16]),
+            1
+        );
+        assert_eq!(
+            qubit_term_weight(&majorana_term![0, 3, 4, 5], &[0u16, 1u16, 2u16]),
+            1
+        );
+        assert_eq!(
+            qubit_term_weight(&majorana_term![0, 0, 0, 0], &[0u16, 1u16, 2u16]),
             0
         );
     }
@@ -1046,12 +1056,9 @@ mod test_topphatt {
 
     #[test]
     fn test_topphatt() {
-        let hamiltonian = MajoranaSparse::new(
-            vec![array_vec!([u16; 7]=> 2,3)],
-            vec![Complex64::new(1., 0.)],
-            0.,
-        )
-        .unwrap();
+        let hamiltonian =
+            MajoranaSparse::new(vec![majorana_term![2, 3]], vec![Complex64::new(1., 0.)], 0.)
+                .unwrap();
         let tree = TernaryTree::naive_jordan_wigner(3);
 
         let jw_topphatt = topphatt(hamiltonian, tree, true, NodeOrderHeuristic::MinWeight).unwrap();
@@ -1072,12 +1079,9 @@ mod test_topphatt {
 
     #[test]
     fn test_with_qubit_labels() {
-        let hamiltonian = MajoranaSparse::new(
-            vec![array_vec!([u16; 7]=> 2,3)],
-            vec![Complex64::new(1., 0.)],
-            0.,
-        )
-        .unwrap();
+        let hamiltonian =
+            MajoranaSparse::new(vec![majorana_term![2, 3]], vec![Complex64::new(1., 0.)], 0.)
+                .unwrap();
         let flatpack: TTFlatpack = vec![
             (1, (None, None, Some(2))),
             (2, (None, None, Some(3))),
@@ -1107,10 +1111,10 @@ mod test_topphatt {
     fn multi_active_fixture() -> (MajoranaSparse, TernaryTree) {
         let hamiltonian = MajoranaSparse::new(
             vec![
-                array_vec!([u16; 7] => 0, 1, 2, 3),
-                array_vec!([u16; 7] => 4, 5, 6, 7),
-                array_vec!([u16; 7] => 2, 3, 8, 9),
-                array_vec!([u16; 7] => 10, 11, 12, 13),
+                majorana_term![0, 1, 2, 3],
+                majorana_term![4, 5, 6, 7],
+                majorana_term![2, 3, 8, 9],
+                majorana_term![10, 11, 12, 13],
             ],
             vec![
                 Complex64::new(1., 0.),
@@ -1200,16 +1204,13 @@ mod test_topphatt {
 
     #[test]
     fn test_reduce_hamiltonian_substitutes_inplace() {
-        let mut hamiltonian = vec![
-            array_vec!([u16;7] => 0,1,2,3),
-            array_vec!([u16;7] => 0,2,3,4),
-        ];
+        let mut hamiltonian = vec![majorana_term![0, 1, 2, 3], majorana_term![0, 2, 3, 4]];
 
         hamiltonian = reduce_hamiltonian(hamiltonian, 999, [2, 3, 55]);
 
         let expected = vec![
-            array_vec!([u16;7] => 0,1,999,999),
-            array_vec!([u16;7] => 0,4,999,999),
+            majorana_term![0, 1, 999, 999],
+            majorana_term![0, 4, 999, 999],
         ];
 
         assert_eq!(hamiltonian, expected);

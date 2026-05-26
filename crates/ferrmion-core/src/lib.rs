@@ -6,6 +6,7 @@
 
 pub mod encode;
 pub mod hamiltonians;
+pub mod majorana_term;
 pub mod operators;
 pub mod optimise;
 pub mod states;

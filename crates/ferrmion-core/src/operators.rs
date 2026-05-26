@@ -10,6 +10,7 @@
 //! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
 //!
 use crate::encode::ternarytree::Edge;
+use crate::majorana_term::MajoranaTerm;
 use crate::states::ZBasisState;
 use itertools::Itertools;
 use log::debug;
@@ -23,10 +24,6 @@ use std::collections::HashMap;
 use std::iter::repeat_n;
 use std::ops::{BitAnd, BitXor, BitXorAssign, Mul};
 use std::{result::Result, str::FromStr};
-use tinyvec::ArrayVec;
-
-/// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
-const MAX_MAJORANAS: usize = 7;
 
 /// Total number of qubits for which
 /// non-identity Pauli-operators appear in the operator.
@@ -1410,7 +1407,7 @@ impl MajoranaProduct {
 /// Map from majorana indices to complex coefficients, used to accumulate and combine like terms.
 #[derive(Debug)]
 pub(super) struct MajoranaHashMap {
-    operators: HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
+    operators: HashMap<MajoranaTerm, Complex64>,
 }
 
 impl MajoranaHashMap {
@@ -1438,8 +1435,7 @@ impl MajoranaHashMap {
                 .collect();
             let mut mp = MajoranaProduct::new(raw_indices, coeff * scaler);
             mp.majorise();
-            let key: ArrayVec<[u16; MAX_MAJORANAS]> =
-                mp.indices.iter().map(|&i| i as u16).collect();
+            let key: MajoranaTerm = mp.indices.iter().map(|&i| i as u16).collect();
             *self.operators.entry(key).or_insert(Complex64::ZERO) += mp.coefficient;
         }
     }
@@ -1461,17 +1457,16 @@ impl MajoranaHashMap {
         debug!("MBTree {:?}\n", &self);
     }
 }
-/// Sparse represtnation of a set of [`MajoranaProduct`] operators.
+/// Sparse representation of a set of [`MajoranaProduct`] operators.
 ///
 /// # Panics
 /// <div class="warning">
-/// This type internally represents indices as stack-allocated ArrayVecs.
-/// The maximum size of these is currently restricted to [`MAX_MAJORANAS`].
-/// Attempting to create an index of length greater than this will cause a panic.
+/// This type stores indices in fixed-capacity [`MajoranaTerm`]s; the capacity
+/// is [`MajoranaTerm::CAPACITY`]. Pushing past it will panic.
 /// </div>
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaSparse {
-    pub indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+    pub indices: Vec<MajoranaTerm>,
     pub coefficients: Vec<Complex64>,
     pub constant: f64,
 }
@@ -1489,17 +1484,17 @@ impl MajoranaSparse {
     ///
     /// ```
     /// use ferrmion_core::operators::MajoranaSparse;
+    /// use ferrmion_core::majorana_term;
     /// use num_complex::Complex64;
-    /// use tinyvec::array_vec;
     ///
     /// let ms = MajoranaSparse::new(
-    ///     vec![array_vec!([u16; 7] => 0, 1)],
+    ///     vec![majorana_term![0, 1]],
     ///     vec![Complex64::new(1.0, 0.0)],
     ///     0.0,
     /// ).unwrap();
     /// ```
     pub fn new(
-        indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+        indices: Vec<MajoranaTerm>,
         coefficients: Vec<Complex64>,
         constant: f64,
     ) -> Result<Self, MajoranaSparseError> {
@@ -1583,7 +1578,7 @@ fn is_valid_fermion_term(action: &[LadderOperator], indices: &[usize]) -> bool {
 impl From<MajoranaHashMap> for MajoranaSparse {
     fn from(mbt: MajoranaHashMap) -> MajoranaSparse {
         let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
-        let mut pairs: Vec<(ArrayVec<[u16; MAX_MAJORANAS]>, Complex64)> = Vec::new();
+        let mut pairs: Vec<(MajoranaTerm, Complex64)> = Vec::new();
         for (k, v) in mbt.operators.into_iter().filter(|(_, v)| v.abs() >= 1e-16) {
             if k.is_empty() {
                 sparse_constant += v;
@@ -1633,12 +1628,12 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
 
 #[cfg(test)]
 mod majorana_tests {
+    use crate::majorana_term;
     use crate::operators::*;
     use crate::utils::vector_kron;
     use log::debug;
     use ndarray::{arr1, arr2};
     use num_complex::c64;
-    use tinyvec::array_vec;
 
     #[test]
     fn test_ladder_to_complex() {
@@ -1809,7 +1804,7 @@ mod majorana_tests {
         debug!("{:#?}", action.clone());
 
         let majorana_term = MajoranaSparse::new(
-            vec![array_vec!([u16; 7]=> 0), array_vec!([u16; 7]=> 1)],
+            vec![majorana_term![0], majorana_term![1]],
             vec![c64(5., 0.), c64(0., -5.)],
             0.,
         )
@@ -1830,10 +1825,10 @@ mod majorana_tests {
 
         let majorana_term = MajoranaSparse::new(
             vec![
-                array_vec!([u16; 7]=> 0, 2),
-                array_vec!([u16; 7]=> 0, 3),
-                array_vec!([u16; 7]=> 1,2),
-                array_vec!([u16; 7]=> 1,3),
+                majorana_term![0, 2],
+                majorana_term![0, 3],
+                majorana_term![1, 2],
+                majorana_term![1, 3],
             ],
             vec![c64(2.5, 0.), c64(0., 2.5), c64(0.0, -2.5), c64(2.5, 0.)],
             0.,
@@ -1859,14 +1854,14 @@ mod majorana_tests {
 
         let majorana_term = MajoranaSparse::new(
             vec![
-                array_vec!([u16; 7]=> 0, 2, 4),
-                array_vec!([u16; 7]=> 0, 2, 5),
-                array_vec!([u16; 7]=> 0, 3, 4),
-                array_vec!([u16; 7]=> 0, 3, 5),
-                array_vec!([u16; 7]=> 1,2, 4),
-                array_vec!([u16; 7]=> 1,2, 5),
-                array_vec!([u16; 7]=> 1,3, 4),
-                array_vec!([u16; 7]=> 1,3, 5),
+                majorana_term![0, 2, 4],
+                majorana_term![0, 2, 5],
+                majorana_term![0, 3, 4],
+                majorana_term![0, 3, 5],
+                majorana_term![1, 2, 4],
+                majorana_term![1, 2, 5],
+                majorana_term![1, 3, 4],
+                majorana_term![1, 3, 5],
             ],
             vec![
                 c64(1.25, 0.),

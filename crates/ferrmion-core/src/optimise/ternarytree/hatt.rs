@@ -8,12 +8,11 @@
 use itertools::Itertools;
 use log::debug;
 use std::collections::{BTreeSet, VecDeque};
-use std::ops::BitXorAssign;
 use thiserror::Error;
-use tinyvec::ArrayVec;
+use wide::{i16x8, CmpEq};
 
 use crate::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeError};
-pub(crate) const MAJORANA_MAX: usize = 7;
+use crate::majorana_term::MajoranaTerm;
 
 /// Errors produced during HATT construction.
 #[derive(Debug, Error)]
@@ -52,30 +51,25 @@ pub enum HattError {
 /// if three Majorana operators appear in both the term and _children_ with odd parity,
 /// together, they act with the identity as XYZ=-iI
 #[inline(always)]
-pub(crate) fn qubit_term_weight(
-    term: &ArrayVec<[u16; MAJORANA_MAX]>,
-    sorted_children: &[u16; 3],
-) -> usize {
-    let mut even_parity_paulis = [true, true, true];
-    unsafe {
-        for t in term {
-            even_parity_paulis
-                .get_unchecked_mut(0)
-                .bitxor_assign(t == sorted_children.get_unchecked(0));
-            even_parity_paulis
-                .get_unchecked_mut(1)
-                .bitxor_assign(t == sorted_children.get_unchecked(1));
-            even_parity_paulis
-                .get_unchecked_mut(2)
-                .bitxor_assign(t == sorted_children.get_unchecked(2));
-        }
-    }
-    let odd_parity_paulis = 3
-        - (even_parity_paulis[0] as usize
-            + even_parity_paulis[1] as usize
-            + even_parity_paulis[2] as usize);
-
-    !odd_parity_paulis.is_multiple_of(3) as usize
+pub(crate) fn qubit_term_weight(term: &MajoranaTerm, sorted_children: &[u16; 3]) -> usize {
+    let term_v = term.as_lanes();
+    // Lane 0 holds the `len` field, not a Majorana index. Mask it out
+    // of every `move_mask` result so it never contributes to parity.
+    const SLOT_MASK: u32 = 0xFE;
+    let m0 = (term_v
+        .cmp_eq(i16x8::splat(sorted_children[0] as i16))
+        .move_mask() as u32)
+        & SLOT_MASK;
+    let m1 = (term_v
+        .cmp_eq(i16x8::splat(sorted_children[1] as i16))
+        .move_mask() as u32)
+        & SLOT_MASK;
+    let m2 = (term_v
+        .cmp_eq(i16x8::splat(sorted_children[2] as i16))
+        .move_mask() as u32)
+        & SLOT_MASK;
+    let odd = (m0.count_ones() & 1) + (m1.count_ones() & 1) + (m2.count_ones() & 1);
+    !(odd as usize).is_multiple_of(3) as usize
 }
 
 /// Simplify the Majorana operator Hamiltonian.
@@ -90,22 +84,22 @@ pub(crate) fn qubit_term_weight(
 /// We can therefore substitute a single index, representing the node, in place of
 /// all the individual Majorana operator indices.
 pub(crate) fn reduce_hamiltonian(
-    majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
+    majorana_terms: Vec<MajoranaTerm>,
     parent_majorana_index: u16,
     selection: [u16; 3],
-) -> Vec<ArrayVec<[u16; MAJORANA_MAX]>> {
-    let mut result: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = majorana_terms
+) -> Vec<MajoranaTerm> {
+    let mut result: Vec<MajoranaTerm> = majorana_terms
         .into_iter()
         .map(|mut term| {
             let original_len = term.len();
-            term.retain(|&ind| !selection.contains(&ind));
+            term.retain(|ind| !selection.contains(&ind));
             while term.len() < original_len {
                 term.push(parent_majorana_index);
             }
             term.sort_unstable();
             term
         })
-        .filter(|term| !term.iter().all(|&ind| ind == parent_majorana_index))
+        .filter(|term| !term.iter().all(|ind| ind == parent_majorana_index))
         .collect();
     // Use sort + dedup instead of BTreeSet for deduplication:
     // avoids per-element tree insertion overhead.
@@ -124,7 +118,7 @@ pub(crate) fn reduce_hamiltonian(
 /// Returns the constructed [`TernaryTree`] plus the total Pauli weight.
 /// A flatpack is recoverable from the tree via [`TernaryTree::to_flatpack`].
 pub fn hatt(
-    majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
+    majorana_terms: Vec<MajoranaTerm>,
     n_modes: usize,
 ) -> Result<(TernaryTree, usize), HattError> {
     let n_leaves = 2 * n_modes + 1;
@@ -294,7 +288,7 @@ pub fn hatt(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tinyvec::array_vec;
+    use crate::majorana_term;
 
     #[test]
     fn test_hatt_3mode_runs() {
@@ -302,10 +296,10 @@ mod tests {
         // Parity with Python's weight is asserted from the Python side in
         // python/tests/test_optimize/test_hatt_rust.py.
         let terms = vec![
-            array_vec!([u16; 7] => 0u16, 1),
-            array_vec!([u16; 7] => 2u16, 3),
-            array_vec!([u16; 7] => 4u16, 5),
-            array_vec!([u16; 7] => 2u16, 3, 4, 5),
+            majorana_term![0, 1],
+            majorana_term![2, 3],
+            majorana_term![4, 5],
+            majorana_term![2, 3, 4, 5],
         ];
         let (tree, _weight) = hatt(terms, 3).unwrap();
 
@@ -317,10 +311,7 @@ mod tests {
 
     #[test]
     fn test_hatt_strip_all_z_leaf() {
-        let terms = vec![
-            array_vec!([u16; 7] => 0u16, 1),
-            array_vec!([u16; 7] => 2u16, 3),
-        ];
+        let terms = vec![majorana_term![0, 1], majorana_term![2, 3]];
         let (tree, _weight) = hatt(terms, 2).unwrap();
         // Exactly one (qubit, (x, y, z)) entry in the flatpack must have a
         // None z-child: the all-Z terminator leaf, stripped post-pass.

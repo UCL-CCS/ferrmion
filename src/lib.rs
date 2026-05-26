@@ -11,6 +11,7 @@ use ferrmion_core::encode::majorana::{Encode, MajoranaEncoding, MajoranaEncoding
 use ferrmion_core::encode::maxnto::{maxnto_symplectic_matrix, MaxNTOError};
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeError};
 use ferrmion_core::hamiltonians::{QubitHamiltonian, SymplecticHamiltonian};
+use ferrmion_core::majorana_term::MajoranaTerm;
 use ferrmion_core::operators::{
     FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
     SymplecticOperator,
@@ -117,7 +118,7 @@ fn simplified_majorana_terms(
         std::collections::BTreeMap::new();
     for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
         let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
-        for &idx in key.as_slice() {
+        for idx in key.iter() {
             if simplified.last() == Some(&idx) {
                 simplified.pop();
             } else {
@@ -1062,17 +1063,16 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coeffs.iter().map(|v| v.as_array()).collect(),
             0.,
         );
-        let simplified_terms: Vec<tinyvec::ArrayVec<[u16; 7]>> =
-            simplified_majorana_terms(hamiltonian)
-                .into_keys()
-                .map(|k| {
-                    let mut av = tinyvec::ArrayVec::<[u16; 7]>::new();
-                    for idx in k {
-                        av.push(idx);
-                    }
-                    av
-                })
-                .collect();
+        let simplified_terms: Vec<MajoranaTerm> = simplified_majorana_terms(hamiltonian)
+            .into_keys()
+            .map(|k| {
+                let mut term = MajoranaTerm::EMPTY;
+                for idx in k {
+                    term.push(idx);
+                }
+                term
+            })
+            .collect();
         let (tree, weight) = core_hatt(simplified_terms, n_modes)?;
         debug!("HATT finished with weight {weight}");
         Ok((tree.to_flatpack(), weight))

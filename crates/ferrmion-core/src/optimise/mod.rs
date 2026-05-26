@@ -3,9 +3,9 @@
 //! Provides the TOPP-HATT algorithm and simulated annealing for
 //! minimising the Pauli weight of encoded qubit Hamiltonians.
 
-mod anneal;
-pub use anneal::*;
-mod hatt;
-pub use hatt::*;
-mod topphatt;
-pub use topphatt::*;
+mod encoding;
+pub use encoding::*;
+mod hamiltonian;
+pub use hamiltonian::*;
+mod ternarytree;
+pub use ternarytree::*;

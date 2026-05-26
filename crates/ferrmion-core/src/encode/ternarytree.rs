@@ -1,7 +1,7 @@
 //! Ternary tree encodings and methods.
 //!
 //! The [`TernaryTree`] struct is made up of a set of vectors.
-use crate::encode::encoding::{MajoranaEncoding, MajoranaEncodingError};
+use crate::encode::majorana::{MajoranaEncoding, MajoranaEncodingError};
 use crate::operators::Pauli;
 use crate::operators::{SymplecticMatrix, SymplecticOperator};
 use crate::states::ZBasisState;
@@ -1357,7 +1357,7 @@ mod tt_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::encode::encoding::Encode;
+    use crate::encode::majorana::Encode;
     use crate::hamiltonians::QubitHamiltonian;
     use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
     use ahash::HashMapExt;

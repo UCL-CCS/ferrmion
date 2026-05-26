@@ -103,7 +103,7 @@ pub fn maxnto_symplectic_matrix(n_modes: usize) -> Result<(Array1<u8>, Array2<bo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encode::encoding::MajoranaEncoding;
+    use crate::encode::majorana::MajoranaEncoding;
     use crate::operators::SymplecticMatrix;
     use ndarray::s;
 

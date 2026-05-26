@@ -25,7 +25,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use ferrmion_core::encode::encoding::{Encode, MajoranaEncoding};
+/// use ferrmion_core::encode::majorana::{Encode, MajoranaEncoding};
 /// use ferrmion_core::operators::MajoranaProduct;
 /// use ferrmion_core::encode::ternarytree::TernaryTree;
 /// use num_complex::Complex64;
@@ -43,7 +43,7 @@ pub trait Encode<T> {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::Encode;
+    /// use ferrmion_core::encode::majorana::Encode;
     /// // Example usage would depend on the implementor
     /// ```
     fn encode(&self, input: T) -> Self::Output;
@@ -54,7 +54,7 @@ pub trait Encode<T> {
 /// # Examples
 ///
 /// ```
-/// use ferrmion_core::encode::encoding::{TryEncode, MajoranaEncoding};
+/// use ferrmion_core::encode::majorana::{TryEncode, MajoranaEncoding};
 /// use ferrmion_core::states::FockState;
 /// use ferrmion_core::encode::ternarytree::TernaryTree;
 /// use ndarray::arr1;
@@ -115,7 +115,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     ///
@@ -140,7 +140,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ferrmion_core::states::ZBasisState;
     /// use ndarray::arr2;
@@ -395,7 +395,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     ///
     /// let tree = TernaryTree::naive_jordan_wigner(3);
@@ -456,7 +456,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::MajoranaEncoding;
+    /// use ferrmion_core::encode::majorana::MajoranaEncoding;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ferrmion_core::operators::MajoranaSparse;
     /// use num_complex::Complex64;
@@ -575,7 +575,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::{MajoranaEncoding, TryEncode};
+    /// use ferrmion_core::encode::majorana::{MajoranaEncoding, TryEncode};
     /// use ferrmion_core::states::FockState;
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ndarray::arr1;
@@ -627,7 +627,7 @@ impl MajoranaEncoding {
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::encode::encoding::{MajoranaEncoding, TryEncode};
+    /// use ferrmion_core::encode::majorana::{MajoranaEncoding, TryEncode};
     /// use ferrmion_core::states::{FockState, ZBasisEnsemble};
     /// use ferrmion_core::encode::ternarytree::TernaryTree;
     /// use ndarray::Array1;
@@ -732,6 +732,10 @@ impl MajoranaEncoding {
 /// Attempt to encode a [`FockState`] into a [`ZBasisState`] using the Majorana encoding.
 /// Only returns a result if the encoding is able to map a single [`FockState`] to a single [`ZBasisState`]
 /// so only number-preserving encodings will work.
+///
+/// Note this does not prepare a slater determinant, but rather a single [`ZBasisState`].
+/// This function can therefore be used to convert from a [`MajoranaEncoding`] to an
+/// encoding as a linear combination of fock states.
 impl TryEncode<FockState> for MajoranaEncoding {
     type Output = Option<ZBasisState>;
 
@@ -743,8 +747,11 @@ impl TryEncode<FockState> for MajoranaEncoding {
         #[allow(unused_assignments)]
         let mut right = self.vacuum_state.clone();
         debug!("Vacuum: {left:?}");
-        for (idx, occ) in input.state.iter().enumerate() {
-            if !*occ {
+
+        // Applying in reverse order ensures JW maps to all +1 states
+        // https://arxiv.org/abs/2412.07578v1
+        for idx in (0..input.state.len()).rev() {
+            if !input.state[idx] {
                 continue;
             }
             debug!("ZState: {maybe_state:?}");

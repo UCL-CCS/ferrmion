@@ -13,7 +13,7 @@ use crate::encode::ternarytree::Edge;
 use crate::states::ZBasisState;
 use itertools::Itertools;
 use log::debug;
-use ndarray::{arr0, s, Dimension};
+use ndarray::{arr0, s, ArrayViewMut1, ArrayViewMut2, Dimension};
 use ndarray::{
     arr1, arr2, Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis, IntoDimension, Zip,
 };
@@ -21,7 +21,7 @@ use num_complex::Complex64;
 use num_complex::{c64, ComplexFloat};
 use std::collections::HashMap;
 use std::iter::repeat_n;
-use std::ops::{BitAnd, BitXor, Mul};
+use std::ops::{BitAnd, BitXor, BitXorAssign, Mul};
 use std::{result::Result, str::FromStr};
 use tinyvec::ArrayVec;
 
@@ -182,6 +182,14 @@ mod test_pauli {
             prop_assert_eq!((x, z), (x2, z2));
         }
     }
+}
+
+/// Clifford operator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliffordOperator {
+    H(usize),
+    S(usize),
+    CNOT { control: usize, target: usize },
 }
 
 /// Pauli operator in symplectic form.
@@ -627,6 +635,18 @@ impl SymplecticMatrix {
             ipower: self.ipowers[row],
         }
     }
+
+    /// Type safe transpose.
+    ///
+    /// Used for optimisation routines which use conjugations with
+    /// clifford gates to update an encoding.
+    pub(crate) fn transpose<'a>(&'a mut self) -> SymplecticMatrixTranspose<'a> {
+        SymplecticMatrixTranspose {
+            x_block: self.x_block.view_mut().reversed_axes(),
+            z_block: self.z_block.view_mut().reversed_axes(),
+            ipowers: self.ipowers.view_mut(),
+        }
+    }
 }
 
 impl PauliWeight for SymplecticMatrix {
@@ -714,6 +734,239 @@ mod symplectic_tests {
                 .to_pauli_string(),
             (String::from("Y"), 3)
         );
+    }
+}
+
+/// Transpose of the [`SymplecticMatrix`] type.
+///
+/// When working with clifford oeprators, they can be most efficiently applied
+/// using vectorised operations where the qubit index is kept fixed.
+/// The [`SymplecticMatrix`] is backed by two ndarray::Array which are row major
+/// with rows being majorana indices and columns being qubit indices.
+///
+/// To apply clifford operators we therefore want a distinct type which is the
+/// transpose of the original.
+pub(crate) struct SymplecticMatrixTranspose<'inner> {
+    x_block: ArrayViewMut2<'inner, bool>,
+    z_block: ArrayViewMut2<'inner, bool>,
+    ipowers: ArrayViewMut1<'inner, u8>,
+}
+
+// Clifford conjugation functions
+//
+// Applies P -> CPC
+//
+// Currently this works given a single qubit index at a time,
+// but applied accross all operators in a [`SymplecticMatrix`].
+// They could probably be made a little more general and faster by
+// allowing a slice input and applying all gates in tandem.
+impl<'inner> SymplecticMatrixTranspose<'inner> {
+    /// Apply Clifford H Operator
+    // $P \to H P H$
+    /// -1 for each Y
+    /// Z -> X and X -> Z
+    pub(crate) fn haddamard(&mut self, qubit: usize) {
+        self.ipowers.scaled_add(
+            // -1 For each instance
+            2,
+            &self
+                .x_block
+                .row(qubit)
+                .bitand(&self.z_block.row(qubit))
+                .map(|v| *v as u8),
+        );
+        Zip::from(self.x_block.row_mut(qubit))
+            .and(self.z_block.row_mut(qubit))
+            .for_each(std::mem::swap);
+    }
+    /// Apply the Clifford S operator.
+    // $P \to S P S$
+    /// -1 for each X
+    /// Z -> Z ^ X
+    pub(crate) fn phasegate(&mut self, qubit: usize) {
+        self.ipowers.scaled_add(
+            // -1 For each instance
+            3,
+            &self.x_block.row(qubit).map(|v| *v as u8),
+        );
+        self.z_block
+            .row_mut(qubit)
+            .bitxor_assign(&self.x_block.row(qubit));
+    }
+
+    // Transform a [`Pauli`] operator by this Clifford operator.
+    // $P \to CX P CX$
+    pub(crate) fn cnot(&mut self, control: usize, target: usize) {
+        // Have tp use multi_slice_mut here to get
+        // views into both rows.
+        let (cx, mut tx) = self
+            .x_block
+            .multi_slice_mut((s![control, ..], s![target, ..]));
+        tx.bitxor_assign(&cx);
+
+        let (mut cz, tz) = self
+            .z_block
+            .multi_slice_mut((s![control, ..], s![target, ..]));
+        cz.bitxor_assign(&tz);
+    }
+}
+
+#[cfg(test)]
+mod symplictic_transpose_tests {
+    use proptest::proptest;
+
+    use super::SymplecticMatrix;
+
+    #[test]
+    fn test_HIH() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
+        let mut transpose = sym.transpose();
+        transpose.haddamard(0);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("I".to_string(), 0));
+        assert_eq!(sym.view_row(1).to_pauli_string(), ("I".to_string(), 0));
+        assert_eq!(sym.ipowers, SymplecticMatrix::identity(2, 1).ipowers);
+    }
+    #[test]
+    fn test_HXH() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
+        sym.x_block[[0, 0]] = true;
+        sym.x_block[[1, 0]] = true;
+        let mut transpose = sym.transpose();
+        transpose.haddamard(0);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("Z".to_string(), 0));
+        assert_eq!(sym.view_row(1).to_pauli_string(), ("Z".to_string(), 0));
+    }
+    #[test]
+    fn test_HYH() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
+        sym.x_block[[0, 0]] = true;
+        sym.z_block[[0, 0]] = true;
+        sym.ipowers[[0]] = 1;
+
+        sym.x_block[[1, 0]] = true;
+        sym.z_block[[1, 0]] = true;
+        sym.ipowers[[1]] = 1;
+
+        let mut transpose = sym.transpose();
+        transpose.haddamard(0);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("Y".to_string(), 2));
+        assert_eq!(sym.view_row(1).to_pauli_string(), ("Y".to_string(), 2));
+    }
+
+    #[test]
+    fn test_HZH() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
+        sym.z_block[[0, 0]] = true;
+        sym.z_block[[1, 0]] = true;
+        let mut transpose = sym.transpose();
+        transpose.haddamard(0);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("X".to_string(), 0));
+        assert_eq!(sym.view_row(1).to_pauli_string(), ("X".to_string(), 0));
+    }
+
+    #[test]
+    fn test_SIS() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 1);
+        let mut transpose = sym.transpose();
+        transpose.phasegate(0);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("I".to_string(), 0));
+        assert_eq!(sym.ipowers, SymplecticMatrix::identity(1, 1).ipowers);
+    }
+
+    #[test]
+    fn test_SXS() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
+        sym.x_block[[0, 0]] = true;
+        sym.x_block[[1, 0]] = true;
+        let mut transpose = sym.transpose();
+        transpose.phasegate(0);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("Y".to_string(), 2));
+        assert_eq!(sym.view_row(1).to_pauli_string(), ("Y".to_string(), 2));
+    }
+
+    #[test]
+    fn test_SYS() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
+        sym.x_block[[0, 0]] = true;
+        sym.z_block[[0, 0]] = true;
+        sym.ipowers[[0]] = 1;
+
+        sym.x_block[[1, 0]] = true;
+        sym.z_block[[1, 0]] = true;
+        sym.ipowers[[1]] = 1;
+        let mut transpose = sym.transpose();
+        transpose.phasegate(0);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("X".to_string(), 0));
+        assert_eq!(sym.view_row(1).to_pauli_string(), ("X".to_string(), 0));
+    }
+
+    #[test]
+    fn test_SZS() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
+        sym.z_block[[0, 0]] = true;
+        sym.z_block[[1, 0]] = true;
+        let mut transpose = sym.transpose();
+        transpose.phasegate(0);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("Z".to_string(), 0));
+        assert_eq!(sym.view_row(1).to_pauli_string(), ("Z".to_string(), 0));
+    }
+
+    #[test]
+    fn test_CX_II_CX() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 2);
+        let mut transpose = sym.transpose();
+        transpose.cnot(0, 1);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("II".to_string(), 0));
+        assert_eq!(sym.view_row(1).to_pauli_string(), ("II".to_string(), 0));
+        assert_eq!(sym.ipowers, SymplecticMatrix::identity(2, 2).ipowers);
+    }
+
+    #[test]
+    fn test_CX_XI_CX() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
+        sym.x_block[[0, 0]] = true;
+        let mut transpose = sym.transpose();
+        transpose.cnot(0, 1);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("XX".to_string(), 0));
+        assert_eq!(sym.ipowers, SymplecticMatrix::identity(1, 2).ipowers);
+    }
+
+    #[test]
+    fn test_CX_IX_CX() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
+        sym.x_block[[0, 1]] = true;
+        let mut transpose = sym.transpose();
+        transpose.cnot(0, 1);
+        assert_eq!(
+            transpose.x_block.shape(),
+            SymplecticMatrix::identity(2, 1).x_block.shape()
+        );
+        assert_eq!(
+            sym.x_block.shape(),
+            SymplecticMatrix::identity(1, 2).x_block.shape()
+        );
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("IX".to_string(), 0));
+        assert_eq!(sym.ipowers, SymplecticMatrix::identity(1, 2).ipowers);
+    }
+
+    #[test]
+    fn test_CX_ZI_CX() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
+        sym.z_block[[0, 0]] = true;
+        let mut transpose = sym.transpose();
+        transpose.cnot(0, 1);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("ZI".to_string(), 0));
+        assert_eq!(sym.ipowers, SymplecticMatrix::identity(1, 2).ipowers);
+    }
+
+    #[test]
+    fn test_CX_IZ_CX() {
+        let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
+        sym.z_block[[0, 1]] = true;
+        let mut transpose = sym.transpose();
+        transpose.cnot(0, 1);
+        assert_eq!(sym.view_row(0).to_pauli_string(), ("ZZ".to_string(), 0));
+        assert_eq!(sym.ipowers, SymplecticMatrix::identity(1, 2).ipowers);
     }
 }
 

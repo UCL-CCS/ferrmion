@@ -44,6 +44,7 @@ myst_enable_extensions = [
 ]
 
 nb_scroll_outputs = True
+nb_execution_mode = 'off'
 nb_execution_timeout = 600
 nb_execution_raise_on_error = True
 

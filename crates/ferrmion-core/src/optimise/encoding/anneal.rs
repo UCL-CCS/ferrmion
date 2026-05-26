@@ -1,8 +1,10 @@
-//! Simulated annealing optimisation of fermionic mode enumerations.
+//! Simulated annealing optimisation of [`MajoranaEncoding`].
+//!
+//! Permutes modes enumerations to find optimal cost in terms of
+//! [`PauliWeight`] or [`CoefficientPauliWeight`]
 
-use crate::encode::encoding::Encode;
-use crate::encode::encoding::MajoranaEncoding;
-
+use crate::encode::majorana::Encode;
+use crate::encode::majorana::MajoranaEncoding;
 use crate::operators::{CoefficientPauliWeight, MajoranaSparse, PauliWeight};
 use argmin::{
     core::{CostFunction, Error, Executor},

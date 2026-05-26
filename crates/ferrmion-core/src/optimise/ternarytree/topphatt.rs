@@ -12,7 +12,7 @@ use tinyvec::ArrayVec;
 
 use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
 use crate::operators::MajoranaSparse;
-use crate::optimise::hatt::{qubit_term_weight, reduce_hamiltonian};
+use crate::optimise::ternarytree::hatt::{qubit_term_weight, reduce_hamiltonian};
 
 /// Strategy for selecting which active node to expand at each TOPP-HATT step.
 ///
@@ -828,11 +828,9 @@ mod test_topphatt {
     use super::Edge::{X, Y, Z};
     use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
-    use crate::encode::encoding::MajoranaEncoding;
+    use crate::encode::majorana::MajoranaEncoding;
     use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
-    use crate::optimise::topphatt::NodeDependencies;
-    use crate::optimise::topphatt::TreeRestrictions;
     use log::debug;
     use ndarray::arr1;
     use num_complex::Complex64;

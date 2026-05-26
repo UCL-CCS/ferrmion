@@ -1,3 +1,3 @@
-pub mod encoding;
+pub mod majorana;
 pub mod maxnto;
 pub mod ternarytree;

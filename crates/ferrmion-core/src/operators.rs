@@ -21,7 +21,7 @@ use num_complex::Complex64;
 use num_complex::{c64, ComplexFloat};
 use std::collections::HashMap;
 use std::iter::repeat_n;
-use std::ops::{BitAnd, BitXor, BitXorAssign, Mul, Not};
+use std::ops::{BitAnd, BitXor, BitXorAssign, Mul};
 use std::{result::Result, str::FromStr};
 use tinyvec::ArrayVec;
 

@@ -1,4 +1,17 @@
 //! Clifford Heuristic optimisation of Hamiltonians.
+//!
+//! Based on http://arxiv.org/abs/2502.11933
+//! This differs somewhat in that we don't use the same sampling
+//! or temperature schedule.
+//! Given that their original paper discussed computations taking multiple days
+//! the version below is significantly faster to get to decent solutions.
+//!
+//! Changes to make it match:
+//! - Anneal needs to be updated to only add one operator at a time
+//! - Acceptance of new operators takes probability
+//!     $e^{-\beta(t)[C(G^{\dagger}BG - B)]}$
+//!   where B is the previous generation hamiltonian
+//!   and G is the sampled clifford operator.
 use crate::hamiltonians::SymplecticHamiltonian;
 use crate::operators::{CliffordOperator, CoefficientPauliWeight, PauliWeight};
 use argmin::{
@@ -30,13 +43,6 @@ impl CliffordHeuristic {
 }
 
 impl CostFunction for CliffordHeuristic {
-    // Lets start with CNOT_{ij}H_i as in
-    // 10.48550/arXiv.2502.11933
-    // Each row is a permutation of qubit indices.
-    // To avoid clashes, read the row from left to right
-    // taking pairs of indices as [(ij), (kl), (mn), ...]
-    // First apply Hadamards on the left indices
-    // Then apply CNOT with the left as control
     type Param = Vec<CliffordOperator>;
     type Output = f64;
 

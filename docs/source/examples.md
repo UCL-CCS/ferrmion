@@ -1,6 +1,8 @@
 # Examples
 (Examples)=
 
+ferrmion provides methods for building fermionic Hamiltonians, encodings for transforming these into qubit Hamiltonians, and optimisation methods for both.
+
 ## Hamiltonians
 ```{base-gallery}
 :caption: Hamiltonian Examples
@@ -9,16 +11,24 @@
 notebooks/encoding_hamiltonians
 ```
 
+## Optimizing Hamiltonans
+```{base-gallery}
+:caption: Optimizing Hamiltonians
+:tooltip:
+
+notebooks/clifford_heuristic
+```
+
 ## Encodings
 ```{base-gallery}
 :caption: Encoding Examples
 :tooltip:
 
-notebooks/growing_trees
+notebooks/ternary_trees
 notebooks/bonsai
 ```
 
-## Optimization
+## Optimizing Encodings
 ```{base-gallery}
 :caption: Optimization Examples
 :tooltip:

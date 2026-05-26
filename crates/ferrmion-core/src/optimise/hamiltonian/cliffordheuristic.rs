@@ -13,40 +13,56 @@
 //!   where B is the previous generation hamiltonian
 //!   and G is the sampled clifford operator.
 use crate::hamiltonians::SymplecticHamiltonian;
-use crate::operators::{CliffordOperator, CoefficientPauliWeight, PauliWeight};
+use crate::operators::{
+    CliffordOperator, CoefficientPauliWeight, PauliWeight, SymplecticMatrixTranspose,
+};
 use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
 };
 use log::info;
-use rand::{distr::Uniform, prelude::*};
+use rand::{
+    distr::{weighted::WeightedIndex, Distribution, Uniform},
+    prelude::*,
+};
 use rand_core_legacy::SeedableRng as LegacySeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rand_xoshiro_legacy::Xoshiro256PlusPlus as LegacyXoshiro256PlusPlus;
+use std::clone::Clone;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-struct CliffordHeuristic {
-    hamiltonian: SymplecticHamiltonian,
+struct CliffordHeuristic<'ham> {
+    hamiltonian: &'ham mut SymplecticHamiltonian,
     coefficient_weighted: bool,
     rng: Arc<Mutex<Xoshiro256PlusPlus>>,
+    subsystem: Vec<usize>,
 }
 
-impl CliffordHeuristic {
-    fn new(hamiltonian: SymplecticHamiltonian, coefficient_weighted: bool, seed: u64) -> Self {
+impl<'ham> CliffordHeuristic<'ham> {
+    fn new(
+        hamiltonian: &'ham mut SymplecticHamiltonian,
+        coefficient_weighted: bool,
+        seed: u64,
+        subsystem: Vec<usize>,
+    ) -> Self {
         CliffordHeuristic {
             hamiltonian,
             coefficient_weighted,
             rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(seed))),
+            subsystem,
         }
     }
 }
 
-impl CostFunction for CliffordHeuristic {
+impl<'ham> CostFunction for CliffordHeuristic<'ham> {
     type Param = Vec<CliffordOperator>;
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
+        // Cloning is fine for now but it would be better
+        // to apply the chain and then uncompute it if the cost
+        // is not improved.
         let mut ham = self.hamiltonian.clone();
         ham = apply_clifford_chain(ham, param.as_slice());
 
@@ -58,7 +74,7 @@ impl CostFunction for CliffordHeuristic {
     }
 }
 
-impl Anneal for CliffordHeuristic {
+impl<'ham> Anneal for CliffordHeuristic<'ham> {
     type Param = Vec<CliffordOperator>;
     type Output = Vec<CliffordOperator>;
     type Float = f64;
@@ -69,15 +85,16 @@ impl Anneal for CliffordHeuristic {
         temp: f64,
     ) -> Result<Vec<CliffordOperator>, Error> {
         let mut next_param = param.to_vec();
-        let n_qubits = self.hamiltonian.n_qubits();
         let mut rng = self.rng.lock().unwrap();
-        let distr = Uniform::try_from(0..n_qubits).unwrap();
+
+        let distr = Uniform::try_from(0..self.subsystem.len()).unwrap();
+
         let op_flag_distr = Uniform::try_from(0..=3).unwrap();
         let temp_int = temp.floor() as usize + 1;
 
         for _ in 0..temp_int {
-            let control = rng.sample(distr);
-            let target = rng.sample(distr);
+            let control = self.subsystem[rng.sample(distr)];
+            let target = self.subsystem[rng.sample(distr)];
             if control == target {
                 continue;
             }
@@ -106,11 +123,17 @@ impl Anneal for CliffordHeuristic {
     }
 }
 
+/// Optimise a [`SymplecticHamiltonian`] using the clifford heuristic method.
+///
+/// If a subsystem is not provided, the full Hamiltonian is optimised.
+///
+/// Returns the optimised energy and the corresponding Clifford operator sequence.
 pub fn clifford_heuristic_optimisation(
-    hamiltonian: SymplecticHamiltonian,
+    hamiltonian: &mut SymplecticHamiltonian,
     temperature: f64,
     coefficient_weighted: bool,
     seed: u64,
+    subsystem: Option<Vec<usize>>,
 ) -> Result<(f64, Vec<CliffordOperator>), Error> {
     info!("Beginning clifford heuristic encoding optimisation.");
     // Derive two decorrelated child seeds from the user-provided seed so the
@@ -121,7 +144,10 @@ pub fn clifford_heuristic_optimisation(
     let operator_seed: u64 = master.next_u64();
     let solver_seed: u64 = master.next_u64();
 
-    let operator = CliffordHeuristic::new(hamiltonian, coefficient_weighted, operator_seed);
+    let subsystem = subsystem.unwrap_or((0..hamiltonian.n_qubits()).collect());
+
+    let operator =
+        CliffordHeuristic::new(hamiltonian, coefficient_weighted, operator_seed, subsystem);
 
     // Set up simulated annealing solver with our seeded RNG. The default
     // `SimulatedAnnealing::new` would seed from entropy, breaking
@@ -168,4 +194,81 @@ pub fn apply_clifford_chain(
         }
     }
     hamiltonian
+}
+
+pub fn randomised_subsystem_descent(
+    mut hamiltonian: SymplecticHamiltonian,
+    iterations: usize,
+    temperature: f64,
+    coefficient_weighted: bool,
+    seed: u64,
+    sampler: SubsystemSampler,
+    subsystem_dimension: usize,
+) -> SymplecticHamiltonian {
+    let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+
+    for _ in 0..iterations {
+        let subsystem = sampler.get_subsystem(&mut hamiltonian, subsystem_dimension, &mut rng);
+        let (_, chain) = clifford_heuristic_optimisation(
+            &mut hamiltonian,
+            temperature,
+            coefficient_weighted,
+            rng.next_u64(),
+            Some(subsystem),
+        )
+        .expect("Should be able to optimise subsystem.");
+        hamiltonian = apply_clifford_chain(hamiltonian, &chain);
+    }
+    hamiltonian
+}
+
+/// Sampling heuristic to use for [`rsd`].
+///
+/// When providing a Custom sampler,
+/// a function is needed which takes a [`SymplecticHamiltonian`]
+/// and returns a probability for each qubit index to be sampled.
+pub enum SubsystemSampler {
+    /// Use all qubit indices.
+    FullSystem,
+    /// Sample uniformly.
+    Uniform,
+    /// Sample according to Hamming weight distribution.
+    Hamming,
+    /// Determine sampling probabilities from a custom function.
+    Custom(fn(&SymplecticHamiltonian) -> Vec<f64>),
+}
+
+impl SubsystemSampler {
+    fn get_subsystem(
+        &self,
+        hamiltonian: &mut SymplecticHamiltonian,
+        dimension: usize,
+        rng: &mut Xoshiro256PlusPlus,
+    ) -> Vec<usize> {
+        match self {
+            SubsystemSampler::FullSystem => (0..hamiltonian.n_qubits()).collect(),
+            SubsystemSampler::Uniform => WeightedIndex::new(vec![1; hamiltonian.n_qubits()])
+                .expect("Should be able to make uniform distribution.")
+                .sample_iter(rng)
+                .take(dimension)
+                .collect(),
+            SubsystemSampler::Hamming => {
+                let transpose: SymplecticMatrixTranspose = hamiltonian.operators.transpose();
+                let weights = transpose.hamming_weights();
+                WeightedIndex::new(weights)
+                    .expect("Should be able to make hamming weight distribution.")
+                    .sample_iter(rng)
+                    .take(dimension)
+                    .collect()
+            }
+            SubsystemSampler::Custom(f) => {
+                let probs = f(hamiltonian);
+                WeightedIndex::new(probs)
+                    .expect("Should be able to make custom distribution.")
+                    .sample_iter(rng)
+                    .take(dimension)
+                    .collect()
+            }
+        }
+    }
 }

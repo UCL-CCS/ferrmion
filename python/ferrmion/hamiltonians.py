@@ -8,10 +8,93 @@ from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
-"""
-Type alias for qubit hamiltonians.
-"""
-type QubitHamiltonian = dict[str, float]
+
+class QubitHamiltonian(dict[str, complex]):
+    """Mapping from Pauli strings to complex coefficients.
+
+    Subclasses ``dict`` so all standard mapping operations (``q[key]``,
+    ``q.items()``, ``len(q)``, ``q.get(...)``) work as expected, and adds
+    Clifford-based optimisation methods that return a new
+    ``QubitHamiltonian``.
+    """
+
+    @property
+    def n_qubits(self) -> int:
+        """Number of qubits, inferred from the length of any Pauli key."""
+        if not self:
+            raise ValueError("QubitHamiltonian is empty; cannot infer n_qubits")
+        return len(next(iter(self)))
+
+    def clifford_heuristic(
+        self,
+        temperature: float | None = None,
+        coefficient_weighted: bool = False,
+        seed: int | None = None,
+    ) -> "QubitHamiltonian":
+        """Optimise this Hamiltonian via Clifford-heuristic simulated annealing.
+
+        Args:
+            temperature: Initial annealing temperature. Defaults to ``2 * n_qubits``.
+            coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
+            seed: Seed for the RNG. Defaults to ``1017`` when omitted.
+
+        Returns:
+            QubitHamiltonian: The optimised Hamiltonian.
+        """
+        from ferrmion.core import clifford_heuristic
+
+        n = self.n_qubits
+        if temperature is None:
+            temperature = float(n)
+        return QubitHamiltonian(
+            clifford_heuristic(
+                qham=dict(self),
+                n_qubits=n,
+                temperature=temperature,
+                coefficient_weighted=coefficient_weighted,
+                seed=seed,
+            )
+        )
+
+    def randomised_subsystem_descent(
+        self,
+        iterations: int,
+        subsystem_dimension: int,
+        temperature: float | None = None,
+        coefficient_weighted: bool = False,
+        sampler: str = "hamming",
+        seed: int | None = None,
+    ) -> "QubitHamiltonian":
+        """Iteratively optimise this Hamiltonian via Clifford-heuristic simulated annealing.
+
+        Args:
+            iterations: Number of subsystem-local Clifford descents to perform.
+            subsystem_dimension: Number of qubits in each sampled subsystem.
+            temperature: Annealing temperature for each descent. Defaults to ``2 * n_qubits``.
+            coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
+            sampler: Subsystem sampling strategy: ``"full_system"``, ``"uniform"``, or ``"hamming"``.
+            seed: Seed for the RNG. Defaults to ``1017`` when omitted.
+
+        Returns:
+            QubitHamiltonian: The optimised Hamiltonian.
+        """
+        from ferrmion.core import randomised_subsystem_descent
+
+        n = self.n_qubits
+        if temperature is None:
+            temperature = float(n)
+        return QubitHamiltonian(
+            randomised_subsystem_descent(
+                qham=dict(self),
+                n_qubits=n,
+                iterations=iterations,
+                temperature=temperature,
+                subsystem_dimension=subsystem_dimension,
+                coefficient_weighted=coefficient_weighted,
+                sampler=sampler,
+                seed=seed,
+            )
+        )
 
 
 class FermionHamiltonian:

@@ -105,16 +105,3 @@ def get_topphatt_result(tree, fham, n_random=10):
     results["random"] = random_results
 
     return results
-
-def get_clifford_heuristic_result(tree,fham,coef_weight, temperature=1, n_seeds=10):
-    print(f"Getting Clifford Heuristic results ({n_seeds} seeds, coef_weight={coef_weight})...")
-    sdmeans = {"unscaled": [], "scaled": [], "length": []}
-    for seed in range(n_seeds):
-        # To avoid re-annealing between weighted and unweighted (and across seeds)
-        result = pauli_weights(
-            tree.encode_clifford_heuristic(fham, coefficient_weighted=coef_weight, seed=seed * np.random.randint(1,101), temperature=temperature)
-        )
-        sdmeans["unscaled"].append(result[0])
-        sdmeans["scaled"].append(result[1])
-        sdmeans["length"].append(result[2])
-    return sdmeans

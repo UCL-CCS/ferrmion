@@ -14,14 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `random`: Pick a random node on the tree. Allows for a random seed to be passed.
 - `SymplecticHamiltonian` added to `core`.
 - Clifford heuristic optimisation of qubit hamiltonians.
+- `QubitHamiltonian.clifford_heuristic` and `QubitHamiltonian.randomised_subsystem_descent`
+  methods for Clifford-circuit optimisation directly on encoded qubit Hamiltonians.
+- `randomised_subsystem_descent` Rust algorithm and `SubsystemSampler` strategy enum
+  (`full_system | uniform | hamming`) in `ferrmion_core::optimise::hamiltonian`.
 
 ### Changed
-- `clifford_heuristic_encoding`: encodes the fermionic Hamiltonian once and
-  optimises Clifford circuits directly on the qubit operators (`SymplecticHamiltonian`),
-  avoiding a full re-encode at each annealing step. The `constant_energy` offset
-  is correctly preserved as the all-identity term.
 - `encode_annealed` now takes a random `seed` argument.
 - `MajoranaEncoding.try_encode` applies operators in order of decreasing index to match expected output for encodings as linear combinations of fock states.
+- `QubitHamiltonian` is now a `dict[str, complex]` subclass with optimisation methods,
+  replacing the prior type alias.
+- `QubitHamiltonian.clifford_heuristic`: Optimisation of qubit hamiltonian by transformation with clifford opertors.
+
+### Removed
+- `FermionQubitEncoding.encode_clifford_heuristic` — use
+  `enc.encode(fham).clifford_heuristic(...)` instead.
 
 ## [0.8.0] - 2026-04-15
 ### Added

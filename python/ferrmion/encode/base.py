@@ -10,7 +10,6 @@ from numpy.typing import ArrayLike, NDArray
 from ferrmion.core import (
     anneal_enumerations,
     batch_pauli_weights,
-    clifford_heuristic_encoding,
     decode,
     encode,
     encode_fermion_product,
@@ -204,51 +203,15 @@ class FermionQubitEncoding(ABC):
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
         self.default_mode_op_map = [*range(self.n_modes)]
 
-        return encode(
-            ipowers=ipow,
-            symplectics=sym,
-            signatures=sigs,
-            vacuum_state=self.vacuum_state.astype(bool),
-            coeffs=coeffs,
-            constant_energy=fham.constant_energy,
-        )
-
-    def encode_clifford_heuristic(
-        self,
-        fham: FermionHamiltonian,
-        temperature: float | None = None,
-        coefficient_weighted: bool = False,
-        seed: int | None = None,
-    ) -> QubitHamiltonian:
-        """Encode a Hamiltonian, optimising the encoding via a Clifford circuit heuristic.
-
-        Searches for a sequence of (H, CNOT) gate pairs that minimises the Pauli
-        weight (or coefficient-weighted Pauli weight) of the encoded qubit Hamiltonian.
-
-        Args:
-            fham (FermionHamiltonian): The fermionic Hamiltonian to encode.
-            temperature (float | None): Initial annealing temperature. Defaults to ``fham.n_modes``.
-            coefficient_weighted (bool): If True, minimise coefficient-weighted Pauli weight.
-            seed (int | None): Seed for the RNG. Defaults to ``1017`` when omitted.
-
-        Returns:
-            QubitHamiltonian: The encoded qubit Hamiltonian with optimised encoding.
-        """
-        sigs, coeffs = fham.signatures_and_coefficients
-        ipow, sym = self._build_symplectic_matrix()
-
-        if temperature is None:
-            temperature = 2 * float(fham.n_modes)
-
-        return clifford_heuristic_encoding(
-            ipowers=ipow,
-            symplectics=sym,
-            signatures=sigs,
-            coeffs=coeffs,
-            temperature=temperature,
-            coefficient_weighted=coefficient_weighted,
-            constant_energy=fham.constant_energy,
-            seed=seed,
+        return QubitHamiltonian(
+            encode(
+                ipowers=ipow,
+                symplectics=sym,
+                signatures=sigs,
+                vacuum_state=self.vacuum_state.astype(bool),
+                coeffs=coeffs,
+                constant_energy=fham.constant_energy,
+            )
         )
 
     def to_json(self) -> dict:
@@ -275,13 +238,15 @@ class FermionQubitEncoding(ABC):
         logger.debug("Encoding fermionic Hamiltonian.")
         ipowers, symplectic = self._build_symplectic_matrix()
         signatures, coeffs = fham.signatures_and_coefficients
-        return encode(
-            ipowers=ipowers,
-            symplectics=symplectic,
-            vacuum_state=self.vacuum_state.astype(bool),
-            signatures=signatures,
-            coeffs=coeffs,
-            constant_energy=fham.constant_energy,
+        return QubitHamiltonian(
+            encode(
+                ipowers=ipowers,
+                symplectics=symplectic,
+                vacuum_state=self.vacuum_state.astype(bool),
+                signatures=signatures,
+                coeffs=coeffs,
+                constant_energy=fham.constant_energy,
+            )
         )
 
     def decode(self, states: NDArray[np.bool]) -> NDArray[np.bool]:
@@ -447,8 +412,10 @@ class FermionQubitEncoding(ABC):
             hc = encode_fermion_product(
                 *self._build_symplectic_matrix(), signature, mode_indices[::-1], coeff
             )
-            return {k: op[k] + hc[k] for k in op if op[k] + hc[k] != 0.0}
-        return op
+            return QubitHamiltonian(
+                {k: op[k] + hc[k] for k in op if op[k] + hc[k] != 0.0}
+            )
+        return QubitHamiltonian(op)
 
     def _batch_pauli_weights(
         self,

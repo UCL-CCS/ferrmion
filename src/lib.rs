@@ -22,6 +22,7 @@ use ferrmion_core::optimise::NodeOrderHeuristic;
 use ferrmion_core::optimise::ToppHattError;
 use ferrmion_core::optimise::{
     anneal_enumerations, apply_clifford_chain, clifford_heuristic_optimisation,
+    randomised_subsystem_descent, SubsystemSampler,
 };
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ferrmion_core::utils::*;
@@ -35,6 +36,7 @@ use numpy::{
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString, PyTuple};
 use pyo3::{prelude::*, pymodule, Bound};
+use std::collections::HashMap;
 
 /// Local error type bridging `ferrmion_core` errors to `PyErr`.
 ///
@@ -506,82 +508,111 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         ))
     }
 
-    /// Optimise a fermion-qubit encoding by searching over Clifford circuits.
+    /// Optimise a qubit Hamiltonian by searching over Clifford circuits.
     ///
-    /// Runs a simulated annealing search over sequences of ``(H, CNOT)`` gate pairs
-    /// and returns the encoded qubit Hamiltonian for the best circuit found.
-    ///
-    /// The Clifford circuit transforms the encoding operators; because ``encode``
-    /// does not depend on the vacuum state, the result is always well-defined even
-    /// when the transformed operators do not admit a Z-basis vacuum.
+    /// Runs a simulated annealing search over sequences of Clifford gates (H, S, CNOT)
+    /// and returns the qubit Hamiltonian for the best circuit found.
     ///
     /// Args:
-    ///     ipowers: 1D uint8 array — phase exponents for each encoding operator.
-    ///     symplectics: 2D boolean array — symplectic encoding matrix.
-    ///     signatures: List of fermionic operator signature strings.
-    ///     coeffs: List of coefficient arrays, one per signature.
+    ///     qham: Mapping from Pauli strings to complex coefficients.
+    ///     n_qubits: Number of qubits the Hamiltonian acts on.
     ///     temperature: Annealing temperature (higher = more random exploration).
     ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
-    ///     constant_energy: Constant energy offset added to the identity term. Defaults to ``0.``.
     ///     seed: Seed for the RNG driving gate choices. Defaults to ``1017``.
+    ///
+    /// Returns:
+    ///     Dictionary mapping Pauli strings to complex coefficients.
+    #[pyfn(m)]
+    #[pyo3(
+        name = "clifford_heuristic",
+        signature = (qham, n_qubits, temperature, coefficient_weighted, seed = None),
+    )]
+    fn wrap_clifford_heuristic<'py>(
+        py: Python<'py>,
+        qham: HashMap<String, Complex64>,
+        n_qubits: usize,
+        temperature: f64,
+        coefficient_weighted: bool,
+        seed: Option<u64>,
+    ) -> Result<Bound<'py, PyDict>, CoreError> {
+        let qham_rust: QubitHamiltonian = qham.into_iter().collect();
+        let mut sym_ham = SymplecticHamiltonian::from_qubit_hamiltonian(&qham_rust, n_qubits);
+
+        let (_, best_chain) = clifford_heuristic_optimisation(
+            &mut sym_ham,
+            temperature,
+            coefficient_weighted,
+            seed.unwrap_or(1017),
+            None,
+        )
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+        let opt_sym_ham = apply_clifford_chain(sym_ham, &best_chain);
+        Ok(opt_sym_ham.to_qubit_hamiltonian().into_py_dict(py)?)
+    }
+
+    /// Iteratively optimise a qubit Hamiltonian by Clifford descent on randomly sampled subsystems.
+    ///
+    /// Args:
+    ///     qham: Mapping from Pauli strings to complex coefficients.
+    ///     n_qubits: Number of qubits the Hamiltonian acts on.
+    ///     iterations: Number of subsystem-local Clifford descents to perform.
+    ///     temperature: Annealing temperature used for each subsystem descent.
+    ///     subsystem_dimension: Number of qubits in each sampled subsystem.
+    ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
+    ///     sampler: Subsystem sampling strategy. One of ``"full_system"``, ``"uniform"``, ``"hamming"``.
+    ///     seed: Seed for the RNG. Defaults to ``1017``.
     ///
     /// Returns:
     ///     Dictionary mapping Pauli strings to complex coefficients.
     #[allow(clippy::too_many_arguments)]
     #[pyfn(m)]
     #[pyo3(
-        name = "clifford_heuristic_encoding",
+        name = "randomised_subsystem_descent",
         signature = (
-            ipowers,
-            symplectics,
-            signatures,
-            coeffs,
+            qham,
+            n_qubits,
+            iterations,
             temperature,
-            coefficient_weighted,
-            constant_energy = 0.,
+            subsystem_dimension,
+            coefficient_weighted = false,
+            sampler = "uniform".to_string(),
             seed = None,
         ),
     )]
-    fn wrap_clifford_heuristic_encoding<'py>(
+    fn wrap_randomised_subsystem_descent<'py>(
         py: Python<'py>,
-        ipowers: PyReadonlyArray1<u8>,
-        symplectics: PyReadonlyArray2<bool>,
-        signatures: Vec<String>,
-        coeffs: Vec<PyReadonlyArrayDyn<f64>>,
+        qham: HashMap<String, Complex64>,
+        n_qubits: usize,
+        iterations: usize,
         temperature: f64,
+        subsystem_dimension: usize,
         coefficient_weighted: bool,
-        constant_energy: f64,
+        sampler: String,
         seed: Option<u64>,
     ) -> Result<Bound<'py, PyDict>, CoreError> {
-        let msparse = MajoranaSparse::from_signatures_and_coeffs(
-            signatures,
-            coeffs.iter().map(|v| v.as_array()).collect(),
-            constant_energy,
-        );
-        let symplectics_arr = symplectics.as_array();
-        let n_qubits = symplectics_arr.ncols() / 2;
-        let x_block = symplectics_arr.slice(s![.., ..n_qubits]).to_owned();
-        let z_block = symplectics_arr.slice(s![.., n_qubits..]).to_owned();
-        let ipowers_arr = ipowers.as_array().to_owned();
-        let encoding = MajoranaEncoding::with_vacuum(
-            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers_arr),
-            ZBasisState::zeros(n_qubits),
-        )?;
-
-        // Encode once; constant_energy appears as the all-identity row.
-        let qham: QubitHamiltonian = encoding.encode(&msparse);
-        let sym_ham = SymplecticHamiltonian::from_qubit_hamiltonian(&qham, n_qubits);
-
-        let (_, best_chain) = clifford_heuristic_optimisation(
-            sym_ham.clone(),
+        let sampler = match sampler.as_str() {
+            "full_system" => SubsystemSampler::FullSystem,
+            "uniform" => SubsystemSampler::Uniform,
+            "hamming" => SubsystemSampler::Hamming,
+            other => {
+                return Err(CoreError::Value(format!(
+                    "unknown sampler '{other}'; expected one of full_system, uniform, hamming"
+                )))
+            }
+        };
+        let qham_rust: QubitHamiltonian = qham.into_iter().collect();
+        let sym_ham = SymplecticHamiltonian::from_qubit_hamiltonian(&qham_rust, n_qubits);
+        let opt = randomised_subsystem_descent(
+            sym_ham,
+            iterations,
             temperature,
             coefficient_weighted,
             seed.unwrap_or(1017),
-        )
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-
-        let opt_sym_ham = apply_clifford_chain(sym_ham, &best_chain);
-        Ok(opt_sym_ham.to_qubit_hamiltonian().into_py_dict(py)?)
+            sampler,
+            subsystem_dimension,
+        );
+        Ok(opt.to_qubit_hamiltonian().into_py_dict(py)?)
     }
 
     /// Encode a fermionic Hamiltonian under multiple mode permutations and return

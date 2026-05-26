@@ -172,7 +172,7 @@ class TernaryTree(FermionQubitEncoding):
         self._build_symplectic_matrix: Callable = lambda: (ipow, sym)
         self.default_mode_op_map = [*range(self.n_modes)]
 
-        return qham
+        return QubitHamiltonian(qham)
 
     def hartree_fock_state(
         self,

@@ -21,7 +21,7 @@ use num_complex::Complex64;
 use num_complex::{c64, ComplexFloat};
 use std::collections::HashMap;
 use std::iter::repeat_n;
-use std::ops::{BitAnd, BitXor, BitXorAssign, Mul};
+use std::ops::{BitAnd, BitOr, BitXor, BitXorAssign, Mul};
 use std::{result::Result, str::FromStr};
 use tinyvec::ArrayVec;
 
@@ -808,6 +808,15 @@ impl<'inner> SymplecticMatrixTranspose<'inner> {
             .z_block
             .multi_slice_mut((s![control, ..], s![target, ..]));
         cz.bitxor_assign(&tz);
+    }
+
+    pub(crate) fn hamming_weights(&self) -> Array1<usize> {
+        // x_block / z_block have shape (n_qubits, n_terms) in the transposed
+        // view; folding along axis 1 collapses the term axis to yield one
+        // Hamming weight per qubit (the count of non-identity Paulis touching it).
+        self.x_block
+            .bitor(&self.z_block)
+            .fold_axis(Axis(1), 0, |init, v| init + *v as usize)
     }
 }
 

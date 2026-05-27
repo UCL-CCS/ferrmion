@@ -25,14 +25,21 @@ def symplectic_to_sparse(
     symplectic: npt.NDArray[np.bool],
     ipower: int,
 ) -> tuple[str, npt.NDArray[np.uintp], complex]: ...
-def clifford_heuristic_encoding(
-    ipowers: npt.NDArray[np.uint8],
-    symplectics: npt.NDArray[np.bool],
-    signatures: list[str],
-    coeffs: list[np.ndarray],
+def clifford_heuristic(
+    qham: dict[str, complex],
+    n_qubits: int,
     temperature: float,
     coefficient_weighted: bool,
-    constant_energy: float = ...,
+    seed: int | None = None,
+) -> dict: ...
+def randomised_subsystem_descent(
+    qham: dict[str, complex],
+    n_qubits: int,
+    iterations: int,
+    temperature: float,
+    subsystem_dimension: int,
+    coefficient_weighted: bool = ...,
+    sampler: str = ...,
     seed: int | None = None,
 ) -> dict: ...
 def anneal_enumerations(

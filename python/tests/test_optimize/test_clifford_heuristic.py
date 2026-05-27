@@ -2,8 +2,7 @@
 
 import numpy as np
 import pytest
-from ferrmion import TernaryTree, molecular_hamiltonian
-from ferrmion.core import clifford_heuristic_encoding, encode
+from ferrmion import QubitHamiltonian, TernaryTree, molecular_hamiltonian
 from ferrmion.encode.ternary_tree import JordanWigner, BravyiKitaev, ParityEncoding, JKMN
 from ferrmion.optimize.cost_functions import coefficient_pauli_weight, pauli_weight
 from openfermion import QubitOperator, get_sparse_operator
@@ -28,25 +27,11 @@ def test_clifford_heuristic_does_not_increase_pauli_weight(encoding_cls, h2_mol_
     e_nuc = h2_mol_data_sets["constant_energy"]
     n_modes = ones.shape[0]
 
-    enc = encoding_cls(n_modes)
-    ipow, sym = enc._build_symplectic_matrix()
-    vacuum = enc.vacuum_state.astype(bool)
-
-    baseline_qham = encode(
-        ipowers=ipow,
-        symplectics=sym,
-        vacuum_state=vacuum,
-        signatures=["+-", "++--"],
-        coeffs=[ones, twos],
-        constant_energy=e_nuc,
-    )
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    baseline_qham = encoding_cls(n_modes).encode(fham)
     baseline_weight = pauli_weight(baseline_qham)[0]
 
-    opt_qham = clifford_heuristic_encoding(
-        ipowers=ipow,
-        symplectics=sym,
-        signatures=["+-", "++--"],
-        coeffs=[ones, twos],
+    opt_qham = baseline_qham.clifford_heuristic(
         temperature=float(n_modes),
         coefficient_weighted=False,
         seed=42,
@@ -63,26 +48,12 @@ def test_clifford_heuristic_does_not_increase_coeff_pauli_weight(encoding_cls, w
     e_nuc = water_data["constant_energy"]
     n_modes = ones.shape[0]
 
-    enc = encoding_cls(n_modes)
-    ipow, sym = enc._build_symplectic_matrix()
-    vacuum = enc.vacuum_state.astype(bool)
-
-    baseline_qham = encode(
-        ipowers=ipow,
-        symplectics=sym,
-        vacuum_state=vacuum,
-        signatures=["+-", "++--"],
-        coeffs=[ones, twos],
-        constant_energy=e_nuc,
-    )
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    baseline_qham = encoding_cls(n_modes).encode(fham)
     baseline_weight = coefficient_pauli_weight(baseline_qham)[0]
 
-    opt_qham = clifford_heuristic_encoding(
-        ipowers=ipow,
-        symplectics=sym,
-        signatures=["+-", "++--"],
-        coeffs=[ones, twos],
-        temperature=2*float(n_modes),
+    opt_qham = baseline_qham.clifford_heuristic(
+        temperature=2 * float(n_modes),
         coefficient_weighted=True,
         seed=42,
     )
@@ -94,17 +65,14 @@ def test_clifford_heuristic_does_not_increase_coeff_pauli_weight(encoding_cls, w
 def test_clifford_heuristic_seed_is_reproducible(h2_mol_data_sets):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
     n_modes = ones.shape[0]
 
-    enc = JKMN(n_modes)
-    ipow, sym = enc._build_symplectic_matrix()
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    qham = JKMN(n_modes).encode(fham)
 
     def run(seed):
-        return clifford_heuristic_encoding(
-            ipowers=ipow,
-            symplectics=sym,
-            signatures=["+-", "++--"],
-            coeffs=[ones, twos],
+        return qham.clifford_heuristic(
             temperature=float(n_modes),
             coefficient_weighted=False,
             seed=seed,
@@ -119,39 +87,93 @@ def test_clifford_heuristic_preserves_constant_energy(h2_mol_data_sets):
     n_modes = ones.shape[0]
     constant_energy = 3.14
 
-    enc = JKMN(n_modes)
-    ipow, sym = enc._build_symplectic_matrix()
+    fham_base = molecular_hamiltonian(ones, twos, 0.0)
+    fham_const = molecular_hamiltonian(ones, twos, constant_energy)
 
-    common_kwargs = dict(
-        ipowers=ipow,
-        symplectics=sym,
-        signatures=["+-", "++--"],
-        coeffs=[ones, twos],
-        temperature=float(n_modes),
-        coefficient_weighted=False,
-        seed=42,
+    enc = JKMN(n_modes)
+    qham_base = enc.encode(fham_base).clifford_heuristic(
+        temperature=float(n_modes), coefficient_weighted=False, seed=42,
+    )
+    qham_const = JKMN(n_modes).encode(fham_const).clifford_heuristic(
+        temperature=float(n_modes), coefficient_weighted=False, seed=42,
     )
 
-    qham_base = clifford_heuristic_encoding(**common_kwargs)
-    qham = clifford_heuristic_encoding(**common_kwargs, constant_energy=constant_energy)
-
-    identity_key = "I" * (sym.shape[1] // 2)
+    identity_key = "I" * qham_const.n_qubits
     base_identity = qham_base.get(identity_key, complex(0)).real
-    assert identity_key in qham
-    assert abs(qham[identity_key].real - base_identity - constant_energy) < 1e-10
+    assert identity_key in qham_const
+    assert abs(qham_const[identity_key].real - base_identity - constant_energy) < 1e-10
 
 
-def test_encode_clifford_heuristic_method_preserves_eigenvalues(h2_mol_data_sets):
+def test_clifford_heuristic_preserves_eigenvalues(h2_mol_data_sets):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]
     n_modes = ones.shape[0]
 
     fham = molecular_hamiltonian(ones, twos, e_nuc)
-    qham = JKMN(n_modes).encode_clifford_heuristic(fham, seed=42)
+    qham = JKMN(n_modes).encode(fham).clifford_heuristic(seed=42)
 
     assert len(qham) > 0
+    assert isinstance(qham, QubitHamiltonian)
 
     ofop = _qham_to_ofop(qham)
     diag, _ = eigsh(get_sparse_operator(ofop), k=2 * n_modes, which="SA")
     assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
+
+
+def test_randomised_subsystem_descent_does_not_increase_pauli_weight(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    baseline_qham = JordanWigner(n_modes).encode(fham)
+    baseline_weight = pauli_weight(baseline_qham)[0]
+
+    opt_qham = baseline_qham.randomised_subsystem_descent(
+        iterations=4,
+        subsystem_dimension=max(2, baseline_qham.n_qubits // 2),
+        temperature=float(n_modes),
+        coefficient_weighted=False,
+        sampler="uniform",
+        seed=42,
+    )
+
+    assert isinstance(opt_qham, QubitHamiltonian)
+    assert opt_qham.n_qubits == baseline_qham.n_qubits
+    assert pauli_weight(opt_qham)[0] <= baseline_weight
+
+
+@pytest.mark.parametrize("sampler", ["full_system", "uniform", "hamming"])
+def test_randomised_subsystem_descent_samplers(sampler, h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    qham = JKMN(n_modes).encode(fham)
+
+    opt = qham.randomised_subsystem_descent(
+        iterations=2,
+        subsystem_dimension=2,
+        temperature=float(n_modes),
+        sampler=sampler,
+        seed=7,
+    )
+    assert isinstance(opt, QubitHamiltonian)
+    assert opt.n_qubits == qham.n_qubits
+
+
+def test_randomised_subsystem_descent_unknown_sampler_raises(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    n_modes = ones.shape[0]
+    fham = molecular_hamiltonian(ones, twos, 0.0)
+    qham = JordanWigner(n_modes).encode(fham)
+
+    with pytest.raises(ValueError):
+        qham.randomised_subsystem_descent(
+            iterations=1, subsystem_dimension=2, sampler="bogus", seed=0,
+        )

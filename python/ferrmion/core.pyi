@@ -31,6 +31,7 @@ def clifford_heuristic(
     temperature: float,
     coefficient_weighted: bool,
     seed: int | None = None,
+    clifford_subset: str = ...,
 ) -> dict: ...
 def randomised_subsystem_descent(
     qham: dict[str, complex],
@@ -41,6 +42,7 @@ def randomised_subsystem_descent(
     coefficient_weighted: bool = ...,
     sampler: str = ...,
     seed: int | None = None,
+    clifford_subset: str = ...,
 ) -> dict: ...
 def anneal_enumerations(
     ipowers: npt.NDArray[np.uint8],

@@ -18,6 +18,25 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use rand_xoshiro_legacy::Xoshiro256PlusPlus as LegacyXoshiro256PlusPlus;
 use std::sync::{Arc, Mutex};
 
+/// Annealing parameters.
+///
+/// Common to [`OptimalEnumeration`] and [`CliffordHeuristic`].
+pub struct AnnealingParameters {
+    pub temperature: f64,
+    pub max_iterations: u64,
+    pub seed: u64,
+}
+
+impl AnnealingParameters {
+    pub fn new(temperature: f64, max_iterations: usize, seed: usize) -> Self {
+        AnnealingParameters {
+            temperature: temperature.abs(),
+            max_iterations: max_iterations as u64,
+            seed: seed as u64,
+        }
+    }
+}
+
 struct OptimalEnumeration {
     msparse: MajoranaSparse,
     encoding: MajoranaEncoding,
@@ -104,10 +123,9 @@ impl Anneal for OptimalEnumeration {
 pub fn anneal_enumerations(
     msparse: MajoranaSparse,
     encoding: MajoranaEncoding,
-    temperature: f64,
+    params: AnnealingParameters,
     initial_guess: ArrayView1<usize>,
     coefficient_weighted: bool,
-    seed: u64,
 ) -> Result<(f64, Array1<usize>), Error> {
     assert_eq!(
         initial_guess.len(),
@@ -119,7 +137,7 @@ pub fn anneal_enumerations(
     // permutation-move RNG (inside `OptimalEnumeration`) and the argmin solver
     // RNG (which drives acceptance decisions) consume independent streams
     // while remaining fully reproducible.
-    let mut master = Xoshiro256PlusPlus::seed_from_u64(seed);
+    let mut master = Xoshiro256PlusPlus::seed_from_u64(params.seed);
     let operator_seed: u64 = master.next_u64();
     let solver_seed: u64 = master.next_u64();
 
@@ -130,14 +148,18 @@ pub fn anneal_enumerations(
     // reproducibility. We use the rand_xoshiro 0.6 RNG type because argmin
     // 0.10's solver expects the older `rand_core 0.6::RngCore` trait.
     let solver = SimulatedAnnealing::new_with_rng(
-        temperature,
+        params.temperature,
         LegacyXoshiro256PlusPlus::seed_from_u64(solver_seed),
     )?
     .with_temp_func(SATempFunc::Boltzmann)
     .with_stall_best(250);
 
     let res = Executor::new(operator, solver)
-        .configure(|state| state.param(initial_guess.to_owned()).max_iters(1_000))
+        .configure(|state| {
+            state
+                .param(initial_guess.to_owned())
+                .max_iters(params.max_iterations)
+        })
         .run()?;
 
     let final_state = res.state();

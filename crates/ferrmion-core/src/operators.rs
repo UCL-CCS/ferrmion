@@ -647,6 +647,18 @@ impl SymplecticMatrix {
             ipowers: self.ipowers.view_mut(),
         }
     }
+
+    /// Apply a sequence of Clifford gates to this matrix in-place.
+    pub fn apply_clifford_chain(&mut self, chain: &[CliffordOperator]) {
+        let mut transpose = self.transpose();
+        for op in chain {
+            match op {
+                CliffordOperator::H(idx) => transpose.haddamard(*idx),
+                CliffordOperator::S(idx) => transpose.phasegate(*idx),
+                CliffordOperator::CNOT { control, target } => transpose.cnot(*control, *target),
+            }
+        }
+    }
 }
 
 impl PauliWeight for SymplecticMatrix {

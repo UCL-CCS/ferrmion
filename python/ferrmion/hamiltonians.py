@@ -30,6 +30,7 @@ class QubitHamiltonian(dict[str, complex]):
         temperature: float | None = None,
         coefficient_weighted: bool = False,
         seed: int | None = None,
+        clifford_subset: str = "chs",
     ) -> "QubitHamiltonian":
         """Optimise this Hamiltonian via Clifford-heuristic simulated annealing.
 
@@ -37,6 +38,10 @@ class QubitHamiltonian(dict[str, complex]):
             temperature: Initial annealing temperature. Defaults to ``2 * n_qubits``.
             coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
             seed: Seed for the RNG. Defaults to ``1017`` when omitted.
+            clifford_subset: Gate families to sample from. One of ``"all"``, ``"c"``, ``"ch"``,
+                ``"cs"``, ``"chs"`` (default), or ``"vp"`` (vacuum-preserving: uniform pick
+                between a single ``S`` or a single ``CNOT``, which together stabilise the
+                ``|0…0⟩`` vacuum of any ternary-tree-derived encoding).
 
         Returns:
             QubitHamiltonian: The optimised Hamiltonian.
@@ -53,6 +58,7 @@ class QubitHamiltonian(dict[str, complex]):
                 temperature=temperature,
                 coefficient_weighted=coefficient_weighted,
                 seed=seed,
+                clifford_subset=clifford_subset,
             )
         )
 
@@ -64,6 +70,7 @@ class QubitHamiltonian(dict[str, complex]):
         coefficient_weighted: bool = False,
         sampler: str = "hamming",
         seed: int | None = None,
+        clifford_subset: str = "chs",
     ) -> "QubitHamiltonian":
         """Iteratively optimise this Hamiltonian via Clifford-heuristic simulated annealing.
 
@@ -74,6 +81,9 @@ class QubitHamiltonian(dict[str, complex]):
             coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
             sampler: Subsystem sampling strategy: ``"full_system"``, ``"uniform"``, or ``"hamming"``.
             seed: Seed for the RNG. Defaults to ``1017`` when omitted.
+            clifford_subset: Gate families to sample from. One of ``"all"``, ``"c"``, ``"ch"``,
+                ``"cs"``, ``"chs"`` (default), or ``"vp"`` (vacuum-preserving: uniform pick
+                between a single ``S`` or a single ``CNOT``).
 
         Returns:
             QubitHamiltonian: The optimised Hamiltonian.
@@ -93,6 +103,7 @@ class QubitHamiltonian(dict[str, complex]):
                 coefficient_weighted=coefficient_weighted,
                 sampler=sampler,
                 seed=seed,
+                clifford_subset=clifford_subset,
             )
         )
 

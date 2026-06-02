@@ -15,15 +15,7 @@ use ferrmion_core::operators::{
     FermionProduct, FermionProductError, LadderOperator, MajoranaSparse, SymplecticMatrix,
     SymplecticOperator,
 };
-use ferrmion_core::optimise::hatt as core_hatt;
-use ferrmion_core::optimise::topphatt;
-use ferrmion_core::optimise::HattError;
-use ferrmion_core::optimise::NodeOrderHeuristic;
-use ferrmion_core::optimise::ToppHattError;
-use ferrmion_core::optimise::{
-    anneal_enumerations, apply_clifford_chain, clifford_heuristic_optimisation,
-    randomised_subsystem_descent, SubsystemSampler,
-};
+use ferrmion_core::optimise::*;
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ferrmion_core::utils::*;
 use log::debug;
@@ -37,6 +29,7 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::types::{IntoPyDict, PyComplex, PyDict, PyInt, PyString, PyTuple};
 use pyo3::{prelude::*, pymodule, Bound};
 use std::collections::HashMap;
+use std::str::FromStr;
 
 /// Local error type bridging `ferrmion_core` errors to `PyErr`.
 ///
@@ -101,6 +94,12 @@ impl From<FermionProductError> for CoreError {
 
 impl From<MaxNTOError> for CoreError {
     fn from(e: MaxNTOError) -> Self {
+        CoreError::Value(e.to_string())
+    }
+}
+
+impl From<CliffordHeuristicError> for CoreError {
+    fn from(e: CliffordHeuristicError) -> Self {
         CoreError::Value(e.to_string())
     }
 }
@@ -459,7 +458,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         temperature: f64,
         initial_guess: PyReadonlyArray1<usize>,
         coefficient_weighted: bool,
-        seed: Option<u64>,
+        seed: Option<usize>,
     ) -> Result<(Bound<'py, PyArray1<u8>>, Bound<'py, PyArray2<bool>>), CoreError> {
         let initial_guess = initial_guess.as_array();
 
@@ -481,10 +480,9 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         (_, best_mode_enumeration) = anneal_enumerations(
             msparse,
             encoding,
-            temperature,
+            AnnealingParameters::new(temperature, 1000, seed.unwrap_or(1017)),
             initial_guess,
             coefficient_weighted,
-            seed.unwrap_or(1017),
         )
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
@@ -519,13 +517,15 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     temperature: Annealing temperature (higher = more random exploration).
     ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
     ///     seed: Seed for the RNG driving gate choices. Defaults to ``1017``.
+    ///     clifford_subset: Gate families to sample from. One of ``"all"``, ``"ch"``,
+    ///         ``"cs"``, ``"chs"`` (default).
     ///
     /// Returns:
     ///     Dictionary mapping Pauli strings to complex coefficients.
     #[pyfn(m)]
     #[pyo3(
         name = "clifford_heuristic",
-        signature = (qham, n_qubits, temperature, coefficient_weighted, seed = None),
+        signature = (qham, n_qubits, temperature, coefficient_weighted, seed = None, clifford_subset = "chs".to_string()),
     )]
     fn wrap_clifford_heuristic<'py>(
         py: Python<'py>,
@@ -534,21 +534,24 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         temperature: f64,
         coefficient_weighted: bool,
         seed: Option<u64>,
+        clifford_subset: String,
     ) -> Result<Bound<'py, PyDict>, CoreError> {
+        let clifford_subset = CliffordSubset::from_str(&clifford_subset)?;
         let qham_rust: QubitHamiltonian = qham.into_iter().collect();
         let mut sym_ham = SymplecticHamiltonian::from_qubit_hamiltonian(&qham_rust, n_qubits);
 
-        let (_, best_chain) = clifford_heuristic_optimisation(
+        let result = clifford_heuristic_optimisation(
             &mut sym_ham,
             temperature,
             coefficient_weighted,
             seed.unwrap_or(1017),
             None,
+            Some(clifford_subset),
         )
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
-        let opt_sym_ham = apply_clifford_chain(sym_ham, &best_chain);
-        Ok(opt_sym_ham.to_qubit_hamiltonian().into_py_dict(py)?)
+        sym_ham.operators.apply_clifford_chain(&result.chain);
+        Ok(sym_ham.to_qubit_hamiltonian().into_py_dict(py)?)
     }
 
     /// Iteratively optimise a qubit Hamiltonian by Clifford descent on randomly sampled subsystems.
@@ -562,6 +565,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
     ///     sampler: Subsystem sampling strategy. One of ``"full_system"``, ``"uniform"``, ``"hamming"``.
     ///     seed: Seed for the RNG. Defaults to ``1017``.
+    ///     clifford_subset: Gate families to sample from. One of ``"all"``, ``"ch"``,
+    ///         ``"cs"``, ``"chs"`` (default).
     ///
     /// Returns:
     ///     Dictionary mapping Pauli strings to complex coefficients.
@@ -578,6 +583,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             coefficient_weighted = false,
             sampler = "uniform".to_string(),
             seed = None,
+            clifford_subset = "chs".to_string(),
         ),
     )]
     fn wrap_randomised_subsystem_descent<'py>(
@@ -589,7 +595,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         subsystem_dimension: usize,
         coefficient_weighted: bool,
         sampler: String,
-        seed: Option<u64>,
+        seed: Option<usize>,
+        clifford_subset: String,
     ) -> Result<Bound<'py, PyDict>, CoreError> {
         let sampler = match sampler.as_str() {
             "full_system" => SubsystemSampler::FullSystem,
@@ -601,16 +608,16 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                 )))
             }
         };
+        let clifford_subset = CliffordSubset::from_str(&clifford_subset.to_lowercase())?;
         let qham_rust: QubitHamiltonian = qham.into_iter().collect();
         let sym_ham = SymplecticHamiltonian::from_qubit_hamiltonian(&qham_rust, n_qubits);
         let opt = randomised_subsystem_descent(
             sym_ham,
-            iterations,
-            temperature,
+            AnnealingParameters::new(temperature, iterations, seed.unwrap_or(1017)),
             coefficient_weighted,
-            seed.unwrap_or(1017),
             sampler,
             subsystem_dimension,
+            Some(clifford_subset),
         );
         Ok(opt.to_qubit_hamiltonian().into_py_dict(py)?)
     }
@@ -1104,7 +1111,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
                     av
                 })
                 .collect();
-        let (tree, weight) = core_hatt(simplified_terms, n_modes)?;
+        let (tree, weight) = hatt(simplified_terms, n_modes)?;
         debug!("HATT finished with weight {weight}");
         Ok((tree.to_flatpack(), weight))
     }

@@ -177,3 +177,71 @@ def test_randomised_subsystem_descent_unknown_sampler_raises(h2_mol_data_sets):
         qham.randomised_subsystem_descent(
             iterations=1, subsystem_dimension=2, sampler="bogus", seed=0,
         )
+
+
+def test_clifford_heuristic_vp_does_not_increase_pauli_weight(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    baseline_qham = JKMN(n_modes).encode(fham)
+    baseline_weight = pauli_weight(baseline_qham)[0]
+
+    opt_qham = baseline_qham.clifford_heuristic(
+        temperature=float(n_modes),
+        coefficient_weighted=False,
+        seed=42,
+        clifford_subset="vp",
+    )
+
+    assert pauli_weight(opt_qham)[0] <= baseline_weight
+
+
+def test_clifford_heuristic_vp_seed_is_reproducible(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    qham = JKMN(n_modes).encode(fham)
+
+    def run():
+        return qham.clifford_heuristic(
+            temperature=float(n_modes),
+            coefficient_weighted=False,
+            seed=42,
+            clifford_subset="vp",
+        )
+
+    assert run() == run()
+
+
+def test_clifford_heuristic_vp_preserves_eigenvalues(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    e_nuc = h2_mol_data_sets["constant_energy"]
+    n_modes = ones.shape[0]
+
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    qham = JKMN(n_modes).encode(fham).clifford_heuristic(
+        seed=42, clifford_subset="vp",
+    )
+
+    assert isinstance(qham, QubitHamiltonian)
+    ofop = _qham_to_ofop(qham)
+    diag, _ = eigsh(get_sparse_operator(ofop), k=2 * n_modes, which="SA")
+    assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
+
+
+def test_clifford_heuristic_unknown_subset_raises(h2_mol_data_sets):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    n_modes = ones.shape[0]
+    fham = molecular_hamiltonian(ones, twos, 0.0)
+    qham = JordanWigner(n_modes).encode(fham)
+
+    with pytest.raises(ValueError):
+        qham.clifford_heuristic(seed=0, clifford_subset="bogus")

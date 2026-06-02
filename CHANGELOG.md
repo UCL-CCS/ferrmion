@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+
+### Changed
+
+### Removed
+
+## [0.9.0] - 2026-06-02
+### Added
 - `NodeOrderHeuristic`s for TOPP-HATT.
   - `min_weight` (default): evaluate every active node and keep the one with the lowest weight.
   - `x_first`: Pick the x-most node on the tree.

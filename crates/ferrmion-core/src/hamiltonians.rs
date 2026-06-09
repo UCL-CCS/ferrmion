@@ -2,7 +2,7 @@ use crate::operators::{
     CoefficientPauliWeight, PauliWeight, SymplecticMatrix, SymplecticOperatorView,
 };
 use ahash::RandomState;
-use ndarray::{Array1, Array2, Zip};
+use ndarray::{Array1, Array2, Axis, Zip};
 use num_complex::Complex64;
 use std::collections::HashMap;
 
@@ -111,6 +111,93 @@ impl SymplecticHamiltonian {
             }
         }
         result
+    }
+
+    /// Sort rows in-place, keeping each coefficient paired with its operator row.
+    ///
+    /// Rows are ordered lexicographically by x_block, then z_block, then ipower.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::operators::SymplecticMatrix;
+    /// use ferrmion_core::hamiltonians::SymplecticHamiltonian;
+    /// use ndarray::{arr1, arr2};
+    ///
+    /// // Row 0 is "XI" (coefficient 1.0), row 1 is "IX" (coefficient 2.0).
+    /// // After sorting, "IX" < "XI" so the rows swap.
+    /// let ops = SymplecticMatrix::new(
+    ///     arr2(&[[true, false], [false, true]]),
+    ///     arr2(&[[false, false], [false, false]]),
+    /// );
+    /// let mut ham = SymplecticHamiltonian::new(ops, arr1(&[1.0, 2.0]));
+    /// ham.sort_rows();
+    /// let (first, _) = ham.operators.view_row(0).to_pauli_string();
+    /// assert_eq!(first, "IX");
+    /// assert_eq!(ham.coefficients[0], 2.0);
+    /// ```
+    pub fn sort_rows(&mut self) {
+        let n = self.operators.x_block.nrows();
+        let mut indices: Vec<usize> = (0..n).collect();
+        indices.sort_unstable_by(|&a, &b| {
+            self.operators.view_row(a).cmp(&self.operators.view_row(b))
+        });
+        self.operators.x_block = self.operators.x_block.select(Axis(0), &indices);
+        self.operators.z_block = self.operators.z_block.select(Axis(0), &indices);
+        self.operators.ipowers = self.operators.ipowers.select(Axis(0), &indices);
+        self.coefficients = self.coefficients.select(Axis(0), &indices);
+    }
+
+    /// Deduplicate consecutive equal operator rows by summing their coefficients.
+    ///
+    /// Rows must be sorted (e.g. via [`sort_rows`]) before calling this method.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::operators::SymplecticMatrix;
+    /// use ferrmion_core::hamiltonians::SymplecticHamiltonian;
+    /// use ndarray::{arr1, arr2};
+    ///
+    /// let ops = SymplecticMatrix::new(
+    ///     arr2(&[[true, false], [true, false], [false, true]]),
+    ///     arr2(&[[false, false], [false, false], [false, false]]),
+    /// );
+    /// let mut ham = SymplecticHamiltonian::new(ops, arr1(&[1.0, 2.0, 3.0]));
+    /// // already sorted; first two rows are identical
+    /// ham.dedup();
+    /// assert_eq!(ham.coefficients.len(), 2);
+    /// assert_eq!(ham.coefficients[0], 3.0);
+    /// assert_eq!(ham.coefficients[1], 3.0);
+    /// ```
+    pub fn dedup(&mut self) {
+        let n = self.operators.x_block.nrows();
+        if n == 0 {
+            return;
+        }
+        let mut keep: Vec<usize> = vec![0];
+        let mut summed: Vec<f64> = vec![self.coefficients[0]];
+        for i in 1..n {
+            if self.operators.view_row(i)
+                == self.operators.view_row(
+                    *keep
+                        .last()
+                        .expect("keep is non-empty; initialised with index 0"),
+                )
+            {
+                *summed
+                    .last_mut()
+                    .expect("summed is non-empty; initialised with coefficients[0]") +=
+                    self.coefficients[i];
+            } else {
+                keep.push(i);
+                summed.push(self.coefficients[i]);
+            }
+        }
+        self.operators.x_block = self.operators.x_block.select(Axis(0), &keep);
+        self.operators.z_block = self.operators.z_block.select(Axis(0), &keep);
+        self.operators.ipowers = self.operators.ipowers.select(Axis(0), &keep);
+        self.coefficients = Array1::from_vec(summed);
     }
 }
 

@@ -506,6 +506,22 @@ impl Mul<&mut ZBasisState> for SymplecticOperatorView<'_> {
     }
 }
 
+impl PartialOrd for SymplecticOperatorView<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SymplecticOperatorView<'_> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.x_block
+            .iter()
+            .cmp(other.x_block.iter())
+            .then(self.z_block.iter().cmp(other.z_block.iter()))
+            .then(self.ipower.cmp(&other.ipower))
+    }
+}
+
 /// A collection of Pauli operators in symplectic form.
 ///
 /// Each row represents one Pauli operator. The `x_block` and `z_block` matrices
@@ -658,6 +674,33 @@ impl SymplecticMatrix {
                 CliffordOperator::CNOT { control, target } => transpose.cnot(*control, *target),
             }
         }
+    }
+
+    /// Sort rows in-place in lexicographic order.
+    ///
+    /// Rows are ordered by `x_block` first, then `z_block`, then `ipower`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::operators::SymplecticMatrix;
+    /// use ndarray::arr2;
+    ///
+    /// let mut mat = SymplecticMatrix::new(
+    ///     arr2(&[[false, true], [true, false]]),
+    ///     arr2(&[[false, false], [false, false]]),
+    /// );
+    /// mat.sort_rows();
+    /// let (first, _) = mat.view_row(0).to_pauli_string();
+    /// assert_eq!(first, "IX");
+    /// ```
+    pub fn sort_rows(&mut self) {
+        let n = self.x_block.nrows();
+        let mut indices: Vec<usize> = (0..n).collect();
+        indices.sort_unstable_by(|&a, &b| self.view_row(a).cmp(&self.view_row(b)));
+        self.x_block = self.x_block.select(Axis(0), &indices);
+        self.z_block = self.z_block.select(Axis(0), &indices);
+        self.ipowers = self.ipowers.select(Axis(0), &indices);
     }
 }
 

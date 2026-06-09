@@ -1,6 +1,7 @@
 use crate::operators::{
     CoefficientPauliWeight, PauliWeight, SymplecticMatrix, SymplecticOperatorView,
 };
+use crate::spaces::Qubit;
 use ahash::RandomState;
 use ndarray::{Array1, Array2, Axis, Zip};
 use num_complex::Complex64;
@@ -17,15 +18,24 @@ use std::collections::HashMap;
 /// use ferrmion_core::hamiltonians::QubitHamiltonian;
 /// use num_complex::Complex64;
 ///
-/// let mut ham = QubitHamiltonian::default();
+/// let QubitHamiltonian(mut ham) = QubitHamiltonian::default();
 /// ham.insert("XYZ".to_string(), Complex64::new(1.0, 0.0));
 /// assert_eq!(ham.len(), 1);
 /// ```
-pub type QubitHamiltonian = HashMap<String, Complex64, RandomState>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct QubitHamiltonian(pub HashMap<String, Complex64, RandomState>);
+
+impl Qubit for QubitHamiltonian {}
+
+impl Default for QubitHamiltonian {
+    fn default() -> Self {
+        Self(HashMap::with_capacity_and_hasher(0, RandomState::default()))
+    }
+}
 
 impl PauliWeight for QubitHamiltonian {
     fn pauli_weight(&self) -> usize {
-        self.keys().fold(0, |acc, term: &String| {
+        self.0.keys().fold(0, |acc, term: &String| {
             let n_identity = term.chars().filter(|c| c == &'I').count();
             acc + (term.len() - n_identity)
         })
@@ -34,7 +44,7 @@ impl PauliWeight for QubitHamiltonian {
 
 impl CoefficientPauliWeight for QubitHamiltonian {
     fn coeff_pauli_weight(&self) -> f64 {
-        self.iter().fold(0., |acc, (term, coeff)| {
+        self.0.iter().fold(0., |acc, (term, coeff)| {
             let n_identity = term.chars().filter(|c| c == &'I').count();
             acc + (term.len() - n_identity) as f64 * coeff.norm()
         })
@@ -47,6 +57,8 @@ pub struct SymplecticHamiltonian {
     pub operators: SymplecticMatrix,
     pub coefficients: Array1<f64>,
 }
+
+impl Qubit for SymplecticHamiltonian {}
 
 impl SymplecticHamiltonian {
     pub fn new(operators: SymplecticMatrix, coefficients: Array1<f64>) -> Self {
@@ -67,6 +79,7 @@ impl SymplecticHamiltonian {
     /// `total_ipower == 0` before any circuit is applied — meaning
     /// `actual_coeff == stored_coeff` without further phase bookkeeping.
     pub fn from_qubit_hamiltonian(qham: &QubitHamiltonian, n_qubits: usize) -> Self {
+        let qham = &qham.0;
         let n = qham.len();
         let mut x_data = Vec::with_capacity(n * n_qubits);
         let mut z_data = Vec::with_capacity(n * n_qubits);
@@ -105,6 +118,7 @@ impl SymplecticHamiltonian {
             let actual_coeff = Complex64::new(self.coefficients[i], 0.) * phase;
             if actual_coeff.norm() > 1e-12 {
                 result
+                    .0
                     .entry(pauli_str)
                     .and_modify(|e| *e += actual_coeff)
                     .or_insert(actual_coeff);
@@ -139,9 +153,8 @@ impl SymplecticHamiltonian {
     pub fn sort_rows(&mut self) {
         let n = self.operators.x_block.nrows();
         let mut indices: Vec<usize> = (0..n).collect();
-        indices.sort_unstable_by(|&a, &b| {
-            self.operators.view_row(a).cmp(&self.operators.view_row(b))
-        });
+        indices
+            .sort_unstable_by(|&a, &b| self.operators.view_row(a).cmp(&self.operators.view_row(b)));
         self.operators.x_block = self.operators.x_block.select(Axis(0), &indices);
         self.operators.z_block = self.operators.z_block.select(Axis(0), &indices);
         self.operators.ipowers = self.operators.ipowers.select(Axis(0), &indices);

@@ -7,14 +7,13 @@ use crate::operators::{
     CoefficientPauliWeight, FermionProduct, MajoranaProduct, MajoranaSparse, PauliWeight,
     SymplecticMatrix, SymplecticOperator,
 };
+use crate::spaces::{Fermion, Qubit};
 use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
 use crate::utils::{self, icount_to_sign};
-use ahash::RandomState;
 use log::{debug, error};
 use ndarray::{Array1, Array2, Axis, Zip};
 use num_complex::{c64, Complex64};
 use rayon::prelude::*;
-use std::collections::HashMap;
 use thiserror::Error;
 
 /// Trait for encoding fermionic operators into qubit Hamiltonians.
@@ -28,16 +27,16 @@ use thiserror::Error;
 /// use ferrmion_core::encode::majorana::{Encode, MajoranaEncoding};
 /// use ferrmion_core::operators::MajoranaProduct;
 /// use ferrmion_core::encode::ternarytree::TernaryTree;
+/// use ferrmion_core::hamiltonians::QubitHamiltonian;
 /// use num_complex::Complex64;
 ///
 /// let tree = TernaryTree::naive_jordan_wigner(2);
 /// let encoding = tree.build_encoding(2).unwrap();
 /// let mp = MajoranaProduct::new(vec![0, 1], Complex64::new(1.0, 0.0));
-/// let qham = encoding.encode(mp);
+/// let QubitHamiltonian(qham) = encoding.encode(mp);
 /// assert!(!qham.is_empty());
 /// ```
-pub trait Encode<T> {
-    type Output;
+pub trait Encode<In: Fermion, Out: Qubit> {
     /// Encodes the input into a QubitHamiltonian.
     ///
     /// # Examples
@@ -46,7 +45,7 @@ pub trait Encode<T> {
     /// use ferrmion_core::encode::majorana::Encode;
     /// // Example usage would depend on the implementor
     /// ```
-    fn encode(&self, input: T) -> Self::Output;
+    fn encode(&self, input: In) -> Out;
 }
 
 /// Fallible encoding trait for inputs that may not have a valid qubit representation.
@@ -66,10 +65,9 @@ pub trait Encode<T> {
 /// let result = encoding.try_encode(fock);
 /// assert!(result.is_ok());
 /// ```
-pub trait TryEncode<T> {
-    type Output;
+pub trait TryEncode<In: Fermion, Out: Qubit> {
     /// Attempt to encode the input, returning an error if encoding is not possible.
-    fn try_encode(&self, input: T) -> Result<Self::Output, MajoranaEncodingError>;
+    fn try_encode(&self, input: In) -> Result<Out, MajoranaEncodingError>;
 }
 
 /// A fermion-to-qubit encoding defined by its Majorana operator representations.
@@ -99,8 +97,8 @@ pub enum MajoranaEncodingError {
     InvalidVacuumStateError(Array1<bool>),
     #[error("Cannot determine a valid vacuum state from the given Majorana operators.")]
     NoVacuumStateError,
-    #[error("Cannot apply operator 0.5({0:#?} - i{1:#?}) to state {2:?}.")]
-    StateEncodingError((String, u8), (String, u8), Array1<bool>),
+    #[error("Cannot encode Fock state {0:?} to a valid Z basis state.")]
+    NullStateError(Array1<bool>),
 }
 
 impl MajoranaEncoding {
@@ -357,31 +355,19 @@ impl MajoranaEncoding {
         for i in 0..self.n_modes {
             let mut occ = Array1::from_elem(self.n_modes, false);
             occ[i] = true;
-            let state = self
+            let _: ZBasisState = self
                 .try_encode(FockState::new(occ, Complex64::ONE))
                 .map_err(|_| {
                     MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone())
                 })?;
-            if state.is_none() {
-                error!("Creation on mode {i} returns Null state.");
-                return Err(MajoranaEncodingError::InvalidVacuumStateError(
-                    self.vacuum_state.state.clone(),
-                ));
-            }
         }
         // Check the fully-occupied FockState can also be encoded.
         let all_occ = Array1::from_elem(self.n_modes, true);
-        let state = self
+        let _: ZBasisState = self
             .try_encode(FockState::new(all_occ, Complex64::ONE))
             .map_err(|_| {
                 MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone())
             })?;
-        if state.is_none() {
-            error!("Creation on all modes returns Null state.");
-            return Err(MajoranaEncodingError::InvalidVacuumStateError(
-                self.vacuum_state.state.clone(),
-            ));
-        }
         Ok(())
     }
 }
@@ -482,18 +468,16 @@ impl MajoranaEncoding {
             .par_iter()
             .map(|perm| {
                 let enumerated_encoding = self.apply_mode_enumeration(perm.clone());
-                let qham = enumerated_encoding.encode(msparse);
+                let qham: QubitHamiltonian = enumerated_encoding.encode(msparse);
                 (qham.pauli_weight() as f64, qham.coeff_pauli_weight())
             })
             .unzip()
     }
 }
 
-impl Encode<MajoranaProduct> for MajoranaEncoding {
-    type Output = QubitHamiltonian;
+impl Encode<MajoranaProduct, QubitHamiltonian> for MajoranaEncoding {
     fn encode(&self, input: MajoranaProduct) -> QubitHamiltonian {
-        let mut qham: HashMap<String, Complex64, RandomState> =
-            HashMap::with_hasher(RandomState::new());
+        let QubitHamiltonian(mut qham) = QubitHamiltonian::default();
         let operator = input
             .indices
             .iter()
@@ -509,15 +493,13 @@ impl Encode<MajoranaProduct> for MajoranaEncoding {
             utils::icount_to_sign(ipower as usize) * input.coefficient,
         );
 
-        qham
+        QubitHamiltonian(qham)
     }
 }
 
-impl Encode<&MajoranaSparse> for MajoranaEncoding {
-    type Output = QubitHamiltonian;
-
+impl Encode<&MajoranaSparse, QubitHamiltonian> for MajoranaEncoding {
     fn encode(&self, input: &MajoranaSparse) -> QubitHamiltonian {
-        let mut qham: QubitHamiltonian = HashMap::with_hasher(RandomState::new());
+        let QubitHamiltonian(mut qham) = QubitHamiltonian::default();
         let paulis_ipowers: Vec<(String, u8)> = input
             .indices
             .par_iter()
@@ -549,12 +531,11 @@ impl Encode<&MajoranaSparse> for MajoranaEncoding {
                     .collect::<String>(),
             )
             .or_insert(c64(0., 0.)) += input.constant;
-        qham.into_iter().filter(|(_, v)| v.norm() > 1e-16).collect()
+        QubitHamiltonian(qham.into_iter().filter(|(_, v)| v.norm() > 1e-16).collect())
     }
 }
 
-impl Encode<FermionProduct> for MajoranaEncoding {
-    type Output = QubitHamiltonian;
+impl Encode<FermionProduct, QubitHamiltonian> for MajoranaEncoding {
     fn encode(&self, input: FermionProduct) -> QubitHamiltonian {
         let msparse = MajoranaSparse::from(input);
         self.encode(&msparse)
@@ -584,7 +565,7 @@ impl MajoranaEncoding {
     /// let tree = TernaryTree::naive_jordan_wigner(3);
     /// let encoding = tree.build_encoding(3).unwrap();
     /// let fock = FockState::new(arr1(&[true, false, true]), Complex64::ONE);
-    /// let encoded = encoding.try_encode(fock.clone()).unwrap().unwrap();
+    /// let encoded = encoding.try_encode(fock.clone()).unwrap();
     /// let decoded = encoding.decode_zbasis_state(encoded).unwrap();
     /// assert_eq!(decoded.state, fock.state);
     /// ```
@@ -636,7 +617,7 @@ impl MajoranaEncoding {
     /// let tree = TernaryTree::naive_jordan_wigner(3);
     /// let encoding = tree.build_encoding(3).unwrap();
     /// let fock = FockState::new(Array1::from(vec![true, false, true]), Complex64::ONE);
-    /// let encoded = encoding.try_encode(fock.clone()).unwrap().unwrap();
+    /// let encoded = encoding.try_encode(fock.clone()).unwrap();
     /// let ensemble = ZBasisEnsemble::from(vec![encoded]);
     /// let decoded = encoding.decode_zbasis_ensemble(&ensemble);
     /// assert_eq!(decoded[0].as_ref().unwrap().state, fock.state);
@@ -736,12 +717,10 @@ impl MajoranaEncoding {
 /// Note this does not prepare a slater determinant, but rather a single [`ZBasisState`].
 /// This function can therefore be used to convert from a [`MajoranaEncoding`] to an
 /// encoding as a linear combination of fock states.
-impl TryEncode<FockState> for MajoranaEncoding {
-    type Output = Option<ZBasisState>;
-
-    fn try_encode(&self, input: FockState) -> Result<Self::Output, MajoranaEncodingError> {
+impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
+    fn try_encode(&self, input: FockState) -> Result<ZBasisState, MajoranaEncodingError> {
         debug!("\nFock state: {input:?}");
-        let mut maybe_state: Option<ZBasisState> = Some(self.vacuum_state.clone());
+        let mut zstate: ZBasisState = self.vacuum_state.clone();
         #[allow(unused_assignments)]
         let mut left = self.vacuum_state.clone();
         #[allow(unused_assignments)]
@@ -754,47 +733,31 @@ impl TryEncode<FockState> for MajoranaEncoding {
             if !input.state[idx] {
                 continue;
             }
-            debug!("ZState: {maybe_state:?}");
-            if let Some(zstate) = maybe_state {
-                left = self.operators.view_row(2 * idx) * zstate.clone();
-                right = self.operators.view_row(2 * idx + 1) * zstate.clone();
-                debug!("Left: {left:?}");
-                debug!("Right: {right:?}");
-                if left.state != right.state {
-                    let lop = SymplecticOperator::new(
-                        self.operators.ipowers[2 * idx],
-                        self.operators.x_block.row(2 * idx).to_owned(),
-                        self.operators.z_block.row(2 * idx).to_owned(),
-                    );
-                    let rop = SymplecticOperator::new(
-                        self.operators.ipowers[2 * idx + 1],
-                        self.operators.x_block.row(2 * idx + 1).to_owned(),
-                        self.operators.z_block.row(2 * idx + 1).to_owned(),
-                    );
-                    return Err(MajoranaEncodingError::StateEncodingError(
-                        lop.to_pauli_string(),
-                        rop.to_pauli_string(),
-                        zstate.state,
-                    ));
-                }
+            debug!("ZState: {zstate:?}");
+            left = self.operators.view_row(2 * idx) * zstate.clone();
+            right = self.operators.view_row(2 * idx + 1) * zstate.clone();
+            debug!("Left: {left:?}");
+            debug!("Right: {right:?}");
+            if left.state != right.state {
+                return Err(MajoranaEncodingError::NullStateError(input.state));
+            }
 
-                if left.coefficient == Complex64::new(0., -1.) * right.coefficient {
-                    // Real-eigenvalued encodings
-                    maybe_state = Some(ZBasisState::new(left.state, left.coefficient));
-                } else if left.coefficient == Complex64::new(0., 1.) * right.coefficient {
-                    // Coeffs cancel, null state.
-                    error!("Fock state encoded to Null state in Z basis.");
-                    maybe_state = None;
-                } else {
-                    // Coeffs don't cancel, complex coefficients.
-                    maybe_state = Some(ZBasisState::new(
-                        left.state,
-                        left.coefficient - Complex64::new(0., -1.) * right.coefficient,
-                    ));
-                }
-            };
+            if left.coefficient == Complex64::new(0., -1.) * right.coefficient {
+                // Real-eigenvalued encodings
+                zstate = ZBasisState::new(left.state, left.coefficient);
+            } else if left.coefficient == Complex64::new(0., 1.) * right.coefficient {
+                // Coeffs cancel, null state.
+                error!("Fock state encoded to Null state in Z basis.");
+                return Err(MajoranaEncodingError::NullStateError(input.state));
+            } else {
+                // Coeffs don't cancel, complex coefficients.
+                zstate = ZBasisState::new(
+                    left.state,
+                    left.coefficient - Complex64::new(0., -1.) * right.coefficient,
+                );
+            }
         }
-        Ok(maybe_state)
+        Ok(zstate)
     }
 }
 
@@ -824,12 +787,12 @@ mod owned_tests {
 
         let qham = encoding.encode(fprod);
 
-        let mut expected = QubitHamiltonian::with_hasher(RandomState::new());
+        let QubitHamiltonian(mut expected) = QubitHamiltonian::default();
         expected.insert("YX".to_string(), c64(0., 0.25));
         expected.insert("XY".to_string(), c64(0., -0.25));
         expected.insert("XX".to_string(), c64(0.25, 0.));
         expected.insert("YY".to_string(), c64(0.25, 0.));
-        assert_eq!(qham, expected);
+        assert_eq!(qham, QubitHamiltonian(expected));
     }
 
     #[test]
@@ -853,27 +816,27 @@ mod owned_tests {
             MajoranaEncoding::with_vacuum(sym, ZBasisState::zeros(n_qubits)).unwrap();
 
         let mp = MajoranaProduct::new(vec![0], Complex64::new(1.0, 0.));
-        let qham = encoding.encode(mp);
+        let QubitHamiltonian(qham) = encoding.encode(mp);
         assert_eq!(qham.get("XII").unwrap(), &Complex64::new(1., 0.));
 
         let mp = MajoranaProduct::new(vec![0, 0], Complex64::new(1.0, 0.));
-        let qham = encoding.encode(mp);
+        let QubitHamiltonian(qham) = encoding.encode(mp);
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(1.0, 0.));
 
         let mp = MajoranaProduct::new(vec![1, 1], Complex64::new(1.0, 0.));
-        let qham = encoding.encode(mp);
+        let QubitHamiltonian(qham) = encoding.encode(mp);
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(1.0, 0.));
 
         let mp = MajoranaProduct::new(vec![2, 3], Complex64::new(1.0, 0.));
-        let qham = encoding.encode(mp);
+        let QubitHamiltonian(qham) = encoding.encode(mp);
         assert_eq!(qham.get("IZI").unwrap(), &Complex64::new(0., 1.));
 
         let mp = MajoranaProduct::new(vec![3, 2], Complex64::new(1.0, 0.));
-        let qham = encoding.encode(mp);
+        let QubitHamiltonian(qham) = encoding.encode(mp);
         assert_eq!(qham.get("IZI").unwrap(), &Complex64::new(0., -1.));
 
         let mp = MajoranaProduct::new(vec![3, 2, 2, 2], Complex64::new(1.0, 0.));
-        let qham = encoding.encode(mp);
+        let QubitHamiltonian(qham) = encoding.encode(mp);
         assert_eq!(qham.get("IZI").unwrap(), &Complex64::new(0., -1.));
     }
 
@@ -953,7 +916,7 @@ mod owned_tests {
         )
         .unwrap();
         debug!("{:#?}", ms);
-        let qham = encoding.encode(&ms);
+        let QubitHamiltonian(qham) = encoding.encode(&ms);
         debug!("{:#?}", qham);
         // γ₀²=I and γ₁²=I both contribute III with coeff 1 → total 2
         assert_eq!(qham.get("III").unwrap(), &Complex64::new(2., 0.));
@@ -970,8 +933,8 @@ mod owned_tests {
         let tree = TernaryTree::naive_jordan_wigner(6);
         let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
         let result = encoding.try_encode(fockstate);
-        assert!(matches!(result, Ok(Some(_))));
-        assert!(result.unwrap().unwrap().state == arr1(&[true, true, true, false, false, false]));
+        assert!(matches!(result, Ok(_)));
+        assert!(result.unwrap().state == arr1(&[true, true, true, false, false, false]));
     }
 
     #[test]
@@ -982,14 +945,12 @@ mod owned_tests {
         let state1 = Array1::from(vec![true, true, true, false, false, false]);
         let result = encoding
             .try_encode(FockState::new(state1, Complex64::ONE))
-            .unwrap()
             .unwrap();
         assert!(result.state == arr1(&[true, true, true, false, false, false]));
 
         let state2 = Array1::from(vec![true, true, true, true, false, false]);
         let result2 = encoding
             .try_encode(FockState::new(state2, Complex64::ONE))
-            .unwrap()
             .unwrap();
         assert!(result2.state == arr1(&[true, true, true, true, false, false]));
     }
@@ -1002,7 +963,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
             let expected: Array1<bool> = hf_state.into_iter().collect();
             prop_assert_eq!(qubit_hf, expected);
         }
@@ -1012,7 +973,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_parity(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
             // expected_parity = cumsum(reversed) % 2, then reverse back
             let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
             let mut cumsum: usize = 0;
@@ -1031,11 +992,11 @@ mod owned_tests {
             hf_state.extend(vec![false; n - n_electrons]);
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
+            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
             prop_assert_eq!(naive_qubit_hf, Array1::from(hf_state.clone()));
             let mut enumerated_fockstate = FockState::new(Array1::from(hf_state.clone()), Complex64::ONE);
             enumerated_fockstate.reindex(&mode_op_map);
-            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().unwrap().state;
+            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().state;
             let mut expected = vec![false; n];
             for &i in &mode_op_map[..n_electrons] {
                 if i < n {
@@ -1049,7 +1010,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
             let expected: Array1<bool> = hf_state.into_iter().collect();
             prop_assert_eq!(qubit_hf, expected);
         }
@@ -1059,7 +1020,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_parity(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
             // expected_parity = cumsum(reversed) % 2, then reverse back
             let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
             let mut cumsum:usize = 0;
@@ -1078,11 +1039,11 @@ mod owned_tests {
             hf_state.extend(vec![false; n - n_electrons]);
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().unwrap().state;
+            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
             prop_assert_eq!(naive_qubit_hf, Array1::from(hf_state.clone()));
             let mut enumerated_fockstate = FockState::new(Array1::from(hf_state.clone()), Complex64::ONE);
             enumerated_fockstate.reindex(&mode_op_map);
-            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().unwrap().state;
+            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().state;
             let mut expected = vec![false; n];
             for &i in &mode_op_map[..n_electrons] {
                 if i < n {
@@ -1167,7 +1128,7 @@ mod owned_tests {
         for bits in 0u8..16 {
             let occ: Vec<bool> = (0..4).map(|i| (bits >> i) & 1 != 0).collect();
             let fock = FockState::new(Array1::from(occ.clone()), Complex64::ONE);
-            let encoded = encoding.try_encode(fock).unwrap().unwrap();
+            let encoded = encoding.try_encode(fock).unwrap();
             let decoded = encoding.decode_zbasis_state(encoded).unwrap();
             assert_eq!(decoded.state, Array1::from(occ));
         }
@@ -1180,7 +1141,7 @@ mod owned_tests {
         for bits in 0u8..16 {
             let occ: Vec<bool> = (0..4).map(|i| (bits >> i) & 1 != 0).collect();
             let fock = FockState::new(Array1::from(occ.clone()), Complex64::ONE);
-            let encoded = encoding.try_encode(fock).unwrap().unwrap();
+            let encoded = encoding.try_encode(fock).unwrap();
             let decoded = encoding.decode_zbasis_state(encoded).unwrap();
             assert_eq!(decoded.state, Array1::from(occ));
         }
@@ -1201,7 +1162,7 @@ mod owned_tests {
             };
             let encoding = tree.build_encoding(n).expect("valid encoding");
             let fock = FockState::new(Array1::from(hf_state.clone()), Complex64::ONE);
-            let encoded = encoding.try_encode(fock).unwrap().unwrap();
+            let encoded = encoding.try_encode(fock).unwrap();
             let decoded = encoding.decode_zbasis_state(encoded).unwrap();
             let expected: Array1<bool> = hf_state.into_iter().collect();
             prop_assert_eq!(decoded.state, expected);
@@ -1222,7 +1183,7 @@ mod owned_tests {
                 .map(|bits| {
                     let occ: Vec<bool> = (0..4).map(|i| (bits >> i) & 1 != 0).collect();
                     let fock = FockState::new(Array1::from(occ), Complex64::ONE);
-                    encoding.try_encode(fock).unwrap().unwrap()
+                    encoding.try_encode(fock).unwrap()
                 })
                 .collect();
             let ensemble = ZBasisEnsemble::from(encoded_states.clone());
@@ -1260,7 +1221,7 @@ mod owned_tests {
             let encoded_states: Vec<ZBasisState> = hf_states.iter()
                 .map(|occ| {
                     let fock = FockState::new(Array1::from(occ.clone()), Complex64::ONE);
-                    encoding.try_encode(fock).unwrap().unwrap()
+                    encoding.try_encode(fock).unwrap()
                 })
                 .collect();
             let ensemble = ZBasisEnsemble::from(encoded_states.clone());

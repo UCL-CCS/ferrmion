@@ -14,7 +14,7 @@
 //!   and G is the sampled clifford operator.
 use crate::hamiltonians::SymplecticHamiltonian;
 use crate::operators::{
-    CliffordOperator, CoefficientPauliWeight, PauliWeight, SymplecticMatrixTranspose,
+    Clifford, CoefficientPauliWeight, PauliWeight, SymplecticMatrixTranspose,
 };
 use crate::optimise::encoding::AnnealingParameters;
 use argmin::{
@@ -67,36 +67,36 @@ impl CliffordSubset {
         rng: &mut Xoshiro256PlusPlus,
         control: usize,
         target: usize,
-    ) -> Vec<CliffordOperator> {
+    ) -> Vec<Clifford> {
         match self {
             CliffordSubset::All => {
                 let op = rng.random_range(0..3);
                 match op {
-                    0 => vec![CliffordOperator::H(control)],
-                    1 => vec![CliffordOperator::S(control)],
-                    2 => vec![CliffordOperator::CNOT { control, target }],
+                    0 => vec![Clifford::H(control)],
+                    1 => vec![Clifford::S(control)],
+                    2 => vec![Clifford::CNOT { control, target }],
                     _ => unreachable!(),
                 }
             }
-            CliffordSubset::C => vec![CliffordOperator::CNOT { control, target }],
+            CliffordSubset::C => vec![Clifford::CNOT { control, target }],
             CliffordSubset::CH => vec![
-                CliffordOperator::H(control),
-                CliffordOperator::CNOT { control, target },
+                Clifford::H(control),
+                Clifford::CNOT { control, target },
             ],
             CliffordSubset::CS => vec![
-                CliffordOperator::S(control),
-                CliffordOperator::CNOT { control, target },
+                Clifford::S(control),
+                Clifford::CNOT { control, target },
             ],
             CliffordSubset::CHS => {
                 let op = rng.random_range(0..2);
                 match op {
                     0 => vec![
-                        CliffordOperator::S(control),
-                        CliffordOperator::CNOT { control, target },
+                        Clifford::S(control),
+                        Clifford::CNOT { control, target },
                     ],
                     1 => vec![
-                        CliffordOperator::H(control),
-                        CliffordOperator::CNOT { control, target },
+                        Clifford::H(control),
+                        Clifford::CNOT { control, target },
                     ],
                     _ => unreachable!(),
                 }
@@ -104,8 +104,8 @@ impl CliffordSubset {
             CliffordSubset::VP => {
                 let op = rng.random_range(0..2);
                 match op {
-                    0 => vec![CliffordOperator::S(control)],
-                    _ => vec![CliffordOperator::CNOT { control, target }],
+                    0 => vec![Clifford::S(control)],
+                    _ => vec![Clifford::CNOT { control, target }],
                 }
             }
         }
@@ -155,7 +155,7 @@ impl<'ham> CliffordHeuristic<'ham> {
 }
 
 impl<'ham> CostFunction for CliffordHeuristic<'ham> {
-    type Param = Vec<CliffordOperator>;
+    type Param = Vec<Clifford>;
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
@@ -174,15 +174,15 @@ impl<'ham> CostFunction for CliffordHeuristic<'ham> {
 }
 
 impl<'ham> Anneal for CliffordHeuristic<'ham> {
-    type Param = Vec<CliffordOperator>;
-    type Output = Vec<CliffordOperator>;
+    type Param = Vec<Clifford>;
+    type Output = Vec<Clifford>;
     type Float = f64;
 
     fn anneal(
         &self,
-        param: &Vec<CliffordOperator>,
+        param: &Vec<Clifford>,
         temp: f64,
-    ) -> Result<Vec<CliffordOperator>, Error> {
+    ) -> Result<Vec<Clifford>, Error> {
         let mut next_param = param.to_vec();
         let mut rng = self.rng.lock().unwrap();
 
@@ -206,7 +206,7 @@ pub struct CliffordHeuristicResult {
     /// Final cost (Pauli weight or coefficient-weighted Pauli weight) of the best chain.
     pub cost: f64,
     /// The best Clifford operator chain found.
-    pub chain: Vec<CliffordOperator>,
+    pub chain: Vec<Clifford>,
 }
 
 /// Optimise a [`SymplecticHamiltonian`] using the clifford heuristic method.
@@ -253,7 +253,7 @@ pub fn clifford_heuristic_optimisation(
     .with_stall_best(250);
 
     let res = Executor::new(operator, solver)
-        .configure(|state| state.param(Vec::<CliffordOperator>::new()).max_iters(1_000))
+        .configure(|state| state.param(Vec::<Clifford>::new()).max_iters(1_000))
         .run()?;
 
     let final_state = res.state();
@@ -375,7 +375,7 @@ mod tests {
 
         for op in &result.chain {
             assert!(
-                matches!(op, CliffordOperator::S(_) | CliffordOperator::CNOT { .. }),
+                matches!(op, Clifford::S(_) | Clifford::CNOT { .. }),
                 "VP chain emitted non-stabilising gate: {op:?}"
             );
         }

@@ -261,8 +261,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         );
         let zstate = encoding.try_encode(fockstate);
         match zstate {
-            Ok(None) => Err(CoreError::Value("HF state encoded to null.".to_string())),
-            Ok(Some(state)) => Ok(PyArray1::from_owned_array(py, state.state)),
+            Ok(state) => Ok(PyArray1::from_owned_array(py, state.state)),
             Err(e) => Err(e.into()),
         }
     }
@@ -537,7 +536,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         clifford_subset: String,
     ) -> Result<Bound<'py, PyDict>, CoreError> {
         let clifford_subset = CliffordSubset::from_str(&clifford_subset)?;
-        let qham_rust: QubitHamiltonian = qham.into_iter().collect();
+        let qham_rust = QubitHamiltonian(qham.into_iter().collect());
         let mut sym_ham = SymplecticHamiltonian::from_qubit_hamiltonian(&qham_rust, n_qubits);
 
         let result = clifford_heuristic_optimisation(
@@ -551,7 +550,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
         sym_ham.operators.apply_clifford_chain(&result.chain);
-        Ok(sym_ham.to_qubit_hamiltonian().into_py_dict(py)?)
+        Ok(sym_ham.to_qubit_hamiltonian().0.into_py_dict(py)?)
     }
 
     /// Iteratively optimise a qubit Hamiltonian by Clifford descent on randomly sampled subsystems.
@@ -609,7 +608,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             }
         };
         let clifford_subset = CliffordSubset::from_str(&clifford_subset.to_lowercase())?;
-        let qham_rust: QubitHamiltonian = qham.into_iter().collect();
+        let qham_rust = QubitHamiltonian(qham.into_iter().collect());
         let sym_ham = SymplecticHamiltonian::from_qubit_hamiltonian(&qham_rust, n_qubits);
         let opt = randomised_subsystem_descent(
             sym_ham,
@@ -619,7 +618,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
             subsystem_dimension,
             Some(clifford_subset),
         );
-        Ok(opt.to_qubit_hamiltonian().into_py_dict(py)?)
+        Ok(opt.to_qubit_hamiltonian().0.into_py_dict(py)?)
     }
 
     /// Encode a fermionic Hamiltonian under multiple mode permutations and return
@@ -849,7 +848,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got Hamiltonian");
 
         debug!("Got qham");
-        Ok(qham.into_py_dict(py)?)
+        Ok(qham.0.into_py_dict(py)?)
     }
 
     /// Encode a full fermionic Hamiltonian into a qubit Hamiltonian.
@@ -909,7 +908,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         debug!("Got Hamiltonian");
 
         debug!("Got qham");
-        Ok(qham.into_py_dict(py)?)
+        Ok(qham.0.into_py_dict(py)?)
         // Ok(())
     }
 
@@ -977,7 +976,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         debug!("Got qham");
         debug!("Got qham {:?}", qham);
-        Ok(qham.into_py_dict(py)?)
+        Ok(qham.0.into_py_dict(py)?)
         // Ok(())
     }
 
@@ -1206,7 +1205,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Ok((
             encoding.operators.ipowers.into_pyarray(py),
             combined.into_pyarray(py),
-            qham.into_py_dict(py)?,
+            qham.0.into_py_dict(py)?,
             encoding.vacuum_state.state.into_pyarray(py),
         ))
     }

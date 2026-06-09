@@ -8,5 +8,6 @@ pub mod encode;
 pub mod hamiltonians;
 pub mod operators;
 pub mod optimise;
+pub mod spaces;
 pub mod states;
 pub mod utils;

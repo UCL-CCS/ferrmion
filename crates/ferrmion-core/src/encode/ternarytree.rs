@@ -39,6 +39,16 @@ impl Edge {
     }
 }
 
+impl From<&Edge> for Pauli {
+    fn from(e: &Edge) -> Pauli {
+        match e {
+            Edge::X => Pauli::X,
+            Edge::Y => Pauli::Y,
+            Edge::Z => Pauli::Z,
+        }
+    }
+}
+
 impl fmt::Display for Edge {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.as_char())
@@ -1375,11 +1385,12 @@ mod integration_tests {
             coeffs,
         )
         .unwrap();
-        let mut expected = QubitHamiltonian::new();
+        let QubitHamiltonian(mut expected) = QubitHamiltonian::default();
         expected.insert("IZ".to_string(), c64(-0.5, 0.));
         expected.insert("ZI".to_string(), c64(-0.5, 0.));
         expected.insert("II".to_string(), c64(1., 0.));
-        let qham = encoding.encode(&MajoranaSparse::from(FermionSparse::from(fmat)));
+        let QubitHamiltonian(qham) =
+            encoding.encode(&MajoranaSparse::from(FermionSparse::from(fmat)));
         assert_eq!(expected, qham)
     }
 
@@ -1394,12 +1405,13 @@ mod integration_tests {
             coeffs,
         )
         .unwrap();
-        let mut expected = QubitHamiltonian::new();
+        let QubitHamiltonian(mut expected) = QubitHamiltonian::default();
         expected.insert("XY".to_string(), c64(0., -0.25));
         expected.insert("YX".to_string(), c64(0., 0.25));
         expected.insert("XX".to_string(), c64(0.25, 0.));
         expected.insert("YY".to_string(), c64(0.25, 0.));
-        let qham = encoding.encode(&MajoranaSparse::from(FermionSparse::from(fmat)));
+        let QubitHamiltonian(qham) =
+            encoding.encode(&MajoranaSparse::from(FermionSparse::from(fmat)));
         assert_eq!(expected, qham);
     }
 }

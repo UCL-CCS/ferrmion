@@ -62,14 +62,9 @@ impl PyQubitHamiltonian {
     /// Number of qubits, inferred from the length of any Pauli key.
     #[getter]
     fn n_qubits(&self) -> Result<usize, CoreError> {
-        self.0
-            .0
-            .keys()
-            .next()
-            .map(String::len)
-            .ok_or_else(|| {
-                CoreError::Value("QubitHamiltonian is empty; cannot infer n_qubits".to_string())
-            })
+        self.0 .0.keys().next().map(String::len).ok_or_else(|| {
+            CoreError::Value("QubitHamiltonian is empty; cannot infer n_qubits".to_string())
+        })
     }
 
     fn __len__(&self) -> usize {
@@ -78,7 +73,7 @@ impl PyQubitHamiltonian {
 
     fn __getitem__(&self, key: &str) -> PyResult<Complex64> {
         self.0
-            .0
+             .0
             .get(key)
             .copied()
             .ok_or_else(|| PyKeyError::new_err(key.to_string()))
@@ -93,7 +88,7 @@ impl PyQubitHamiltonian {
 
     fn __delitem__(&mut self, key: &str) -> PyResult<()> {
         self.0
-            .0
+             .0
             .remove(key)
             .map(|_| ())
             .ok_or_else(|| PyKeyError::new_err(key.to_string()))
@@ -248,8 +243,7 @@ impl PyQubitHamiltonian {
         if let Ok(other) = other.extract::<PyRef<'_, Self>>() {
             self.0 == other.0
         } else if let Ok(map) = other.extract::<HashMap<String, Complex64>>() {
-            self.0 .0.len() == map.len()
-                && map.iter().all(|(k, v)| self.0 .0.get(k) == Some(v))
+            self.0 .0.len() == map.len() && map.iter().all(|(k, v)| self.0 .0.get(k) == Some(v))
         } else {
             false
         }
@@ -415,10 +409,7 @@ impl PyFermionHamiltonian {
         )
     }
 
-    fn __getstate__<'py>(
-        &self,
-        py: Python<'py>,
-    ) -> PyResult<(Bound<'py, PyDict>, f64, String)> {
+    fn __getstate__<'py>(&self, py: Python<'py>) -> PyResult<(Bound<'py, PyDict>, f64, String)> {
         Ok((
             self.terms(py)?,
             self.inner.constant_energy,

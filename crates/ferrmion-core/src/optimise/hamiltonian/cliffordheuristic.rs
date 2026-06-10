@@ -13,9 +13,7 @@
 //!   where B is the previous generation hamiltonian
 //!   and G is the sampled clifford operator.
 use crate::hamiltonians::SymplecticHamiltonian;
-use crate::operators::{
-    Clifford, CoefficientPauliWeight, PauliWeight, SymplecticMatrixTranspose,
-};
+use crate::operators::{Clifford, CoefficientPauliWeight, PauliWeight, SymplecticMatrixTranspose};
 use crate::optimise::encoding::AnnealingParameters;
 use argmin::{
     core::{CostFunction, Error, Executor},
@@ -62,12 +60,7 @@ pub enum CliffordSubset {
 }
 
 impl CliffordSubset {
-    fn sample(
-        &self,
-        rng: &mut Xoshiro256PlusPlus,
-        control: usize,
-        target: usize,
-    ) -> Vec<Clifford> {
+    fn sample(&self, rng: &mut Xoshiro256PlusPlus, control: usize, target: usize) -> Vec<Clifford> {
         match self {
             CliffordSubset::All => {
                 let op = rng.random_range(0..3);
@@ -79,25 +72,13 @@ impl CliffordSubset {
                 }
             }
             CliffordSubset::C => vec![Clifford::CNOT { control, target }],
-            CliffordSubset::CH => vec![
-                Clifford::H(control),
-                Clifford::CNOT { control, target },
-            ],
-            CliffordSubset::CS => vec![
-                Clifford::S(control),
-                Clifford::CNOT { control, target },
-            ],
+            CliffordSubset::CH => vec![Clifford::H(control), Clifford::CNOT { control, target }],
+            CliffordSubset::CS => vec![Clifford::S(control), Clifford::CNOT { control, target }],
             CliffordSubset::CHS => {
                 let op = rng.random_range(0..2);
                 match op {
-                    0 => vec![
-                        Clifford::S(control),
-                        Clifford::CNOT { control, target },
-                    ],
-                    1 => vec![
-                        Clifford::H(control),
-                        Clifford::CNOT { control, target },
-                    ],
+                    0 => vec![Clifford::S(control), Clifford::CNOT { control, target }],
+                    1 => vec![Clifford::H(control), Clifford::CNOT { control, target }],
                     _ => unreachable!(),
                 }
             }
@@ -178,11 +159,7 @@ impl<'ham> Anneal for CliffordHeuristic<'ham> {
     type Output = Vec<Clifford>;
     type Float = f64;
 
-    fn anneal(
-        &self,
-        param: &Vec<Clifford>,
-        temp: f64,
-    ) -> Result<Vec<Clifford>, Error> {
+    fn anneal(&self, param: &Vec<Clifford>, temp: f64) -> Result<Vec<Clifford>, Error> {
         let mut next_param = param.to_vec();
         let mut rng = self.rng.lock().unwrap();
 

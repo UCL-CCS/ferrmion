@@ -493,8 +493,9 @@ impl MajoranaSparse {
 
     /// Constructor which takes two vectors, one for operator signatures and another for coefficient matrices.
     ///
-    /// This is primarily used in the PyO3 interop functions, as the FermionHamiltonian python class
-    /// outputs data in this format.
+    /// Prefer building a [`crate::hamiltonians::FermionHamiltonian`] and calling
+    /// `to_majorana_sparse`; this constructor remains as an independent
+    /// conversion path for loose signature/coefficient data.
     ///
     /// <div class="warning">
     /// Coeffients should be given in Spin-orbit format.

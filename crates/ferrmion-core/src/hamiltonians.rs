@@ -118,11 +118,12 @@ impl FermionHamiltonian {
         let action: Vec<LadderOperator> = signature
             .chars()
             .map(|c| {
-                LadderOperator::try_from(c).map_err(|_| FermionHamiltonianError::InvalidSignature(c))
+                LadderOperator::try_from(c)
+                    .map_err(|_| FermionHamiltonianError::InvalidSignature(c))
             })
             .collect::<Result<_, _>>()?;
-        let term =
-            FermionMatrix::new(action, coefficients).map_err(|_| FermionHamiltonianError::InvalidTerm)?;
+        let term = FermionMatrix::new(action, coefficients)
+            .map_err(|_| FermionHamiltonianError::InvalidTerm)?;
         if !self.terms.is_empty() && term.n_modes() != self.n_modes() {
             return Err(FermionHamiltonianError::InconsistentModes {
                 expected: self.n_modes(),

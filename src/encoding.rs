@@ -10,9 +10,7 @@ use ferrmion_core::operators::{FermionProduct, LadderOperator, SymplecticMatrix}
 use ferrmion_core::optimise::{anneal_enumerations, AnnealingParameters};
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ndarray::{s, Array1, Array2, ArrayView1, ArrayView2};
-use numpy::{
-    Complex64, IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2,
-};
+use numpy::{Complex64, IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyType};
 use std::collections::HashSet;
@@ -104,9 +102,8 @@ impl PyMajoranaEncoding {
         let action: Vec<LadderOperator> = signature
             .chars()
             .map(|c| {
-                LadderOperator::try_from(c).map_err(|_| {
-                    CoreError::Value(format!("Invalid signature character: '{c}'"))
-                })
+                LadderOperator::try_from(c)
+                    .map_err(|_| CoreError::Value(format!("Invalid signature character: '{c}'")))
             })
             .collect::<Result<_, _>>()?;
         let indices: Vec<usize> = mode_indices.into_iter().map(|i| i as usize).collect();
@@ -358,7 +355,9 @@ impl PyMajoranaEncoding {
                 coefficient_weighted,
             )
             .map_err(|e| CoreError::Runtime(e.to_string()))?;
-            let encoding = self.0.apply_mode_enumeration(best_mode_enumeration.to_vec());
+            let encoding = self
+                .0
+                .apply_mode_enumeration(best_mode_enumeration.to_vec());
             let qham = encoding.encode(&hamiltonian);
             Ok((qham, encoding))
         })?;
@@ -404,7 +403,8 @@ impl PyMajoranaEncoding {
             .map_err(|e| CoreError::Runtime(e.to_string()))?;
             Ok((
                 cost,
-                self.0.apply_mode_enumeration(best_mode_enumeration.to_vec()),
+                self.0
+                    .apply_mode_enumeration(best_mode_enumeration.to_vec()),
             ))
         })?;
         Ok((cost, Self(encoding)))
@@ -458,10 +458,8 @@ impl PyMajoranaEncoding {
         fermionic_hf_state: PyReadonlyArray1<'py, bool>,
         mode_op_map: Option<PyReadonlyArray1<'py, usize>>,
     ) -> Result<Bound<'py, PyArray1<bool>>, CoreError> {
-        let mut fockstate = FockState::new(
-            fermionic_hf_state.as_array().to_owned(),
-            Complex64::ONE,
-        );
+        let mut fockstate =
+            FockState::new(fermionic_hf_state.as_array().to_owned(), Complex64::ONE);
         if let Some(mode_op_map) = mode_op_map {
             let mode_op_map = mode_op_map.as_array().to_vec();
             fockstate.reindex(&mode_op_map);
@@ -472,7 +470,11 @@ impl PyMajoranaEncoding {
 
     /// The encoded number operator of a mode.
     #[pyo3(signature = (mode, coeff = Complex64::new(1.0, 0.0)))]
-    fn number_operator(&self, mode: i64, coeff: Complex64) -> Result<PyQubitHamiltonian, CoreError> {
+    fn number_operator(
+        &self,
+        mode: i64,
+        coeff: Complex64,
+    ) -> Result<PyQubitHamiltonian, CoreError> {
         Ok(PyQubitHamiltonian(self.encode_product_impl(
             "+-",
             vec![mode, mode],
@@ -552,6 +554,7 @@ impl PyMajoranaEncoding {
     ///
     /// Returns:
     ///     Tuple ``(plain, weighted)`` of two 1D float64 arrays.
+    #[allow(clippy::type_complexity)]
     fn batch_pauli_weights<'py>(
         &self,
         py: Python<'py>,

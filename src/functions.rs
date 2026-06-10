@@ -145,6 +145,7 @@ pub(crate) fn pauli_to_symplectic(
 ///     is a 1D uint array of non-zero column indices and ``coefficient`` is the
 ///     complex scalar weight.
 #[pyfunction]
+#[allow(clippy::type_complexity)]
 pub(crate) fn symplectic_to_sparse<'py>(
     py: Python<'py>,
     symplectic: PyReadonlyArray1<bool>,

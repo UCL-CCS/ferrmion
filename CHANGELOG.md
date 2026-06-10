@@ -7,10 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- `QubitHamiltonian`, `FermionHamiltonian` and `MajoranaEncoding` are now Rust-backed
+  classes exposed directly from `ferrmion.core` via PyO3, replacing the duplicated
+  Python implementations.
+  - `QubitHamiltonian` supports the mapping protocol (`q[key]`, `len(q)`, `dict(q)`,
+    `q.items()`, equality with plain dicts), `pauli_weight`/`coeff_pauli_weight`,
+    pickling, and the Clifford optimisation methods.
+  - `FermionHamiltonian` keeps the fluent builder API
+    (`creation()/annihilation()/with_coefficients()/add_constant()`), exposes
+    `terms`, `signatures_and_coefficients` and `to_sparse_majorana()`, and pickles.
+  - `MajoranaEncoding` provides factory staticmethods (`jordan_wigner`,
+    `bravyi_kitaev`, `parity`, `jkmn`, `maxnto`, `from_flatpack`, `from_json`),
+    properties (`n_modes`, `n_qubits`, `ipowers`, `symplectic_matrix`,
+    `vacuum_state`) and methods (`encode`, `encode_annealed`, `anneal_enumeration`,
+    `decode`, `hartree_fock_state`, `number_operator`, `edge_operator`,
+    `interaction_operator`, `encode_fermion_product`, `batch_pauli_weights`,
+    `apply_mode_enumeration`, `to_json`), with parallel Rust sections releasing
+    the GIL.
+- `FermionHamiltonian` type in `ferrmion-core`, aggregating `FermionMatrix` terms
+  with a constant energy offset and converting to `MajoranaSparse` through the
+  existing `FermionMatrix -> FermionSparse -> MajoranaSparse` chain.
+- `TernaryTree.build_encoding()` returning a `MajoranaEncoding` for the tree, and
+  tree-building classmethods `TernaryTree.jordan_wigner/bravyi_kitaev/parity/jkmn`.
+- `SymplecticMatrix::to_concatenated()` returning the `[x_block | z_block]` layout.
 
 ### Changed
+- `QubitHamiltonian` is no longer a `dict` subclass; it implements the mapping
+  protocol instead (`json.dumps(qham)` no longer works; use `qham.to_dict()`).
+- The public encoding factories (`JordanWigner`, `BravyiKitaev`, `ParityEncoding`,
+  `JKMN`, `MaxNTO`) now return a `MajoranaEncoding` rather than an encoding class
+  instance; they also accept an optional `n_qubits` argument.
+- `encode_annealed` and `encode_topphatt` now return a
+  `(QubitHamiltonian, MajoranaEncoding)` tuple instead of mutating the encoding
+  in place; the `*_annealed`/`*_topphatt` convenience functions still return only
+  the `QubitHamiltonian`.
+- `to_json` now also includes the `vacuum_state`.
+- `ferrmion.core.hatt`, `topphatt` and `encode_topphatt` take a
+  `FermionHamiltonian` instead of loose signature/coefficient lists; `topphatt`
+  returns a `MajoranaEncoding` and `encode_topphatt` returns
+  `(QubitHamiltonian, MajoranaEncoding)`.
+- Constructing a `MajoranaEncoding` from explicit symplectic data without a
+  vacuum state now determines the vacuum automatically (GF(2) solve) instead of
+  assuming the all-zero state.
+- `FermionHamiltonian.terms` returns coefficient tensors with antisymmetry-
+  disallowed entries zeroed (encoded output is unchanged; those terms were
+  always filtered during encoding).
+- The optimize wrappers `anneal_pauli_weight`/`anneal_coefficient_pauli_weight`
+  take a `MajoranaEncoding` and return `(best_cost, MajoranaEncoding)`.
 
 ### Removed
+- Python classes `FermionQubitEncoding`, `MajoranaStringEncoding` and the
+  `MaxNTO` class (use `MajoranaEncoding(...)` and `MajoranaEncoding.maxnto(...)`;
+  a `MaxNTO(n_modes)` function alias remains in `ferrmion.encode`).
+- Superseded `ferrmion.core` functions: `encode`, `encode_fermion_product`,
+  `encode_standard`, `decode`, `hartree_fock_state`, `batch_pauli_weights`,
+  `anneal_enumerations`, `clifford_heuristic`, `randomised_subsystem_descent`,
+  `flatpack_symplectic_matrix`, `maxnto_symplectic_matrix` and
+  `fermionic_to_sparse_majorana` — all replaced by methods on the new classes.
 
 ## [0.9.0] - 2026-06-02
 ### Added

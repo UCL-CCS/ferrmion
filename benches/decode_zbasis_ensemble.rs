@@ -13,7 +13,7 @@ fn make_ensemble(encoding: &MajoranaEncoding, n_states: usize) -> ZBasisEnsemble
             let bits = i % total_states;
             let occ: Vec<bool> = (0..n_modes).map(|j| (bits >> j) & 1 != 0).collect();
             let fock = FockState::new(Array1::from(occ), Complex64::ONE);
-            encoding.try_encode(fock).unwrap().unwrap()
+            encoding.try_encode(fock).unwrap()
         })
         .collect();
     ZBasisEnsemble::from(states)

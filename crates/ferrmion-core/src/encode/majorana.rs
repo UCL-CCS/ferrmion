@@ -78,7 +78,7 @@ pub trait TryEncode<In: Fermion, Out: Qubit> {
 /// The [`SymplecticMatrix`] contains `2 * n_modes` rows. Consecutive pairs of rows
 /// define a single fermionic operator: rows `2i` and `2i+1` correspond to the
 /// two Majorana operators (γ₂ᵢ and γ₂ᵢ₊₁) that make up fermionic mode `i`.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MajoranaEncoding {
     pub operators: SymplecticMatrix,
     pub vacuum_state: ZBasisState,

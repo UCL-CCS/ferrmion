@@ -9,6 +9,7 @@
 //! - Sparse operators: Iterables containing product operator indices and coefficients.
 //! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
 //!
+use crate::operators::Clifford;
 use crate::spaces::Qubit;
 use crate::states::ZBasisState;
 use ndarray::{arr2, Array1, Array2, ArrayView1, Axis, Zip};
@@ -605,6 +606,28 @@ impl SymplecticMatrix {
             x_block: Array2::from_elem((n_modes, n_qubits), false),
             z_block: Array2::from_elem((n_modes, n_qubits), false),
         }
+    }
+
+    /// Concatenate the X and Z blocks into a single `[x_block | z_block]` matrix.
+    ///
+    /// This is the layout used to exchange symplectic matrices with Python.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::operators::SymplecticMatrix;
+    /// use ndarray::arr2;
+    ///
+    /// let mat = SymplecticMatrix::new(
+    ///     arr2(&[[true, false]]),
+    ///     arr2(&[[false, true]]),
+    /// );
+    /// let combined = mat.to_concatenated();
+    /// assert_eq!(combined.shape(), &[1, 4]);
+    /// ```
+    pub fn to_concatenated(&self) -> Array2<bool> {
+        ndarray::concatenate(Axis(1), &[self.x_block.view(), self.z_block.view()])
+            .expect("x_block and z_block have equal row counts")
     }
 
     /// Return a [`SymplecticOperatorView`] for the given row index.

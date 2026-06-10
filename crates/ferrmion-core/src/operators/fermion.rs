@@ -70,6 +70,7 @@ impl FermionProduct {
 /// For spatial orbital index "i", the spin-up mode is at $2i$ and the spin down mode is at $2i+1$
 /// </div>
 ///
+#[derive(Debug, PartialEq, Clone)]
 pub struct FermionMatrix {
     action: Vec<LadderOperator>,
     coefficients: ArrayD<f64>,
@@ -103,6 +104,32 @@ impl FermionMatrix {
         };
         out.zero_disallowed_terms();
         Ok(out)
+    }
+
+    /// The ladder operator sequence of this term.
+    pub fn action(&self) -> &[LadderOperator] {
+        &self.action
+    }
+
+    /// The signature string of this term, e.g. `"+-"` or `"++--"`.
+    pub fn signature(&self) -> String {
+        self.action
+            .iter()
+            .map(|op| match op {
+                LadderOperator::Creation => '+',
+                LadderOperator::Annihilation => '-',
+            })
+            .collect()
+    }
+
+    /// View of the dense coefficient tensor.
+    pub fn coefficients(&self) -> ArrayViewD<'_, f64> {
+        self.coefficients.view()
+    }
+
+    /// The number of fermionic modes (the length of each coefficient dimension).
+    pub fn n_modes(&self) -> usize {
+        self.coefficients.shape().first().copied().unwrap_or(0)
     }
 
     /// Zero out terms with disallowed fermion operator index combinations.

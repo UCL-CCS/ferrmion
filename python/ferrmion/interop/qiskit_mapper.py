@@ -7,7 +7,7 @@ from qiskit.quantum_info import SparsePauliOp
 from qiskit_nature.second_q.mappers.fermionic_mapper import FermionicMapper
 from qiskit_nature.second_q.operators import FermionicOp
 
-from ferrmion import FermionQubitEncoding
+from ferrmion import MajoranaEncoding, TernaryTree
 from ferrmion.utils import symplectic_product, symplectic_to_sparse
 
 logger = logging.getLogger(__name__)
@@ -43,12 +43,15 @@ class QiskitAdapter(FermionicMapper):
 
     """
 
-    def __init__(self, encoding: FermionQubitEncoding) -> None:
+    def __init__(self, encoding: MajoranaEncoding | TernaryTree) -> None:
         """Initialise QiskitAdapter.
 
         Args:
-            encoding (FermionQubitEncoding): A valid ferrmion encoding.
+            encoding (MajoranaEncoding | TernaryTree): A valid ferrmion encoding,
+                or a TernaryTree builder for one.
         """
+        if isinstance(encoding, TernaryTree):
+            encoding = encoding.build_encoding()
         self.encoding = encoding
         super().__init__()
 
@@ -57,7 +60,7 @@ class QiskitAdapter(FermionicMapper):
     ) -> SparsePauliOp:
         """Function required to adapt ferrmion encodings to qiskit_nature.
 
-        Allows the use of a ferrmion.FermionQubitEncoding to encode
+        Allows the use of a ferrmion.MajoranaEncoding to encode
         qiskit_nature.
 
         Args:
@@ -66,7 +69,8 @@ class QiskitAdapter(FermionicMapper):
         """
         if register_length is None:
             register_length = second_q_op.register_length
-        ipowers, symplectics = self.encoding._build_symplectic_matrix()
+        ipowers = self.encoding.ipowers
+        symplectics = self.encoding.symplectic_matrix
 
         term_ops = []
         for term, term_coeff in second_q_op.terms():

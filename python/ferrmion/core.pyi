@@ -3,18 +3,165 @@ import numpy.typing as npt
 
 from .encode.ternary_tree import TTFlatpack
 
-# Rust-accelerated functions exposed to Python
+# Rust-backed classes and functions exposed to Python
+
+class QubitHamiltonian:
+    """Mapping from Pauli strings to complex coefficients."""
+
+    def __init__(self, data: dict[str, complex] | None = None) -> None: ...
+    @property
+    def n_qubits(self) -> int: ...
+    def __len__(self) -> int: ...
+    def __getitem__(self, key: str) -> complex: ...
+    def __setitem__(self, key: str, value: complex) -> None: ...
+    def __delitem__(self, key: str) -> None: ...
+    def __contains__(self, key: str) -> bool: ...
+    def __iter__(self): ...
+    def keys(self) -> list[str]: ...
+    def values(self) -> list[complex]: ...
+    def items(self) -> list[tuple[str, complex]]: ...
+    def get(self, key: str, default=None): ...
+    def to_dict(self) -> dict[str, complex]: ...
+    def pauli_weight(self) -> int: ...
+    def coeff_pauli_weight(self) -> float: ...
+    def clifford_heuristic(
+        self,
+        temperature: float | None = None,
+        coefficient_weighted: bool = False,
+        seed: int | None = None,
+        clifford_subset: str = "chs",
+    ) -> "QubitHamiltonian": ...
+    def randomised_subsystem_descent(
+        self,
+        iterations: int,
+        subsystem_dimension: int,
+        temperature: float | None = None,
+        coefficient_weighted: bool = False,
+        sampler: str = "hamming",
+        seed: int | None = None,
+        clifford_subset: str = "chs",
+    ) -> "QubitHamiltonian": ...
+
+class FermionHamiltonian:
+    """Builder for fermionic Hamiltonians."""
+
+    def __init__(
+        self,
+        *,
+        terms: dict[str, npt.NDArray[np.float64]] | None = None,
+        constant_energy: float = 0.0,
+    ) -> None: ...
+    @property
+    def n_modes(self) -> int: ...
+    constant_energy: float
+    @property
+    def terms(self) -> dict[str, npt.NDArray[np.float64]]: ...
+    @property
+    def signatures_and_coefficients(
+        self,
+    ) -> tuple[list[str], list[npt.NDArray[np.float64]]]: ...
+    def creation(self) -> "FermionHamiltonian": ...
+    def annihilation(self) -> "FermionHamiltonian": ...
+    def with_coefficients(
+        self, coefficients: npt.NDArray[np.float64]
+    ) -> "FermionHamiltonian": ...
+    def add_constant(self, constant_energy: float) -> "FermionHamiltonian": ...
+    def to_sparse_majorana(self) -> dict[tuple[int, ...], complex]: ...
+
+class MajoranaEncoding:
+    """A fermion-to-qubit encoding defined by its Majorana operators."""
+
+    def __init__(
+        self,
+        ipowers: npt.NDArray[np.uint8],
+        symplectics: npt.NDArray[np.bool],
+        vacuum_state: npt.NDArray[np.bool] | None = None,
+    ) -> None: ...
+    @staticmethod
+    def jordan_wigner(n_modes: int, n_qubits: int | None = None) -> "MajoranaEncoding": ...
+    @staticmethod
+    def bravyi_kitaev(n_modes: int, n_qubits: int | None = None) -> "MajoranaEncoding": ...
+    @staticmethod
+    def parity(n_modes: int, n_qubits: int | None = None) -> "MajoranaEncoding": ...
+    @staticmethod
+    def jkmn(n_modes: int, n_qubits: int | None = None) -> "MajoranaEncoding": ...
+    @staticmethod
+    def maxnto(n_modes: int) -> "MajoranaEncoding": ...
+    @staticmethod
+    def from_flatpack(
+        flatpack: TTFlatpack, n_qubits: int | None = None
+    ) -> "MajoranaEncoding": ...
+    @staticmethod
+    def from_json(data: dict) -> "MajoranaEncoding": ...
+    def to_json(self) -> dict: ...
+    @property
+    def n_modes(self) -> int: ...
+    @property
+    def n_qubits(self) -> int: ...
+    @property
+    def ipowers(self) -> npt.NDArray[np.uint8]: ...
+    @property
+    def symplectic_matrix(self) -> npt.NDArray[np.bool]: ...
+    @property
+    def vacuum_state(self) -> npt.NDArray[np.bool]: ...
+    def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian: ...
+    def encode_annealed(
+        self,
+        fham: FermionHamiltonian,
+        temperature: float | None = None,
+        initial_guess: list[int] | None = None,
+        coefficient_weighted: bool = True,
+        seed: int | None = None,
+    ) -> tuple[QubitHamiltonian, "MajoranaEncoding"]: ...
+    def anneal_enumeration(
+        self,
+        fham: FermionHamiltonian,
+        temperature: float | None = None,
+        initial_guess: list[int] | None = None,
+        coefficient_weighted: bool = False,
+        seed: int | None = None,
+    ) -> tuple[float, "MajoranaEncoding"]: ...
+    def decode(self, states: npt.NDArray[np.bool]) -> npt.NDArray[np.bool]: ...
+    def hartree_fock_state(
+        self,
+        fermionic_hf_state: npt.NDArray[np.bool],
+        mode_op_map: npt.NDArray[np.uint] | None = None,
+    ) -> npt.NDArray[np.bool]: ...
+    def number_operator(
+        self, mode: int, coeff: complex = 1.0
+    ) -> QubitHamiltonian: ...
+    def edge_operator(
+        self,
+        edge_indices: tuple[int, int],
+        coeff: complex = 1.0,
+        with_conjugate: bool = False,
+    ) -> QubitHamiltonian: ...
+    def interaction_operator(
+        self,
+        mode_indices: tuple[int, int, int, int],
+        coeff: complex = 1.0,
+        physicist_notation: bool = True,
+        with_conjugate: bool = False,
+    ) -> QubitHamiltonian: ...
+    def encode_fermion_product(
+        self,
+        signature: str,
+        mode_indices: list[int],
+        coeff: complex = 1.0,
+        with_conjugate: bool = False,
+    ) -> QubitHamiltonian: ...
+    def batch_pauli_weights(
+        self,
+        fham: FermionHamiltonian,
+        permutations: npt.NDArray[np.uint],
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
+    def apply_mode_enumeration(
+        self, mode_op_map: list[int]
+    ) -> "MajoranaEncoding": ...
 
 def symplectic_product(
     left: npt.NDArray[np.bool], right: npt.NDArray[np.bool]
 ) -> tuple[int, npt.NDArray[np.bool]]: ...
-def hartree_fock_state(
-    fermionic_hf_state: npt.NDArray[np.bool],
-    mode_op_map: npt.NDArray[np.uint],
-    ipowers: npt.NDArray[np.uint8],
-    symplectic_matrix: npt.NDArray[np.bool],
-    vacuum_state: npt.NDArray[np.bool],
-) -> npt.NDArray[np.bool]: ...
 def symplectic_to_pauli(
     symplectic: npt.NDArray[np.bool], ipower: int
 ) -> tuple[str, int]: ...
@@ -25,97 +172,23 @@ def symplectic_to_sparse(
     symplectic: npt.NDArray[np.bool],
     ipower: int,
 ) -> tuple[str, npt.NDArray[np.uintp], complex]: ...
-def clifford_heuristic(
-    qham: dict[str, complex],
-    n_qubits: int,
-    temperature: float,
-    coefficient_weighted: bool,
-    seed: int | None = None,
-    clifford_subset: str = ...,
-) -> dict: ...
-def randomised_subsystem_descent(
-    qham: dict[str, complex],
-    n_qubits: int,
-    iterations: int,
-    temperature: float,
-    subsystem_dimension: int,
-    coefficient_weighted: bool = ...,
-    sampler: str = ...,
-    seed: int | None = None,
-    clifford_subset: str = ...,
-) -> dict: ...
-def anneal_enumerations(
-    ipowers: npt.NDArray[np.uint8],
-    symplectics: npt.NDArray[np.bool],
-    signatures: list[str],
-    coeffs: list[np.ndarray],
-    temperature: float,
-    initial_guess: npt.NDArray[np.uint],
-    coefficient_weighted: bool,
-    seed: int | None = None,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool]]: ...
-def batch_pauli_weights(
-    ipowers: npt.NDArray[np.uint8],
-    symplectics: npt.NDArray[np.bool],
-    vacuum_state: npt.NDArray[np.bool],
-    signatures: list[str],
-    coeffs: list[np.ndarray],
-    permutations: npt.NDArray[np.uint],
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
-def topphatt(
-    flatpack: list[tuple[np.uint, tuple[np.uint, np.uint, np.uint]]],
-    n_qubits: int,
-    signatures: list[str],
-    coeffs: list[np.ndarray],
-    parallelize: bool,
-    heuristic: str = "min_weight",
-    seed: int | None = None,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
 def hatt(
-    n_modes: int,
-    signatures: list[str],
-    coeffs: list[np.ndarray],
+    fham: FermionHamiltonian,
+    n_modes: int | None = None,
 ) -> tuple[TTFlatpack, int]: ...
-def flatpack_symplectic_matrix(
+def topphatt(
     flatpack: TTFlatpack,
-    n_qubits: None | int,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], npt.NDArray[np.bool]]: ...
-def encode_fermion_product(
-    ipowers: npt.NDArray[np.uint8],
-    symplectics: npt.NDArray[np.bool],
-    signatures: str,
-    indices: list[int],
-    coefficient: complex,
-) -> dict: ...
-def encode(
-    ipowers: npt.NDArray[np.uint8],
-    symplectics: npt.NDArray[np.bool],
-    vacuum_state: npt.NDArray[np.bool],
-    signatures: list[str],
-    coeffs: list[np.ndarray],
-    constant_energy: float,
-) -> dict: ...
-def encode_topphatt(
-    flatpack: list[tuple[np.uint, tuple[np.uint, np.uint, np.uint]]],
     n_qubits: int,
-    signatures: list[str],
-    coeffs: list[np.ndarray],
-    constant_energy: float,
-    parallelize: bool,
+    fham: FermionHamiltonian,
+    parallelize: bool = True,
     heuristic: str = "min_weight",
     seed: int | None = None,
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool], dict, npt.NDArray[np.bool]]: ...
-def fermionic_to_sparse_majorana(
-    signatures: list[str],
-    coeffs: list[np.ndarray],
-    constant_energy: float,
-) -> dict: ...
-def decode(
-    states: npt.NDArray[np.bool],
-    ipowers: npt.NDArray[np.uint8],
-    symplectic_matrix: npt.NDArray[np.bool],
-    vacuum_state: npt.NDArray[np.bool],
-) -> npt.NDArray[np.bool]: ...
-def maxnto_symplectic_matrix(
-    n_modes: int,
-) -> npt.NDArray[np.bool]: ...
+) -> MajoranaEncoding: ...
+def encode_topphatt(
+    flatpack: TTFlatpack,
+    n_qubits: int,
+    fham: FermionHamiltonian,
+    parallelize: bool = True,
+    heuristic: str = "min_weight",
+    seed: int | None = None,
+) -> tuple[QubitHamiltonian, MajoranaEncoding]: ...

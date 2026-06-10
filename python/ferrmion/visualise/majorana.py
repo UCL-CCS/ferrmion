@@ -4,17 +4,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
 
-from ferrmion.encode import FermionQubitEncoding
+from ferrmion.encode import MajoranaEncoding, TernaryTree
 
 
-def symplectic_matshow(encoding: FermionQubitEncoding, title: str | None = None):
+def symplectic_matshow(
+    encoding: MajoranaEncoding | TernaryTree, title: str | None = None
+):
     """Colourised Matplotlib matshow of a symplectic array.
 
     Args:
-        encoding (FermionQubitEncoding): A fermion-qubit encoding.
+        encoding (MajoranaEncoding | TernaryTree): A fermion-qubit encoding.
         title (str | None): Optional plot title.
     """
-    _, symplectics = encoding._build_symplectic_matrix()
+    if isinstance(encoding, TernaryTree):
+        encoding = encoding.build_encoding()
+    symplectics = encoding.symplectic_matrix
     colors = ["linen", "tab:red", "tab:blue", "tab:purple"]
 
     left, right = np.hsplit(symplectics, 2)

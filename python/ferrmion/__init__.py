@@ -4,9 +4,13 @@ This file is ignored by pre-commit as the pyo3 integration requires importing
 rust functions before importing functions from the python module.
 """
 
-from .core import hartree_fock_state, maxnto_symplectic_matrix, symplectic_product
-from .encode import FermionQubitEncoding, MajoranaStringEncoding
-from .encode.maxnto import MaxNTO
+from .core import (
+    FermionHamiltonian,
+    MajoranaEncoding,
+    QubitHamiltonian,
+    symplectic_product,
+)
+from .encode import MaxNTO
 from .encode.ternary_tree_node import TTNode, node_sorter
 
 from .encode.ternary_tree import(
@@ -28,7 +32,7 @@ from .encode.ternary_tree import(
     jkmn_annealed,
     jkmn_topphatt,
 )
-from .hamiltonians import FermionHamiltonian, QubitHamiltonian, molecular_hamiltonian, hubbard_hamiltonian
+from .hamiltonians import molecular_hamiltonian, hubbard_hamiltonian
 from .utils import (
     icount_to_sign,
     pauli_to_symplectic,
@@ -41,8 +45,7 @@ from .utils import (
 )
 
 __all__ = [
-    "FermionQubitEncoding",
-    "MajoranaStringEncoding",
+    "MajoranaEncoding",
     "TernaryTree",
     "TTNode",
     "node_sorter",
@@ -52,15 +55,11 @@ __all__ = [
     "symplectic_unhash",
     "symplectic_product",
     "icount_to_sign",
-    "maxnto_symplectic_matrix",
-    "hartree_fock_state",
     "two_operator_product",
     "FermionHamiltonian",
     "QubitHamiltonian",
     "molecular_hamiltonian",
     "hubbard_hamiltonian",
-    "FermionQubitEncoding",
-    "TernaryTree",
     "JordanWigner",
     "BravyiKitaev",
     "ParityEncoding",

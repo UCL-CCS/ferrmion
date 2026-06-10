@@ -1,7 +1,7 @@
 """Init for encodings."""
 
-from .base import FermionQubitEncoding, MajoranaStringEncoding
-from .maxnto import MaxNTO
+from ferrmion.core import MajoranaEncoding
+
 from .ternary_tree import (
     JKMN,
     BravyiKitaev,
@@ -22,9 +22,17 @@ from .ternary_tree import (
     parity_topphatt,
 )
 
+
+def MaxNTO(n_modes: int) -> MajoranaEncoding:
+    """The MaxNTO k-NTO encoding for ``n_modes`` fermionic modes.
+
+    Alias for :meth:`ferrmion.core.MajoranaEncoding.maxnto`.
+    """
+    return MajoranaEncoding.maxnto(n_modes)
+
+
 __all__ = [
-    "FermionQubitEncoding",
-    "MajoranaStringEncoding",
+    "MajoranaEncoding",
     "TernaryTree",
     "MaxNTO",
     "jordan_wigner",

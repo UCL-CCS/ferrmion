@@ -1,4 +1,8 @@
-"""Class and methods to easily build general Fermion Hamiltonians."""
+"""Factory functions to easily build general Fermion Hamiltonians.
+
+The :class:`QubitHamiltonian` and :class:`FermionHamiltonian` types are
+implemented in Rust and re-exported here from :mod:`ferrmion.core`.
+"""
 
 import logging
 
@@ -6,176 +10,20 @@ import numpy as np
 import numpy.typing as npt
 from numpy.typing import NDArray
 
+from ferrmion.core import FermionHamiltonian, QubitHamiltonian
+
 logger = logging.getLogger(__name__)
 
-
-class QubitHamiltonian(dict[str, complex]):
-    """Mapping from Pauli strings to complex coefficients.
-
-    Subclasses ``dict`` so all standard mapping operations (``q[key]``,
-    ``q.items()``, ``len(q)``, ``q.get(...)``) work as expected, and adds
-    Clifford-based optimisation methods that return a new
-    ``QubitHamiltonian``.
-    """
-
-    @property
-    def n_qubits(self) -> int:
-        """Number of qubits, inferred from the length of any Pauli key."""
-        if not self:
-            raise ValueError("QubitHamiltonian is empty; cannot infer n_qubits")
-        return len(next(iter(self)))
-
-    def clifford_heuristic(
-        self,
-        temperature: float | None = None,
-        coefficient_weighted: bool = False,
-        seed: int | None = None,
-        clifford_subset: str = "chs",
-    ) -> "QubitHamiltonian":
-        """Optimise this Hamiltonian via Clifford-heuristic simulated annealing.
-
-        Args:
-            temperature: Initial annealing temperature. Defaults to ``2 * n_qubits``.
-            coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
-            seed: Seed for the RNG. Defaults to ``1017`` when omitted.
-            clifford_subset: Gate families to sample from. One of ``"all"``, ``"c"``, ``"ch"``,
-                ``"cs"``, ``"chs"`` (default), or ``"vp"`` (vacuum-preserving: uniform pick
-                between a single ``S`` or a single ``CNOT``, which together stabilise the
-                ``|0…0⟩`` vacuum of any ternary-tree-derived encoding).
-
-        Returns:
-            QubitHamiltonian: The optimised Hamiltonian.
-        """
-        from ferrmion.core import clifford_heuristic
-
-        n = self.n_qubits
-        if temperature is None:
-            temperature = float(n)
-        return QubitHamiltonian(
-            clifford_heuristic(
-                qham=dict(self),
-                n_qubits=n,
-                temperature=temperature,
-                coefficient_weighted=coefficient_weighted,
-                seed=seed,
-                clifford_subset=clifford_subset,
-            )
-        )
-
-    def randomised_subsystem_descent(
-        self,
-        iterations: int,
-        subsystem_dimension: int,
-        temperature: float | None = None,
-        coefficient_weighted: bool = False,
-        sampler: str = "hamming",
-        seed: int | None = None,
-        clifford_subset: str = "chs",
-    ) -> "QubitHamiltonian":
-        """Iteratively optimise this Hamiltonian via Clifford-heuristic simulated annealing.
-
-        Args:
-            iterations: Number of subsystem-local Clifford descents to perform.
-            subsystem_dimension: Number of qubits in each sampled subsystem.
-            temperature: Annealing temperature for each descent. Defaults to ``2 * n_qubits``.
-            coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
-            sampler: Subsystem sampling strategy: ``"full_system"``, ``"uniform"``, or ``"hamming"``.
-            seed: Seed for the RNG. Defaults to ``1017`` when omitted.
-            clifford_subset: Gate families to sample from. One of ``"all"``, ``"c"``, ``"ch"``,
-                ``"cs"``, ``"chs"`` (default), or ``"vp"`` (vacuum-preserving: uniform pick
-                between a single ``S`` or a single ``CNOT``).
-
-        Returns:
-            QubitHamiltonian: The optimised Hamiltonian.
-        """
-        from ferrmion.core import randomised_subsystem_descent
-
-        n = self.n_qubits
-        if temperature is None:
-            temperature = float(n)
-        return QubitHamiltonian(
-            randomised_subsystem_descent(
-                qham=dict(self),
-                n_qubits=n,
-                iterations=iterations,
-                temperature=temperature,
-                subsystem_dimension=subsystem_dimension,
-                coefficient_weighted=coefficient_weighted,
-                sampler=sampler,
-                seed=seed,
-                clifford_subset=clifford_subset,
-            )
-        )
-
-
-class FermionHamiltonian:
-    """Class for building Fermionic Hamiltonians."""
-
-    def __init__(self, *, terms: dict[str, NDArray] = {}, constant_energy: float = 0.0):
-        """Initialiser for FermionHamiltonian."""
-        logger.debug("Initialising FermionHamiltonian")
-        self._terms: dict[str, NDArray] = terms
-        self.constant_energy = constant_energy
-        self._next_term = ""
-        self.n_modes = 0
-        self._check_and_set_n_modes()
-
-    def _check_and_set_n_modes(self):
-        if len(self._terms) == 0:
-            pass
-        elif len(self._terms) > 0 and self.n_modes == 0:
-            logger.debug(f"Setting n_modes: {[*self._terms.values()][0]}")
-            self.n_modes = [*self._terms.values()][0].shape[0]
-        else:
-            for term in self._terms.values():
-                if np.any([side != self.n_modes for side in term.shape]):
-                    logger.error(
-                        f"Hamiltonian coefficient {term.shape} must have constant length {self.n_modes} on all dimensions.\n"
-                    )
-                    raise ValueError(
-                        f"Hamiltonian coefficient {term.shape} must have constant length {self.n_modes} on all dimensions."
-                    )
-
-    def __repr__(self):
-        """String representation of FermionHamiltonian."""
-        terms = ", ".join([*self._terms])
-        return f"FermionHamiltonian({terms}, {self.n_modes} modes, constant {self.constant_energy})"
-
-    @property
-    def signatures_and_coefficients(self) -> tuple[list[str], list[NDArray]]:
-        """Return the signature and coefficient of all terms."""
-        sigs: list[str] = []
-        coeffs: list[NDArray] = []
-        for k, v in self._terms.items():
-            sigs.append(k)
-            coeffs.append(v)
-
-        return (sigs, coeffs)
-
-    def creation(self) -> "FermionHamiltonian":
-        """Add a creation term."""
-        self._next_term += "+"
-        return self
-
-    def annihilation(self) -> "FermionHamiltonian":
-        """Add an annihilation term."""
-        self._next_term += "-"
-        return self
-
-    def with_coefficients(self, coefficients: NDArray) -> "FermionHamiltonian":
-        """Add coefficients to the Hamiltonian terms."""
-        if coefficients.ndim != len(self._next_term):
-            logger.error(f"Cannot apply coefficents to term {self._next_term}")
-        else:
-            self._terms[self._next_term] = coefficients
-            self._next_term = ""
-            self._check_and_set_n_modes()
-        return self
-
-    def add_constant(self, constant_energy: float) -> "FermionHamiltonian":
-        """Add a constant term to the Hamiltonian."""
-        self.constant_energy += constant_energy
-        return self
+__all__ = [
+    "FermionHamiltonian",
+    "QubitHamiltonian",
+    "molecular_hamiltonian",
+    "hubbard_hamiltonian",
+    "hubbard_coefficients",
+    "linear_adjacency_matrix",
+    "square_lattice_adjacency_matrix",
+    "cube_lattice_adjacency_matrix",
+]
 
 
 def molecular_hamiltonian(
@@ -201,6 +49,8 @@ def molecular_hamiltonian(
         >>> fham.n_modes
         2
     """
+    one_e_coeffs = np.asarray(one_e_coeffs, dtype=np.float64)
+    two_e_coeffs = np.asarray(two_e_coeffs, dtype=np.float64)
     if physicist_notation:
         terms = {"+-": one_e_coeffs, "++--": two_e_coeffs}
     else:
@@ -349,11 +199,10 @@ def hubbard_hamiltonian(
         adjacency_matrix (npt.NDArray): Adjacency matrix of lattice sites.
         onsite_term (float): Onsite two-electron term.
         hopping_term (float): Kinetic term coefficient.
-        physicist_notation (bool): Set to False for Chemist Notation.
         spinless (bool): Set to True to use single spin Hamiltonian.
 
     Returns:
-        dict[str, float]: A qubit Hamiltonian.
+        FermionHamiltonian: The Hubbard model Hamiltonian.
 
     Example:
         >>> import numpy as np
@@ -369,5 +218,9 @@ def hubbard_hamiltonian(
         n_sites, adjacency_matrix, onsite_term, hopping_term, spinless=spinless
     )
     return FermionHamiltonian(
-        terms={"+-": one_e_coeffs, "+-+-": two_e_coeffs}, constant_energy=0.0
+        terms={
+            "+-": np.asarray(one_e_coeffs, dtype=np.float64),
+            "+-+-": np.asarray(two_e_coeffs, dtype=np.float64),
+        },
+        constant_energy=0.0,
     )

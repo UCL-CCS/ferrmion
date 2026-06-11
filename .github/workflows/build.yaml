@@ -1,46 +1,46 @@
 name: Build
 on:
-  workflow_call:
+    workflow_call:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version:
-          - "3.12"
-          - "3.13"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          # Install a specific version of uv.
-          version: "0.7.12"
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-      - name: Install Dependencies
-        run: |
-          uv venv .venv/
-          uv sync --all-extras --all-groups
-      - name: Check Pre-commits
-        run: |
-          uv run pre-commit install
-          uv run pre-commit run -a
-      - name: Run Pytest
-        run: uv run pytest --cov=ferrmion --cov-report=xml --cov-report=term-missing
-      - name: Run cargo test
-        run: uv run cargo test --workspace
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        if: matrix.python-version == '3.13'
-        with:
-          name: coverage-report
-          path: coverage.xml
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          args: --release --out dist --find-interpreter
-          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          manylinux: auto
+    build:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                python-version:
+                    - "3.12"
+                    - "3.13"
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+            - name: Install uv
+              uses: astral-sh/setup-uv@v5
+              with:
+                  # Install a specific version of uv.
+                  version: "0.7.12"
+                  enable-cache: true
+                  cache-dependency-glob: "uv.lock"
+            - name: Install Dependencies
+              run: |
+                  uv venv .venv/
+                  uv sync --all-extras --all-groups
+            - name: Check Pre-commits
+              run: |
+                  uv run pre-commit install
+                  uv run pre-commit run -a
+            - name: Run Pytest
+              run: uv run pytest --benchmark-skip --cov=ferrmion --cov-report=xml --cov-report=term-missing
+            - name: Run cargo test
+              run: uv run cargo test --workspace
+            - name: Upload coverage report
+              uses: actions/upload-artifact@v4
+              if: matrix.python-version == '3.13'
+              with:
+                  name: coverage-report
+                  path: coverage.xml
+            - name: Build wheels
+              uses: PyO3/maturin-action@v1
+              with:
+                  args: --release --out dist --find-interpreter
+                  sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+                  manylinux: auto

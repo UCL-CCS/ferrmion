@@ -879,7 +879,6 @@ impl<'inner> SymplecticMatrixTranspose<'inner> {
 
 #[cfg(test)]
 mod symplictic_transpose_tests {
-    use proptest::proptest;
 
     use super::SymplecticMatrix;
 

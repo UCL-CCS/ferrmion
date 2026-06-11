@@ -1,13 +1,13 @@
 use crate::operators::{
-    CoefficientPauliWeight, FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse,
+    CoefficientPauliWeight, FermionMatrix, FermionSparse, InteractionArrayVec,
+    InteractionOperatorError, InteractionProduct, LadderOperator, MajoranaProduct, MajoranaSparse,
     PauliWeight, SymplecticMatrix, SymplecticOperatorView,
 };
 use crate::spaces::{Fermion, Qubit};
 use crate::utils::{icount_to_sign, pauli_to_symplectic, COEFFICIENT_TOLERANCE};
-use ahash::RandomState;
+use ahash::{HashMap, HashMapExt};
 use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, Zip};
 use num_complex::Complex64;
-use std::collections::HashMap;
 use thiserror::Error;
 
 /// A qubit Hamiltonian represented as a sparse mapping from Pauli strings to complex coefficients.
@@ -26,13 +26,13 @@ use thiserror::Error;
 /// assert_eq!(ham.len(), 1);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
-pub struct QubitHamiltonian(pub HashMap<String, Complex64, RandomState>);
+pub struct QubitHamiltonian(pub HashMap<String, Complex64>);
 
 impl Qubit for QubitHamiltonian {}
 
 impl Default for QubitHamiltonian {
     fn default() -> Self {
-        Self(HashMap::with_capacity_and_hasher(0, RandomState::default()))
+        Self(HashMap::with_capacity(0))
     }
 }
 
@@ -449,5 +449,54 @@ mod fermion_hamiltonian_tests {
             0.75,
         );
         assert_eq!(fham.to_majorana_sparse(), expected);
+    }
+}
+
+pub struct InteractionHamiltonian {
+    pub terms: HashMap<InteractionArrayVec, Complex64>,
+}
+
+impl Fermion for InteractionHamiltonian {}
+
+impl InteractionHamiltonian {
+    pub fn new() -> Self {
+        Self {
+            terms: HashMap::new(),
+        }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            terms: HashMap::with_capacity(capacity),
+        }
+    }
+
+    pub fn join(&mut self, other: Self) {
+        for (term, coeff) in other.terms {
+            self.terms
+                .entry(term)
+                .and_modify(|c| *c += coeff)
+                .or_insert(coeff);
+        }
+    }
+}
+
+impl Default for InteractionHamiltonian {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TryFrom<MajoranaSparse> for InteractionHamiltonian {
+    type Error = InteractionOperatorError;
+
+    fn try_from(majorana: MajoranaSparse) -> Result<Self, Self::Error> {
+        let mut terms = HashMap::new();
+        for (&indices, &coefficient) in majorana.indices.iter().zip(majorana.coefficients.iter()) {
+            let mp = MajoranaProduct::new(indices.to_vec(), coefficient);
+            let prod = InteractionProduct::try_from(mp)?;
+            terms.insert(prod.try_into()?, coefficient);
+        }
+        Ok(Self { terms })
     }
 }

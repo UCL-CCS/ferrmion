@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TernaryTree.build_encoding()` returning a `MajoranaEncoding` for the tree, and
   tree-building classmethods `TernaryTree.jordan_wigner/bravyi_kitaev/parity/jkmn`.
 - `SymplecticMatrix::to_concatenated()` returning the `[x_block | z_block]` layout.
+- `InteractionOperator`, `EdgeOperator` and `VertexOperator` types.
+- `EvenMajorana` and `OddMajorana` types in addtion to a general `MajoranaOperator`
+  to keep track of majoranas used in composite types.
 
 ### Changed
 - `QubitHamiltonian` is no longer a `dict` subclass; it implements the mapping

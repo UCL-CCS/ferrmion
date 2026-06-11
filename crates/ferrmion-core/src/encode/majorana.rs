@@ -479,12 +479,10 @@ impl MajoranaEncoding {
 impl Encode<MajoranaProduct, QubitHamiltonian> for MajoranaEncoding {
     fn encode(&self, input: MajoranaProduct) -> QubitHamiltonian {
         let QubitHamiltonian(mut qham) = QubitHamiltonian::default();
-        let operator = input
-            .indices
-            .iter()
-            .fold(SymplecticOperator::identity(self.n_qubits), |acc, &ind| {
-                acc * self.operators.view_row(ind)
-            });
+        let operator = input.operators.iter().fold(
+            SymplecticOperator::identity(self.n_qubits),
+            |acc, majorana| acc * self.operators.view_row(majorana.index()),
+        );
         debug!("{:#?}", operator);
         debug!("{:#?}", &operator.to_pauli_string());
         let (pauli, ipower) = operator.to_pauli_string();
@@ -509,8 +507,8 @@ impl Encode<&MajoranaSparse, QubitHamiltonian> for MajoranaEncoding {
                 // Each mul_assign_view reuses the accumulator's arrays instead of
                 // allocating 2 new Array1<bool> per call.
                 let mut operator = SymplecticOperator::identity(self.n_qubits);
-                for &ind in indices.iter() {
-                    let row = self.operators.view_row(ind as usize);
+                for &mode in indices.iter() {
+                    let row = self.operators.view_row(mode as usize);
                     operator.mul_assign_view(&row);
                 }
                 debug!("Operator {:?}", operator);

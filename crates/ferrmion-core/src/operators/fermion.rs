@@ -8,6 +8,7 @@ use ndarray::{arr0, s, Dimension};
 use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, IntoDimension, Zip};
 use num_complex::Complex64;
 use num_complex::{c64, ComplexFloat};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::iter::repeat_n;
 use std::result::Result;
@@ -15,6 +16,25 @@ use tinyvec::ArrayVec;
 
 /// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
 const MAX_MAJORANAS: usize = 7;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Mode(u16);
+
+impl Mode {
+    pub fn new(index: u16) -> Self {
+        Self(index)
+    }
+
+    pub fn as_usize(self) -> usize {
+        (self.0 & 0x7FFF) as usize
+    }
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Self(u16::MAX)
+    }
+}
 
 /*
 Fermion
@@ -317,6 +337,48 @@ mod fermion_tests {
 // /*
 // Majorana
 // */
+//
+/// A single Majorana Operator
+/// Can have either even or odd index.
+#[derive(Debug, Clone, Eq, PartialEq, Copy)]
+pub struct Majorana(u16);
+
+impl Fermion for Majorana {}
+
+impl Majorana {
+    pub fn new(index: u16) -> Self {
+        Self(index)
+    }
+
+    pub fn mode(&self) -> Mode {
+        if self.is_even() {
+            Mode(self.0 / 2)
+        } else {
+            Mode((self.0 - 1) / 2)
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        self.0 as usize
+    }
+
+    pub fn is_even(&self) -> bool {
+        self.0.is_multiple_of(2)
+    }
+}
+
+impl PartialOrd for Majorana {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Majorana {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
 /// Product of Majorana operators, with a complex coefficient.
 ///
 /// # Example
@@ -329,7 +391,7 @@ mod fermion_tests {
 /// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct MajoranaProduct {
-    pub indices: Vec<usize>,
+    pub operators: Vec<Majorana>,
     pub coefficient: Complex64,
 }
 
@@ -337,30 +399,31 @@ impl Fermion for MajoranaProduct {}
 
 impl MajoranaProduct {
     /// Constructor for [`MajoranaProduct`]
-    pub fn new(indices: Vec<usize>, coefficient: Complex64) -> Self {
+    pub fn new(operators: Vec<u16>, coefficient: Complex64) -> Self {
         // out.majorise();
         Self {
-            indices,
+            operators: operators.into_iter().map(Majorana::new).collect(),
             coefficient,
         }
     }
-    /// Sorts indices, applying a -1 coefficient for each swap of unequal indices.
+
+    /// Sorts [`MajoranaOperator`]s, applying a -1 coefficient for each swap of unequal indices.
     ///
     /// Majorana operators obey the commutation relation:
     /// $$\{\gamma_i,\gamma_j} = 2\delta_{i,j$$
     ///
     /// So we can combine terms for products of majorana operators composed with the same indices.
     fn majorise(&mut self) {
-        if self.indices.is_empty() {
+        if self.operators.is_empty() {
             return;
         }
         let mut counter: usize = 0;
-        let mut n = self.indices.len();
+        let mut n = self.operators.len();
         while n > 0 {
             let mut new_n = 0;
             for index in 1..n {
-                if self.indices[index - 1] > self.indices[index] {
-                    self.indices.swap(index - 1, index);
+                if self.operators[index - 1] > self.operators[index] {
+                    self.operators.swap(index - 1, index);
                     counter += 1;
                     new_n = index;
                 }
@@ -392,22 +455,22 @@ impl MajoranaHashMap {
     /// coefficient) into its 2^n majorana components and insert into the map.
     fn append_term(&mut self, action: &[LadderOperator], indices: &[usize], coeff: Complex64) {
         let term_length = action.len();
-        for offset in repeat_n(0usize..=1usize, term_length).multi_cartesian_product() {
+        for offset in repeat_n(0u16..=1u16, term_length).multi_cartesian_product() {
             let scaler = offset
                 .iter()
                 .zip(action.iter())
                 .fold(c64(1., 0.), |acc, (&o, op)| {
-                    acc * op.majorana_coefficients()[o]
+                    acc * op.majorana_coefficients()[o as usize]
                 });
-            let raw_indices: Vec<usize> = indices
+            let raw_indices: Vec<u16> = indices
                 .iter()
                 .zip(&offset)
-                .map(|(&i, &o)| 2 * i + o)
+                .map(|(&i, &o)| 2 * i as u16 + o)
                 .collect();
             let mut mp = MajoranaProduct::new(raw_indices, coeff * scaler);
             mp.majorise();
             let key: ArrayVec<[u16; MAX_MAJORANAS]> =
-                mp.indices.iter().map(|&i| i as u16).collect();
+                mp.operators.iter().map(|m: &Majorana| m.0).collect();
             *self.operators.entry(key).or_insert(Complex64::ZERO) += mp.coefficient;
         }
     }
@@ -661,11 +724,14 @@ mod majorana_tests {
 
     #[test]
     fn test_majorise_do_nothing() {
-        let indices = vec![0, 1];
+        let indices = vec![Majorana(0), Majorana(1)];
+
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        let mut mp = MajoranaProduct::new(vec![], coefficient);
+        mp.operators.push(Majorana(0));
+        mp.operators.push(Majorana(1));
         mp.majorise();
-        assert_eq!(mp.indices, indices.clone());
+        assert_eq!(mp.operators, indices);
         assert_eq!(mp.coefficient, coefficient.clone());
     }
 
@@ -676,7 +742,7 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![0, 1]);
+        assert_eq!(mp.operators, vec![Majorana(0), Majorana(1)]);
         assert_eq!(mp.coefficient, -1. * coefficient);
     }
 
@@ -687,7 +753,13 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![0, 0]);
+        assert_eq!(
+            mp.operators,
+            indices
+                .into_iter()
+                .map(|v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, coefficient);
 
         let indices = vec![0, 1, 0, 1];
@@ -695,7 +767,13 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![0, 0, 1, 1]);
+        assert_eq!(
+            mp.operators,
+            [0, 0, 1, 1]
+                .into_iter()
+                .map(|v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, -1. * coefficient);
 
         let indices = vec![1, 0, 0, 1];
@@ -703,7 +781,13 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![0, 0, 1, 1]);
+        assert_eq!(
+            mp.operators,
+            vec![0, 0, 1, 1]
+                .into_iter()
+                .map(|v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, coefficient);
     }
 
@@ -714,7 +798,13 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![1, 2, 3]);
+        assert_eq!(
+            mp.operators,
+            vec![1, 2, 3]
+                .into_iter()
+                .map(|v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, -1. * coefficient);
 
         let indices = vec![4, 3, 2, 1];
@@ -722,7 +812,13 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![1, 2, 3, 4]);
+        assert_eq!(
+            mp.operators,
+            vec![1, 2, 3, 4]
+                .into_iter()
+                .map(|v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, coefficient);
     }
 
@@ -733,7 +829,13 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![1, 1, 1, 1, 1]);
+        assert_eq!(
+            mp.operators,
+            vec![1, 1, 1, 1, 1]
+                .into_iter()
+                .map(|v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, coefficient);
 
         let indices = vec![1, 1, 1, 1];
@@ -741,23 +843,41 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![1, 1, 1, 1]);
+        assert_eq!(
+            mp.operators,
+            vec![1, 1, 1, 1]
+                .into_iter()
+                .map(|v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, coefficient);
 
-        let indices = vec![1, 1, 1, 0];
+        let indices = vec![1u16, 1, 1, 0];
         let coefficient = c64(10.0, 0.);
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![0, 1, 1, 1]);
+        assert_eq!(
+            mp.operators,
+            [0, 1, 1, 1]
+                .iter()
+                .map(|&v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, -1. * coefficient);
 
-        let indices = vec![1, 1, 0, 1];
+        let indices = vec![1u16, 1, 0, 1];
         let coefficient = c64(10.0, 0.);
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![0, 1, 1, 1]);
+        assert_eq!(
+            mp.operators,
+            [0, 1, 1, 1]
+                .iter()
+                .map(|&v| Majorana::new(v))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(mp.coefficient, coefficient);
 
         let indices = vec![1, 0, 1, 1];
@@ -765,15 +885,21 @@ mod majorana_tests {
         let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![0, 1, 1, 1]);
+        assert_eq!(
+            mp.operators,
+            vec![Majorana(0), Majorana(1), Majorana(1), Majorana(1)]
+        );
         assert_eq!(mp.coefficient, -1. * coefficient);
 
         let indices = vec![0, 1, 1, 1];
         let coefficient = c64(10.0, 0.);
-        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        let mut mp = MajoranaProduct::new(indices, coefficient);
         mp.majorise();
         // debug!("{:#?}", mp);
-        assert_eq!(mp.indices, vec![0, 1, 1, 1]);
+        assert_eq!(
+            mp.operators,
+            vec![Majorana(0), Majorana(1), Majorana(1), Majorana(1)]
+        );
         assert_eq!(mp.coefficient, coefficient);
     }
     #[test]

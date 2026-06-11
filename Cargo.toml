@@ -21,6 +21,7 @@ pyo3-log = "0.12.4"
 log = { version = "0.4", features = ["release_max_level_info"] }
 num-complex = "0.4.6"
 tinyvec = "1.11.0"
+rustworkx-core = "0.17.1"
 
 [dev-dependencies]
 proptest = "1.9.0"

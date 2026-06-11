@@ -1,4 +1,5 @@
 """Tests for the Rust-backed MajoranaEncoding class."""
+import json
 import pickle
 from typing import Callable
 
@@ -59,7 +60,16 @@ def test_from_symplectic_roundtrip(jw_four):
 def test_to_json_from_json_roundtrip(jw_four):
     data = jw_four.to_json()
     assert set(data.keys()) == {"ipowers", "symplectics", "vacuum_state"}
+    assert isinstance(data["ipowers"], list)
+    assert all(isinstance(v, int) for v in data["ipowers"])
+    assert isinstance(data["symplectics"], list)
+    assert isinstance(data["vacuum_state"], list)
     assert MajoranaEncoding.from_json(data) == jw_four
+
+    # The output must actually be JSON-serialisable and survive a full
+    # serialise/deserialise cycle.
+    rebuilt = MajoranaEncoding.from_json(json.loads(json.dumps(data)))
+    assert rebuilt == jw_four
 
 
 def test_hartree_fock_state():

@@ -254,7 +254,10 @@ impl PyMajoranaEncoding {
     /// ``"ipowers"``, ``"symplectics"`` and ``"vacuum_state"`` keys.
     fn to_json<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let output = PyDict::new(py);
-        output.set_item("ipowers", self.0.operators.ipowers.to_vec())?;
+        // Widen u8 -> u32 so PyO3 produces a list of ints rather than `bytes`
+        // (Vec<u8> converts to Python bytes).
+        let ipowers: Vec<u32> = self.0.operators.ipowers.iter().map(|&v| v as u32).collect();
+        output.set_item("ipowers", ipowers)?;
         let symplectics: Vec<Vec<bool>> = self
             .0
             .operators

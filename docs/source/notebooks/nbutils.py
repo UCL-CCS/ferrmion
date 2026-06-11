@@ -35,11 +35,16 @@ def pauli_weights(pauli_hamiltonian: dict[str, float]) -> tuple[float, float, in
     )
 
 
+def as_encoding(tree: fr.MajoranaEncoding | fr.TernaryTree) -> fr.MajoranaEncoding:
+    """Build the encoding for a TernaryTree, or pass an encoding through."""
+    if isinstance(tree, fr.TernaryTree):
+        return tree.build_encoding()
+    return tree
+
 
 def get_naive_result(tree: fr.TernaryTree, fham: fr.FermionHamiltonian):
     print("Getting Naive result...")
     sdmeans_naive = {}
-    ipow, sym = tree._build_symplectic_matrix()
     result = pauli_weights(tree.encode(fham))
     print("Naive result:", result)
 
@@ -51,12 +56,15 @@ def get_naive_result(tree: fr.TernaryTree, fham: fr.FermionHamiltonian):
 
 
 def get_permuation_results(
-    tree: fr.FermionQubitEncoding, fham: fr.FermionHamiltonian, limit: int
+    tree: fr.MajoranaEncoding | fr.TernaryTree, fham: fr.FermionHamiltonian, limit: int
 ):
     print(f"Getting {limit} random results...")
     sdmeans = {}
     sdmeans = {"unscaled": [], "scaled": []}
-    weights = tree._batch_pauli_weights(fham, limit)
+    rng = np.random.default_rng(0)
+    permutations = np.tile(np.arange(fham.n_modes, dtype=np.uintp), (limit, 1))
+    permutations = rng.permuted(permutations, axis=1)
+    weights = as_encoding(tree).batch_pauli_weights(fham, permutations)
     sdmeans["unscaled"] = [w for w in weights[0]]
     sdmeans["scaled"] = [w for w in weights[1]]
     print("Permutation Results")
@@ -67,11 +75,12 @@ def get_permuation_results(
 def get_annealed_result(tree, fham, coef_weight, n_seeds=10):
     print(f"Getting Annealed results ({n_seeds} seeds, coef_weight={coef_weight})...")
     sdmeans_annealed = {"unscaled": [], "scaled": [], "length": []}
+    encoding = as_encoding(tree)
     for seed in range(n_seeds):
-        # To avoid re-annealing between weighted and unweighted (and across seeds)
-        encoding = fr.MajoranaStringEncoding(*tree._build_symplectic_matrix())
         result = pauli_weights(
-            encoding.encode_annealed(fham, coefficient_weighted=coef_weight, seed=seed)
+            encoding.encode_annealed(
+                fham, coefficient_weighted=coef_weight, seed=seed
+            )[0]
         )
         sdmeans_annealed["unscaled"].append(result[0])
         sdmeans_annealed["scaled"].append(result[1])
@@ -85,7 +94,7 @@ def get_topphatt_result(tree, fham, n_random=10):
     results = {}
     for heuristic in ("min_weight", "z_first", "x_first"):
         print(f"Getting rust TOPP-HATT result (heuristic={heuristic})...")
-        result = pauli_weights(tree.encode_topphatt(fham, heuristic=heuristic))
+        result = pauli_weights(tree.encode_topphatt(fham, heuristic=heuristic)[0])
         print(f"TOPP-HATT {heuristic} result:", result)
         results[heuristic] = {
             "unscaled": result[0],
@@ -97,7 +106,7 @@ def get_topphatt_result(tree, fham, n_random=10):
     random_results = {"unscaled": [], "scaled": [], "length": []}
     for seed in range(n_random):
         result = pauli_weights(
-            tree.encode_topphatt(fham, heuristic="random", seed=seed)
+            tree.encode_topphatt(fham, heuristic="random", seed=seed)[0]
         )
         random_results["unscaled"].append(result[0])
         random_results["scaled"].append(result[1])

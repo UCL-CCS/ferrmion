@@ -7,7 +7,6 @@ from ferrmion.encode import TernaryTree
 from pathlib import Path
 from openfermion import InteractionOperator, jordan_wigner, get_sparse_operator, QubitOperator
 from scipy.sparse.linalg import eigsh
-from ferrmion.core import fermionic_to_sparse_majorana
 from ferrmion.hamiltonians import FermionHamiltonian
 
 
@@ -69,7 +68,9 @@ def water_fham(water_data) -> FermionHamiltonian:
 
 @fixture(scope="module")
 def water_sparse_majorana(water_data) -> dict:
-    return fermionic_to_sparse_majorana(["+-", "++--"], [water_data["ones"], water_data["twos"]], 0)
+    return FermionHamiltonian(
+        terms={"+-": water_data["ones"], "++--": water_data["twos"]}
+    ).to_sparse_majorana()
 
 def diagonalise_pauli_hamiltonian(qham, neigvals:int):
     ofop = QubitOperator()

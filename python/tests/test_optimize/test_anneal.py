@@ -10,7 +10,6 @@ from ferrmion.encode.ternary_tree import (
 )
 import numpy as np
 import pytest
-from ferrmion.core import anneal_enumerations, encode
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
 
@@ -24,10 +23,12 @@ def test_core_anneal_standard_h2_eigvals_equal_expected(encoding, coeff_weight, 
     e_nuc = h2_mol_data_sets["constant_energy"]
     n_modes = ones.shape[0]
 
-    tree = encoding(n_modes)
-    ipow, sym = tree._build_symplectic_matrix()
-    anneal_enumerations(ipow, sym, ["+-","++--"], [ones, twos], n_modes, np.array([*range(n_modes)], dtype=np.uint), coeff_weight)
-    qham = encode(ipowers=ipow,symplectics= sym, vacuum_state=tree.vacuum_state.astype(bool), signatures=["+-","++--"], coeffs=[ones, twos], constant_energy=e_nuc)
+    enc = encoding(n_modes)
+    fham = molecular_hamiltonian(ones, twos, e_nuc)
+    _, annealed = enc.anneal_enumeration(
+        fham, temperature=n_modes, coefficient_weighted=coeff_weight
+    )
+    qham = annealed.encode(fham)
 
 
     ofop = QubitOperator()
@@ -50,9 +51,10 @@ def test_anneal_seed_is_reproducible(h2_mol_data_sets):
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = molecular_hamiltonian(ones, twos, e_nuc)
-    qham_a = JKMN(fham.n_modes).encode_annealed(fham, seed=42)
-    qham_b = JKMN(fham.n_modes).encode_annealed(fham, seed=42)
+    qham_a, enc_a = JKMN(fham.n_modes).encode_annealed(fham, seed=42)
+    qham_b, enc_b = JKMN(fham.n_modes).encode_annealed(fham, seed=42)
     assert qham_a == qham_b
+    assert enc_a == enc_b
 
 
 def test_anneal_seed_varies_output(h2_mol_data_sets):
@@ -67,7 +69,7 @@ def test_anneal_seed_varies_output(h2_mol_data_sets):
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = molecular_hamiltonian(ones, twos, e_nuc)
     qhams = [
-        JKMN(fham.n_modes).encode_annealed(fham, seed=s)
+        JKMN(fham.n_modes).encode_annealed(fham, seed=s)[0]
         for s in (0, 1, 7, 42, 99, 1234)
     ]
     if fham.n_modes <= 4:
@@ -89,6 +91,6 @@ def test_anneal_default_seed_matches_explicit_1017(h2_mol_data_sets):
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = molecular_hamiltonian(ones, twos, e_nuc)
-    qham_default = JKMN(fham.n_modes).encode_annealed(fham)
-    qham_1017 = JKMN(fham.n_modes).encode_annealed(fham, seed=1017)
+    qham_default = JKMN(fham.n_modes).encode_annealed(fham)[0]
+    qham_1017 = JKMN(fham.n_modes).encode_annealed(fham, seed=1017)[0]
     assert qham_default == qham_1017

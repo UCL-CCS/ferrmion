@@ -1,86 +1,53 @@
 """Optimisation with simulated annealing."""
 
-import numpy as np
-import numpy.typing as npt
-
-from ferrmion.core import anneal_enumerations
-from ferrmion.encode import FermionQubitEncoding
-from ferrmion.hamiltonians import FermionHamiltonian
+from ferrmion.core import FermionHamiltonian, MajoranaEncoding
 
 
 def anneal_pauli_weight(
-    encoding: FermionQubitEncoding,
+    encoding: MajoranaEncoding,
     hamiltonian: FermionHamiltonian,
     initial_guess: list[int] | None = None,
     temperature: int | None = None,
-) -> tuple[float, npt.NDArray[np.uint]]:
+) -> tuple[float, MajoranaEncoding]:
     """Optimise over mode enumeration with Pauli-weight as cost function.
 
     Args:
-        encoding (FermionQubitEncoding): Encoding to optimise.
+        encoding (MajoranaEncoding): Encoding to optimise.
         hamiltonian (FermionHamiltonian): A hamiltonian of fermionic operators.
         initial_guess (list[int] | None): Optional inital enumeration for simulated annealing.
         temperature (int | None): Optional annealing temperature.
 
     Returns:
-        tuple[float, npt.NDArray[np.uint]]: Weight, mode enumeration.
+        tuple[float, MajoranaEncoding]: Best cost found, optimised encoding.
     """
-    ipow, sym = encoding._build_symplectic_matrix()
-    sigs, coeffs = hamiltonian.signatures_and_coefficients
-
-    if initial_guess is None:
-        initial_guess_array = np.arange(hamiltonian.n_modes, dtype=np.uint)
-    elif isinstance(initial_guess, list):
-        initial_guess_array = np.array([*initial_guess], dtype=np.uint)
-
-    if temperature is None:
-        temperature = hamiltonian.n_modes
-
-    return anneal_enumerations(
-        ipowers=ipow,
-        symplectics=sym,
-        signatures=sigs,
-        coeffs=coeffs,
+    return encoding.anneal_enumeration(
+        hamiltonian,
         temperature=temperature,
-        initial_guess=initial_guess_array,
+        initial_guess=initial_guess,
         coefficient_weighted=False,
     )
 
 
 def anneal_coefficient_pauli_weight(
-    encoding: FermionQubitEncoding,
+    encoding: MajoranaEncoding,
     hamiltonian: FermionHamiltonian,
     initial_guess: list[int] | None = None,
     temperature: int | None = None,
-) -> tuple[float, npt.NDArray[np.uint]]:
-    """Optimise over mode enumeration with Pauli-weight as cost function.
+) -> tuple[float, MajoranaEncoding]:
+    """Optimise over mode enumeration with coefficient Pauli-weight as cost function.
 
     Args:
-        encoding (FermionQubitEncoding): Encoding to optimise.
+        encoding (MajoranaEncoding): Encoding to optimise.
         hamiltonian (FermionHamiltonian): A hamiltonian of fermionic operators.
         initial_guess (list[int] | None): Optional inital enumeration for simulated annealing.
         temperature (int | None): Optional annealing temperature.
 
     Returns:
-        tuple[float, npt.NDArray[np.uint]]: Weight, mode enumeration.
+        tuple[float, MajoranaEncoding]: Best cost found, optimised encoding.
     """
-    ipow, sym = encoding._build_symplectic_matrix()
-    sigs, coeffs = hamiltonian.signatures_and_coefficients
-
-    if initial_guess is None:
-        initial_guess_array = np.arange(hamiltonian.n_modes, dtype=np.uint)
-    elif isinstance(initial_guess, list):
-        initial_guess_array = np.array([*initial_guess], dtype=np.uint)
-
-    if temperature is None:
-        temperature = hamiltonian.n_modes
-
-    return anneal_enumerations(
-        ipowers=ipow,
-        symplectics=sym,
-        signatures=sigs,
-        coeffs=coeffs,
+    return encoding.anneal_enumeration(
+        hamiltonian,
         temperature=temperature,
-        initial_guess=initial_guess_array,
+        initial_guess=initial_guess,
         coefficient_weighted=True,
     )

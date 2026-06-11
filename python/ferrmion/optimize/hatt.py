@@ -33,8 +33,7 @@ def hamiltonian_adaptive_ternary_tree(
     """
     from ferrmion import core
 
-    sigs, coeffs = fham.signatures_and_coefficients
-    flatpack, weight = core.hatt(n_modes, sigs, coeffs)
+    flatpack, weight = core.hatt(fham, n_modes)
     tree = TernaryTree.from_flatpack(flatpack)
     # `from_flatpack` installs a DFS-ordered enumeration; switch to the
     # sort-by-`node_sorter` ordering produced by `default_enumeration_scheme`

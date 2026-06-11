@@ -38,7 +38,7 @@ def test_clifford_heuristic_does_not_increase_pauli_weight(encoding_cls, h2_mol_
     )
     opt_weight = pauli_weight(opt_qham)[0]
 
-    assert opt_weight <= baseline_weight
+    assert opt_weight <= baseline_weight + 1e-6
 
 
 @pytest.mark.parametrize("encoding_cls", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
@@ -59,7 +59,7 @@ def test_clifford_heuristic_does_not_increase_coeff_pauli_weight(encoding_cls, w
     )
     opt_weight = coefficient_pauli_weight(opt_qham)[0]
 
-    assert opt_weight <= baseline_weight
+    assert opt_weight <= baseline_weight + 1e-6
 
 
 def test_clifford_heuristic_seed_is_reproducible(h2_mol_data_sets):

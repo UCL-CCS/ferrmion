@@ -5,6 +5,8 @@ use num_complex::Complex64;
 use std::ops::Mul;
 use thiserror::Error;
 
+use crate::spaces::{Fermion, Qubit};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum BraKet {
     Bra,
@@ -95,6 +97,8 @@ impl ZBasisState {
         Self::new(Array1::from_elem(n_qubits, false), Complex64::new(1., 0.))
     }
 }
+
+impl Qubit for ZBasisState {}
 
 impl State for ZBasisState {
     fn normalize(&mut self) {
@@ -323,6 +327,9 @@ impl FockState {
         }
     }
 }
+
+impl Fermion for FockState {}
+
 impl State for FockState {
     fn normalize(&mut self) {
         let norm = self.coefficient.norm();

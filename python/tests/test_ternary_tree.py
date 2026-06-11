@@ -17,7 +17,7 @@ from ferrmion.encode.ternary_tree import (
 )
 from ferrmion.utils import symplectic_hash, symplectic_unhash
 from ferrmion.hamiltonians import molecular_hamiltonian
-from ferrmion.core import flatpack_symplectic_matrix
+from ferrmion.core import MajoranaEncoding
 from .conftest import diagonalise_pauli_hamiltonian
 from hypothesis import given,strategies as st
 from hypothesis.extra.numpy import arrays
@@ -79,15 +79,20 @@ def test_standard_encoding_functions(six_mode_tree):
     assert JW(6) != JW
     assert JW(6) != "JW(6)"
 
-    jw_different_enumeration = JW(6)
-    jw_different_enumeration.enumeration_scheme["z"] = JW(6).enumeration_scheme["zz"]
-    jw_different_enumeration.enumeration_scheme["zz"] = JW(6).enumeration_scheme["z"]
-    assert JW(6) != jw_different_enumeration
+    jw_tree = TernaryTree.jordan_wigner(6)
+    swapped_scheme = {**jw_tree.enumeration_scheme}
+    swapped_scheme["z"], swapped_scheme["zz"] = (
+        swapped_scheme["zz"],
+        swapped_scheme["z"],
+    )
+    different_tree = TernaryTree.jordan_wigner(6)
+    different_tree.enumeration_scheme = swapped_scheme
+    assert JW(6) != different_tree.build_encoding()
 
 
 def test_default_enumeration_scheme(six_mode_tree):
     assert six_mode_tree.default_enumeration_scheme() == {"": (0, 0)}
-    jkmn = six_mode_tree.JKMN()
+    jkmn = TernaryTree.jkmn(6)
     assert jkmn.default_enumeration_scheme() == {
         "": (0, 0),
         "x": (1, 1),
@@ -99,7 +104,7 @@ def test_default_enumeration_scheme(six_mode_tree):
 
 
 def test_invalid_enumeration_scheme(six_mode_tree):
-    jkmn = six_mode_tree.JKMN()
+    jkmn = TernaryTree.jkmn(6)
     # Not enough qubit labels
     with pytest.raises(ValueError) as exc:
         jkmn.enumeration_scheme = {
@@ -138,7 +143,7 @@ def test_invalid_enumeration_scheme(six_mode_tree):
 
 
 def test_valid_enumeration_scheme(six_mode_tree):
-    jkmn = six_mode_tree.JKMN()
+    jkmn = TernaryTree.jkmn(6)
     # We allow any qubit labels
     jkmn.enumeration_scheme = {
         "": (3, 10),
@@ -161,7 +166,7 @@ def test_valid_enumeration_scheme(six_mode_tree):
 
 
 def test_bravyi_kitaev(six_mode_tree):
-    tt = six_mode_tree.BK()
+    tt = TernaryTree.bravyi_kitaev(6)
     assert tt.root_node.branch_strings == {
         "xxzy",
         "xxzx",
@@ -230,7 +235,7 @@ def test_bravyi_kitaev(six_mode_tree):
 
     assert tt.n_qubits == len(tt.root_node.child_strings)
     assert np.all(
-        tt._build_symplectic_matrix()[1]
+        tt.build_encoding().symplectic_matrix
         == np.array(
             [
                 [1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0],
@@ -250,7 +255,7 @@ def test_bravyi_kitaev(six_mode_tree):
         )
     )
 
-    for line in tt._build_symplectic_matrix()[1]:
+    for line in tt.build_encoding().symplectic_matrix:
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
 
@@ -366,14 +371,22 @@ def tests_bonsai_paper_tree(bonsai_paper_tree):
 
     assert tt.n_qubits == len(tt.root_node.child_strings)
 
-    for line in tt._build_symplectic_matrix()[1]:
+    for line in tt.build_encoding().symplectic_matrix:
         assert np.all(line == symplectic_unhash(symplectic_hash(line), len(line)))
 
 def test_default_mode_op_map(water_tt):
     assert np.all(water_tt.default_mode_op_map == [*range(water_tt.n_qubits)])
 
 @pytest.mark.parametrize("optimisation", ["naive", "anneal", "topphatt"])
-@pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        TernaryTree.jordan_wigner,
+        TernaryTree.bravyi_kitaev,
+        TernaryTree.parity,
+        TernaryTree.jkmn,
+    ],
+)
 def test_encode_num_terms_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str, mol_data_sets: dict):
     ones = mol_data_sets["ones"]
     twos = mol_data_sets["twos"]
@@ -387,14 +400,22 @@ def test_encode_num_terms_equal_expected(encoding: Callable[[int], TernaryTree],
         case "naive":
             qham = encoding(fham.n_modes).encode(fham)
         case "anneal":
-            qham = encoding(fham.n_modes).encode_annealed(fham)
+            qham = encoding(fham.n_modes).encode_annealed(fham)[0]
         case "topphatt":
-            qham = encoding(fham.n_modes).encode_topphatt(fham)
+            qham = encoding(fham.n_modes).encode_topphatt(fham)[0]
 
     assert len(qham) == mol_data_sets["num_terms"]
 
 @pytest.mark.parametrize("optimisation", ["naive", "anneal", "topphatt"])
-@pytest.mark.parametrize("encoding", [JW, BK, ParityEncoding, JKMN])
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        TernaryTree.jordan_wigner,
+        TernaryTree.bravyi_kitaev,
+        TernaryTree.parity,
+        TernaryTree.jkmn,
+    ],
+)
 def test_encode_h2_eigvals_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str, h2_mol_data_sets: dict):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]
@@ -408,9 +429,9 @@ def test_encode_h2_eigvals_equal_expected(encoding: Callable[[int], TernaryTree]
         case "naive":
             qham = encoding(fham.n_modes).encode(fham)
         case "anneal":
-            qham = encoding(fham.n_modes).encode_annealed(fham)
+            qham = encoding(fham.n_modes).encode_annealed(fham)[0]
         case "topphatt":
-            qham = encoding(fham.n_modes).encode_topphatt(fham)
+            qham = encoding(fham.n_modes).encode_topphatt(fham)[0]
     diag  = diagonalise_pauli_hamiltonian(qham, 2*n_modes)
 
     assert np.all(initial_ones == ones)
@@ -418,7 +439,7 @@ def test_encode_h2_eigvals_equal_expected(encoding: Callable[[int], TernaryTree]
     assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
 
 @pytest.mark.parametrize("optimisation", ["naive", "topphatt"])
-@pytest.mark.parametrize("encoding", [JW])
+@pytest.mark.parametrize("encoding", [TernaryTree.jordan_wigner])
 def test_encode_jw_water_eigvals_equal_expected(encoding: Callable[[int], TernaryTree], optimisation:str,  water_data: dict):
     ones = water_data["ones"]
     twos = water_data["twos"]
@@ -434,7 +455,7 @@ def test_encode_jw_water_eigvals_equal_expected(encoding: Callable[[int], Ternar
         # case "anneal":
             # qham = encoding(fham.n_modes).encode_annealed(fham)
         case "topphatt":
-            qham = encoding(fham.n_modes).encode_topphatt(fham)
+            qham = encoding(fham.n_modes).encode_topphatt(fham)[0]
     assert np.isclose(qham["I"*14], -46.465600781952176)
     diag = diagonalise_pauli_hamiltonian(qham, 2)
 
@@ -442,7 +463,7 @@ def test_encode_jw_water_eigvals_equal_expected(encoding: Callable[[int], Ternar
 
 @given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
 def test_naive_jw_hf_state_unchanged(fermionic_hf_state):
-    tree = JordanWigner(len(fermionic_hf_state))
+    tree = TernaryTree.jordan_wigner(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     print(f"fermionic HF {fermionic_hf_state}")
     qubit_hf_state = tree.hartree_fock_state(
@@ -455,7 +476,7 @@ def test_naive_jw_hf_state_unchanged(fermionic_hf_state):
 def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
     fermionic_hf_state = np.array([True] * n_electrons + [False] * (10-n_electrons), dtype=np.bool)
 
-    tree = JordanWigner(len(fermionic_hf_state))
+    tree = TernaryTree.jordan_wigner(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     print(f"\nfermionic HF {fermionic_hf_state}")
     print(f"Enumeration {mode_op_map}")
@@ -478,7 +499,15 @@ def test_enumerated_jw_hf_state_match_reordered_naive(mode_op_map, n_electrons):
     assert np.all(enumerated_qubit_hf_state == expected_emnumerated)
 
 @pytest.mark.skipif(symmer is None, reason="Dependency group test not installed.")
-@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        TernaryTree.jordan_wigner,
+        TernaryTree.parity,
+        TernaryTree.bravyi_kitaev,
+        TernaryTree.jkmn,
+    ],
+)
 def test_naive_water_hf_energy_correct(encoding, water_data):
     fermionic_hf_state = np.array([True]*10 + [False] * 4, dtype=np.bool)
 
@@ -494,7 +523,7 @@ def test_naive_water_hf_energy_correct(encoding, water_data):
 
 @given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
 def test_naive_parity_hf_state(fermionic_hf_state):
-    tree = ParityEncoding(len(fermionic_hf_state))
+    tree = TernaryTree.parity(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
@@ -515,14 +544,22 @@ def test_naive_parity_hf_state(fermionic_hf_state):
 
 @given(arrays(dtype=np.bool, shape=st.integers(1, 9)))
 def test_naive_jkmn_hf_state_runs(fermionic_hf_state):
-    tree = JKMN(len(fermionic_hf_state))
+    tree = TernaryTree.jkmn(len(fermionic_hf_state))
     tree.enumeration_scheme = tree.default_enumeration_scheme()
     qubit_hf_state = tree.hartree_fock_state(
         fermionic_hf_state=fermionic_hf_state,
         mode_op_map=[*range(len(fermionic_hf_state))],
     )
 
-@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        TernaryTree.jordan_wigner,
+        TernaryTree.parity,
+        TernaryTree.bravyi_kitaev,
+        TernaryTree.jkmn,
+    ],
+)
 def test_benchmark_encode_naive(benchmark,encoding, mol_data_sets):
     ones = mol_data_sets["ones"]
     twos = mol_data_sets["twos"]
@@ -531,7 +568,15 @@ def test_benchmark_encode_naive(benchmark,encoding, mol_data_sets):
     encoding = encoding(fham.n_modes)
     benchmark(lambda: encoding.encode(fham))
 
-@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        TernaryTree.jordan_wigner,
+        TernaryTree.parity,
+        TernaryTree.bravyi_kitaev,
+        TernaryTree.jkmn,
+    ],
+)
 def test_benchmark_encode_topphatt(benchmark,encoding, mol_data_sets):
     ones = mol_data_sets["ones"]
     twos = mol_data_sets["twos"]
@@ -541,7 +586,7 @@ def test_benchmark_encode_topphatt(benchmark,encoding, mol_data_sets):
     benchmark(lambda: encoding.encode_topphatt(fham))
 
 
-# @pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+# @pytest.mark.parametrize("encoding", [TernaryTree.jordan_wigner, TernaryTree.parity, TernaryTree.bravyi_kitaev, TernaryTree.jkmn])
 # def test_benchmark_encode_annealed(benchmark,encoding, h2_mol_data_sets):
 #     ones = h2_mol_data_sets["ones"]
 #     twos = h2_mol_data_sets["twos"]
@@ -551,7 +596,15 @@ def test_benchmark_encode_topphatt(benchmark,encoding, mol_data_sets):
 #     benchmark(lambda: encoding.encode_annealed(fham))
 
 
-@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        TernaryTree.jordan_wigner,
+        TernaryTree.parity,
+        TernaryTree.bravyi_kitaev,
+        TernaryTree.jkmn,
+    ],
+)
 @pytest.mark.parametrize("n_modes", [32,64,128])
 def test_benchmark_hartree_fock_state(benchmark, encoding,n_modes):
     fermionic_hf_state = np.array([True]*n_modes, dtype=np.bool)
@@ -560,7 +613,15 @@ def test_benchmark_hartree_fock_state(benchmark, encoding,n_modes):
     benchmark(lambda: tree.hartree_fock_state(fermionic_hf_state=fermionic_hf_state))
 
 
-@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        TernaryTree.jordan_wigner,
+        TernaryTree.parity,
+        TernaryTree.bravyi_kitaev,
+        TernaryTree.jkmn,
+    ],
+)
 @pytest.mark.parametrize("n_modes", [32, 64, 128])
 def test_benchmark_decode_zbasis_ensemble(benchmark, encoding, n_modes):
     fermionic_hf_state = np.ones(n_modes, dtype=np.bool)
@@ -612,7 +673,15 @@ def test_validate_tt_flatpack_strategy(flatpack):
                 used_qubit_indices.append(child)
 
 
-@pytest.mark.parametrize("encoding", [JW, PE, BK, JKMN])
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        TernaryTree.jordan_wigner,
+        TernaryTree.parity,
+        TernaryTree.bravyi_kitaev,
+        TernaryTree.jkmn,
+    ],
+)
 @pytest.mark.parametrize("n_modes", [1, 5, 10])
 def test_encoding_flatpack_validate(encoding, n_modes):
     tree = encoding(n_modes)
@@ -660,17 +729,20 @@ def test_symplectic_matrix_roundtrip(flatpack):
     reconstructed_tree = TernaryTree.from_flatpack(flatpack)
     print(f"Reconstructed flatpack {flatpack}")
 
-    original_ipow, original_sym = original_tree._build_symplectic_matrix()
-    reconstructed_ipow, reconstructed_sym = reconstructed_tree._build_symplectic_matrix()
+    original_encoding = original_tree.build_encoding()
+    reconstructed_encoding = reconstructed_tree.build_encoding()
 
-    assert np.array_equal(original_ipow, reconstructed_ipow)
-    assert np.array_equal(original_sym, reconstructed_sym)
+    assert np.array_equal(original_encoding.ipowers, reconstructed_encoding.ipowers)
+    assert np.array_equal(
+        original_encoding.symplectic_matrix, reconstructed_encoding.symplectic_matrix
+    )
 
 @given(flatpack=tt_flatpack_strategy(st.integers(1, 20)))
 def test_core_python_symplectics_from_flatpack_equal(flatpack):
-    python_tree = TernaryTree.from_flatpack(flatpack)
-    py_ipow, py_sym = python_tree._build_symplectic_matrix()
-    rust_ipow, rust_sym, _ = flatpack_symplectic_matrix(flatpack, None)
+    tree_encoding = TernaryTree.from_flatpack(flatpack).build_encoding()
+    direct_encoding = MajoranaEncoding.from_flatpack(flatpack)
 
-    assert np.array_equal(py_ipow, rust_ipow)
-    assert np.array_equal(py_sym, rust_sym)
+    assert np.array_equal(tree_encoding.ipowers, direct_encoding.ipowers)
+    assert np.array_equal(
+        tree_encoding.symplectic_matrix, direct_encoding.symplectic_matrix
+    )

@@ -9,6 +9,7 @@ use crate::operators::{
 };
 use crate::spaces::{Fermion, Qubit};
 use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
+use crate::utils::COEFFICIENT_TOLERANCE;
 use crate::utils::{self, icount_to_sign};
 use log::{debug, error};
 use ndarray::{Array1, Array2, Axis, Zip};
@@ -531,7 +532,11 @@ impl Encode<&MajoranaSparse, QubitHamiltonian> for MajoranaEncoding {
                     .collect::<String>(),
             )
             .or_insert(c64(0., 0.)) += input.constant;
-        QubitHamiltonian(qham.into_iter().filter(|(_, v)| v.norm() > 1e-16).collect())
+        QubitHamiltonian(
+            qham.into_iter()
+                .filter(|(_, v)| v.norm() > COEFFICIENT_TOLERANCE)
+                .collect(),
+        )
     }
 }
 
@@ -583,7 +588,7 @@ impl MajoranaEncoding {
 
             let ann_coeff = left.coefficient + Complex64::new(0., 1.) * right.coefficient;
 
-            if ann_coeff.norm() > 1e-10 {
+            if ann_coeff.norm() > COEFFICIENT_TOLERANCE {
                 occupation[i] = true;
                 current = ZBasisState::new(left.state, ann_coeff);
             }
@@ -671,7 +676,7 @@ impl MajoranaEncoding {
             // Determine which states have mode i occupied.
             let occupied: Vec<bool> = ann_coeffs
                 .iter()
-                .map(|c: &Complex64| c.norm() > 1e-10)
+                .map(|c: &Complex64| c.norm() > COEFFICIENT_TOLERANCE)
                 .collect();
 
             // Update occupations and accumulated coefficients.
@@ -764,7 +769,6 @@ impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
 #[cfg(test)]
 mod owned_tests {
     use super::*;
-
     use crate::encode::ternarytree::TernaryTree;
     use crate::operators::LadderOperator;
     use crate::states::{State, ZBasisEnsemble};
@@ -1338,7 +1342,7 @@ mod batch_tests {
                 let qham = enumerated.encode(&ms);
                 prop_assert_eq!(qham.pauli_weight() as f64, plain_weight);
                 prop_assert!(
-                    (qham.coeff_pauli_weight() - coeff_weight).abs() < 1e-10,
+                    (qham.coeff_pauli_weight() - coeff_weight).abs() < crate::utils::WEIGHT_TOLERANCE,
                     "expected coeff weight {}, got {}", qham.coeff_pauli_weight(), coeff_weight
                 );
             }

@@ -1,4 +1,5 @@
 """Tests for the Clifford heuristic encoding optimisation."""
+from qiskit.primitives.containers.bit_array import _WEIGHT_LOOKUP
 
 import numpy as np
 import pytest
@@ -7,6 +8,7 @@ from ferrmion.encode.ternary_tree import JordanWigner, BravyiKitaev, ParityEncod
 from ferrmion.optimize.cost_functions import coefficient_pauli_weight, pauli_weight
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
+from ..conftest import ENERGY_TOLERANCE, WEIGHT_TOLERANCE
 
 
 def _qham_to_ofop(qham: dict) -> QubitOperator:
@@ -38,7 +40,7 @@ def test_clifford_heuristic_does_not_increase_pauli_weight(encoding_cls, h2_mol_
     )
     opt_weight = pauli_weight(opt_qham)[0]
 
-    assert opt_weight <= baseline_weight + 1e-6
+    assert opt_weight <= baseline_weight + WEIGHT_TOLERANCE
 
 
 @pytest.mark.parametrize("encoding_cls", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
@@ -59,7 +61,7 @@ def test_clifford_heuristic_does_not_increase_coeff_pauli_weight(encoding_cls, w
     )
     opt_weight = coefficient_pauli_weight(opt_qham)[0]
 
-    assert opt_weight <= baseline_weight + 1e-6
+    assert opt_weight <= baseline_weight + WEIGHT_TOLERANCE
 
 
 def test_clifford_heuristic_seed_is_reproducible(h2_mol_data_sets):
@@ -101,7 +103,7 @@ def test_clifford_heuristic_preserves_constant_energy(h2_mol_data_sets):
     identity_key = "I" * qham_const.n_qubits
     base_identity = qham_base.get(identity_key, complex(0)).real
     assert identity_key in qham_const
-    assert abs(qham_const[identity_key].real - base_identity - constant_energy) < 1e-10
+    assert abs(qham_const[identity_key].real - base_identity - constant_energy) < ENERGY_TOLERANCE
 
 
 def test_clifford_heuristic_preserves_eigenvalues(h2_mol_data_sets):

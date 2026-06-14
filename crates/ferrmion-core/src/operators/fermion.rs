@@ -1,6 +1,7 @@
 //! Fermionic Operators
 use crate::operators::ladder::LadderOperator;
 use crate::spaces::Fermion;
+use crate::utils::COEFFICIENT_TOLERANCE;
 use itertools::Itertools;
 use log::debug;
 use ndarray::{arr0, s, Dimension};
@@ -556,7 +557,11 @@ impl From<MajoranaHashMap> for MajoranaSparse {
     fn from(mbt: MajoranaHashMap) -> MajoranaSparse {
         let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
         let mut pairs: Vec<(ArrayVec<[u16; MAX_MAJORANAS]>, Complex64)> = Vec::new();
-        for (k, v) in mbt.operators.into_iter().filter(|(_, v)| v.abs() >= 1e-16) {
+        for (k, v) in mbt
+            .operators
+            .into_iter()
+            .filter(|(_, v)| v.abs() >= COEFFICIENT_TOLERANCE)
+        {
             if k.is_empty() {
                 sparse_constant += v;
             } else {

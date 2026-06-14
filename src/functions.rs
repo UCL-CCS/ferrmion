@@ -42,7 +42,7 @@ pub(crate) fn simplified_majorana_terms(
         }
         *merged.entry(simplified).or_insert(Complex64::new(0., 0.)) += val;
     }
-    merged.retain(|_, v| v.norm() > 1e-16);
+    merged.retain(|_, v| v.norm() > utils::COEFFICIENT_TOLERANCE);
     merged
 }
 

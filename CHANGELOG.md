@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
+  a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
+  `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.
 - `QubitHamiltonian`, `FermionHamiltonian` and `MajoranaEncoding` are now Rust-backed
   classes exposed directly from `ferrmion.core` via PyO3, replacing the duplicated
   Python implementations.
@@ -46,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FermionHamiltonian` instead of loose signature/coefficient lists; `topphatt`
   returns a `MajoranaEncoding` and `encode_topphatt` returns
   `(QubitHamiltonian, MajoranaEncoding)`.
+- `ferrmion.core.topphatt` now takes a `MajoranaSparse` instead of a
+  `FermionHamiltonian`; use `fham.to_majorana_sparse()` to convert.
 - Constructing a `MajoranaEncoding` from explicit symplectic data without a
   vacuum state now determines the vacuum automatically (GF(2) solve) instead of
   assuming the all-zero state.

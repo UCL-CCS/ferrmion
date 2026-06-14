@@ -67,6 +67,17 @@ class FermionHamiltonian:
     ) -> "FermionHamiltonian": ...
     def add_constant(self, constant_energy: float) -> "FermionHamiltonian": ...
     def to_sparse_majorana(self) -> dict[tuple[int, ...], complex]: ...
+    def to_majorana_sparse(self) -> "MajoranaSparse": ...
+
+class MajoranaSparse:
+    """A sparse Majorana-operator representation of a Hamiltonian."""
+
+    @property
+    def indices(self) -> list[list[int]]: ...
+    @property
+    def coefficients(self) -> npt.NDArray[np.complex128]: ...
+    @property
+    def constant(self) -> float: ...
 
 class MajoranaEncoding:
     """A fermion-to-qubit encoding defined by its Majorana operators."""
@@ -179,7 +190,7 @@ def hatt(
 def topphatt(
     flatpack: TTFlatpack,
     n_qubits: int,
-    fham: FermionHamiltonian,
+    hamiltonian: MajoranaSparse,
     parallelize: bool = True,
     heuristic: str = "min_weight",
     seed: int | None = None,

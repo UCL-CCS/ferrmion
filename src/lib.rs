@@ -15,9 +15,11 @@ mod encoding;
 mod error;
 mod functions;
 mod hamiltonians;
+mod operators;
 
 pub use encoding::PyMajoranaEncoding;
 pub use hamiltonians::{PyFermionHamiltonian, PyQubitHamiltonian};
+pub use operators::PyMajoranaSparse;
 
 use log::debug;
 use pyo3::prelude::*;
@@ -32,6 +34,7 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<hamiltonians::PyQubitHamiltonian>()?;
     m.add_class::<hamiltonians::PyFermionHamiltonian>()?;
     m.add_class::<encoding::PyMajoranaEncoding>()?;
+    m.add_class::<operators::PyMajoranaSparse>()?;
 
     m.add_function(wrap_pyfunction!(functions::symplectic_product, m)?)?;
     m.add_function(wrap_pyfunction!(functions::symplectic_to_pauli, m)?)?;

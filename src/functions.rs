@@ -3,6 +3,7 @@
 use crate::encoding::PyMajoranaEncoding;
 use crate::error::CoreError;
 use crate::hamiltonians::{PyFermionHamiltonian, PyQubitHamiltonian};
+use crate::operators::PyMajoranaSparse;
 use ferrmion_core::encode::majorana::Encode;
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
@@ -220,7 +221,7 @@ pub(crate) fn hatt_py(
 /// Args:
 ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples — initial tree.
 ///     n_qubits: Total number of qubits in the system.
-///     fham: The fermionic Hamiltonian driving the optimisation.
+///     hamiltonian: The Majorana sparse Hamiltonian driving the optimisation.
 ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
@@ -229,19 +230,19 @@ pub(crate) fn hatt_py(
 /// Returns:
 ///     MajoranaEncoding: The optimised encoding.
 #[pyfunction(name = "topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, fham, parallelize = true, heuristic = "min_weight", seed = None))]
+#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None))]
 pub(crate) fn topphatt_py(
     py: Python<'_>,
     flatpack: TTFlatpack,
     n_qubits: usize,
-    fham: PyRef<'_, PyFermionHamiltonian>,
+    hamiltonian: PyRef<'_, PyMajoranaSparse>,
     parallelize: bool,
     heuristic: &str,
     seed: Option<u64>,
 ) -> Result<PyMajoranaEncoding, CoreError> {
     debug!("Starting TOPPHATT");
     let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
-    let mut hamiltonian = fham.inner.to_majorana_sparse();
+    let mut hamiltonian = hamiltonian.0.clone();
     hamiltonian.constant = 0.0;
 
     let encoding = py.allow_threads(|| -> Result<_, CoreError> {

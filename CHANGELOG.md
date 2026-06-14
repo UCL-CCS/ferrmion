@@ -54,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always filtered during encoding).
 - The optimize wrappers `anneal_pauli_weight`/`anneal_coefficient_pauli_weight`
   take a `MajoranaEncoding` and return `(best_cost, MajoranaEncoding)`.
+- TOPP-HATT's parallel weight search now uses a `rayon` parallel iterator with a
+  lock-free atomic bound and an associative, deterministic reduction, replacing the
+  manual scoped-thread pool with its `Mutex`/`RwLock`. The branch-and-bound
+  early-exit and reproducible tie-breaking are preserved, and the `num_cpus`
+  dependency is dropped in favour of rayon's global thread pool.
 
 ### Removed
 - Python classes `FermionQubitEncoding`, `MajoranaStringEncoding` and the

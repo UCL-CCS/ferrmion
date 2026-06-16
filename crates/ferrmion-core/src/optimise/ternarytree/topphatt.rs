@@ -122,22 +122,19 @@ impl ToppHattSelection {
     };
 }
 
-/// Pack three leaf indices into a single `u64` for deterministic tie-breaking.
-///
-/// This reproduces the little-endian ordering of the previous `transmute`-based
-/// comparison of `[0, leaf_indices[0], leaf_indices[1], leaf_indices[2]]`, so the
-/// most significant comparison is on `leaf_indices[2]`, then `[1]`, then `[0]`.
+// Pack three leaf indices into a single `u64` for deterministic tie-breaking.
+#[inline(always)]
 fn packed_leaf_indices(leaf_indices: [u16; 3]) -> u64 {
     (leaf_indices[0] as u64) << 16 | (leaf_indices[1] as u64) << 32 | (leaf_indices[2] as u64) << 48
 }
 
-/// Combine two candidate selections, keeping the lower Pauli weight and breaking
-/// ties deterministically by the packed leaf indices (see [`packed_leaf_indices`]).
-///
-/// This combine is associative and order-independent, so the reduction yields the
-/// same selection whether combinations are reduced in parallel or folded
-/// sequentially. `current` is retained on an exact tie, matching the original
-/// "first encountered wins" behaviour for identical candidates.
+// Combine two candidate selections, keeping the lower Pauli weight and breaking
+// ties deterministically by the packed leaf indices (see [`packed_leaf_indices`]).
+//
+// This combine is associative and order-independent, so the reduction yields the
+// same selection whether combinations are reduced in parallel or folded
+// sequentially.
+#[inline(always)]
 fn combine(current: ToppHattSelection, candidate: ToppHattSelection) -> ToppHattSelection {
     let take_candidate = candidate.min_weight < current.min_weight
         || (candidate.min_weight == current.min_weight
@@ -151,7 +148,7 @@ fn combine(current: ToppHattSelection, candidate: ToppHattSelection) -> ToppHatt
     }
 }
 
-/// Score a single leaf-index combination, returning a candidate selection.
+// Score a single leaf-index combination, returning a candidate selection.
 ///
 /// The combination is normalised to three leaf indices; invalid combinations (a
 /// repeated z leaf) are rejected by returning [`ToppHattSelection::WORST`].
@@ -184,8 +181,8 @@ fn evaluate_combination(
 
     let mut sorted_comb: [u16; 3] = comb;
     sorted_comb.sort_unstable();
-    let comb_min = unsafe { *sorted_comb.get_unchecked(0) };
-    let comb_max = unsafe { *sorted_comb.get_unchecked(2) };
+    let comb_min = sorted_comb[0];
+    let comb_max = sorted_comb[2];
 
     let min_weight = bound.load(Ordering::Relaxed);
 
@@ -193,19 +190,22 @@ fn evaluate_combination(
     let weight = hamiltonian
         .indices
         .iter()
+        .filter(|inds| {
+            // Safety
+            //
+            // We know that `inds` is sorted, and non-empty as
+            // [`MajoranaSparse] is prepared with sorted indices,
+            // and `reduce_hamiltonian` preserves sorted order while
+            // removing duplicate indices.
+            let inds_min = unsafe { inds.first().unwrap_unchecked() };
+            let inds_max = unsafe { inds.last().unwrap_unchecked() };
+            (comb_min <= *inds_max) & (comb_max >= *inds_min)
+        })
         .fold_while(0, |acc, inds| {
             if acc > min_weight {
                 Done(acc)
             } else {
-                debug_assert!(inds.is_sorted());
-                let inds_max = unsafe { inds.last().unwrap_unchecked() };
-                let inds_min = unsafe { inds.first().unwrap_unchecked() };
-
-                if (comb_min > *inds_max) | (comb_max < *inds_min) {
-                    Continue(acc)
-                } else {
-                    Continue(acc + qubit_term_weight(inds, &comb))
-                }
+                Continue(acc + qubit_term_weight(inds, &comb))
             }
         })
         .into_inner();
@@ -247,11 +247,9 @@ impl Restriction {
     /// As the procedure progresses, the set of unassigned indices will become more restrictive.
     fn get_index_subset(&self, unassigned: &BTreeSet<usize>, n_nodes: usize) -> Vec<u16> {
         match self {
+            // Incomplete selections.
             Restriction::EvenLeaf => unassigned.iter().map(|v| (2 * v) as u16).collect(),
             Restriction::OddLeaf => unassigned.iter().map(|v| ((2 * v) + 1) as u16).collect(),
-            Restriction::ChildNode(child_index) => {
-                vec![(*child_index as u16 + 2 * n_nodes as u16 + 1)]
-            }
             Restriction::Any => {
                 let mut allowed: Vec<u16> = unassigned
                     .iter()
@@ -260,17 +258,22 @@ impl Restriction {
                 allowed.extend(unassigned.iter().map(|v| (2 * v + 1) as u16));
                 allowed
             }
+            // Completed selections.
+            Restriction::ChildNode(child_index) => {
+                vec![(*child_index as u16 + 2 * n_nodes as u16 + 1)]
+            }
             Restriction::Empty => vec![(2 * n_nodes) as u16],
             Restriction::Majorana(index) => vec![*index],
         }
     }
 }
 
-/// Type alias for the location of a leaf
+/// Newtype for the location of a leaf.
 ///
 /// The first field is the node index of its parent node.
 /// The second field is the edge on that parent node.
-type LeafLocation = (usize, Edge);
+#[derive(Debug, PartialEq, Hash, Eq, Copy, Clone)]
+struct LeafLocation(usize, Edge);
 
 /// A pair of leaves.
 ///
@@ -389,8 +392,8 @@ impl TreeRestrictions {
     fn apply_leaf_pairs(&mut self, tree: &TernaryTree) {
         let mut leaf_pairs: Vec<LeafPair> = (0..tree.n_nodes)
             .map(|v| LeafPair {
-                x: (v, Edge::X),
-                y: (v, Edge::Y),
+                x: LeafLocation(v, Edge::X),
+                y: LeafLocation(v, Edge::Y),
             })
             .collect();
 
@@ -421,11 +424,11 @@ impl TreeRestrictions {
                     match y_parity {
                         YParity::Even => {
                             let pair = &mut leaf_pairs[leaf_index];
-                            pair.x = (parent_index, edge)
+                            pair.x = LeafLocation(parent_index, edge)
                         }
                         YParity::Odd => {
                             let pair = &mut leaf_pairs[leaf_index];
-                            pair.y = (parent_index, edge)
+                            pair.y = LeafLocation(parent_index, edge)
                         }
                     }
                 });
@@ -775,7 +778,7 @@ pub fn topphatt(
             let partner_location: LeafLocation = {
                 *restrictions
                     .pairs
-                    .get(&(selection.min_parent, Edge::Z))
+                    .get(&LeafLocation(selection.min_parent, Edge::Z))
                     .expect("All leaves should have pairs.")
             };
             debug!("partner location {:?}", partner_location);
@@ -882,14 +885,14 @@ mod test_topphatt {
         let jw_restrictions = TreeRestrictions::new(&jw_tree);
         debug!("{:?}", jw_restrictions);
         let mut expected_pairs: HashMap<LeafLocation, LeafLocation> = HashMap::new();
-        expected_pairs.insert((0, X), (0, Y));
-        expected_pairs.insert((0, Y), (0, X));
-        expected_pairs.insert((1, X), (1, Y));
-        expected_pairs.insert((1, Y), (1, X));
-        expected_pairs.insert((2, X), (2, Y));
-        expected_pairs.insert((2, Y), (2, X));
-        expected_pairs.insert((3, X), (3, Y));
-        expected_pairs.insert((3, Y), (3, X));
+        expected_pairs.insert(LeafLocation(0, X), LeafLocation(0, Y));
+        expected_pairs.insert(LeafLocation(0, Y), LeafLocation(0, X));
+        expected_pairs.insert(LeafLocation(1, X), LeafLocation(1, Y));
+        expected_pairs.insert(LeafLocation(1, Y), LeafLocation(1, X));
+        expected_pairs.insert(LeafLocation(2, X), LeafLocation(2, Y));
+        expected_pairs.insert(LeafLocation(2, Y), LeafLocation(2, X));
+        expected_pairs.insert(LeafLocation(3, X), LeafLocation(3, Y));
+        expected_pairs.insert(LeafLocation(3, Y), LeafLocation(3, X));
 
         let expected = TreeRestrictions {
             x: vec![EvenLeaf, EvenLeaf, EvenLeaf, EvenLeaf],
@@ -908,6 +911,8 @@ mod test_topphatt {
         let mut expected_pairs: HashMap<LeafLocation, LeafLocation> = HashMap::new();
         let pairs = [((1, Z), (0, Y)), ((2, Z), (1, Y)), ((2, X), (2, Y))];
         pairs.iter().for_each(|&(k, v)| {
+            let k = LeafLocation(k.0, k.1);
+            let v = LeafLocation(v.0, v.1);
             expected_pairs.insert(k, v);
             expected_pairs.insert(v, k);
         });
@@ -936,6 +941,8 @@ mod test_topphatt {
             ((5, X), (5, Y)),
         ];
         pairs.iter().for_each(|&(k, v)| {
+            let k = LeafLocation(k.0, k.1);
+            let v = LeafLocation(v.0, v.1);
             expected_pairs.insert(k, v);
             expected_pairs.insert(v, k);
         });

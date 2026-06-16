@@ -2,6 +2,7 @@
 
 use crate::error::CoreError;
 use crate::functions::simplified_majorana_terms;
+use crate::operators::PyMajoranaSparse;
 use ferrmion_core::hamiltonians::{FermionHamiltonian, QubitHamiltonian, SymplecticHamiltonian};
 use ferrmion_core::operators::{CoefficientPauliWeight, PauliWeight};
 use ferrmion_core::optimise::{
@@ -391,6 +392,14 @@ impl PyFermionHamiltonian {
             output.set_item(PyTuple::new(py, key.as_slice())?, val)?;
         }
         Ok(output)
+    }
+
+    /// Convert to a sparse Majorana representation.
+    ///
+    /// Returns:
+    ///     MajoranaSparse: The sparse Majorana representation of this Hamiltonian.
+    fn to_majorana_sparse(&self) -> PyMajoranaSparse {
+        PyMajoranaSparse(self.inner.to_majorana_sparse())
     }
 
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {

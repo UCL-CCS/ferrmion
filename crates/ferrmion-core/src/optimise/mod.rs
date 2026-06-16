@@ -9,3 +9,5 @@ mod hamiltonian;
 pub use hamiltonian::*;
 mod ternarytree;
 pub use ternarytree::*;
+mod graphcolor;
+pub use graphcolor::*;

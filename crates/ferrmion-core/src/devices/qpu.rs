@@ -1,7 +1,7 @@
 //! Quantum processing unit (QPU) device.
 
 use super::Qubit;
-use rustworkx_core::graph::UnGraph;
+use rustworkx_core::petgraph::graph::UnGraph;
 
 /// Represents a quantum processing unit (QPU) device.
 ///

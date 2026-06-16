@@ -8,7 +8,7 @@
 pub struct Qubit(u16);
 
 impl Qubit {
-    pub fn new() -> Self {
-        Self(0)
+    pub fn new(index: u16) -> Self {
+        Self(index)
     }
 }

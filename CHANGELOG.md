@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
+  a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
+  `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.
 - `QubitHamiltonian`, `FermionHamiltonian` and `MajoranaEncoding` are now Rust-backed
   classes exposed directly from `ferrmion.core` via PyO3, replacing the duplicated
   Python implementations.
@@ -46,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FermionHamiltonian` instead of loose signature/coefficient lists; `topphatt`
   returns a `MajoranaEncoding` and `encode_topphatt` returns
   `(QubitHamiltonian, MajoranaEncoding)`.
+- `ferrmion.core.topphatt` now takes a `MajoranaSparse` instead of a
+  `FermionHamiltonian`; use `fham.to_majorana_sparse()` to convert.
 - Constructing a `MajoranaEncoding` from explicit symplectic data without a
   vacuum state now determines the vacuum automatically (GF(2) solve) instead of
   assuming the all-zero state.
@@ -54,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always filtered during encoding).
 - The optimize wrappers `anneal_pauli_weight`/`anneal_coefficient_pauli_weight`
   take a `MajoranaEncoding` and return `(best_cost, MajoranaEncoding)`.
+- TOPP-HATT's parallel weight search now uses a `rayon` parallel iterator with a
+  lock-free atomic bound and an associative, deterministic reduction, replacing the
+  manual scoped-thread pool with its `Mutex`/`RwLock`. The branch-and-bound
+  early-exit and reproducible tie-breaking are preserved, and the `num_cpus`
+  dependency is dropped in favour of rayon's global thread pool.
 
 ### Removed
 - Python classes `FermionQubitEncoding`, `MajoranaStringEncoding` and the

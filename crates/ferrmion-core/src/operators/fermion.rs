@@ -245,7 +245,7 @@ impl From<FermionMatrix> for FermionSparse {
                 sparse_indices
                     .row_mut(count)
                     .assign(&ind.into_dimension().as_array_view());
-                sparse_coefficients[count] += c64(v, 0.);
+                sparse_coefficients[count] += v;
             });
         FermionSparse::new(mft.action, sparse_indices, sparse_coefficients)
             .expect("Conversion from MatrixFermionTerm should be validated.")

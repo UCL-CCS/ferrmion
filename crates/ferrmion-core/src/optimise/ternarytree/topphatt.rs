@@ -4,9 +4,10 @@ use log::debug;
 use rand::seq::IteratorRandom;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::zip;
-use std::sync::{Mutex, RwLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use thiserror::Error;
 use tinyvec::ArrayVec;
 
@@ -104,11 +105,118 @@ pub enum ToppHattError {
 ///
 /// Stores the minimum Pauli weight found, the parent node chosen,
 /// and the three leaf indices assigned to that node's edges.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ToppHattSelection {
     min_weight: usize,
     min_parent: usize,
     leaf_indices: [u16; 3],
+}
+
+impl ToppHattSelection {
+    /// Sentinel "no selection" value. Used both to initialise the search and as
+    /// the identity element of [`combine`]: every real candidate compares better.
+    const WORST: Self = Self {
+        min_weight: usize::MAX,
+        min_parent: usize::MAX,
+        leaf_indices: [u16::MAX; 3],
+    };
+}
+
+// Pack three leaf indices into a single `u64` for deterministic tie-breaking.
+#[inline(always)]
+fn packed_leaf_indices(leaf_indices: [u16; 3]) -> u64 {
+    (leaf_indices[0] as u64) << 16 | (leaf_indices[1] as u64) << 32 | (leaf_indices[2] as u64) << 48
+}
+
+// Combine two candidate selections, keeping the lower Pauli weight and breaking
+// ties deterministically by the packed leaf indices (see [`packed_leaf_indices`]).
+//
+// This combine is associative and order-independent, so the reduction yields the
+// same selection whether combinations are reduced in parallel or folded
+// sequentially.
+#[inline(always)]
+fn combine(current: ToppHattSelection, candidate: ToppHattSelection) -> ToppHattSelection {
+    let take_candidate = candidate.min_weight < current.min_weight
+        || (candidate.min_weight == current.min_weight
+            && current.min_weight != usize::MAX
+            && packed_leaf_indices(candidate.leaf_indices)
+                > packed_leaf_indices(current.leaf_indices));
+    if take_candidate {
+        candidate
+    } else {
+        current
+    }
+}
+
+// Score a single leaf-index combination, returning a candidate selection.
+///
+/// The combination is normalised to three leaf indices; invalid combinations (a
+/// repeated z leaf) are rejected by returning [`ToppHattSelection::WORST`].
+/// `bound` holds the lowest weight found so far across every thread and active
+/// node: it is read to drive the branch-and-bound early-exit and lowered
+/// (lock-free) whenever a smaller weight is computed. Because pruning only abandons
+/// combinations whose partial weight already exceeds `bound`, no combination that
+/// ties or beats the running minimum is ever discarded, so the selection stays
+/// deterministic.
+fn evaluate_combination(
+    comb: &[u16],
+    active: usize,
+    hamiltonian: &MajoranaSparse,
+    bound: &AtomicUsize,
+) -> ToppHattSelection {
+    let comb: [u16; 3] = if comb.len() == 3 {
+        [comb[0], comb[1], comb[2]]
+    } else {
+        let pair = if comb[0].is_multiple_of(2) {
+            comb[0] + 1
+        } else {
+            comb[0] - 1
+        };
+        [comb[0], pair, comb[1]]
+    };
+
+    if comb[0] == comb[2] || comb[1] == comb[2] {
+        return ToppHattSelection::WORST;
+    }
+
+    let mut sorted_comb: [u16; 3] = comb;
+    sorted_comb.sort_unstable();
+    let comb_min = sorted_comb[0];
+    let comb_max = sorted_comb[2];
+
+    let min_weight = bound.load(Ordering::Relaxed);
+
+    // We expect that the hamiltonian terms are sorted!
+    let weight = hamiltonian
+        .indices
+        .iter()
+        .filter(|inds| {
+            // Safety
+            //
+            // We know that `inds` is sorted, and non-empty as
+            // [`MajoranaSparse] is prepared with sorted indices,
+            // and `reduce_hamiltonian` preserves sorted order while
+            // removing duplicate indices.
+            let inds_min = unsafe { inds.first().unwrap_unchecked() };
+            let inds_max = unsafe { inds.last().unwrap_unchecked() };
+            (comb_min <= *inds_max) & (comb_max >= *inds_min)
+        })
+        .fold_while(0, |acc, inds| {
+            if acc > min_weight {
+                Done(acc)
+            } else {
+                Continue(acc + qubit_term_weight(inds, &comb))
+            }
+        })
+        .into_inner();
+
+    bound.fetch_min(weight, Ordering::Relaxed);
+
+    ToppHattSelection {
+        min_weight: weight,
+        min_parent: active,
+        leaf_indices: comb,
+    }
 }
 
 /// Restrictons on which Majorana operator can be assigned
@@ -139,11 +247,9 @@ impl Restriction {
     /// As the procedure progresses, the set of unassigned indices will become more restrictive.
     fn get_index_subset(&self, unassigned: &BTreeSet<usize>, n_nodes: usize) -> Vec<u16> {
         match self {
+            // Incomplete selections.
             Restriction::EvenLeaf => unassigned.iter().map(|v| (2 * v) as u16).collect(),
             Restriction::OddLeaf => unassigned.iter().map(|v| ((2 * v) + 1) as u16).collect(),
-            Restriction::ChildNode(child_index) => {
-                vec![(*child_index as u16 + 2 * n_nodes as u16 + 1)]
-            }
             Restriction::Any => {
                 let mut allowed: Vec<u16> = unassigned
                     .iter()
@@ -152,17 +258,22 @@ impl Restriction {
                 allowed.extend(unassigned.iter().map(|v| (2 * v + 1) as u16));
                 allowed
             }
+            // Completed selections.
+            Restriction::ChildNode(child_index) => {
+                vec![(*child_index as u16 + 2 * n_nodes as u16 + 1)]
+            }
             Restriction::Empty => vec![(2 * n_nodes) as u16],
             Restriction::Majorana(index) => vec![*index],
         }
     }
 }
 
-/// Type alias for the location of a leaf
+/// Newtype for the location of a leaf.
 ///
 /// The first field is the node index of its parent node.
 /// The second field is the edge on that parent node.
-type LeafLocation = (usize, Edge);
+#[derive(Debug, PartialEq, Hash, Eq, Copy, Clone)]
+struct LeafLocation(usize, Edge);
 
 /// A pair of leaves.
 ///
@@ -281,8 +392,8 @@ impl TreeRestrictions {
     fn apply_leaf_pairs(&mut self, tree: &TernaryTree) {
         let mut leaf_pairs: Vec<LeafPair> = (0..tree.n_nodes)
             .map(|v| LeafPair {
-                x: (v, Edge::X),
-                y: (v, Edge::Y),
+                x: LeafLocation(v, Edge::X),
+                y: LeafLocation(v, Edge::Y),
             })
             .collect();
 
@@ -313,11 +424,11 @@ impl TreeRestrictions {
                     match y_parity {
                         YParity::Even => {
                             let pair = &mut leaf_pairs[leaf_index];
-                            pair.x = (parent_index, edge)
+                            pair.x = LeafLocation(parent_index, edge)
                         }
                         YParity::Odd => {
                             let pair = &mut leaf_pairs[leaf_index];
-                            pair.y = (parent_index, edge)
+                            pair.y = LeafLocation(parent_index, edge)
                         }
                     }
                 });
@@ -477,12 +588,9 @@ pub fn topphatt(
     let mut restrictions = TreeRestrictions::new(&tree);
     let mut node_dependencies = NodeDependencies::new(&tree);
 
-    // Rough threshold at which it's worth the cost.
-    let mut n_threads: usize = if parallelize && hamiltonian.indices.len() > 1000 {
-        num_cpus::get()
-    } else {
-        1
-    };
+    // Rough threshold at which parallelism is worth the overhead. When enabled the
+    // weight search runs on rayon's global thread pool.
+    let mut use_parallel = parallelize && hamiltonian.indices.len() > 1000;
 
     // Created once outside the assignment loop so a single RNG stream is
     // consumed across all iterations, rather than reseeded each step.
@@ -506,11 +614,11 @@ pub fn topphatt(
         debug!("Unassigned Modes {:?}", unassigned_modes);
         let n_leaves = 2 * tree.n_nodes + 1;
 
-        let selection = RwLock::new(ToppHattSelection {
-            min_weight: usize::MAX,
-            min_parent: usize::MAX,
-            leaf_indices: [u16::MAX; 3],
-        });
+        // Best (lowest-weight) candidate found across all active nodes this step.
+        let mut best = ToppHattSelection::WORST;
+        // Lowest weight found so far, shared across threads and active nodes to
+        // drive the branch-and-bound early-exit in `evaluate_combination`.
+        let bound = AtomicUsize::new(usize::MAX);
 
         debug!("root distances {:?}", node_dependencies.root_distances);
         let max_root_distance: &usize = node_dependencies
@@ -586,127 +694,35 @@ pub fn topphatt(
 
             debug!("Product {:?}", product);
 
-            // Find the combination of possible assignments
-            // which has the minimum Pauli weight
-            // Good target for concurrency.
-            // product.into_par_iter().for_each(|comb| {
-            //     update_selection(&comb, active, selection, &hamiltonian)
-            //         .expect("Threads should not panic in update selection.")
-            // });
-            let product = Mutex::new(product);
-            const BATCH_SIZE: usize = 64;
-            std::thread::scope(|s| {
-                for _ in 0..n_threads {
-                    s.spawn(|| {
-                        let mut batch: Vec<Vec<u16>> = Vec::with_capacity(BATCH_SIZE);
-                        loop {
-                            // Grab a batch of combinations to reduce Mutex contention.
-                            {
-                                let mut product_guard =
-                                    product.lock().expect("Product should not be poisoned.");
-                                batch.clear();
-                                batch.extend(product_guard.by_ref().take(BATCH_SIZE));
-                            }
-                            if batch.is_empty() {
-                                break;
-                            }
+            // Find the combination of possible assignments which has the minimum
+            // Pauli weight. Materialise the cartesian product so rayon can split it
+            // for work-stealing, which load-balances the uneven per-combination cost
+            // left by the branch-and-bound early-exit.
+            let combos: Vec<Vec<u16>> = product.collect();
 
-                            for comb in &batch {
-                                let comb: [u16; 3] = if comb.len() == 3 {
-                                    [comb[0], comb[1], comb[2]]
-                                } else {
-                                    let pair = if comb[0] % 2 == 0 {
-                                        comb[0] + 1
-                                    } else {
-                                        comb[0] - 1
-                                    };
-                                    [comb[0], pair, comb[1]]
-                                };
-
-                                if comb[0] == comb[2] || comb[1] == comb[2] {
-                                    continue;
-                                };
-                                let mut sorted_comb: [u16; 3] = comb;
-                                sorted_comb.sort_unstable();
-                                let comb_min = unsafe { sorted_comb.get_unchecked(0) };
-                                let comb_max = unsafe { sorted_comb.get_unchecked(2) };
-
-                                let read_guard = selection
-                                    .read()
-                                    .expect("Selection should not be poisoned before read.");
-                                let min_weight = read_guard.min_weight;
-                                drop(read_guard);
-
-                                // We expect that the hamiltonian terms are sorted!
-                                let weight = hamiltonian
-                                    .indices
-                                    .iter()
-                                    .fold_while(0, |acc, inds| {
-                                        if acc > min_weight {
-                                            Done(acc)
-                                        } else {
-                                            debug_assert!(inds.is_sorted());
-                                            let inds_max =
-                                                unsafe { inds.last().unwrap_unchecked() };
-                                            let inds_min =
-                                                unsafe { inds.first().unwrap_unchecked() };
-
-                                            if (comb_min > inds_max) | (comb_max < inds_min) {
-                                                Continue(acc)
-                                            } else {
-                                                Continue(acc + qubit_term_weight(inds, &comb))
-                                            }
-                                        }
-                                    })
-                                    .into_inner();
-                                // For most trees, using < gives the best results.
-                                // counter example: JKMN(14), benefits from setting <=
-                                // This part interacts with the ordering of active nodes,
-                                // which is X-most to Z-Most
-
-                                if weight <= min_weight {
-                                    debug!("Selection {:?}", selection);
-                                    debug!("Min Weight {:?}", min_weight);
-                                    debug!("Min Parent {:?}", active);
-                                    let mut write_guard = selection
-                                        .write()
-                                        .expect("Rwlock should not be poisoned before write.");
-                                    if weight < write_guard.min_weight {
-                                        write_guard.min_weight = weight;
-                                        write_guard.leaf_indices = comb;
-                                        write_guard.min_parent = active;
-                                    } else if weight == write_guard.min_weight {
-                                        let li = write_guard.leaf_indices;
-                                        // Safety:
-                                        // The the only use of these values is to compare u64 values below.
-                                        // This allows us to make multi-threaded topp-hatt deterministic,
-                                        // enforcing a specific ordering for leaf-index selection.
-                                        // These values are immediately dropped.
-                                        unsafe {
-                                            let current = std::mem::transmute::<[u16; 4], u64>([
-                                                0, li[0], li[1], li[2],
-                                            ]);
-                                            let this = std::mem::transmute::<[u16; 4], u64>([
-                                                0, comb[0], comb[1], comb[2],
-                                            ]);
-                                            if this > current {
-                                                write_guard.min_weight = weight;
-                                                write_guard.leaf_indices = comb;
-                                                write_guard.min_parent = active;
-                                            }
-                                        }
-                                    };
-                                };
-                            }
-                        }
-                    });
-                }
-            });
+            // Each combination is scored independently. The shared `bound` preserves
+            // the early-exit across threads, and an associative, deterministic
+            // reduction selects the winner regardless of evaluation order.
+            //
+            // For most trees, using `<` gives the best results (counter example:
+            // JKMN(14) benefits from `<=`). This interacts with the ordering of
+            // active nodes, which is X-most to Z-most; `combine` keeps the earliest
+            // candidate on an exact tie to preserve that behaviour.
+            let node_best = if use_parallel {
+                combos
+                    .par_iter()
+                    .map(|comb| evaluate_combination(comb, active, &hamiltonian, &bound))
+                    .reduce(|| ToppHattSelection::WORST, combine)
+            } else {
+                combos
+                    .iter()
+                    .map(|comb| evaluate_combination(comb, active, &hamiltonian, &bound))
+                    .fold(ToppHattSelection::WORST, combine)
+            };
+            best = combine(best, node_best);
         }
         // debug!("Selection {:?}", &selection);
-        let selection = selection
-            .into_inner()
-            .expect("Should not have poisoned threads.");
+        let selection = best;
         match selection.leaf_indices {
             [u16::MAX, u16::MAX, u16::MAX] => {
                 return Err(ToppHattError::NoSelectionMade(loop_index))
@@ -762,7 +778,7 @@ pub fn topphatt(
             let partner_location: LeafLocation = {
                 *restrictions
                     .pairs
-                    .get(&(selection.min_parent, Edge::Z))
+                    .get(&LeafLocation(selection.min_parent, Edge::Z))
                     .expect("All leaves should have pairs.")
             };
             debug!("partner location {:?}", partner_location);
@@ -802,7 +818,7 @@ pub fn topphatt(
             selection.leaf_indices,
         );
         if hamiltonian.indices.len() < 1000 {
-            n_threads = 1;
+            use_parallel = false;
         }
         debug!("Reduced Hamiltonian {:#?}", hamiltonian.indices);
         debug!("Finished loop\n\n\n");
@@ -869,14 +885,14 @@ mod test_topphatt {
         let jw_restrictions = TreeRestrictions::new(&jw_tree);
         debug!("{:?}", jw_restrictions);
         let mut expected_pairs: HashMap<LeafLocation, LeafLocation> = HashMap::new();
-        expected_pairs.insert((0, X), (0, Y));
-        expected_pairs.insert((0, Y), (0, X));
-        expected_pairs.insert((1, X), (1, Y));
-        expected_pairs.insert((1, Y), (1, X));
-        expected_pairs.insert((2, X), (2, Y));
-        expected_pairs.insert((2, Y), (2, X));
-        expected_pairs.insert((3, X), (3, Y));
-        expected_pairs.insert((3, Y), (3, X));
+        expected_pairs.insert(LeafLocation(0, X), LeafLocation(0, Y));
+        expected_pairs.insert(LeafLocation(0, Y), LeafLocation(0, X));
+        expected_pairs.insert(LeafLocation(1, X), LeafLocation(1, Y));
+        expected_pairs.insert(LeafLocation(1, Y), LeafLocation(1, X));
+        expected_pairs.insert(LeafLocation(2, X), LeafLocation(2, Y));
+        expected_pairs.insert(LeafLocation(2, Y), LeafLocation(2, X));
+        expected_pairs.insert(LeafLocation(3, X), LeafLocation(3, Y));
+        expected_pairs.insert(LeafLocation(3, Y), LeafLocation(3, X));
 
         let expected = TreeRestrictions {
             x: vec![EvenLeaf, EvenLeaf, EvenLeaf, EvenLeaf],
@@ -895,6 +911,8 @@ mod test_topphatt {
         let mut expected_pairs: HashMap<LeafLocation, LeafLocation> = HashMap::new();
         let pairs = [((1, Z), (0, Y)), ((2, Z), (1, Y)), ((2, X), (2, Y))];
         pairs.iter().for_each(|&(k, v)| {
+            let k = LeafLocation(k.0, k.1);
+            let v = LeafLocation(v.0, v.1);
             expected_pairs.insert(k, v);
             expected_pairs.insert(v, k);
         });
@@ -923,6 +941,8 @@ mod test_topphatt {
             ((5, X), (5, Y)),
         ];
         pairs.iter().for_each(|&(k, v)| {
+            let k = LeafLocation(k.0, k.1);
+            let v = LeafLocation(v.0, v.1);
             expected_pairs.insert(k, v);
             expected_pairs.insert(v, k);
         });

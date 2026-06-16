@@ -3,6 +3,7 @@ use crate::operators::{
     PauliWeight, SymplecticMatrix, SymplecticOperatorView,
 };
 use crate::spaces::{Fermion, Qubit};
+use crate::utils::{icount_to_sign, pauli_to_symplectic, COEFFICIENT_TOLERANCE};
 use ahash::RandomState;
 use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, Zip};
 use num_complex::Complex64;
@@ -223,7 +224,7 @@ impl SymplecticHamiltonian {
 
         for (i, (pauli_str, coeff)) in qham.iter().enumerate() {
             // returns ([x_block | z_block], n_Y % 4)
-            let (symplectic, ipower) = crate::utils::pauli_to_symplectic(pauli_str.clone(), 0);
+            let (symplectic, ipower) = pauli_to_symplectic(pauli_str.clone(), 0);
             x_data.extend(symplectic.iter().take(n_qubits).copied());
             z_data.extend(symplectic.iter().skip(n_qubits).copied());
             ipowers[i] = ipower as u8;
@@ -243,15 +244,15 @@ impl SymplecticHamiltonian {
     /// `view_row(i).to_pauli_string()` accumulates Y-convention corrections and
     /// sign changes from H gates into `total_ipower`. For a Hermitian molecular
     /// Hamiltonian this is always 0 or 2 (±1), keeping all coefficients real.
-    /// Terms mapping to the same Pauli string are summed; results below 1e-12
+    /// Terms mapping to the same Pauli string are summed; results below tolerance
     /// are dropped.
     pub fn to_qubit_hamiltonian(&self) -> QubitHamiltonian {
         let mut result = QubitHamiltonian::default();
         for i in 0..self.coefficients.len() {
             let (pauli_str, total_ipower) = self.operators.view_row(i).to_pauli_string();
-            let phase = crate::utils::icount_to_sign(total_ipower as usize);
+            let phase = icount_to_sign(total_ipower as usize);
             let actual_coeff = Complex64::new(self.coefficients[i], 0.) * phase;
-            if actual_coeff.norm() > 1e-12 {
+            if actual_coeff.norm() > COEFFICIENT_TOLERANCE {
                 result
                     .0
                     .entry(pauli_str)

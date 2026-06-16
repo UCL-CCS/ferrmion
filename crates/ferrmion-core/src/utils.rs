@@ -3,6 +3,10 @@ use ndarray::{concatenate, Axis, Zip};
 use ndarray::{Array1, ArrayView1};
 use num_complex::Complex64;
 
+pub const COEFFICIENT_TOLERANCE: f64 = 1e-16;
+pub const ENERGY_TOLERANCE: f64 = 1e-10;
+pub const WEIGHT_TOLERANCE: f64 = 1e-6;
+
 /// Converts an imaginary count to a complex sign.
 ///
 /// # Examples

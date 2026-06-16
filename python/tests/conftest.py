@@ -9,6 +9,8 @@ from openfermion import InteractionOperator, jordan_wigner, get_sparse_operator,
 from scipy.sparse.linalg import eigsh
 from ferrmion.hamiltonians import FermionHamiltonian
 
+ENERGY_TOLERANCE = 1e-10
+WEIGHT_TOLERANCE = 1e-6
 
 @fixture(scope="module")
 def water_data():

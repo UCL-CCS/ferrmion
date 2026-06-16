@@ -52,10 +52,11 @@ struct EdgeOperator(Mode, Mode);
 
 impl EdgeOperator {
     fn new(left: Mode, right: Mode) -> Result<Self, InteractionOperatorError> {
-        if left == right {
-            return Err(InteractionOperatorError::SelfEdgeError(left, right));
+        match left.cmp(&right) {
+            std::cmp::Ordering::Equal => Err(InteractionOperatorError::SelfEdgeError(left, right)),
+            std::cmp::Ordering::Greater => Ok(Self(left, right)),
+            std::cmp::Ordering::Less => Ok(Self(right, left)),
         }
-        Ok(Self(left, right))
     }
 }
 
@@ -65,10 +66,10 @@ struct VertexOperator(Mode);
 
 impl VertexOperator {
     fn new(left: Mode, right: Mode) -> Result<Self, InteractionOperatorError> {
-        if left != right {
-            return Err(InteractionOperatorError::NonSelfVertexError(left, right));
+        match left.cmp(&right) {
+            std::cmp::Ordering::Equal => Ok(Self(left)),
+            _ => Err(InteractionOperatorError::NonSelfVertexError(left, right)),
         }
-        Ok(Self(left))
     }
 }
 

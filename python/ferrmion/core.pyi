@@ -41,6 +41,9 @@ class QubitHamiltonian:
         seed: int | None = None,
         clifford_subset: str = "chs",
     ) -> "QubitHamiltonian": ...
+    def coloring_groups(
+        self, conflict: str = "support"
+    ) -> tuple[int, list[list[int]]]: ...
 
 class FermionHamiltonian:
     """Builder for fermionic Hamiltonians."""

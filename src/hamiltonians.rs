@@ -6,8 +6,8 @@ use crate::operators::PyMajoranaSparse;
 use ferrmion_core::hamiltonians::{FermionHamiltonian, QubitHamiltonian, SymplecticHamiltonian};
 use ferrmion_core::operators::{CoefficientPauliWeight, PauliWeight};
 use ferrmion_core::optimise::{
-    clifford_heuristic_optimisation, randomised_subsystem_descent, AnnealingParameters,
-    CliffordSubset, SubsystemSampler,
+    clifford_heuristic_optimisation, qubit_coloring_groups, randomised_subsystem_descent,
+    AnnealingParameters, CliffordSubset, QubitConflict, SubsystemSampler,
 };
 use numpy::{Complex64, IntoPyArray, PyArrayDyn, PyReadonlyArrayDyn};
 use pyo3::exceptions::PyKeyError;
@@ -238,6 +238,38 @@ impl PyQubitHamiltonian {
             )
         });
         Ok(Self(opt.to_qubit_hamiltonian()))
+    }
+
+    /// Group the Pauli terms for parallel execution via greedy graph colouring.
+    ///
+    /// Each group is a set of terms that can share a circuit layer (or be
+    /// measured together), estimated by colouring the conflict graph of the Pauli
+    /// terms. Encoding-agnostic: applies to the output of any Majorana encoding.
+    ///
+    /// Args:
+    ///     conflict: When two terms cannot share a group. ``"support"`` (default):
+    ///         terms conflict iff their Pauli supports overlap (share a
+    ///         non-identity qubit), so disjoint-support terms run in parallel.
+    ///         ``"commutation"``: terms conflict iff they anticommute, so
+    ///         mutually-commuting terms are grouped together.
+    ///
+    /// Returns:
+    ///     tuple[int, list[list[int]]]: the number of groups, and for each group
+    ///     the indices of its terms in ``items()``/``keys()`` order. Every term
+    ///     index appears in exactly one group.
+    #[pyo3(signature = (conflict = "support".to_string()))]
+    fn coloring_groups(&self, conflict: String) -> Result<(usize, Vec<Vec<usize>>), CoreError> {
+        let conflict = match conflict.to_lowercase().as_str() {
+            "support" => QubitConflict::Support,
+            "commutation" => QubitConflict::Commutation,
+            other => {
+                return Err(CoreError::Value(format!(
+                    "unknown conflict '{other}'; expected 'support' or 'commutation'"
+                )))
+            }
+        };
+        let groups = qubit_coloring_groups(&self.0, conflict);
+        Ok((groups.len(), groups))
     }
 
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {

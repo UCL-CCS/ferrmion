@@ -10,6 +10,36 @@ use tinyvec::{array_vec, ArrayVec};
 use crate::operators::{Majorana, MajoranaProduct, Mode};
 const MAX_INTERACTION_OPERATORS: usize = 7;
 
+/// Basis for interaction operators.
+///
+/// If we restricted to only the Edge and Vertex operators,
+/// the it wouldn't be possible to know how many operators
+/// are required to represent a set of majorana indices.
+///
+/// For instance, an unprimed operator followed by a primed operator
+/// $\gamma_i \gamma_j'$ cannot be represented by a single
+/// `Edge` or `Vertex` operator.
+/// In the case i==j then they are the identity, but otherwise
+/// it must be represented by `Edge(i,j) Vertex(j,j)`,
+/// which we can condense into a single `EdgeVertex`.
+/// (Note that we could swap the order of operators by adding a -1 factor).
+///
+/// Similarly, two primed majorana indices $\gamma_i' \gamma_j'$
+/// could be represented by either `Identity` or by
+/// `Edge(i,j) Vertex(i,i) Vertex(j,j)`
+///
+/// Used in cases where multiple sets of indices are appied to
+/// the same set of operators, such as [`InteractionSparse`].
+pub enum InteractionBasis {
+    Edge,
+    Vertex,
+    /// Compound edge-vertex operator.
+    /// $\gamma_i \gamma_j \gamma_j \gamma_{k}'$
+    EdgeVertex,
+    EdgeVertexVertex,
+    Identity,
+}
+
 /// Bravyi-Kitaev-SuperFast (Interaction) basis.
 ///
 /// Edge operators must have two different [`Mode`] indices.
@@ -190,7 +220,7 @@ impl TryFrom<MajoranaProduct> for InteractionProduct {
     type Error = InteractionOperatorError;
 
     fn try_from(mp: MajoranaProduct) -> Result<Self, Self::Error> {
-        if mp.operators.len().is_multiple_of(2) {
+        if !mp.operators.len().is_multiple_of(2) {
             return Err(InteractionOperatorError::OddDegreeMajoranaError);
         }
         let prod: InteractionProduct = mp.operators.chunks(2).fold(
@@ -214,16 +244,13 @@ impl TryFrom<InteractionProduct> for InteractionArrayVec {
     }
 }
 
-pub enum InteractionBasis {
-    Edge,
-    Vertex,
-}
-
+/// Sparse representation of an interaction operator.
 pub struct InteractionSparse {
     pub ops: Vec<InteractionBasis>,
     pub indices: Array2<Mode>,
 }
 
+/// Errors that can occur when constructing an [`InteractionSparse`].
 #[derive(Error, Debug)]
 pub enum InteractionSparseError {
     #[error("Number of operators ({0}) does not match number of indices ({1}).")]

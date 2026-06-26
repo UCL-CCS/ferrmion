@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Prototype `u64` bit-vector Majorana-term backend for TOPP-HATT. The inner
+  weight evaluation and Hamiltonian reduction are now expressed behind a
+  `MajoranaTermStore` trait (in `ferrmion-core`), with two implementations:
+  `ArrayVecTermStore` (the production index-list representation, unchanged
+  behaviour) and `BitTermStore` (one `u64` per term, bit `i` = Majorana `i`
+  present with odd parity). `topphatt` is now a thin wrapper over the generic
+  `topphatt_impl`. A criterion benchmark (`topphatt_bitvec`) measures ~1.6–2.1×
+  speedups for the bit backend across 6–20 modes. The bit backend supports up to
+  31 modes and, on dense inputs, can pick different (but valid) encodings because
+  it deduplicates terms by parity-set rather than by multiset.
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
   `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.

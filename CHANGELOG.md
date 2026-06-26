@@ -22,7 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   word-parallel bit ops; it has no mode ceiling. A criterion benchmark
   (`topphatt_bitvec`) sweeps the index-list, `u64`, `u128`, `u256` and bit-sliced
   backends over a grid of mode count and Majorana term degree (plus large-mode
-  points only the index-list and bit-sliced backends can reach). On dense inputs
+  points only the index-list and bit-sliced backends can reach), with additional
+  `term_store_build` (conversion-only) and `topphatt_end_to_end`
+  (preparation-inclusive) groups confirming the format-conversion cost is
+  negligible (microseconds) next to the optimizer. On dense inputs
   the bit backends can pick different (but valid) encodings because they
   deduplicate terms by parity-set rather than by multiset (the bit-sliced backend
   does no deduplication at all); all `BitTermStore` word widths run the identical

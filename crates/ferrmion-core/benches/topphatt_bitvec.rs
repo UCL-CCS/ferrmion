@@ -24,12 +24,12 @@
 
 use std::collections::BTreeSet;
 
-use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use ferrmion_core::encode::ternarytree::TernaryTree;
 use ferrmion_core::operators::MajoranaSparse;
 use ferrmion_core::optimise::{
-    topphatt, topphatt_impl, BitSlicedTermStore, BitTermStore128, BitTermStore256, BitTermStore64,
-    NodeOrderHeuristic,
+    topphatt, topphatt_impl, ArrayVecTermStore, BitSlicedTermStore, BitTermStore128,
+    BitTermStore256, BitTermStore64, NodeOrderHeuristic,
 };
 use num_complex::Complex64;
 use rand::{Rng, SeedableRng};
@@ -193,5 +193,114 @@ fn bench_topphatt_large_modes(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_topphatt_backends, bench_topphatt_large_modes);
+/// Conversion-only cost: time *just* building each backend's store from the
+/// canonical ArrayVec terms. This is the per-backend Hamiltonian-preparation the
+/// optimization-only groups exclude (it runs in their untimed `iter_batched`
+/// setup). Expected to be tiny — `O(T·degree)` bit-sets — next to the optimizer.
+fn bench_term_store_build(c: &mut Criterion) {
+    let mut group = c.benchmark_group("term_store_build");
+
+    for degree in [2usize, 6] {
+        for n_modes in [31usize, 63] {
+            let n_terms = 12 * n_modes;
+            let terms = random_terms(n_modes, n_terms, degree, 0xC0FFEE);
+            let param = format!("m{n_modes}_d{degree}");
+
+            // index_list is already the canonical form; "conversion" is a clone.
+            group.bench_with_input(BenchmarkId::new("index_list", &param), &n_modes, |b, _| {
+                b.iter(|| black_box(ArrayVecTermStore::new(black_box(&terms).clone())));
+            });
+
+            if n_modes <= BitTermStore64::MAX_MODES {
+                group.bench_with_input(BenchmarkId::new("bit_u64", &param), &n_modes, |b, _| {
+                    b.iter(|| {
+                        black_box(BitTermStore64::from_arrayvecs(black_box(&terms)).unwrap())
+                    });
+                });
+            }
+
+            group.bench_with_input(BenchmarkId::new("bit_sliced", &param), &n_modes, |b, &n| {
+                b.iter(|| black_box(BitSlicedTermStore::from_arrayvecs(black_box(&terms), n)));
+            });
+        }
+    }
+
+    group.finish();
+}
+
+/// End-to-end cost: same optimization as `topphatt_term_store`, but with the
+/// store construction (format conversion) folded **into the timed region**. Only
+/// the backend-independent tree build stays in the untimed setup, so the delta
+/// from the optimization-only group is exactly the conversion overhead.
+fn bench_topphatt_end_to_end(c: &mut Criterion) {
+    let mut group = c.benchmark_group("topphatt_end_to_end");
+
+    for degree in [2usize, 6] {
+        for n_modes in [31usize, 63] {
+            let n_terms = 12 * n_modes;
+            let terms = random_terms(n_modes, n_terms, degree, 0xC0FFEE);
+            let param = format!("m{n_modes}_d{degree}");
+
+            group.bench_with_input(BenchmarkId::new("index_list", &param), &n_modes, |b, &n| {
+                b.iter_batched(
+                    || TernaryTree::naive_jkmn(n),
+                    |tree| {
+                        let store = ArrayVecTermStore::new(terms.clone());
+                        topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                    },
+                    BatchSize::SmallInput,
+                );
+            });
+
+            if n_modes <= BitTermStore64::MAX_MODES {
+                group.bench_with_input(BenchmarkId::new("bit_u64", &param), &n_modes, |b, &n| {
+                    b.iter_batched(
+                        || TernaryTree::naive_jkmn(n),
+                        |tree| {
+                            let store = BitTermStore64::from_arrayvecs(&terms).unwrap();
+                            topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight)
+                                .unwrap()
+                        },
+                        BatchSize::SmallInput,
+                    );
+                });
+            }
+
+            if n_modes <= BitTermStore128::MAX_MODES {
+                group.bench_with_input(BenchmarkId::new("bit_u128", &param), &n_modes, |b, &n| {
+                    b.iter_batched(
+                        || TernaryTree::naive_jkmn(n),
+                        |tree| {
+                            let store = BitTermStore128::from_arrayvecs(&terms).unwrap();
+                            topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight)
+                                .unwrap()
+                        },
+                        BatchSize::SmallInput,
+                    );
+                });
+            }
+
+            group.bench_with_input(BenchmarkId::new("bit_sliced", &param), &n_modes, |b, &n| {
+                b.iter_batched(
+                    || TernaryTree::naive_jkmn(n),
+                    |tree| {
+                        let store = BitSlicedTermStore::from_arrayvecs(&terms, n);
+                        topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                    },
+                    BatchSize::SmallInput,
+                );
+            });
+        }
+    }
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_topphatt_backends,
+    bench_topphatt_large_modes,
+    bench_term_store_build,
+    bench_topphatt_end_to_end
+);
 criterion_main!(benches);

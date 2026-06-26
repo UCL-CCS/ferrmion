@@ -14,8 +14,9 @@
 //! - [`BitTermStore`]: a prototype where each term is a single fixed-width
 //!   bitmask (bit `i` set ⇔ Majorana `i` is present with odd parity). The
 //!   per-term weight loop collapses to a couple of bit ops. It is generic over a
-//!   [`BitWord`] (`u64`, ≤ 31 modes; `u128`, ≤ 63 modes), with type aliases
-//!   [`BitTermStore64`] and [`BitTermStore128`].
+//!   [`BitWord`] (`u64`, ≤ 31 modes; `u128`, ≤ 63 modes; `U256`, ≤ 127 modes),
+//!   with type aliases [`BitTermStore64`], [`BitTermStore128`] and
+//!   [`BitTermStore256`].
 //!
 //! # Node representatives
 //!
@@ -25,9 +26,9 @@
 //! index range (`min_parent + n_leaves`, i.e. `node_offset + 2*n_nodes + 1`).
 //! The bit backend instead reuses the **maximum real index of the selection**,
 //! which keeps every bit index `≤ 2*n_nodes` so an `n`-mode problem fits in the
-//! chosen word width (`n ≤ 31` for `u64`, `n ≤ 63` for `u128`).
-//! [`MajoranaTermStore::reduce`] returns the representative it chose; the caller
-//! threads it back into the restriction system.
+//! chosen word width (`n ≤ 31` for `u64`, `n ≤ 63` for `u128`, `n ≤ 127` for
+//! `U256`). [`MajoranaTermStore::reduce`] returns the representative it chose;
+//! the caller threads it back into the restriction system.
 //!
 //! # Parity vs. multiplicity (semantic note)
 //!
@@ -239,8 +240,10 @@ impl MajoranaTermStore for ArrayVecTermStore {
 
 /// A fixed-width unsigned integer usable as a term bitmask.
 ///
-/// Implemented for `u64` and `u128`. The few primitives below are all the
-/// generic [`BitTermStore`] needs; each maps to a single machine instruction.
+/// Implemented for the native `u64` and `u128`, plus a 256-bit `bnum` word
+/// ([`U256`]) for problems beyond 63 modes. The few primitives below are all the
+/// generic [`BitTermStore`] needs; for the native words each maps to a single
+/// machine instruction, while `u128`/`U256` are emulated from 64-bit limbs.
 pub trait BitWord: Copy + Ord + Send + Sync {
     /// Width of the word in bits (e.g. 64 or 128).
     const BITS: u32;
@@ -291,12 +294,44 @@ macro_rules! impl_bit_word {
 impl_bit_word!(u64);
 impl_bit_word!(u128);
 
+/// 256-bit unsigned word (four 64-bit limbs) for the widest bit backend.
+pub use bnum::types::U256;
+
+impl BitWord for U256 {
+    const BITS: u32 = U256::BITS;
+    const ZERO: Self = U256::ZERO;
+    #[inline(always)]
+    fn single_bit(index: u16) -> Self {
+        U256::ONE << u32::from(index)
+    }
+    #[inline(always)]
+    fn and(self, rhs: Self) -> Self {
+        self & rhs
+    }
+    #[inline(always)]
+    fn or(self, rhs: Self) -> Self {
+        self | rhs
+    }
+    #[inline(always)]
+    fn not(self) -> Self {
+        !self
+    }
+    #[inline(always)]
+    fn xor_assign(&mut self, rhs: Self) {
+        *self ^= rhs;
+    }
+    #[inline(always)]
+    fn count_ones(self) -> u32 {
+        U256::count_ones(self)
+    }
+}
+
 /// Prototype backend: one fixed-width bitmask per term.
 ///
 /// Bit `i` set ⇔ Majorana `i` acts with odd parity in the term. The word type
 /// `W` sets the mode ceiling: the highest index touched is the all-Z leaf at
 /// `2*n_nodes`, which must fit in `W`, so `n_modes ≤ (W::BITS - 1) / 2`
-/// (31 for `u64`, 63 for `u128`). See [`BitTermStore::MAX_MODES`].
+/// (31 for `u64`, 63 for `u128`, 127 for `U256`). See [`BitTermStore::MAX_MODES`].
 pub struct BitTermStore<W: BitWord = u64> {
     pub(crate) terms: Vec<W>,
 }
@@ -305,6 +340,8 @@ pub struct BitTermStore<W: BitWord = u64> {
 pub type BitTermStore64 = BitTermStore<u64>;
 /// `u128`-backed bit store (≤ 63 modes).
 pub type BitTermStore128 = BitTermStore<u128>;
+/// `U256`-backed bit store (≤ 127 modes).
+pub type BitTermStore256 = BitTermStore<U256>;
 
 impl<W: BitWord> BitTermStore<W> {
     /// Maximum number of fermionic modes this word width can represent.
@@ -452,6 +489,7 @@ mod tests {
         let av = ArrayVecTermStore::new(terms.clone());
         let bits64 = BitTermStore64::from_arrayvecs(&terms).unwrap();
         let bits128 = BitTermStore128::from_arrayvecs(&terms).unwrap();
+        let bits256 = BitTermStore256::from_arrayvecs(&terms).unwrap();
 
         for comb in [[0u16, 1, 2], [0, 1, 3], [2, 3, 4], [1, 4, 5]] {
             let expected = weight_via_store(&av, &comb);
@@ -464,6 +502,11 @@ mod tests {
                 expected,
                 weight_via_store(&bits128, &comb),
                 "u128 weights differ for comb {comb:?}"
+            );
+            assert_eq!(
+                expected,
+                weight_via_store(&bits256, &comb),
+                "u256 weights differ for comb {comb:?}"
             );
         }
     }
@@ -510,10 +553,17 @@ mod tests {
     fn bit_store_mode_ceilings() {
         assert_eq!(BitTermStore64::MAX_MODES, 31);
         assert_eq!(BitTermStore128::MAX_MODES, 63);
-        // An index that overflows u64 (64) but fits u128 is rejected only by u64.
+        assert_eq!(BitTermStore256::MAX_MODES, 127);
+        // An index that overflows u64 (64) but fits the wider words is rejected
+        // only by u64.
         let terms = vec![array_vec!([u16; 7] => 0u16, 64)];
         assert!(BitTermStore64::from_arrayvecs(&terms).is_none());
         assert!(BitTermStore128::from_arrayvecs(&terms).is_some());
+        assert!(BitTermStore256::from_arrayvecs(&terms).is_some());
+        // An index past u128 (130) is only representable in U256.
+        let wide = vec![array_vec!([u16; 7] => 0u16, 130)];
+        assert!(BitTermStore128::from_arrayvecs(&wide).is_none());
+        assert!(BitTermStore256::from_arrayvecs(&wide).is_some());
     }
 
     #[test]

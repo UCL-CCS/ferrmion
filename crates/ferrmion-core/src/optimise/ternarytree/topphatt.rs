@@ -776,7 +776,9 @@ mod test_topphatt {
     use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
     use crate::optimise::ternarytree::hatt::{qubit_term_weight, reduce_hamiltonian};
-    use crate::optimise::ternarytree::term_store::{BitTermStore128, BitTermStore64};
+    use crate::optimise::ternarytree::term_store::{
+        BitTermStore128, BitTermStore256, BitTermStore64,
+    };
     use log::debug;
     use ndarray::arr1;
     use num_complex::Complex64;
@@ -1179,17 +1181,21 @@ mod test_topphatt {
             .expect("fixture must fit in the u64 bit store");
         let bits128 = BitTermStore128::from_arrayvecs(&hamiltonian.indices)
             .expect("fixture must fit in the u128 bit store");
+        let bits256 = BitTermStore256::from_arrayvecs(&hamiltonian.indices)
+            .expect("fixture must fit in the u256 bit store");
 
         let av_tree = topphatt(hamiltonian, make_tree(), false, heuristic).unwrap();
         let t64 = topphatt_impl(bits64, make_tree(), false, heuristic).unwrap();
         let t128 = topphatt_impl(bits128, make_tree(), false, heuristic).unwrap();
+        let t256 = topphatt_impl(bits256, make_tree(), false, heuristic).unwrap();
 
         let av = av_tree.build_encoding(n_modes).unwrap();
         let e64 = t64.build_encoding(n_modes).unwrap();
         let e128 = t128.build_encoding(n_modes).unwrap();
+        let e256 = t256.build_encoding(n_modes).unwrap();
 
-        // u64 and u128 implement the identical parity-set algorithm, so they must
-        // always agree with each other.
+        // All word widths implement the identical parity-set algorithm, so they
+        // must always agree with each other.
         assert_eq!(
             e64.operators.x_block, e128.operators.x_block,
             "u64 vs u128 x"
@@ -1197,6 +1203,14 @@ mod test_topphatt {
         assert_eq!(
             e64.operators.z_block, e128.operators.z_block,
             "u64 vs u128 z"
+        );
+        assert_eq!(
+            e64.operators.x_block, e256.operators.x_block,
+            "u64 vs u256 x"
+        );
+        assert_eq!(
+            e64.operators.z_block, e256.operators.z_block,
+            "u64 vs u256 z"
         );
 
         // On a structured fixture they also agree with the index-list backend.
@@ -1276,6 +1290,7 @@ mod test_topphatt {
                 let n_majoranas = 2 * n_modes;
                 let bits64 = BitTermStore64::from_arrayvecs(&hamiltonian.indices).unwrap();
                 let bits128 = BitTermStore128::from_arrayvecs(&hamiltonian.indices).unwrap();
+                let bits256 = BitTermStore256::from_arrayvecs(&hamiltonian.indices).unwrap();
                 let av_tree = topphatt(
                     hamiltonian,
                     TernaryTree::naive_jkmn(n_modes),
@@ -1297,17 +1312,27 @@ mod test_topphatt {
                     NodeOrderHeuristic::MinWeight,
                 )
                 .unwrap();
+                let t256 = topphatt_impl(
+                    bits256,
+                    TernaryTree::naive_jkmn(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap();
                 let av = av_tree.build_encoding(n_modes).unwrap();
                 let e64 = t64.build_encoding(n_modes).unwrap();
                 let e128 = t128.build_encoding(n_modes).unwrap();
+                let e256 = t256.build_encoding(n_modes).unwrap();
 
                 // A valid n-mode encoding has 2*n Majorana operators.
                 assert_eq!(av.operators.ipowers.len(), n_majoranas);
                 assert_eq!(e64.operators.ipowers.len(), n_majoranas);
 
-                // The two word widths run the identical algorithm and must agree.
+                // All word widths run the identical algorithm and must agree.
                 assert_eq!(e64.operators.x_block, e128.operators.x_block);
                 assert_eq!(e64.operators.z_block, e128.operators.z_block);
+                assert_eq!(e64.operators.x_block, e256.operators.x_block);
+                assert_eq!(e64.operators.z_block, e256.operators.z_block);
 
                 total += 1;
                 if av.operators.x_block != e64.operators.x_block

@@ -13,13 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ArrayVecTermStore` (the production index-list representation, unchanged
   behaviour) and `BitTermStore<W>` (one fixed-width word per term, bit `i` =
   Majorana `i` present with odd parity). The bit backend is generic over a
-  `BitWord` (`u64` → ≤ 31 modes, `u128` → ≤ 63 modes), with aliases
-  `BitTermStore64` / `BitTermStore128`. `topphatt` is now a thin wrapper over the
-  generic `topphatt_impl`. A criterion benchmark (`topphatt_bitvec`) compares the
-  index-list, `u64` and `u128` backends across 14–63 modes. On dense inputs the
-  bit backends can pick different (but valid) encodings because they deduplicate
-  terms by parity-set rather than by multiset; the two word widths run the
-  identical algorithm and always agree with each other.
+  `BitWord` (`u64` → ≤ 31 modes, `u128` → ≤ 63 modes, `bnum` `U256` → ≤ 127
+  modes), with aliases `BitTermStore64` / `BitTermStore128` / `BitTermStore256`.
+  `topphatt` is now a thin wrapper over the generic `topphatt_impl`. A criterion
+  benchmark (`topphatt_bitvec`) sweeps the index-list, `u64`, `u128` and `u256`
+  backends over a grid of mode count and Majorana term degree. On dense inputs
+  the bit backends can pick different (but valid) encodings because they
+  deduplicate terms by parity-set rather than by multiset; all word widths run
+  the identical algorithm and always agree with each other.
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
   `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.

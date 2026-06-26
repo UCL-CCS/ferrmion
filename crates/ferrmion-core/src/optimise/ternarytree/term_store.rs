@@ -11,9 +11,11 @@
 //!   `ArrayVec<[u16; MAJORANA_MAX]>` index lists. Delegates to the existing
 //!   [`qubit_term_weight`] / [`reduce_hamiltonian`] helpers, so behaviour is
 //!   identical to the original algorithm.
-//! - [`BitTermStore`]: a prototype where each term is a single `u64` bitmask
-//!   (bit `i` set ⇔ Majorana `i` is present with odd parity). The per-term
-//!   weight loop collapses to a couple of bit ops.
+//! - [`BitTermStore`]: a prototype where each term is a single fixed-width
+//!   bitmask (bit `i` set ⇔ Majorana `i` is present with odd parity). The
+//!   per-term weight loop collapses to a couple of bit ops. It is generic over a
+//!   [`BitWord`] (`u64`, ≤ 31 modes; `u128`, ≤ 63 modes), with type aliases
+//!   [`BitTermStore64`] and [`BitTermStore128`].
 //!
 //! # Node representatives
 //!
@@ -22,9 +24,10 @@
 //! ArrayVec backend keeps the original convention — a fresh token in the upper
 //! index range (`min_parent + n_leaves`, i.e. `node_offset + 2*n_nodes + 1`).
 //! The bit backend instead reuses the **maximum real index of the selection**,
-//! which keeps every bit index `≤ 2*n_nodes` so an `n`-mode problem fits in a
-//! `u64` for `n ≤ 31`. [`MajoranaTermStore::reduce`] returns the representative
-//! it chose; the caller threads it back into the restriction system.
+//! which keeps every bit index `≤ 2*n_nodes` so an `n`-mode problem fits in the
+//! chosen word width (`n ≤ 31` for `u64`, `n ≤ 63` for `u128`).
+//! [`MajoranaTermStore::reduce`] returns the representative it chose; the caller
+//! threads it back into the restriction system.
 //!
 //! # Parity vs. multiplicity (semantic note)
 //!
@@ -234,35 +237,96 @@ impl MajoranaTermStore for ArrayVecTermStore {
     }
 }
 
-/// Prototype backend: one `u64` bitmask per term.
+/// A fixed-width unsigned integer usable as a term bitmask.
 ///
-/// Bit `i` set ⇔ Majorana `i` acts with odd parity in the term. Supports up to
-/// `n_modes = 31` (highest index is the all-Z leaf at `2*n_nodes ≤ 62`).
-pub struct BitTermStore {
-    pub(crate) terms: Vec<u64>,
+/// Implemented for `u64` and `u128`. The few primitives below are all the
+/// generic [`BitTermStore`] needs; each maps to a single machine instruction.
+pub trait BitWord: Copy + Ord + Send + Sync {
+    /// Width of the word in bits (e.g. 64 or 128).
+    const BITS: u32;
+    /// The all-zero word.
+    const ZERO: Self;
+    /// `1 << index`. `index` must be `< BITS`.
+    fn single_bit(index: u16) -> Self;
+    fn and(self, rhs: Self) -> Self;
+    fn or(self, rhs: Self) -> Self;
+    fn not(self) -> Self;
+    fn xor_assign(&mut self, rhs: Self);
+    fn count_ones(self) -> u32;
 }
 
-/// Maximum number of fermionic modes the `u64` bit backend can represent.
-///
-/// The highest index touched is the all-Z terminator leaf at `2*n_nodes`; with
-/// `n_nodes == n_modes` this must fit in a `u64`, so `2*n_modes ≤ 63`.
-pub const BIT_STORE_MAX_MODES: usize = 31;
+macro_rules! impl_bit_word {
+    ($t:ty) => {
+        impl BitWord for $t {
+            const BITS: u32 = <$t>::BITS;
+            const ZERO: Self = 0;
+            #[inline(always)]
+            fn single_bit(index: u16) -> Self {
+                1 << index
+            }
+            #[inline(always)]
+            fn and(self, rhs: Self) -> Self {
+                self & rhs
+            }
+            #[inline(always)]
+            fn or(self, rhs: Self) -> Self {
+                self | rhs
+            }
+            #[inline(always)]
+            fn not(self) -> Self {
+                !self
+            }
+            #[inline(always)]
+            fn xor_assign(&mut self, rhs: Self) {
+                *self ^= rhs;
+            }
+            #[inline(always)]
+            fn count_ones(self) -> u32 {
+                <$t>::count_ones(self)
+            }
+        }
+    };
+}
 
-impl BitTermStore {
+impl_bit_word!(u64);
+impl_bit_word!(u128);
+
+/// Prototype backend: one fixed-width bitmask per term.
+///
+/// Bit `i` set ⇔ Majorana `i` acts with odd parity in the term. The word type
+/// `W` sets the mode ceiling: the highest index touched is the all-Z leaf at
+/// `2*n_nodes`, which must fit in `W`, so `n_modes ≤ (W::BITS - 1) / 2`
+/// (31 for `u64`, 63 for `u128`). See [`BitTermStore::MAX_MODES`].
+pub struct BitTermStore<W: BitWord = u64> {
+    pub(crate) terms: Vec<W>,
+}
+
+/// `u64`-backed bit store (≤ 31 modes).
+pub type BitTermStore64 = BitTermStore<u64>;
+/// `u128`-backed bit store (≤ 63 modes).
+pub type BitTermStore128 = BitTermStore<u128>;
+
+impl<W: BitWord> BitTermStore<W> {
+    /// Maximum number of fermionic modes this word width can represent.
+    ///
+    /// The highest index touched is the all-Z terminator leaf at `2*n_nodes`;
+    /// with `n_nodes == n_modes` this must fit in `W`, so `2*n_modes ≤ BITS-1`.
+    pub const MAX_MODES: usize = ((W::BITS - 1) / 2) as usize;
+
     /// Build a bit-packed store from Majorana-index terms.
     ///
     /// Each term is folded into a mask by XOR, so any even-multiplicity input
     /// collapses to the correct parity. Returns `None` if any index does not fit
-    /// in a `u64` (i.e. the problem exceeds [`BIT_STORE_MAX_MODES`]).
+    /// in `W` (i.e. the problem exceeds [`BitTermStore::MAX_MODES`]).
     pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAJORANA_MAX]>]) -> Option<Self> {
         let mut packed = Vec::with_capacity(terms.len());
         for term in terms {
-            let mut mask = 0u64;
+            let mut mask = W::ZERO;
             for &idx in term.iter() {
-                if idx >= 64 {
+                if u32::from(idx) >= W::BITS {
                     return None;
                 }
-                mask ^= 1u64 << idx;
+                mask.xor_assign(W::single_bit(idx));
             }
             packed.push(mask);
         }
@@ -272,7 +336,7 @@ impl BitTermStore {
     }
 }
 
-impl MajoranaTermStore for BitTermStore {
+impl<W: BitWord> MajoranaTermStore for BitTermStore<W> {
     fn len(&self) -> usize {
         self.terms.len()
     }
@@ -291,7 +355,9 @@ impl MajoranaTermStore for BitTermStore {
         // Mask of the three child indices. The number of these bits set in a term
         // is exactly the count of odd-parity children; the qubit weight is 0 iff
         // that count is 0 or 3 (PP = I and XYZ = -iI), else 1.
-        let child_mask = (1u64 << comb[0]) | (1u64 << comb[1]) | (1u64 << comb[2]);
+        let child_mask = W::single_bit(comb[0])
+            .or(W::single_bit(comb[1]))
+            .or(W::single_bit(comb[2]));
 
         let min_weight = bound.load(Ordering::Relaxed);
 
@@ -302,7 +368,7 @@ impl MajoranaTermStore for BitTermStore {
                 if acc > min_weight {
                     Done(acc)
                 } else {
-                    let odd = (term & child_mask).count_ones() as usize;
+                    let odd = term.and(child_mask).count_ones() as usize;
                     Continue(acc + !odd.is_multiple_of(3) as usize)
                 }
             })
@@ -329,26 +395,28 @@ impl MajoranaTermStore for BitTermStore {
             .max()
             .expect("selection always has a real (non-all-Z) member on the X/Y edges");
 
-        let sel_mask = (1u64 << selection[0]) | (1u64 << selection[1]) | (1u64 << selection[2]);
-        let repr_bit = 1u64 << repr;
+        let sel_mask = W::single_bit(selection[0])
+            .or(W::single_bit(selection[1]))
+            .or(W::single_bit(selection[2]));
+        let repr_bit = W::single_bit(repr);
 
-        let mut reduced: Vec<u64> = self
+        let mut reduced: Vec<W> = self
             .terms
             .iter()
             .filter_map(|&term| {
-                let remainder = term & !sel_mask;
+                let remainder = term.and(sel_mask.not());
                 // Drop terms that were entirely selection indices: their weight
                 // is already accounted for and they carry nothing upward. This
                 // mirrors `reduce_hamiltonian`'s "all parent token" filter.
-                if remainder == 0 {
+                if remainder == W::ZERO {
                     return None;
                 }
                 // Re-introduce the representative with the parity of the removed
                 // indices, matching the parent-token padding in the index-list
                 // reduction.
-                let parent_odd = (term & sel_mask).count_ones() & 1 == 1;
+                let parent_odd = term.and(sel_mask).count_ones() & 1 == 1;
                 if parent_odd {
-                    Some(remainder | repr_bit)
+                    Some(remainder.or(repr_bit))
                 } else {
                     Some(remainder)
                 }
@@ -382,13 +450,20 @@ mod tests {
             array_vec!([u16; 7] => 0u16, 3, 4, 5),
         ];
         let av = ArrayVecTermStore::new(terms.clone());
-        let bits = BitTermStore::from_arrayvecs(&terms).unwrap();
+        let bits64 = BitTermStore64::from_arrayvecs(&terms).unwrap();
+        let bits128 = BitTermStore128::from_arrayvecs(&terms).unwrap();
 
         for comb in [[0u16, 1, 2], [0, 1, 3], [2, 3, 4], [1, 4, 5]] {
+            let expected = weight_via_store(&av, &comb);
             assert_eq!(
-                weight_via_store(&av, &comb),
-                weight_via_store(&bits, &comb),
-                "weights differ for comb {comb:?}"
+                expected,
+                weight_via_store(&bits64, &comb),
+                "u64 weights differ for comb {comb:?}"
+            );
+            assert_eq!(
+                expected,
+                weight_via_store(&bits128, &comb),
+                "u128 weights differ for comb {comb:?}"
             );
         }
     }
@@ -404,7 +479,7 @@ mod tests {
         // n_leaves chosen so all-Z bit (n_leaves-1 = 56) is above index 55.
         let n_leaves = 57;
 
-        let mut bits = BitTermStore::from_arrayvecs(&terms).unwrap();
+        let mut bits = BitTermStore64::from_arrayvecs(&terms).unwrap();
         let repr = bits.reduce(0, [2, 3, 55], n_leaves);
         // Representative is the max real selection member.
         assert_eq!(repr, 55);
@@ -419,12 +494,35 @@ mod tests {
     }
 
     #[test]
+    fn bit_reduce_u128_high_index() {
+        // A representative beyond the u64 range (index 80) is only expressible
+        // with the u128 backend; exercise it end to end.
+        let terms = vec![array_vec!([u16; 7] => 0u16, 80)];
+        let n_leaves = 122; // all-Z bit at 121, above index 80.
+        let mut bits = BitTermStore128::from_arrayvecs(&terms).unwrap();
+        let repr = bits.reduce(0, [80, 81, 90], n_leaves);
+        assert_eq!(repr, 90);
+        // {0,80} - {80} = {0}, odd count (1) so add repr 90 -> {0, 90}.
+        assert_eq!(bits.terms, vec![(1u128 << 0) | (1u128 << 90)]);
+    }
+
+    #[test]
+    fn bit_store_mode_ceilings() {
+        assert_eq!(BitTermStore64::MAX_MODES, 31);
+        assert_eq!(BitTermStore128::MAX_MODES, 63);
+        // An index that overflows u64 (64) but fits u128 is rejected only by u64.
+        let terms = vec![array_vec!([u16; 7] => 0u16, 64)];
+        assert!(BitTermStore64::from_arrayvecs(&terms).is_none());
+        assert!(BitTermStore128::from_arrayvecs(&terms).is_some());
+    }
+
+    #[test]
     fn bit_reduce_odd_parity_sets_representative() {
         // A term with an odd number of selection members must carry the
         // representative bit upward.
         let terms = vec![array_vec!([u16; 7] => 0u16, 2)];
         let n_leaves = 57;
-        let mut bits = BitTermStore::from_arrayvecs(&terms).unwrap();
+        let mut bits = BitTermStore64::from_arrayvecs(&terms).unwrap();
         let repr = bits.reduce(0, [2, 3, 55], n_leaves);
         assert_eq!(repr, 55);
         // {0,2} - {2} = {0}, odd count (1) so add repr 55 -> {0, 55}.

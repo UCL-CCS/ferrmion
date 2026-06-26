@@ -776,7 +776,7 @@ mod test_topphatt {
     use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
     use crate::optimise::ternarytree::hatt::{qubit_term_weight, reduce_hamiltonian};
-    use crate::optimise::ternarytree::term_store::BitTermStore;
+    use crate::optimise::ternarytree::term_store::{BitTermStore128, BitTermStore64};
     use log::debug;
     use ndarray::arr1;
     use num_complex::Complex64;
@@ -1165,34 +1165,51 @@ mod test_topphatt {
         assert_eq!(hamiltonian, expected);
     }
 
-    /// Run both term-store backends on the same input and assert the resulting
-    /// encodings are identical. `make_tree` is called twice because
-    /// [`TernaryTree`] is not `Clone` and each run consumes its tree.
+    /// Run the index-list backend and both bit backends (`u64`, `u128`) on the
+    /// same input and assert all three produce identical encodings. `make_tree`
+    /// is called per run because [`TernaryTree`] is not `Clone` and each run
+    /// consumes its tree.
     fn assert_backends_agree(
         hamiltonian: MajoranaSparse,
         make_tree: impl Fn() -> TernaryTree,
         n_modes: usize,
         heuristic: NodeOrderHeuristic,
     ) {
-        let bit_store = BitTermStore::from_arrayvecs(&hamiltonian.indices)
+        let bits64 = BitTermStore64::from_arrayvecs(&hamiltonian.indices)
             .expect("fixture must fit in the u64 bit store");
+        let bits128 = BitTermStore128::from_arrayvecs(&hamiltonian.indices)
+            .expect("fixture must fit in the u128 bit store");
 
         let av_tree = topphatt(hamiltonian, make_tree(), false, heuristic).unwrap();
-        let bit_tree = topphatt_impl(bit_store, make_tree(), false, heuristic).unwrap();
+        let t64 = topphatt_impl(bits64, make_tree(), false, heuristic).unwrap();
+        let t128 = topphatt_impl(bits128, make_tree(), false, heuristic).unwrap();
 
         let av = av_tree.build_encoding(n_modes).unwrap();
-        let bit = bit_tree.build_encoding(n_modes).unwrap();
+        let e64 = t64.build_encoding(n_modes).unwrap();
+        let e128 = t128.build_encoding(n_modes).unwrap();
 
+        // u64 and u128 implement the identical parity-set algorithm, so they must
+        // always agree with each other.
         assert_eq!(
-            av.operators.x_block, bit.operators.x_block,
+            e64.operators.x_block, e128.operators.x_block,
+            "u64 vs u128 x"
+        );
+        assert_eq!(
+            e64.operators.z_block, e128.operators.z_block,
+            "u64 vs u128 z"
+        );
+
+        // On a structured fixture they also agree with the index-list backend.
+        assert_eq!(
+            av.operators.x_block, e64.operators.x_block,
             "x_block differs"
         );
         assert_eq!(
-            av.operators.z_block, bit.operators.z_block,
+            av.operators.z_block, e64.operators.z_block,
             "z_block differs"
         );
         assert_eq!(
-            av.operators.ipowers, bit.operators.ipowers,
+            av.operators.ipowers, e64.operators.ipowers,
             "ipowers differ"
         );
     }
@@ -1257,7 +1274,8 @@ mod test_topphatt {
             for seed in 0..20u64 {
                 let hamiltonian = random_majorana(n_modes, 6 * n_modes, seed);
                 let n_majoranas = 2 * n_modes;
-                let bit_store = BitTermStore::from_arrayvecs(&hamiltonian.indices).unwrap();
+                let bits64 = BitTermStore64::from_arrayvecs(&hamiltonian.indices).unwrap();
+                let bits128 = BitTermStore128::from_arrayvecs(&hamiltonian.indices).unwrap();
                 let av_tree = topphatt(
                     hamiltonian,
                     TernaryTree::naive_jkmn(n_modes),
@@ -1265,23 +1283,35 @@ mod test_topphatt {
                     NodeOrderHeuristic::MinWeight,
                 )
                 .unwrap();
-                let bit_tree = topphatt_impl(
-                    bit_store,
+                let t64 = topphatt_impl(
+                    bits64,
+                    TernaryTree::naive_jkmn(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap();
+                let t128 = topphatt_impl(
+                    bits128,
                     TernaryTree::naive_jkmn(n_modes),
                     false,
                     NodeOrderHeuristic::MinWeight,
                 )
                 .unwrap();
                 let av = av_tree.build_encoding(n_modes).unwrap();
-                let bit = bit_tree.build_encoding(n_modes).unwrap();
+                let e64 = t64.build_encoding(n_modes).unwrap();
+                let e128 = t128.build_encoding(n_modes).unwrap();
 
                 // A valid n-mode encoding has 2*n Majorana operators.
                 assert_eq!(av.operators.ipowers.len(), n_majoranas);
-                assert_eq!(bit.operators.ipowers.len(), n_majoranas);
+                assert_eq!(e64.operators.ipowers.len(), n_majoranas);
+
+                // The two word widths run the identical algorithm and must agree.
+                assert_eq!(e64.operators.x_block, e128.operators.x_block);
+                assert_eq!(e64.operators.z_block, e128.operators.z_block);
 
                 total += 1;
-                if av.operators.x_block != bit.operators.x_block
-                    || av.operators.z_block != bit.operators.z_block
+                if av.operators.x_block != e64.operators.x_block
+                    || av.operators.z_block != e64.operators.z_block
                 {
                     diverged += 1;
                 }

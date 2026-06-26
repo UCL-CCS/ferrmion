@@ -7,16 +7,24 @@
 //! Hamiltonians of increasing size on JKMN trees so the performance gap can be
 //! read off as a function of mode count.
 //!
-//! Note: the two backends can pick different (but equally valid) encodings on
-//! dense inputs because the bit backend deduplicates terms by parity-set rather
-//! than by multiset. The work done is still representative of each approach.
+//! Three backends are compared where applicable:
+//! - `index_list`: `Vec<ArrayVec<[u16; 7]>>` (no mode ceiling).
+//! - `bit_u64`: one `u64` per term (≤ 31 modes).
+//! - `bit_u128`: one `u128` per term (≤ 63 modes), letting the comparison
+//!   extend to larger problems than the `u64` word can hold.
+//!
+//! Note: the bit backends can pick different (but equally valid) encodings on
+//! dense inputs because they deduplicate terms by parity-set rather than by
+//! multiset. The work done is still representative of each approach.
 
 use std::collections::BTreeSet;
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use ferrmion_core::encode::ternarytree::TernaryTree;
 use ferrmion_core::operators::MajoranaSparse;
-use ferrmion_core::optimise::{topphatt, topphatt_impl, BitTermStore, NodeOrderHeuristic};
+use ferrmion_core::optimise::{
+    topphatt, topphatt_impl, BitTermStore128, BitTermStore64, NodeOrderHeuristic,
+};
 use num_complex::Complex64;
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
@@ -44,8 +52,7 @@ fn random_terms(n_modes: usize, n_terms: usize, seed: u64) -> Vec<ArrayVec<[u16;
 fn bench_topphatt_backends(c: &mut Criterion) {
     let mut group = c.benchmark_group("topphatt_term_store");
 
-    // All sizes stay within the u64 bit backend's 31-mode ceiling.
-    for n_modes in [6usize, 14, 20] {
+    for n_modes in [14usize, 20, 31, 40, 50, 63] {
         let n_terms = 12 * n_modes;
         let terms = random_terms(n_modes, n_terms, 0xC0FFEE);
         let coefficients: Vec<Complex64> = vec![Complex64::new(1.0, 0.0); terms.len()];
@@ -68,13 +75,12 @@ fn bench_topphatt_backends(c: &mut Criterion) {
             },
         );
 
-        group.bench_with_input(
-            BenchmarkId::new("bit_packed", n_modes),
-            &n_modes,
-            |b, &n| {
+        // The u64 word only reaches 31 modes; skip it above that.
+        if n_modes <= BitTermStore64::MAX_MODES {
+            group.bench_with_input(BenchmarkId::new("bit_u64", n_modes), &n_modes, |b, &n| {
                 b.iter_batched(
                     || {
-                        let store = BitTermStore::from_arrayvecs(&terms).unwrap();
+                        let store = BitTermStore64::from_arrayvecs(&terms).unwrap();
                         (store, TernaryTree::naive_jkmn(n))
                     },
                     |(store, tree)| {
@@ -82,8 +88,21 @@ fn bench_topphatt_backends(c: &mut Criterion) {
                     },
                     BatchSize::SmallInput,
                 );
-            },
-        );
+            });
+        }
+
+        group.bench_with_input(BenchmarkId::new("bit_u128", n_modes), &n_modes, |b, &n| {
+            b.iter_batched(
+                || {
+                    let store = BitTermStore128::from_arrayvecs(&terms).unwrap();
+                    (store, TernaryTree::naive_jkmn(n))
+                },
+                |(store, tree)| {
+                    topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                },
+                BatchSize::SmallInput,
+            );
+        });
     }
 
     group.finish();

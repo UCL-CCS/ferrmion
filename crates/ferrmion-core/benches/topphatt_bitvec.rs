@@ -28,7 +28,8 @@ use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criteri
 use ferrmion_core::encode::ternarytree::TernaryTree;
 use ferrmion_core::operators::MajoranaSparse;
 use ferrmion_core::optimise::{
-    topphatt, topphatt_impl, BitTermStore128, BitTermStore256, BitTermStore64, NodeOrderHeuristic,
+    topphatt, topphatt_impl, BitSlicedTermStore, BitTermStore128, BitTermStore256, BitTermStore64,
+    NodeOrderHeuristic,
 };
 use num_complex::Complex64;
 use rand::{Rng, SeedableRng};
@@ -130,11 +131,67 @@ fn bench_topphatt_backends(c: &mut Criterion) {
                     );
                 });
             }
+
+            // The transposed store has no mode ceiling and always runs.
+            group.bench_with_input(BenchmarkId::new("bit_sliced", &param), &n_modes, |b, &n| {
+                b.iter_batched(
+                    || {
+                        let store = BitSlicedTermStore::from_arrayvecs(&terms, n);
+                        (store, TernaryTree::naive_jkmn(n))
+                    },
+                    |(store, tree)| {
+                        topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                    },
+                    BatchSize::SmallInput,
+                );
+            });
         }
     }
 
     group.finish();
 }
 
-criterion_group!(benches, bench_topphatt_backends);
+/// Large-mode points beyond every fixed word's ceiling: only the index-list and
+/// transposed backends can run here. Kept to a single degree to bound runtime.
+fn bench_topphatt_large_modes(c: &mut Criterion) {
+    let mut group = c.benchmark_group("topphatt_large_modes");
+    group.sample_size(10);
+
+    let degree = 4;
+    for n_modes in [96usize, 112] {
+        let n_terms = 12 * n_modes;
+        let terms = random_terms(n_modes, n_terms, degree, 0xC0FFEE);
+        let coefficients: Vec<Complex64> = vec![Complex64::new(1.0, 0.0); terms.len()];
+        let param = format!("m{n_modes}_d{degree}");
+
+        group.bench_with_input(BenchmarkId::new("index_list", &param), &n_modes, |b, &n| {
+            b.iter_batched(
+                || {
+                    let ham =
+                        MajoranaSparse::new(terms.clone(), coefficients.clone(), 0.0).unwrap();
+                    (ham, TernaryTree::naive_jkmn(n))
+                },
+                |(ham, tree)| topphatt(ham, tree, false, NodeOrderHeuristic::MinWeight).unwrap(),
+                BatchSize::SmallInput,
+            );
+        });
+
+        group.bench_with_input(BenchmarkId::new("bit_sliced", &param), &n_modes, |b, &n| {
+            b.iter_batched(
+                || {
+                    let store = BitSlicedTermStore::from_arrayvecs(&terms, n);
+                    (store, TernaryTree::naive_jkmn(n))
+                },
+                |(store, tree)| {
+                    topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, bench_topphatt_backends, bench_topphatt_large_modes);
 criterion_main!(benches);

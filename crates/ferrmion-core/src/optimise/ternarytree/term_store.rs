@@ -17,6 +17,9 @@
 //!   [`BitWord`] (`u64`, ≤ 31 modes; `u128`, ≤ 63 modes; `U256`, ≤ 127 modes),
 //!   with type aliases [`BitTermStore64`], [`BitTermStore128`] and
 //!   [`BitTermStore256`].
+//! - [`BitSlicedTermStore`]: the *transpose* of `BitTermStore` — one `u64`
+//!   bit-vector per Majorana index, with bits indexing terms. Scoring a selection
+//!   reads only the three relevant vectors. No mode ceiling.
 //!
 //! # Node representatives
 //!
@@ -467,6 +470,131 @@ impl<W: BitWord> MajoranaTermStore for BitTermStore<W> {
     }
 }
 
+/// Transposed ("bit-sliced") prototype backend.
+///
+/// Where [`BitTermStore`] is row-major (one word per term, bits = Majorana
+/// indices), this is column-major: one `u64` bit-vector per **Majorana index**,
+/// whose bits correspond to **terms** (`columns[i]` bit `t` set ⇔ term `t`
+/// contains index `i`). Scoring a candidate selection reads only the three
+/// vectors for that selection and computes the whole Pauli weight with
+/// word-parallel bit ops over `⌈T/64⌉` words, instead of touching every term.
+///
+/// Because terms are fixed bit positions shared across all columns, this backend
+/// performs **no term drop/dedup** during reduction: emptied terms become
+/// all-zero columns (and contribute 0 weight automatically), but duplicates are
+/// counted with multiplicity. It matches the row-major store's per-selection
+/// weight, yet — like the other bit backends — can pick a different (still valid)
+/// encoding than the index-list backend. It has no mode ceiling: columns are
+/// indexed by Majorana index, and the `u64` words slice terms.
+pub struct BitSlicedTermStore {
+    n_terms: usize,
+    n_words: usize,
+    /// One bit-vector per Majorana index (length `2*n_modes + 1`).
+    columns: Vec<Vec<u64>>,
+}
+
+impl BitSlicedTermStore {
+    /// Build a bit-sliced store from Majorana-index terms.
+    ///
+    /// `n_modes` sizes the column table (`2*n_modes + 1` indices: real Majoranas,
+    /// the all-Z leaf, and node representatives — all `≤ 2*n_modes`).
+    pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAJORANA_MAX]>], n_modes: usize) -> Self {
+        let n_terms = terms.len();
+        let n_words = n_terms.div_ceil(64);
+        let n_cols = 2 * n_modes + 1;
+        let mut columns = vec![vec![0u64; n_words]; n_cols];
+        for (t, term) in terms.iter().enumerate() {
+            let word = t / 64;
+            let bit = 1u64 << (t % 64);
+            for &idx in term.iter() {
+                columns[idx as usize][word] |= bit;
+            }
+        }
+        Self {
+            n_terms,
+            n_words,
+            columns,
+        }
+    }
+}
+
+impl MajoranaTermStore for BitSlicedTermStore {
+    fn len(&self) -> usize {
+        self.n_terms
+    }
+
+    fn evaluate_combination(
+        &self,
+        comb: &[u16],
+        active: usize,
+        bound: &AtomicUsize,
+    ) -> ToppHattSelection {
+        let comb = match normalise_comb(comb) {
+            Some(comb) => comb,
+            None => return ToppHattSelection::WORST,
+        };
+
+        let a = &self.columns[comb[0] as usize];
+        let b = &self.columns[comb[1] as usize];
+        let c = &self.columns[comb[2] as usize];
+
+        let min_weight = bound.load(Ordering::Relaxed);
+
+        // Per term the Pauli weight is 1 iff exactly one or two of the three
+        // children are present: `(a|b|c) & !(a&b&c)` (count 0 or 3 ⇒ identity).
+        // Accumulate word by word, keeping the branch-and-bound early-exit.
+        let mut weight = 0usize;
+        for w in 0..self.n_words {
+            let any = a[w] | b[w] | c[w];
+            let all = a[w] & b[w] & c[w];
+            weight += (any & !all).count_ones() as usize;
+            if weight > min_weight {
+                break;
+            }
+        }
+
+        bound.fetch_min(weight, Ordering::Relaxed);
+
+        ToppHattSelection {
+            min_weight: weight,
+            min_parent: active,
+            leaf_indices: comb,
+        }
+    }
+
+    fn reduce(&mut self, _min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
+        // The all-Z terminator leaf is at bit `n_leaves - 1`; keep it reserved by
+        // choosing the representative from the real selection members only.
+        let all_z = (n_leaves - 1) as u16;
+        let repr = selection
+            .iter()
+            .copied()
+            .filter(|&idx| idx < all_z)
+            .max()
+            .expect("selection always has a real (non-all-Z) member on the X/Y edges");
+
+        let (c0, c1, c2) = (
+            selection[0] as usize,
+            selection[1] as usize,
+            selection[2] as usize,
+        );
+
+        // Per term, the representative carries the parity of the removed indices
+        // (matching the parent-token padding in the index-list reduction). Read
+        // the three columns into a parity buffer, clear them, then write the
+        // parity into the representative's column. No terms are dropped.
+        let parity: Vec<u64> = (0..self.n_words)
+            .map(|w| self.columns[c0][w] ^ self.columns[c1][w] ^ self.columns[c2][w])
+            .collect();
+        for &col in &[c0, c1, c2] {
+            self.columns[col].iter_mut().for_each(|w| *w = 0);
+        }
+        self.columns[repr as usize].copy_from_slice(&parity);
+
+        repr
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,6 +618,7 @@ mod tests {
         let bits64 = BitTermStore64::from_arrayvecs(&terms).unwrap();
         let bits128 = BitTermStore128::from_arrayvecs(&terms).unwrap();
         let bits256 = BitTermStore256::from_arrayvecs(&terms).unwrap();
+        let sliced = BitSlicedTermStore::from_arrayvecs(&terms, 4);
 
         for comb in [[0u16, 1, 2], [0, 1, 3], [2, 3, 4], [1, 4, 5]] {
             let expected = weight_via_store(&av, &comb);
@@ -507,6 +636,59 @@ mod tests {
                 expected,
                 weight_via_store(&bits256, &comb),
                 "u256 weights differ for comb {comb:?}"
+            );
+            assert_eq!(
+                expected,
+                weight_via_store(&sliced, &comb),
+                "bit-sliced weights differ for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn bit_sliced_weight_no_mode_ceiling() {
+        // Indices well past any native-word ceiling: the transposed store has no
+        // limit because words slice terms, not indices.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 200),
+            array_vec!([u16; 7] => 100u16, 200, 250),
+        ];
+        let av = ArrayVecTermStore::new(terms.clone());
+        let sliced = BitSlicedTermStore::from_arrayvecs(&terms, 130);
+        for comb in [[0u16, 100, 200], [0, 200, 250], [100, 200, 250]] {
+            assert_eq!(
+                weight_via_store(&av, &comb),
+                weight_via_store(&sliced, &comb),
+                "bit-sliced weight differs for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn bit_sliced_reduce_parity_matches() {
+        // Same reduce case as `bit_reduce_parity_matches`, checked via the
+        // post-reduction weights (the transposed store has no flat term list).
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 1, 2, 3),
+            array_vec!([u16; 7] => 0u16, 2, 3, 4),
+        ];
+        let n_leaves = 57;
+        let mut sliced = BitSlicedTermStore::from_arrayvecs(&terms, 28);
+        let repr = sliced.reduce(0, [2, 3, 55], n_leaves);
+        assert_eq!(repr, 55);
+
+        // After reduction terms are {0,1} and {0,4}. Spot-check a few combs
+        // against an index-list store holding those reduced terms.
+        let reduced = vec![
+            array_vec!([u16; 7] => 0u16, 1),
+            array_vec!([u16; 7] => 0u16, 4),
+        ];
+        let expected = ArrayVecTermStore::new(reduced);
+        for comb in [[0u16, 1, 4], [1, 4, 5], [0, 1, 2]] {
+            assert_eq!(
+                weight_via_store(&expected, &comb),
+                weight_via_store(&sliced, &comb),
+                "reduced bit-sliced weight differs for comb {comb:?}"
             );
         }
     }

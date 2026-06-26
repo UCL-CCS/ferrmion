@@ -15,12 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Majorana `i` present with odd parity). The bit backend is generic over a
   `BitWord` (`u64` → ≤ 31 modes, `u128` → ≤ 63 modes, `bnum` `U256` → ≤ 127
   modes), with aliases `BitTermStore64` / `BitTermStore128` / `BitTermStore256`.
-  `topphatt` is now a thin wrapper over the generic `topphatt_impl`. A criterion
-  benchmark (`topphatt_bitvec`) sweeps the index-list, `u64`, `u128` and `u256`
-  backends over a grid of mode count and Majorana term degree. On dense inputs
+  `topphatt` is now a thin wrapper over the generic `topphatt_impl`.
+  `BitSlicedTermStore` adds a transposed ("bit-sliced") layout: one `u64`
+  bit-vector per Majorana index whose bits index terms, so scoring a selection
+  reads only the three relevant vectors and computes the Pauli weight with
+  word-parallel bit ops; it has no mode ceiling. A criterion benchmark
+  (`topphatt_bitvec`) sweeps the index-list, `u64`, `u128`, `u256` and bit-sliced
+  backends over a grid of mode count and Majorana term degree (plus large-mode
+  points only the index-list and bit-sliced backends can reach). On dense inputs
   the bit backends can pick different (but valid) encodings because they
-  deduplicate terms by parity-set rather than by multiset; all word widths run
-  the identical algorithm and always agree with each other.
+  deduplicate terms by parity-set rather than by multiset (the bit-sliced backend
+  does no deduplication at all); all `BitTermStore` word widths run the identical
+  algorithm and always agree with each other.
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
   `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.

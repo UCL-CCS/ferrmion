@@ -777,7 +777,7 @@ mod test_topphatt {
     use crate::encode::ternarytree::TernaryTree;
     use crate::optimise::ternarytree::hatt::{qubit_term_weight, reduce_hamiltonian};
     use crate::optimise::ternarytree::term_store::{
-        BitTermStore128, BitTermStore256, BitTermStore64,
+        BitSlicedTermStore, BitTermStore128, BitTermStore256, BitTermStore64,
     };
     use log::debug;
     use ndarray::arr1;
@@ -1291,6 +1291,7 @@ mod test_topphatt {
                 let bits64 = BitTermStore64::from_arrayvecs(&hamiltonian.indices).unwrap();
                 let bits128 = BitTermStore128::from_arrayvecs(&hamiltonian.indices).unwrap();
                 let bits256 = BitTermStore256::from_arrayvecs(&hamiltonian.indices).unwrap();
+                let sliced = BitSlicedTermStore::from_arrayvecs(&hamiltonian.indices, n_modes);
                 let av_tree = topphatt(
                     hamiltonian,
                     TernaryTree::naive_jkmn(n_modes),
@@ -1319,14 +1320,25 @@ mod test_topphatt {
                     NodeOrderHeuristic::MinWeight,
                 )
                 .unwrap();
+                let t_sliced = topphatt_impl(
+                    sliced,
+                    TernaryTree::naive_jkmn(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap();
                 let av = av_tree.build_encoding(n_modes).unwrap();
                 let e64 = t64.build_encoding(n_modes).unwrap();
                 let e128 = t128.build_encoding(n_modes).unwrap();
                 let e256 = t256.build_encoding(n_modes).unwrap();
+                let e_sliced = t_sliced.build_encoding(n_modes).unwrap();
 
-                // A valid n-mode encoding has 2*n Majorana operators.
+                // A valid n-mode encoding has 2*n Majorana operators. The
+                // transposed store does no dedup so it may pick a different (but
+                // valid) encoding — assert validity, not equality.
                 assert_eq!(av.operators.ipowers.len(), n_majoranas);
                 assert_eq!(e64.operators.ipowers.len(), n_majoranas);
+                assert_eq!(e_sliced.operators.ipowers.len(), n_majoranas);
 
                 // All word widths run the identical algorithm and must agree.
                 assert_eq!(e64.operators.x_block, e128.operators.x_block);

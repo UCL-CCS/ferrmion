@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backend is ~1.0–2.1× faster (e.g. ~2× for JKMN on H2O), the edge growing with
   system size, while producing encodings of essentially equal Pauli weight
   (pinned by a `topphatt_bit_sliced_weight_snapshot` regression test).
+- Hubbard-model weight-reduction comparison test
+  (`test_hubbard_weight_reduction_matches_snapshot`): for several lattices
+  (1D periodic chain, 2D square lattices) it pins the topphatt Pauli weight and
+  coefficient Pauli weight (normalised to the naive encode) across the full
+  encoding × backend grid (JW/BK/PE/JKMN × index_list/bit_sliced) against
+  `hubbard_weight_snapshot.json`. On these sparse Hubbard Hamiltonians the two
+  backends produce identical reductions.
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
   `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.

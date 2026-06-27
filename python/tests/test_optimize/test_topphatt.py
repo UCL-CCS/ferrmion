@@ -7,8 +7,28 @@ import numpy as np
 import pytest
 from ferrmion.optimize.huffman import huffman_ternary_tree
 from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree
+from ferrmion.hamiltonians import (
+    hubbard_hamiltonian,
+    linear_adjacency_matrix,
+    square_lattice_adjacency_matrix,
+)
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
+
+
+# Hubbard test systems (spinful, onsite U=4, hopping t=1). `hubbard_hamiltonian`
+# yields one fermion mode per lattice site.
+HUBBARD_SYSTEMS = {
+    "chain8_periodic": lambda: linear_adjacency_matrix(8, periodic=True),
+    "square_2x4": lambda: square_lattice_adjacency_matrix((2, 4), periodic=False),
+    "square_3x4": lambda: square_lattice_adjacency_matrix((3, 4), periodic=False),
+}
+TREE_ENCODINGS = {
+    "JW": TernaryTree.jordan_wigner,
+    "BK": TernaryTree.bravyi_kitaev,
+    "PE": TernaryTree.parity,
+    "JKMN": TernaryTree.jkmn,
+}
 
 
 @pytest.mark.parametrize(
@@ -248,3 +268,39 @@ def test_topphatt_heuristic_distribution_h2o_jkmn(water_data):
     # The best deterministic heuristic on this dataset should match or beat the
     # mean of uniformly-random node selection.
     assert deterministic_min <= random_weights.mean()
+
+
+@pytest.mark.parametrize("system", list(HUBBARD_SYSTEMS))
+@pytest.mark.parametrize("encoding", list(TREE_ENCODINGS))
+@pytest.mark.parametrize("backend", ["index_list", "bit_sliced"])
+def test_hubbard_weight_reduction_matches_snapshot(
+    system, encoding, backend, hubbard_weight_snapshot
+):
+    """Compare topphatt weight reduction across encoding x backend on Hubbard models.
+
+    For each Hubbard lattice, encoding (JW/BK/PE/JKMN) and term-store backend
+    (index_list/bit_sliced), pins the topphatt Pauli weight and coefficient Pauli
+    weight (each normalised to the naive encode) against a stored snapshot. The
+    two backends produce identical reductions on these sparse Hubbard
+    Hamiltonians (no term-dedup divergence), so a change in either is caught.
+    """
+    adjacency = HUBBARD_SYSTEMS[system]()
+    fham = hubbard_hamiltonian(adjacency, onsite_term=4.0, hopping_term=1.0)
+    tree_ctor = TREE_ENCODINGS[encoding]
+
+    qham_naive = tree_ctor(fham.n_modes).encode(fham)
+    qham, _ = tree_ctor(fham.n_modes).encode_topphatt(
+        fham, parallelize=False, backend=backend
+    )
+
+    expected = hubbard_weight_snapshot[system][encoding][backend]
+    assert np.isclose(
+        float(pauli_weight(qham)[0] / pauli_weight(qham_naive)[0]),
+        expected["pauli_weight"],
+        atol=0.01,
+    )
+    assert np.isclose(
+        float(coefficient_pauli_weight(qham)[0] / coefficient_pauli_weight(qham_naive)[0]),
+        expected["coefficient_pauli_weight"],
+        atol=0.01,
+    )

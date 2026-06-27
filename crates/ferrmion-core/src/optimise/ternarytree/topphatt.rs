@@ -128,8 +128,8 @@ impl Restriction {
     /// As the procedure progresses, the set of unassigned indices will become
     /// more restrictive. `representatives[c]` gives the index that currently
     /// stands in for child node `c`; this is the term-store's chosen
-    /// representative, which for the index-list backend is the upper-range token
-    /// `c + 2*n_nodes + 1` and for the bit backend is the max of `c`'s selection.
+    /// representative — the upper-range token `c + 2*n_nodes + 1` for both the
+    /// index-list and bit-sliced backends.
     fn get_index_subset(
         &self,
         unassigned: &BTreeSet<usize>,
@@ -776,9 +776,7 @@ mod test_topphatt {
     use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
     use crate::optimise::ternarytree::hatt::{qubit_term_weight, reduce_hamiltonian};
-    use crate::optimise::ternarytree::term_store::{
-        BitSlicedTermStore, BitTermStore128, BitTermStore256, BitTermStore64,
-    };
+    use crate::optimise::ternarytree::term_store::BitSlicedTermStore;
     use log::debug;
     use ndarray::arr1;
     use num_complex::Complex64;
@@ -1167,65 +1165,34 @@ mod test_topphatt {
         assert_eq!(hamiltonian, expected);
     }
 
-    /// Run the index-list backend and both bit backends (`u64`, `u128`) on the
-    /// same input and assert all three produce identical encodings. `make_tree`
-    /// is called per run because [`TernaryTree`] is not `Clone` and each run
-    /// consumes its tree.
+    /// Run the index-list and bit-sliced backends on the same input and assert
+    /// they produce identical encodings. `make_tree` is called per run because
+    /// [`TernaryTree`] is not `Clone` and each run consumes its tree. (On this
+    /// small collision-free fixture the no-dedup bit-sliced backend matches the
+    /// index-list backend exactly.)
     fn assert_backends_agree(
         hamiltonian: MajoranaSparse,
         make_tree: impl Fn() -> TernaryTree,
         n_modes: usize,
         heuristic: NodeOrderHeuristic,
     ) {
-        let bits64 = BitTermStore64::from_arrayvecs(&hamiltonian.indices)
-            .expect("fixture must fit in the u64 bit store");
-        let bits128 = BitTermStore128::from_arrayvecs(&hamiltonian.indices)
-            .expect("fixture must fit in the u128 bit store");
-        let bits256 = BitTermStore256::from_arrayvecs(&hamiltonian.indices)
-            .expect("fixture must fit in the u256 bit store");
+        let sliced = BitSlicedTermStore::from_arrayvecs(&hamiltonian.indices, n_modes);
 
         let av_tree = topphatt(hamiltonian, make_tree(), false, heuristic).unwrap();
-        let t64 = topphatt_impl(bits64, make_tree(), false, heuristic).unwrap();
-        let t128 = topphatt_impl(bits128, make_tree(), false, heuristic).unwrap();
-        let t256 = topphatt_impl(bits256, make_tree(), false, heuristic).unwrap();
+        let sliced_tree = topphatt_impl(sliced, make_tree(), false, heuristic).unwrap();
 
         let av = av_tree.build_encoding(n_modes).unwrap();
-        let e64 = t64.build_encoding(n_modes).unwrap();
-        let e128 = t128.build_encoding(n_modes).unwrap();
-        let e256 = t256.build_encoding(n_modes).unwrap();
+        let bs = sliced_tree.build_encoding(n_modes).unwrap();
 
-        // All word widths implement the identical parity-set algorithm, so they
-        // must always agree with each other.
         assert_eq!(
-            e64.operators.x_block, e128.operators.x_block,
-            "u64 vs u128 x"
-        );
-        assert_eq!(
-            e64.operators.z_block, e128.operators.z_block,
-            "u64 vs u128 z"
-        );
-        assert_eq!(
-            e64.operators.x_block, e256.operators.x_block,
-            "u64 vs u256 x"
-        );
-        assert_eq!(
-            e64.operators.z_block, e256.operators.z_block,
-            "u64 vs u256 z"
-        );
-
-        // On a structured fixture they also agree with the index-list backend.
-        assert_eq!(
-            av.operators.x_block, e64.operators.x_block,
+            av.operators.x_block, bs.operators.x_block,
             "x_block differs"
         );
         assert_eq!(
-            av.operators.z_block, e64.operators.z_block,
+            av.operators.z_block, bs.operators.z_block,
             "z_block differs"
         );
-        assert_eq!(
-            av.operators.ipowers, e64.operators.ipowers,
-            "ipowers differ"
-        );
+        assert_eq!(av.operators.ipowers, bs.operators.ipowers, "ipowers differ");
     }
 
     #[test]
@@ -1274,47 +1241,23 @@ mod test_topphatt {
     /// Both backends must always produce a *valid* encoding of the right
     /// dimensions on random inputs, even where their optimal selections differ.
     ///
-    /// They are NOT asserted equal: the bit backend deduplicates terms by
-    /// parity-set while the index-list backend deduplicates by multiset (see the
+    /// They are NOT asserted equal: the bit-sliced backend does no term
+    /// deduplication while the index-list backend deduplicates terms (see the
     /// `term_store` module docs). On dense random Hamiltonians this makes the two
     /// minimise subtly different objectives and pick different — but equally
     /// valid — encodings a sizeable fraction of the time. The divergence count is
     /// reported for visibility.
     #[test]
-    fn test_bit_backend_valid_encodings_random() {
+    fn test_bit_sliced_valid_encodings_random() {
         let mut total = 0;
         let mut diverged = 0;
         for n_modes in [4usize, 6, 8, 10] {
             for seed in 0..20u64 {
                 let hamiltonian = random_majorana(n_modes, 6 * n_modes, seed);
                 let n_majoranas = 2 * n_modes;
-                let bits64 = BitTermStore64::from_arrayvecs(&hamiltonian.indices).unwrap();
-                let bits128 = BitTermStore128::from_arrayvecs(&hamiltonian.indices).unwrap();
-                let bits256 = BitTermStore256::from_arrayvecs(&hamiltonian.indices).unwrap();
                 let sliced = BitSlicedTermStore::from_arrayvecs(&hamiltonian.indices, n_modes);
                 let av_tree = topphatt(
                     hamiltonian,
-                    TernaryTree::naive_jkmn(n_modes),
-                    false,
-                    NodeOrderHeuristic::MinWeight,
-                )
-                .unwrap();
-                let t64 = topphatt_impl(
-                    bits64,
-                    TernaryTree::naive_jkmn(n_modes),
-                    false,
-                    NodeOrderHeuristic::MinWeight,
-                )
-                .unwrap();
-                let t128 = topphatt_impl(
-                    bits128,
-                    TernaryTree::naive_jkmn(n_modes),
-                    false,
-                    NodeOrderHeuristic::MinWeight,
-                )
-                .unwrap();
-                let t256 = topphatt_impl(
-                    bits256,
                     TernaryTree::naive_jkmn(n_modes),
                     false,
                     NodeOrderHeuristic::MinWeight,
@@ -1328,35 +1271,25 @@ mod test_topphatt {
                 )
                 .unwrap();
                 let av = av_tree.build_encoding(n_modes).unwrap();
-                let e64 = t64.build_encoding(n_modes).unwrap();
-                let e128 = t128.build_encoding(n_modes).unwrap();
-                let e256 = t256.build_encoding(n_modes).unwrap();
                 let e_sliced = t_sliced.build_encoding(n_modes).unwrap();
 
                 // A valid n-mode encoding has 2*n Majorana operators. The
                 // transposed store does no dedup so it may pick a different (but
                 // valid) encoding — assert validity, not equality.
                 assert_eq!(av.operators.ipowers.len(), n_majoranas);
-                assert_eq!(e64.operators.ipowers.len(), n_majoranas);
                 assert_eq!(e_sliced.operators.ipowers.len(), n_majoranas);
 
-                // All word widths run the identical algorithm and must agree.
-                assert_eq!(e64.operators.x_block, e128.operators.x_block);
-                assert_eq!(e64.operators.z_block, e128.operators.z_block);
-                assert_eq!(e64.operators.x_block, e256.operators.x_block);
-                assert_eq!(e64.operators.z_block, e256.operators.z_block);
-
                 total += 1;
-                if av.operators.x_block != e64.operators.x_block
-                    || av.operators.z_block != e64.operators.z_block
+                if av.operators.x_block != e_sliced.operators.x_block
+                    || av.operators.z_block != e_sliced.operators.z_block
                 {
                     diverged += 1;
                 }
             }
         }
         eprintln!(
-            "bit vs index-list backend: differing (but valid) encodings on \
-             {diverged}/{total} random instances (parity-set vs multiset dedup)"
+            "bit-sliced vs index-list backend: differing (but valid) encodings on \
+             {diverged}/{total} random instances (no-dedup divergence)"
         );
     }
 

@@ -7,29 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- Prototype bit-vector Majorana-term backend for TOPP-HATT. The inner weight
-  evaluation and Hamiltonian reduction are now expressed behind a
-  `MajoranaTermStore` trait (in `ferrmion-core`), with two implementations:
-  `ArrayVecTermStore` (the production index-list representation, unchanged
-  behaviour) and `BitTermStore<W>` (one fixed-width word per term, bit `i` =
-  Majorana `i` present with odd parity). The bit backend is generic over a
-  `BitWord` (`u64` → ≤ 31 modes, `u128` → ≤ 63 modes, `bnum` `U256` → ≤ 127
-  modes), with aliases `BitTermStore64` / `BitTermStore128` / `BitTermStore256`.
-  `topphatt` is now a thin wrapper over the generic `topphatt_impl`.
-  `BitSlicedTermStore` adds a transposed ("bit-sliced") layout: one `u64`
-  bit-vector per Majorana index whose bits index terms, so scoring a selection
-  reads only the three relevant vectors and computes the Pauli weight with
-  word-parallel bit ops; it has no mode ceiling. A criterion benchmark
-  (`topphatt_bitvec`) sweeps the index-list, `u64`, `u128`, `u256` and bit-sliced
-  backends over a grid of mode count and Majorana term degree (plus large-mode
-  points only the index-list and bit-sliced backends can reach), with additional
-  `term_store_build` (conversion-only) and `topphatt_end_to_end`
-  (preparation-inclusive) groups confirming the format-conversion cost is
-  negligible (microseconds) next to the optimizer. On dense inputs
-  the bit backends can pick different (but valid) encodings because they
-  deduplicate terms by parity-set rather than by multiset (the bit-sliced backend
-  does no deduplication at all); all `BitTermStore` word widths run the identical
-  algorithm and always agree with each other.
+- Pluggable Majorana-term storage for TOPP-HATT. The inner weight evaluation and
+  Hamiltonian reduction are now expressed behind a `MajoranaTermStore` trait (in
+  `ferrmion-core`), with two implementations: `ArrayVecTermStore` (the production
+  index-list representation, unchanged behaviour) and `BitSlicedTermStore`, a
+  transposed bit-vector layout — one `u64` bit-vector per Majorana index whose
+  bits index terms, so scoring a selection reads only the three relevant vectors
+  and computes the Pauli weight with word-parallel bit ops over `⌈T/64⌉` words.
+  It has no mode ceiling. `topphatt` is now a thin wrapper over the generic
+  `topphatt_impl`. A criterion benchmark (`topphatt_bitvec`) compares the
+  index-list and bit-sliced backends over a grid of mode count and Majorana term
+  degree (plus large-mode points), with additional `term_store_build`
+  (conversion-only) and `topphatt_end_to_end` (preparation-inclusive) groups
+  confirming the format-conversion cost is negligible (microseconds) next to the
+  optimizer. The bit-sliced backend does no term deduplication, so on dense inputs
+  it can pick a different (but equally valid) encoding than the index-list
+  backend.
 - `backend` argument on `TernaryTree.encode_topphatt` and the `core.topphatt` /
   `core.encode_topphatt` bindings, selecting the term-store backend
   (`"index_list"`, default, or `"bit_sliced"`). The bit-sliced backend uses the
@@ -38,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parametrized Python benchmark (`test_benchmark_encode_topphatt_backend`)
   compares the two backends on the molecular fixtures; on this data the bit-sliced
   backend is ~1.0–2.1× faster (e.g. ~2× for JKMN on H2O), the edge growing with
-  system size. (The row-major `BitTermStore` word backends keep their low-range
-  representative and remain validated only for JKMN-style topologies.)
+  system size, while producing encodings of essentially equal Pauli weight
+  (pinned by a `topphatt_bit_sliced_weight_snapshot` regression test).
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
   `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.

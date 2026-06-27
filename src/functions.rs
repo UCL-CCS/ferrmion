@@ -8,7 +8,9 @@ use ferrmion_core::encode::majorana::Encode;
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{MajoranaSparse, SymplecticOperator};
-use ferrmion_core::optimise::{hatt, topphatt, NodeOrderHeuristic};
+use ferrmion_core::optimise::{
+    hatt, topphatt, topphatt_impl, BitSlicedTermStore, NodeOrderHeuristic,
+};
 use ferrmion_core::utils;
 use log::debug;
 use numpy::{Complex64, PyArray1, PyReadonlyArray1};
@@ -212,6 +214,32 @@ pub(crate) fn hatt_py(
     Ok((tree.to_flatpack(), weight))
 }
 
+/// Run TOPP-HATT over the requested Majorana term-store backend.
+///
+/// `"index_list"` (default) uses the production `Vec<ArrayVec<..>>` store;
+/// `"bit_sliced"` uses the transposed `BitSlicedTermStore` (one `u64` bit-vector
+/// per Majorana index). The bit-sliced backend does no term deduplication, so it
+/// can produce a different (but valid) encoding — it is provided for performance
+/// comparison.
+fn run_topphatt(
+    hamiltonian: MajoranaSparse,
+    tree: TernaryTree,
+    parallelize: bool,
+    heuristic: NodeOrderHeuristic,
+    backend: &str,
+) -> Result<TernaryTree, CoreError> {
+    match backend {
+        "index_list" => Ok(topphatt(hamiltonian, tree, parallelize, heuristic)?),
+        "bit_sliced" => {
+            let store = BitSlicedTermStore::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
+            Ok(topphatt_impl(store, tree, parallelize, heuristic)?)
+        }
+        other => Err(CoreError::Value(format!(
+            "unknown topphatt backend: {other:?} (expected \"index_list\" or \"bit_sliced\")"
+        ))),
+    }
+}
+
 /// Run the TOPPHATT algorithm to optimise a ternary-tree encoding structure.
 ///
 /// TOPPHATT (Tree-Optimised Pauli-weight for Hamiltonian-Adapted Ternary Trees)
@@ -226,11 +254,14 @@ pub(crate) fn hatt_py(
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
+///     backend: Term-store backend, ``"index_list"`` (default) or
+///         ``"bit_sliced"`` (transposed bit-vector layout, for benchmarking).
 ///
 /// Returns:
 ///     MajoranaEncoding: The optimised encoding.
 #[pyfunction(name = "topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None))]
+#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "index_list"))]
+#[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn topphatt_py(
     py: Python<'_>,
     flatpack: TTFlatpack,
@@ -239,6 +270,7 @@ pub(crate) fn topphatt_py(
     parallelize: bool,
     heuristic: &str,
     seed: Option<u64>,
+    backend: &str,
 ) -> Result<PyMajoranaEncoding, CoreError> {
     debug!("Starting TOPPHATT");
     let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
@@ -247,7 +279,7 @@ pub(crate) fn topphatt_py(
 
     let encoding = py.allow_threads(|| -> Result<_, CoreError> {
         let tree = TernaryTree::from_flatpack_naive(&flatpack)?;
-        let tree = topphatt(hamiltonian, tree, parallelize, heuristic)?;
+        let tree = run_topphatt(hamiltonian, tree, parallelize, heuristic, backend)?;
         Ok(tree.build_encoding(n_qubits)?)
     })?;
     Ok(PyMajoranaEncoding(encoding))
@@ -265,11 +297,14 @@ pub(crate) fn topphatt_py(
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
+///     backend: Term-store backend, ``"index_list"`` (default) or
+///         ``"bit_sliced"`` (transposed bit-vector layout, for benchmarking).
 ///
 /// Returns:
 ///     Tuple of ``(QubitHamiltonian, MajoranaEncoding)``.
 #[pyfunction(name = "encode_topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, fham, parallelize = true, heuristic = "min_weight", seed = None))]
+#[pyo3(signature = (flatpack, n_qubits, fham, parallelize = true, heuristic = "min_weight", seed = None, backend = "index_list"))]
+#[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn encode_topphatt_py(
     py: Python<'_>,
     flatpack: TTFlatpack,
@@ -278,6 +313,7 @@ pub(crate) fn encode_topphatt_py(
     parallelize: bool,
     heuristic: &str,
     seed: Option<u64>,
+    backend: &str,
 ) -> Result<(PyQubitHamiltonian, PyMajoranaEncoding), CoreError> {
     debug!("Starting TOPPHATT");
     let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
@@ -287,7 +323,7 @@ pub(crate) fn encode_topphatt_py(
         let mut anneal_hamiltonian = hamiltonian.clone();
         anneal_hamiltonian.constant = 0.0;
         let tree = TernaryTree::from_flatpack_naive(&flatpack)?;
-        let tree = topphatt(anneal_hamiltonian, tree, parallelize, heuristic)?;
+        let tree = run_topphatt(anneal_hamiltonian, tree, parallelize, heuristic, backend)?;
         let encoding = tree.build_encoding(n_qubits)?;
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         Ok((qham, encoding))

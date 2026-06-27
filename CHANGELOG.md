@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deduplicate terms by parity-set rather than by multiset (the bit-sliced backend
   does no deduplication at all); all `BitTermStore` word widths run the identical
   algorithm and always agree with each other.
+- `backend` argument on `TernaryTree.encode_topphatt` and the `core.topphatt` /
+  `core.encode_topphatt` bindings, selecting the term-store backend
+  (`"index_list"`, default, or `"bit_sliced"`). The bit-sliced backend uses the
+  same upper-range node representative as the index-list backend, so it is valid
+  on every tree topology (Jordan-Wigner, parity, Bravyi-Kitaev, JKMN). A
+  parametrized Python benchmark (`test_benchmark_encode_topphatt_backend`)
+  compares the two backends on the molecular fixtures; on this data the bit-sliced
+  backend is ~1.0–2.1× faster (e.g. ~2× for JKMN on H2O), the edge growing with
+  system size. (The row-major `BitTermStore` word backends keep their low-range
+  representative and remain validated only for JKMN-style topologies.)
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
   `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.

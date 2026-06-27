@@ -231,6 +231,7 @@ class TernaryTree:
         parallelize: bool = True,
         heuristic: str = "min_weight",
         seed: int | None = None,
+        backend: str = "index_list",
     ) -> tuple[QubitHamiltonian, MajoranaEncoding]:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
@@ -244,6 +245,11 @@ class TernaryTree:
                 (uniformly random active node using ``seed``).
             seed: RNG seed for ``heuristic="random"``. Ignored otherwise;
                 defaults to ``0`` when omitted.
+            backend: Term-store backend driving the optimisation,
+                ``"index_list"`` (default) or ``"bit_sliced"`` (transposed
+                bit-vector layout). The bit-sliced backend does no term
+                deduplication and may produce a different but valid encoding;
+                it is provided for performance comparison.
 
         Returns:
             tuple[QubitHamiltonian, MajoranaEncoding]: The encoded qubit
@@ -256,6 +262,7 @@ class TernaryTree:
             parallelize=parallelize,
             heuristic=heuristic,
             seed=seed,
+            backend=backend,
         )
 
     def decode(self, states: NDArray[np.bool]) -> NDArray[np.bool]:

@@ -1359,4 +1359,53 @@ mod test_topphatt {
              {diverged}/{total} random instances (parity-set vs multiset dedup)"
         );
     }
+
+    /// `bit_sliced` must produce valid encodings on *every* tree topology, not
+    /// just JKMN. The Jordan-Wigner chain in particular has node z-edges whose
+    /// representative previously tripped the orchestration's magnitude-based edge
+    /// classification (panic: "All leaves should have pairs"); the upper-range
+    /// representative fixes it. The index-list backend is checked alongside as a
+    /// control.
+    #[test]
+    fn test_bit_sliced_valid_on_all_topologies() {
+        let n_modes = 6;
+        for name in ["jordan_wigner", "parity", "bravyi_kitaev", "jkmn"] {
+            let build = |n: usize| match name {
+                "jordan_wigner" => TernaryTree::naive_jordan_wigner(n),
+                "parity" => TernaryTree::naive_parity(n),
+                "bravyi_kitaev" => TernaryTree::naive_bravyi_kitaev(n),
+                _ => TernaryTree::naive_jkmn(n),
+            };
+            for seed in 0..5u64 {
+                let hamiltonian = random_majorana(n_modes, 6 * n_modes, seed);
+
+                let il = topphatt(
+                    hamiltonian.clone(),
+                    build(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap()
+                .build_encoding(n_modes)
+                .unwrap();
+                assert_eq!(
+                    il.operators.ipowers.len(),
+                    2 * n_modes,
+                    "index_list {name} seed {seed}"
+                );
+
+                let store = BitSlicedTermStore::from_arrayvecs(&hamiltonian.indices, n_modes);
+                let sliced =
+                    topphatt_impl(store, build(n_modes), false, NodeOrderHeuristic::MinWeight)
+                        .unwrap()
+                        .build_encoding(n_modes)
+                        .unwrap();
+                assert_eq!(
+                    sliced.operators.ipowers.len(),
+                    2 * n_modes,
+                    "bit_sliced {name} seed {seed}"
+                );
+            }
+        }
+    }
 }

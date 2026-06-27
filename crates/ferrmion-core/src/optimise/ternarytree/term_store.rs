@@ -335,6 +335,15 @@ impl BitWord for U256 {
 /// `W` sets the mode ceiling: the highest index touched is the all-Z leaf at
 /// `2*n_nodes`, which must fit in `W`, so `n_modes ≤ (W::BITS - 1) / 2`
 /// (31 for `u64`, 63 for `u128`, 127 for `U256`). See [`BitTermStore::MAX_MODES`].
+///
+/// **Topology caveat:** to keep indices within the word, this backend uses the
+/// *low-range* max-of-selection node representative rather than the index-list
+/// upper-range token. The shared orchestration classifies a selected edge as
+/// leaf vs node by index magnitude, so a low-range representative is only safe on
+/// topologies where a node's edges are not re-selected as raw leaves — validated
+/// for JKMN-style trees. For correctness on arbitrary topologies (e.g.
+/// Jordan-Wigner chains) use the index-list or [`BitSlicedTermStore`] backends,
+/// which share the upper-range convention.
 pub struct BitTermStore<W: BitWord = u64> {
     pub(crate) terms: Vec<W>,
 }
@@ -489,19 +498,25 @@ impl<W: BitWord> MajoranaTermStore for BitTermStore<W> {
 pub struct BitSlicedTermStore {
     n_terms: usize,
     n_words: usize,
-    /// One bit-vector per Majorana index (length `2*n_modes + 1`).
+    /// One bit-vector per index (length `3*n_modes + 1`): real Majoranas
+    /// `0..2*n_nodes`, the all-Z leaf `2*n_nodes`, and node representatives
+    /// `2*n_nodes+1..=3*n_nodes`.
     columns: Vec<Vec<u64>>,
 }
 
 impl BitSlicedTermStore {
     /// Build a bit-sliced store from Majorana-index terms.
     ///
-    /// `n_modes` sizes the column table (`2*n_modes + 1` indices: real Majoranas,
-    /// the all-Z leaf, and node representatives — all `≤ 2*n_modes`).
+    /// `n_modes` sizes the column table to `3*n_modes + 1` indices. Unlike the
+    /// row-major bit backends, this store uses the **same upper-range node
+    /// representative as the index-list backend** (`node + 2*n_nodes + 1`), so it
+    /// stays compatible with the orchestration's magnitude-based edge
+    /// classification on every tree topology (not just JKMN). There is no
+    /// word-width mode ceiling: the `u64` words slice terms, not indices.
     pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAJORANA_MAX]>], n_modes: usize) -> Self {
         let n_terms = terms.len();
         let n_words = n_terms.div_ceil(64);
-        let n_cols = 2 * n_modes + 1;
+        let n_cols = 3 * n_modes + 1;
         let mut columns = vec![vec![0u64; n_words]; n_cols];
         for (t, term) in terms.iter().enumerate() {
             let word = t / 64;
@@ -562,16 +577,11 @@ impl MajoranaTermStore for BitSlicedTermStore {
         }
     }
 
-    fn reduce(&mut self, _min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
-        // The all-Z terminator leaf is at bit `n_leaves - 1`; keep it reserved by
-        // choosing the representative from the real selection members only.
-        let all_z = (n_leaves - 1) as u16;
-        let repr = selection
-            .iter()
-            .copied()
-            .filter(|&idx| idx < all_z)
-            .max()
-            .expect("selection always has a real (non-all-Z) member on the X/Y edges");
+    fn reduce(&mut self, min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
+        // Use the index-list backend's upper-range node token so the
+        // orchestration classifies this node's edges identically (the
+        // representative is `≥ n_leaves`, never mistaken for a real leaf).
+        let repr = (min_parent + n_leaves) as u16;
 
         let (c0, c1, c2) = (
             selection[0] as usize,
@@ -675,7 +685,9 @@ mod tests {
         let n_leaves = 57;
         let mut sliced = BitSlicedTermStore::from_arrayvecs(&terms, 28);
         let repr = sliced.reduce(0, [2, 3, 55], n_leaves);
-        assert_eq!(repr, 55);
+        // Upper-range node token (min_parent 0 + n_leaves), matching the
+        // index-list convention.
+        assert_eq!(repr, n_leaves as u16);
 
         // After reduction terms are {0,1} and {0,4}. Spot-check a few combs
         // against an index-list store holding those reduced terms.

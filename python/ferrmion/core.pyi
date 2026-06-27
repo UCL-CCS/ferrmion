@@ -194,6 +194,7 @@ def topphatt(
     parallelize: bool = True,
     heuristic: str = "min_weight",
     seed: int | None = None,
+    backend: str = "index_list",
 ) -> MajoranaEncoding: ...
 def encode_topphatt(
     flatpack: TTFlatpack,
@@ -202,4 +203,5 @@ def encode_topphatt(
     parallelize: bool = True,
     heuristic: str = "min_weight",
     seed: int | None = None,
+    backend: str = "index_list",
 ) -> tuple[QubitHamiltonian, MajoranaEncoding]: ...

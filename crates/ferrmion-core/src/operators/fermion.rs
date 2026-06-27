@@ -7,12 +7,24 @@ use ndarray::{arr0, s, Dimension};
 use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, IntoDimension, Zip};
 use num_complex::Complex64;
 use num_complex::{c64, ComplexFloat};
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::result::Result;
 use tinyvec::ArrayVec;
 
 /// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
 const MAX_MAJORANAS: usize = 7;
+
+/// Minimum number of independent terms in a [`FermionSparse`] before
+/// `append_fermion_sparse` expands them across rayon worker threads. Below this,
+/// the serial path is used, avoiding rayon's scheduling overhead on small inputs.
+const PARALLEL_TERM_THRESHOLD: usize = 256;
+
+/// Number of terms accumulated per rayon task in the parallel path. Fixed
+/// independent of the worker count so the per-chunk maps are collected and
+/// merged in a deterministic order — the floating-point result therefore does
+/// not depend on how rayon schedules the work.
+const PARALLEL_CHUNK: usize = 64;
 
 /*
 Fermion
@@ -394,23 +406,7 @@ impl MajoranaHashMap {
     /// Core accumulation: expand one fermionic term (given by its action, mode indices, and
     /// coefficient) into its 2^n majorana components and insert into the map.
     fn append_term(&mut self, action: &[LadderOperator], indices: &[usize], coeff: Complex64) {
-        let term_length = action.len();
-        // Each of the 2^n offset combinations is the bit pattern of `mask`: bit j
-        // selects the Majorana component (0 or 1) for operator position j. This
-        // visits the same combinations as a cartesian product but without
-        // allocating a Vec per combination, and the key is built straight into a
-        // stack `ArrayVec` so the loop is allocation-free.
-        for mask in 0u32..(1u32 << term_length) {
-            let mut scaler = c64(1., 0.);
-            let mut key: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-            for (j, (op, &idx)) in action.iter().zip(indices).enumerate() {
-                let o = ((mask >> j) & 1) as usize;
-                scaler *= op.majorana_coefficients_pair()[o];
-                key.push((2 * idx + o) as u16);
-            }
-            let sign = majorise_key(&mut key);
-            *self.operators.entry(key).or_insert(Complex64::ZERO) += coeff * scaler * sign;
-        }
+        append_term_into(&mut self.operators, action, indices, coeff);
     }
 
     /// Append a single product of Fermionic operators to the [`MajoranaHashMap`].
@@ -419,15 +415,75 @@ impl MajoranaHashMap {
     }
 
     /// Append a Fermionic Hamiltonian in sparse form to the [`MajoranaHashMap`].
+    ///
+    /// Each row of `fsparse` is an independent term, so for large operators the
+    /// expansion is run across rayon worker threads (see [`PARALLEL_TERM_THRESHOLD`]).
     fn append_fermion_sparse(&mut self, fsparse: FermionSparse) {
         debug!("FSparse Indices {:?}", &fsparse.indices);
-        Zip::from(fsparse.indices.rows())
-            .and(fsparse.coefficients.view())
-            .for_each(|ind, coeff| {
-                let ind_slice: Vec<usize> = ind.iter().copied().collect();
-                self.append_term(&fsparse.action, &ind_slice, *coeff);
-            });
+        let n_terms = fsparse.indices.nrows();
+        if n_terms < PARALLEL_TERM_THRESHOLD {
+            Zip::from(fsparse.indices.rows())
+                .and(fsparse.coefficients.view())
+                .for_each(|ind, coeff| {
+                    let ind_slice: Vec<usize> = ind.iter().copied().collect();
+                    append_term_into(&mut self.operators, &fsparse.action, &ind_slice, *coeff);
+                });
+        } else {
+            let action = fsparse.action.as_slice();
+            let indices = &fsparse.indices;
+            let coefficients = &fsparse.coefficients;
+            // Expand independent terms in parallel into thread-local maps. Work is
+            // split into fixed-size chunks (independent of the worker count) and
+            // the per-chunk maps are collected in chunk order, so the serial merge
+            // below is deterministic regardless of how rayon schedules the work.
+            let partials: Vec<HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>> = (0..n_terms)
+                .into_par_iter()
+                .chunks(PARALLEL_CHUNK)
+                .map(|rows| {
+                    let mut local = HashMap::new();
+                    for row in rows {
+                        let ind: Vec<usize> = indices.row(row).iter().copied().collect();
+                        append_term_into(&mut local, action, &ind, coefficients[row]);
+                    }
+                    local
+                })
+                .collect();
+            for local in partials {
+                for (key, value) in local {
+                    *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
+                }
+            }
+        }
         debug!("MBTree {:?}\n", &self);
+    }
+}
+
+/// Expand one fermionic term into its `2^n` Majorana components and accumulate
+/// them into `operators`. Shared by the serial and parallel accumulation paths
+/// of [`MajoranaHashMap`].
+///
+/// Each of the `2^n` offset combinations is the bit pattern of `mask`: bit `j`
+/// selects the Majorana component (`0` or `1`) for operator position `j`. This
+/// visits the same combinations as a cartesian product but without allocating a
+/// Vec per combination, and the key is built straight into a stack `ArrayVec`,
+/// so the loop is allocation-free.
+fn append_term_into(
+    operators: &mut HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
+    action: &[LadderOperator],
+    indices: &[usize],
+    coeff: Complex64,
+) {
+    let term_length = action.len();
+    for mask in 0u32..(1u32 << term_length) {
+        let mut scaler = c64(1., 0.);
+        let mut key: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+        for (j, (op, &idx)) in action.iter().zip(indices).enumerate() {
+            let o = ((mask >> j) & 1) as usize;
+            scaler *= op.majorana_coefficients_pair()[o];
+            key.push((2 * idx + o) as u16);
+        }
+        let sign = majorise_key(&mut key);
+        *operators.entry(key).or_insert(Complex64::ZERO) += coeff * scaler * sign;
     }
 }
 /// Sparse represtnation of a set of [`MajoranaProduct`] operators.
@@ -794,4 +850,43 @@ mod majorana_tests {
     // fn test_msparse_from_vec_fsparse() {
     //     todo!();
     // }
+
+    /// The parallel `append_fermion_sparse` path (taken once a `FermionSparse`
+    /// has at least `PARALLEL_TERM_THRESHOLD` rows) must produce exactly the same
+    /// result as accumulating the terms serially. Coefficients are kept as small
+    /// dyadic-rational values so the sums are exact in `f64` and the comparison
+    /// can be bit-for-bit regardless of accumulation order.
+    #[test]
+    fn test_append_fermion_sparse_parallel_matches_serial() {
+        use LadderOperator::{Annihilation, Creation};
+
+        let action = vec![Creation, Creation, Annihilation, Annihilation];
+        let n_terms = PARALLEL_TERM_THRESHOLD * 3 + 7;
+        let n_orb = 5;
+
+        let mut indices = Array2::<usize>::zeros((n_terms, 4));
+        let mut coefficients = Array1::<Complex64>::zeros(n_terms);
+        for t in 0..n_terms {
+            indices[[t, 0]] = t % n_orb;
+            indices[[t, 1]] = (t / n_orb) % n_orb;
+            indices[[t, 2]] = (t / (n_orb * n_orb)) % n_orb;
+            indices[[t, 3]] = (t / (n_orb * n_orb * n_orb)) % n_orb;
+            coefficients[t] = c64((t % 4 + 1) as f64, 0.0);
+        }
+
+        // Parallel path: > PARALLEL_TERM_THRESHOLD rows in a single FermionSparse.
+        let fsparse =
+            FermionSparse::new(action.clone(), indices.clone(), coefficients.clone()).unwrap();
+        let parallel = MajoranaSparse::from(fsparse);
+
+        // Serial reference: accumulate one term at a time via append_term.
+        let mut serial_map = MajoranaHashMap::new();
+        for t in 0..n_terms {
+            let ind: Vec<usize> = indices.row(t).iter().copied().collect();
+            serial_map.append_term(&action, &ind, coefficients[t]);
+        }
+        let serial = MajoranaSparse::from(serial_map);
+
+        assert_eq!(parallel, serial);
+    }
 }

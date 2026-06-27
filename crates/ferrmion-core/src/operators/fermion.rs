@@ -4,7 +4,7 @@ use crate::spaces::Fermion;
 use crate::utils::COEFFICIENT_TOLERANCE;
 use log::debug;
 use ndarray::{arr0, s, Dimension};
-use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, IntoDimension, Zip};
+use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, IntoDimension};
 use num_complex::Complex64;
 use num_complex::{c64, ComplexFloat};
 use rayon::prelude::*;
@@ -25,6 +25,11 @@ const PARALLEL_TERM_THRESHOLD: usize = 256;
 /// merged in a deterministic order — the floating-point result therefore does
 /// not depend on how rayon schedules the work.
 const PARALLEL_CHUNK: usize = 64;
+
+/// Stack-allocated fermionic mode indices for a single term. The Majorana key
+/// built from a term has the same length, which is already bounded by
+/// [`MAX_MAJORANAS`], so the fermionic indices share that capacity.
+type TermIndices = ArrayVec<[usize; MAX_MAJORANAS]>;
 
 /*
 Fermion
@@ -420,41 +425,47 @@ impl MajoranaHashMap {
     /// expansion is run across rayon worker threads (see [`PARALLEL_TERM_THRESHOLD`]).
     fn append_fermion_sparse(&mut self, fsparse: FermionSparse) {
         debug!("FSparse Indices {:?}", &fsparse.indices);
-        let n_terms = fsparse.indices.nrows();
-        if n_terms < PARALLEL_TERM_THRESHOLD {
-            Zip::from(fsparse.indices.rows())
-                .and(fsparse.coefficients.view())
-                .for_each(|ind, coeff| {
-                    let ind_slice: Vec<usize> = ind.iter().copied().collect();
-                    append_term_into(&mut self.operators, &fsparse.action, &ind_slice, *coeff);
-                });
-        } else {
-            let action = fsparse.action.as_slice();
-            let indices = &fsparse.indices;
-            let coefficients = &fsparse.coefficients;
-            // Expand independent terms in parallel into thread-local maps. Work is
-            // split into fixed-size chunks (independent of the worker count) and
-            // the per-chunk maps are collected in chunk order, so the serial merge
-            // below is deterministic regardless of how rayon schedules the work.
-            let partials: Vec<HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>> = (0..n_terms)
-                .into_par_iter()
-                .chunks(PARALLEL_CHUNK)
-                .map(|rows| {
-                    let mut local = HashMap::new();
-                    for row in rows {
-                        let ind: Vec<usize> = indices.row(row).iter().copied().collect();
-                        append_term_into(&mut local, action, &ind, coefficients[row]);
-                    }
-                    local
-                })
-                .collect();
-            for local in partials {
-                for (key, value) in local {
-                    *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
+        let terms: Vec<(TermIndices, Complex64)> = fsparse
+            .indices
+            .axis_iter(Axis(0))
+            .zip(fsparse.coefficients.iter())
+            .map(|(ind, &coeff)| (ind.iter().copied().collect(), coeff))
+            .collect();
+        self.extend_terms(&fsparse.action, &terms);
+        debug!("MBTree {:?}\n", &self);
+    }
+
+    /// Expand many independent terms that share an `action` into their Majorana
+    /// components and accumulate them into the map.
+    ///
+    /// For at least [`PARALLEL_TERM_THRESHOLD`] terms the expansion runs across
+    /// rayon worker threads: the work is split into fixed-size chunks
+    /// (independent of the worker count), each chunk accumulates into a
+    /// thread-local map, and the per-chunk maps are collected in chunk order and
+    /// merged serially. The merge order — and therefore the floating-point
+    /// result — is thus deterministic regardless of how rayon schedules the work.
+    fn extend_terms(&mut self, action: &[LadderOperator], terms: &[(TermIndices, Complex64)]) {
+        if terms.len() < PARALLEL_TERM_THRESHOLD {
+            for (indices, coeff) in terms {
+                append_term_into(&mut self.operators, action, indices, *coeff);
+            }
+            return;
+        }
+        let partials: Vec<HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>> = terms
+            .par_chunks(PARALLEL_CHUNK)
+            .map(|chunk| {
+                let mut local = HashMap::new();
+                for (indices, coeff) in chunk {
+                    append_term_into(&mut local, action, indices, *coeff);
                 }
+                local
+            })
+            .collect();
+        for local in partials {
+            for (key, value) in local {
+                *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
             }
         }
-        debug!("MBTree {:?}\n", &self);
     }
 }
 
@@ -573,16 +584,20 @@ impl MajoranaSparse {
                     LadderOperator::try_from(v).expect("Signature components should be + or -")
                 })
                 .collect();
-            coeff_view
+            // Gather this signature's non-zero, antisymmetry-valid entries as
+            // independent terms, then expand them (in parallel for large tensors).
+            let terms: Vec<(TermIndices, Complex64)> = coeff_view
                 .indexed_iter()
                 .filter(|(_, &v)| v != 0.0)
-                .for_each(|(ind, &v)| {
+                .filter_map(|(ind, &v)| {
                     let iv = ind.into_dimension();
                     let indices = iv.as_array_view();
-                    if is_valid_fermion_term(&action, indices.as_slice().unwrap()) {
-                        majoranas.append_term(&action, indices.as_slice().unwrap(), c64(v, 0.));
-                    }
-                });
+                    let slice = indices.as_slice().unwrap();
+                    is_valid_fermion_term(&action, slice)
+                        .then(|| (slice.iter().copied().collect(), c64(v, 0.)))
+                })
+                .collect();
+            majoranas.extend_terms(&action, &terms);
         }
         debug!("Getting MSparse");
         let mut hamiltonian = MajoranaSparse::from(majoranas);
@@ -885,6 +900,44 @@ mod majorana_tests {
             let ind: Vec<usize> = indices.row(t).iter().copied().collect();
             serial_map.append_term(&action, &ind, coefficients[t]);
         }
+        let serial = MajoranaSparse::from(serial_map);
+
+        assert_eq!(parallel, serial);
+    }
+
+    /// `from_signatures_and_coeffs` takes the same parallel `extend_terms` path
+    /// once a signature has at least `PARALLEL_TERM_THRESHOLD` valid terms; its
+    /// result must match accumulating those terms serially. The dense unit tensor
+    /// keeps every coefficient at `1.0` (exact in `f64`) so the comparison is
+    /// bit-for-bit regardless of accumulation order.
+    #[test]
+    fn test_from_signatures_and_coeffs_parallel_matches_serial() {
+        use LadderOperator::{Annihilation, Creation};
+
+        let n_orb = 5;
+        let coeffs = ArrayD::<f64>::from_elem(ndarray::IxDyn(&[n_orb, n_orb, n_orb, n_orb]), 1.0);
+
+        // Parallel path via the public constructor (> threshold valid terms).
+        let parallel = MajoranaSparse::from_signatures_and_coeffs(
+            vec!["++--".to_string()],
+            vec![coeffs.view()],
+            0.0,
+        );
+
+        // Serial reference: identical filtering, accumulated one term at a time.
+        let action = vec![Creation, Creation, Annihilation, Annihilation];
+        let mut serial_map = MajoranaHashMap::new();
+        coeffs
+            .indexed_iter()
+            .filter(|(_, &v)| v != 0.0)
+            .for_each(|(ind, &v)| {
+                let iv = ind.into_dimension();
+                let indices = iv.as_array_view();
+                let slice = indices.as_slice().unwrap();
+                if is_valid_fermion_term(&action, slice) {
+                    serial_map.append_term(&action, slice, c64(v, 0.));
+                }
+            });
         let serial = MajoranaSparse::from(serial_map);
 
         assert_eq!(parallel, serial);

@@ -73,12 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are read from a stack `[Complex64; 2]` instead of a freshly heap-allocated
   `Array1` on every multiply. Results are unchanged; two-body (`"++--"`) terms
   construct roughly 1.8x faster in the new benchmark.
-- `MajoranaSparse::from(FermionSparse)` (`append_fermion_sparse`) now expands a
-  term's independent rows across rayon worker threads once there are at least
-  `PARALLEL_TERM_THRESHOLD` of them; smaller operators keep the serial path to
-  avoid rayon's overhead. Work is split into fixed-size chunks whose per-chunk
-  maps are merged in a deterministic order, so the result does not depend on the
-  worker count. On a 4-core machine large two-body terms convert ~2x faster.
+- Both fermion-to-Majorana conversion paths — `MajoranaSparse::from(FermionSparse)`
+  (`append_fermion_sparse`) and `MajoranaSparse::from_signatures_and_coeffs` —
+  now expand a signature's independent terms across rayon worker threads once
+  there are at least `PARALLEL_TERM_THRESHOLD` of them, via a shared
+  `extend_terms` helper; smaller operators keep the serial path to avoid rayon's
+  overhead. Work is split into fixed-size chunks whose per-chunk maps are merged
+  in a deterministic order, so the result does not depend on the worker count.
+  On a 4-core machine large two-body terms convert ~2x faster.
 
 ### Removed
 - Python classes `FermionQubitEncoding`, `MajoranaStringEncoding` and the

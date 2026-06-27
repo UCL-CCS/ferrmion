@@ -64,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manual scoped-thread pool with its `Mutex`/`RwLock`. The branch-and-bound
   early-exit and reproducible tie-breaking are preserved, and the `num_cpus`
   dependency is dropped in favour of rayon's global thread pool.
+- `MajoranaSparse` construction (the fermion-to-Majorana expansion in
+  `MajoranaHashMap::append_term`) is significantly faster. The inner loop over a
+  term's `2^n` Majorana components is now allocation-free: offsets are iterated
+  as the bits of an integer rather than via an allocating cartesian product, the
+  index key is built straight into a stack `ArrayVec` (dropping the intermediate
+  `Vec`/`MajoranaProduct` and the final re-collection), and Majorana coefficients
+  are read from a stack `[Complex64; 2]` instead of a freshly heap-allocated
+  `Array1` on every multiply. Results are unchanged; two-body (`"++--"`) terms
+  construct roughly 1.8x faster in the new benchmark.
 
 ### Removed
 - Python classes `FermionQubitEncoding`, `MajoranaStringEncoding` and the

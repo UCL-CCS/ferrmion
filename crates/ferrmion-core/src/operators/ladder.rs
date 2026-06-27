@@ -66,9 +66,19 @@ impl LadderOperator {
     /// assert_eq!(coeffs[1], Complex64::new(0.0, -0.5));
     /// ```
     pub fn majorana_coefficients(&self) -> Array1<Complex64> {
-        match &self {
-            LadderOperator::Creation => arr1(&[c64(0.5, 0.0), c64(0., -0.5)]),
-            LadderOperator::Annihilation => arr1(&[c64(0.5, 0.0), c64(0., 0.5)]),
+        arr1(&self.majorana_coefficients_pair())
+    }
+
+    /// Stack-allocated variant of [`LadderOperator::majorana_coefficients`].
+    ///
+    /// Returns the same two coefficients as a fixed-size array, avoiding the
+    /// heap allocation of an [`Array1`]. This is used on hot paths (e.g. expanding
+    /// fermionic terms into Majorana products) where the coefficients are read
+    /// repeatedly and an allocation per access would dominate.
+    pub(crate) fn majorana_coefficients_pair(&self) -> [Complex64; 2] {
+        match self {
+            LadderOperator::Creation => [c64(0.5, 0.0), c64(0., -0.5)],
+            LadderOperator::Annihilation => [c64(0.5, 0.0), c64(0., 0.5)],
         }
     }
 }

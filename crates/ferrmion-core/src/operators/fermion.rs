@@ -270,11 +270,53 @@ mod fermion_tests {
     use num_complex::c64;
 
     #[test]
+    fn test_ladder_to_complex() {
+        // Output should look like
+        // [left_0 right_0, left_0 right_1, left_1 right_0, left_1 right_1]
+        let ladder_vec = [LadderOperator::Creation, LadderOperator::Annihilation];
+        let two_action: Vec<Complex64> = ladder_vec
+            .iter()
+            .map(|signature| arr1(&signature.majorana_coefficients()))
+            .reduce(|acc, s| vector_kron(&acc, &s))
+            .unwrap()
+            .to_vec();
+        assert_eq!(
+            two_action,
+            vec![c64(0.25, 0.), c64(0., -0.25), c64(0., 0.25), c64(0.25, 0.)]
+        );
+
+        let ladder_vec = [
+            LadderOperator::Creation,
+            LadderOperator::Annihilation,
+            LadderOperator::Creation,
+        ];
+        let three_action: Vec<Complex64> = ladder_vec
+            .iter()
+            .map(|signature| arr1(&signature.majorana_coefficients()))
+            .reduce(|acc, s| vector_kron(&acc, &s))
+            .unwrap()
+            .to_vec();
+        assert_eq!(
+            three_action,
+            vec![
+                c64(0.125, 0.),
+                c64(0., -0.125),
+                c64(0., 0.125),
+                c64(0.125, 0.),
+                c64(0., -0.125),
+                c64(-0.125, 0.),
+                c64(0.125, 0.),
+                c64(0., -0.125),
+            ]
+        );
+    }
+
+    #[test]
     fn test_action_conversion() {
         let action = [LadderOperator::Creation, LadderOperator::Annihilation];
         let im_coeffs: Array1<Complex64> = action
             .iter()
-            .map(|s| s.majorana_coefficients())
+            .map(|s| arr1(&s.majorana_coefficients()))
             .reduce(|acc, s| vector_kron(&acc, &s))
             .unwrap();
         assert_eq!(
@@ -352,6 +394,11 @@ impl MajoranaProduct {
             coefficient,
         }
     }
+
+    pub fn cannonicalize(&mut self) {
+        let sign = cannonicalize(&mut self.indices);
+        self.coefficient *= sign;
+    }
 }
 
 /// Sorts a stack-allocated Majorana index key in place, returning the sign
@@ -360,10 +407,7 @@ impl MajoranaProduct {
 /// Majorana operators obey the commutation relation $\{\gamma_i,\gamma_j\} =
 /// 2\delta_{i,j}$, so a product can be reordered into ascending index order by
 /// adjacent swaps, picking up a `-1` for each swap of unequal indices.
-///
-/// Operating directly on the `u16` `ArrayVec` key lets the accumulation hot path
-/// majorise without allocating an intermediate [`MajoranaProduct`].
-fn majorise_key(indices: &mut ArrayVec<[u16; MAX_MAJORANAS]>) -> f64 {
+fn cannonicalize<T: Ord + Default>(indices: &mut [T]) -> f64 {
     if indices.is_empty() {
         return 1.0;
     }
@@ -396,16 +440,61 @@ pub(super) struct MajoranaHashMap {
 impl Fermion for MajoranaHashMap {}
 
 impl MajoranaHashMap {
+    /// Default constructor, allocating an empty [`MajoranaHashMap`].
     fn new() -> Self {
         Self {
             operators: HashMap::new(),
         }
     }
 
+    /// Return a new [`MajoranaHashMap`] with the given capacity.
+    fn with_capacity(capacity: usize) -> Self {
+        Self {
+            operators: HashMap::with_capacity(capacity),
+        }
+    }
+
+    /// Merge the operators from a set of [`MajoranaHashMap`] partials into this map,
+    /// distributing them across `n_shards` using a stable hash function.
+    fn merge_into(&mut self, partials: &[MajoranaHashMap], shard: usize, n_shards: usize) {
+        for local in partials {
+            for (key, &value) in local.operators.iter() {
+                if n_shards == 1 {
+                    *self.operators.entry(*key).or_insert(Complex64::ZERO) += value;
+                } else {
+                    // Stable (run-independent) hash of a Majorana key used to assign it to a merge
+                    // shard. FNV-1a over the `u16` indices — cheap and well-spread.
+                    let mut hash: usize = 0xcbf2_9ce4_8422_2325;
+                    for &index in key.iter() {
+                        hash = (hash ^ index as usize).wrapping_mul(0x0100_0000_01b3);
+                    }
+                    if hash % n_shards == shard {
+                        *self.operators.entry(*key).or_insert(Complex64::ZERO) += value;
+                    }
+                }
+            }
+        }
+    }
+
     /// Core accumulation: expand one fermionic term (given by its action, mode indices, and
     /// coefficient) into its 2^n majorana components and insert into the map.
     fn append_term(&mut self, action: &[LadderOperator], indices: &[usize], coeff: Complex64) {
-        append_term_into(&mut self.operators, action, indices, coeff);
+        let term_length = action.len();
+        (0u32..(1u32 << term_length))
+            .map(move |mask| {
+                let mut scaler = c64(1., 0.);
+                let mut key: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+                for (j, (op, &idx)) in action.iter().zip(indices).enumerate() {
+                    let o = ((mask >> j) & 1) as usize;
+                    scaler *= op.majorana_coefficients()[o];
+                    key.push((2 * idx + o) as u16);
+                }
+                let sign = cannonicalize(&mut key);
+                (key, coeff * scaler * sign)
+            })
+            .for_each(|(key, value)| {
+                *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
+            });
     }
 
     /// Append a single product of Fermionic operators to the [`MajoranaHashMap`].
@@ -427,26 +516,30 @@ impl MajoranaHashMap {
 
         if n_terms < PARALLEL_TERM_THRESHOLD {
             for r in 0..n_terms {
-                let row: ArrayVec<[usize; MAX_MAJORANAS]> =
-                    indices.row(r).iter().copied().collect();
-                append_term_into(&mut self.operators, action, &row, coefficients[r]);
+                self.append_term(
+                    action,
+                    indices
+                        .row(r)
+                        .as_slice()
+                        .expect("Should be able to make slice form FermionSparse row."),
+                    coefficients[r],
+                );
             }
             debug!("MBTree {:?}\n", &self);
             return;
         }
-
         // Phase 1 — expand chunks of independent terms into thread-local maps in
         // parallel. Each chunk dedups its own contributions (aHash), so the
         // intermediate stays small.
-        let partials: Vec<HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>> = (0..n_terms)
+        let partials: Vec<MajoranaHashMap> = (0..n_terms)
             .into_par_iter()
             .chunks(PARALLEL_CHUNK)
             .map(|rows| {
-                let mut local = HashMap::new();
+                let mut local = MajoranaHashMap::with_capacity(PARALLEL_CHUNK);
                 for r in rows {
                     let row: ArrayVec<[usize; MAX_MAJORANAS]> =
                         indices.row(r).iter().copied().collect();
-                    append_term_into(&mut local, action, &row, coefficients[r]);
+                    local.append_term(action, &row, coefficients[r]);
                 }
                 local
             })
@@ -459,18 +552,18 @@ impl MajoranaHashMap {
         // deterministic and independent of how rayon schedules the work.
         let n_shards = rayon::current_num_threads().max(1);
         if n_shards == 1 {
-            merge_into(&mut self.operators, &partials, 0, 1);
+            self.merge_into(&partials, 0, 1);
         } else {
-            let shards: Vec<HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>> = (0..n_shards)
+            let shards: Vec<MajoranaHashMap> = (0..n_shards)
                 .into_par_iter()
                 .map(|shard| {
-                    let mut out = HashMap::new();
-                    merge_into(&mut out, &partials, shard, n_shards);
+                    let mut out = MajoranaHashMap::new();
+                    out.merge_into(&partials, shard, n_shards);
                     out
                 })
                 .collect();
             for shard in shards {
-                for (key, value) in shard {
+                for (key, value) in shard.operators {
                     *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
                 }
             }
@@ -479,73 +572,6 @@ impl MajoranaHashMap {
     }
 }
 
-/// Accumulate the entries of `partials` whose key falls in shard `shard`
-/// (`hash(key) % n_shards`) into `out`, scanning the chunk maps in order so each
-/// key is summed deterministically in chunk order.
-fn merge_into(
-    out: &mut HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
-    partials: &[HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>],
-    shard: usize,
-    n_shards: usize,
-) {
-    for local in partials {
-        for (key, &value) in local {
-            if n_shards == 1 || shard_of(key) % n_shards == shard {
-                *out.entry(*key).or_insert(Complex64::ZERO) += value;
-            }
-        }
-    }
-}
-
-/// Stable (run-independent) hash of a Majorana key used to assign it to a merge
-/// shard. FNV-1a over the `u16` indices — cheap and well-spread.
-fn shard_of(key: &ArrayVec<[u16; MAX_MAJORANAS]>) -> usize {
-    let mut hash: usize = 0xcbf2_9ce4_8422_2325;
-    for &index in key.iter() {
-        hash = (hash ^ index as usize).wrapping_mul(0x0100_0000_01b3);
-    }
-    hash
-}
-
-/// Expand one fermionic term into its `2^n` Majorana `(key, value)` contributions.
-///
-/// Each of the `2^n` offset combinations is the bit pattern of `mask`: bit `j`
-/// selects the Majorana component (`0` or `1`) for operator position `j`. The key
-/// is built straight into a stack `ArrayVec`, so the iterator is allocation-free.
-/// The returned iterator owns `indices` and borrows `action`.
-fn term_contributions(
-    action: &[LadderOperator],
-    indices: ArrayVec<[usize; MAX_MAJORANAS]>,
-    coeff: Complex64,
-) -> impl Iterator<Item = (ArrayVec<[u16; MAX_MAJORANAS]>, Complex64)> + '_ {
-    let term_length = action.len();
-    (0u32..(1u32 << term_length)).map(move |mask| {
-        let mut scaler = c64(1., 0.);
-        let mut key: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-        for (j, (op, &idx)) in action.iter().zip(&indices).enumerate() {
-            let o = ((mask >> j) & 1) as usize;
-            scaler *= op.majorana_coefficients_pair()[o];
-            key.push((2 * idx + o) as u16);
-        }
-        let sign = majorise_key(&mut key);
-        (key, coeff * scaler * sign)
-    })
-}
-
-/// Expand one fermionic term into its `2^n` Majorana components and accumulate
-/// them into `operators`. Used by the single-term and below-threshold serial
-/// paths of [`MajoranaHashMap`].
-fn append_term_into(
-    operators: &mut HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
-    action: &[LadderOperator],
-    indices: &[usize],
-    coeff: Complex64,
-) {
-    let row: ArrayVec<[usize; MAX_MAJORANAS]> = indices.iter().copied().collect();
-    for (key, value) in term_contributions(action, row, coeff) {
-        *operators.entry(key).or_insert(Complex64::ZERO) += value;
-    }
-}
 /// Sparse represtnation of a set of [`MajoranaProduct`] operators.
 ///
 /// # Panics
@@ -671,6 +697,7 @@ impl MajoranaSparse {
 /// so it can be used to filter a coefficient array view without needing to copy it.
 fn is_valid_fermion_term(action: &[LadderOperator], indices: &[usize]) -> bool {
     use LadderOperator::{Annihilation as Ann, Creation as Cr};
+    // Should make this more general!
     if action.len() != 4 {
         return true;
     }
@@ -738,97 +765,129 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
 #[cfg(test)]
 mod majorana_tests {
     use super::*;
-    use crate::utils::vector_kron;
     use log::debug;
     use ndarray::{arr1, arr2};
     use num_complex::c64;
     use tinyvec::array_vec;
 
     #[test]
-    fn test_ladder_to_complex() {
-        // Output should look like
-        // [left_0 right_0, left_0 right_1, left_1 right_0, left_1 right_1]
-        let ladder_vec = [LadderOperator::Creation, LadderOperator::Annihilation];
-        let two_action: Vec<Complex64> = ladder_vec
-            .iter()
-            .map(|signature| signature.majorana_coefficients())
-            .reduce(|acc, s| vector_kron(&acc, &s))
-            .unwrap()
-            .to_vec();
-        assert_eq!(
-            two_action,
-            vec![c64(0.25, 0.), c64(0., -0.25), c64(0., 0.25), c64(0.25, 0.)]
-        );
-
-        let ladder_vec = [
-            LadderOperator::Creation,
-            LadderOperator::Annihilation,
-            LadderOperator::Creation,
-        ];
-        let three_action: Vec<Complex64> = ladder_vec
-            .iter()
-            .map(|signature| signature.majorana_coefficients())
-            .reduce(|acc, s| vector_kron(&acc, &s))
-            .unwrap()
-            .to_vec();
-        assert_eq!(
-            three_action,
-            vec![
-                c64(0.125, 0.),
-                c64(0., -0.125),
-                c64(0., 0.125),
-                c64(0.125, 0.),
-                c64(0., -0.125),
-                c64(-0.125, 0.),
-                c64(0.125, 0.),
-                c64(0., -0.125),
-            ]
-        );
-    }
-
-    /// Majorise the given indices via [`majorise_key`], returning the sorted
-    /// indices and the sign (`1.0`/`-1.0`) introduced by the swaps.
-    fn majorise_indices(indices: &[u16]) -> (Vec<u16>, f64) {
-        let mut key: ArrayVec<[u16; MAX_MAJORANAS]> = indices.iter().copied().collect();
-        let sign = majorise_key(&mut key);
-        (key.to_vec(), sign)
+    fn test_cannonicalize_do_nothing() {
+        let indices = vec![0, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        assert_eq!(mp.indices, indices.clone());
+        assert_eq!(mp.coefficient, coefficient.clone());
     }
 
     #[test]
-    fn test_majorise_do_nothing() {
-        assert_eq!(majorise_indices(&[0, 1]), (vec![0, 1], 1.0));
+    fn test_cannonicalize_single_swap() {
+        let indices = vec![1, 0];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1]);
+        assert_eq!(mp.coefficient, -1. * coefficient);
     }
 
     #[test]
-    fn test_majorise_single_swap() {
-        assert_eq!(majorise_indices(&[1, 0]), (vec![0, 1], -1.0));
+    fn test_cannonicalize_do_not_simplify_to_empty() {
+        let indices = vec![0, 0];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 0]);
+        assert_eq!(mp.coefficient, coefficient);
+
+        let indices = vec![0, 1, 0, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 0, 1, 1]);
+        assert_eq!(mp.coefficient, -1. * coefficient);
+
+        let indices = vec![1, 0, 0, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 0, 1, 1]);
+        assert_eq!(mp.coefficient, coefficient);
     }
 
     #[test]
-    fn test_majorise_do_not_simplify_to_empty() {
-        assert_eq!(majorise_indices(&[0, 0]), (vec![0, 0], 1.0));
-        assert_eq!(majorise_indices(&[0, 1, 0, 1]), (vec![0, 0, 1, 1], -1.0));
-        assert_eq!(majorise_indices(&[1, 0, 0, 1]), (vec![0, 0, 1, 1], 1.0));
+    fn test_cannonicalize_reverse() {
+        let indices = vec![3, 2, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![1, 2, 3]);
+        assert_eq!(mp.coefficient, -1. * coefficient);
+
+        let indices = vec![4, 3, 2, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![1, 2, 3, 4]);
+        assert_eq!(mp.coefficient, coefficient);
     }
 
     #[test]
-    fn test_majorise_reverse() {
-        assert_eq!(majorise_indices(&[3, 2, 1]), (vec![1, 2, 3], -1.0));
-        assert_eq!(majorise_indices(&[4, 3, 2, 1]), (vec![1, 2, 3, 4], 1.0));
+    fn test_cannonicalize() {
+        let indices = vec![1, 1, 1, 1, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![1, 1, 1, 1, 1]);
+        assert_eq!(mp.coefficient, coefficient);
+
+        let indices = vec![1, 1, 1, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![1, 1, 1, 1]);
+        assert_eq!(mp.coefficient, coefficient);
+
+        let indices = vec![1, 1, 1, 0];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1, 1, 1]);
+        assert_eq!(mp.coefficient, -1. * coefficient);
+
+        let indices = vec![1, 1, 0, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1, 1, 1]);
+        assert_eq!(mp.coefficient, coefficient);
+
+        let indices = vec![1, 0, 1, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1, 1, 1]);
+        assert_eq!(mp.coefficient, -1. * coefficient);
+
+        let indices = vec![0, 1, 1, 1];
+        let coefficient = c64(10.0, 0.);
+        let mut mp = MajoranaProduct::new(indices.clone(), coefficient);
+        mp.cannonicalize();
+        // debug!("{:#?}", mp);
+        assert_eq!(mp.indices, vec![0, 1, 1, 1]);
+        assert_eq!(mp.coefficient, coefficient);
     }
 
-    #[test]
-    fn test_majorise() {
-        assert_eq!(
-            majorise_indices(&[1, 1, 1, 1, 1]),
-            (vec![1, 1, 1, 1, 1], 1.0)
-        );
-        assert_eq!(majorise_indices(&[1, 1, 1, 1]), (vec![1, 1, 1, 1], 1.0));
-        assert_eq!(majorise_indices(&[1, 1, 1, 0]), (vec![0, 1, 1, 1], -1.0));
-        assert_eq!(majorise_indices(&[1, 1, 0, 1]), (vec![0, 1, 1, 1], 1.0));
-        assert_eq!(majorise_indices(&[1, 0, 1, 1]), (vec![0, 1, 1, 1], -1.0));
-        assert_eq!(majorise_indices(&[0, 1, 1, 1]), (vec![0, 1, 1, 1], 1.0));
-    }
     #[test]
     fn test_from_fermion_sparse_len_one() {
         let indices = arr2(&[[0]]);

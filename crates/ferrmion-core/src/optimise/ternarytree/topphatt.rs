@@ -1167,9 +1167,9 @@ mod test_topphatt {
 
     /// Run the index-list and bit-sliced backends on the same input and assert
     /// they produce identical encodings. `make_tree` is called per run because
-    /// [`TernaryTree`] is not `Clone` and each run consumes its tree. (On this
-    /// small collision-free fixture the no-dedup bit-sliced backend matches the
-    /// index-list backend exactly.)
+    /// [`TernaryTree`] is not `Clone` and each run consumes its tree. (The
+    /// bit-sliced backend deduplicates whole terms on the same multiset rule as
+    /// the index-list backend, so they match exactly.)
     fn assert_backends_agree(
         hamiltonian: MajoranaSparse,
         make_tree: impl Fn() -> TernaryTree,
@@ -1238,19 +1238,12 @@ mod test_topphatt {
         MajoranaSparse::new(uniq_indices, uniq_coeffs, 0.0).unwrap()
     }
 
-    /// Both backends must always produce a *valid* encoding of the right
-    /// dimensions on random inputs, even where their optimal selections differ.
-    ///
-    /// They are NOT asserted equal: the bit-sliced backend does no term
-    /// deduplication while the index-list backend deduplicates terms (see the
-    /// `term_store` module docs). On dense random Hamiltonians this makes the two
-    /// minimise subtly different objectives and pick different — but equally
-    /// valid — encodings a sizeable fraction of the time. The divergence count is
-    /// reported for visibility.
+    /// All three backends must produce **identical** valid encodings on random
+    /// inputs: the transposed backends deduplicate whole terms on the same
+    /// multiset rule as the index-list backend, so `index_list == bit_sliced ==
+    /// sparse_list` (x/z blocks and ipowers) for every instance.
     #[test]
     fn test_bit_sliced_valid_encodings_random() {
-        let mut total = 0;
-        let mut diverged = 0;
         for n_modes in [4usize, 6, 8, 10] {
             for seed in 0..20u64 {
                 let hamiltonian = random_majorana(n_modes, 6 * n_modes, seed);
@@ -1282,30 +1275,20 @@ mod test_topphatt {
                 let e_sliced = t_sliced.build_encoding(n_modes).unwrap();
                 let e_sparse = t_sparse.build_encoding(n_modes).unwrap();
 
-                // A valid n-mode encoding has 2*n Majorana operators. The
-                // transposed store does no dedup so it may pick a different (but
-                // valid) encoding — assert validity, not equality vs index-list.
+                // A valid n-mode encoding has 2*n Majorana operators.
                 assert_eq!(av.operators.ipowers.len(), n_majoranas);
-                assert_eq!(e_sliced.operators.ipowers.len(), n_majoranas);
 
-                // The sparse inverted-index store runs the identical algorithm as
-                // the bit-sliced store, so it must agree with it exactly.
-                assert_eq!(e_sparse.operators.x_block, e_sliced.operators.x_block);
-                assert_eq!(e_sparse.operators.z_block, e_sliced.operators.z_block);
-                assert_eq!(e_sparse.operators.ipowers, e_sliced.operators.ipowers);
-
-                total += 1;
-                if av.operators.x_block != e_sliced.operators.x_block
-                    || av.operators.z_block != e_sliced.operators.z_block
-                {
-                    diverged += 1;
-                }
+                // The transposed backends now deduplicate whole terms on the same
+                // multiset rule as the index-list backend, so all three produce
+                // identical encodings.
+                assert_eq!(e_sliced.operators.x_block, av.operators.x_block);
+                assert_eq!(e_sliced.operators.z_block, av.operators.z_block);
+                assert_eq!(e_sliced.operators.ipowers, av.operators.ipowers);
+                assert_eq!(e_sparse.operators.x_block, av.operators.x_block);
+                assert_eq!(e_sparse.operators.z_block, av.operators.z_block);
+                assert_eq!(e_sparse.operators.ipowers, av.operators.ipowers);
             }
         }
-        eprintln!(
-            "bit-sliced vs index-list backend: differing (but valid) encodings on \
-             {diverged}/{total} random instances (no-dedup divergence)"
-        );
     }
 
     /// `bit_sliced` must produce valid encodings on *every* tree topology, not
@@ -1348,14 +1331,18 @@ mod test_topphatt {
                         .unwrap()
                         .build_encoding(n_modes)
                         .unwrap();
+                // Multiset dedup makes bit_sliced match index_list exactly on
+                // every topology.
                 assert_eq!(
-                    sliced.operators.ipowers.len(),
-                    2 * n_modes,
-                    "bit_sliced {name} seed {seed}"
+                    sliced.operators.x_block, il.operators.x_block,
+                    "bit_sliced vs index_list x {name} seed {seed}"
+                );
+                assert_eq!(
+                    sliced.operators.z_block, il.operators.z_block,
+                    "bit_sliced vs index_list z {name} seed {seed}"
                 );
 
-                // The sparse inverted-index store must agree with bit_sliced
-                // exactly on every topology.
+                // The sparse inverted-index store must agree exactly too.
                 let sparse_store =
                     SparseListTermStore::from_arrayvecs(&hamiltonian.indices, n_modes);
                 let sparse = topphatt_impl(
@@ -1368,12 +1355,12 @@ mod test_topphatt {
                 .build_encoding(n_modes)
                 .unwrap();
                 assert_eq!(
-                    sparse.operators.x_block, sliced.operators.x_block,
-                    "sparse vs bit_sliced x {name} seed {seed}"
+                    sparse.operators.x_block, il.operators.x_block,
+                    "sparse vs index_list x {name} seed {seed}"
                 );
                 assert_eq!(
-                    sparse.operators.z_block, sliced.operators.z_block,
-                    "sparse vs bit_sliced z {name} seed {seed}"
+                    sparse.operators.z_block, il.operators.z_block,
+                    "sparse vs index_list z {name} seed {seed}"
                 );
             }
         }

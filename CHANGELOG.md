@@ -25,10 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with additional `term_store_build` (conversion-only) and `topphatt_end_to_end`
   (preparation-inclusive) groups confirming the format-conversion cost is
   negligible (microseconds) next to the optimizer. The transposed backends
-  deduplicate terms on their **parity-set** (two terms that are the same Pauli
-  operator are counted once) via an incremental, shared `ParitySetDedup`; because
-  this differs from the index-list backend's coarser multiset deduplication, they
-  can pick a different (but equally valid) encoding.
+  deduplicate whole terms on the **same multiset rule** as the index-list backend
+  (via a shared `MultisetDedup`) while keeping the fast parity weight evaluation,
+  so all three backends produce **identical encodings** — `bit_sliced` matches
+  `index_list` exactly at a fraction of the runtime (e.g. ~3–6× faster on the
+  larger molecular fixtures).
 - `backend` argument on `TernaryTree.encode_topphatt` and the `core.topphatt` /
   `core.encode_topphatt` bindings, selecting the term-store backend
   (`"index_list"`, default, `"bit_sliced"`, or `"sparse_list"`). The bit-sliced backend uses the
@@ -36,8 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on every tree topology (Jordan-Wigner, parity, Bravyi-Kitaev, JKMN). A
   parametrized Python benchmark (`test_benchmark_encode_topphatt_backend`)
   compares the two backends on the molecular fixtures; on this data the bit-sliced
-  backend is ~1.0–2.1× faster (e.g. ~2× for JKMN on H2O), the edge growing with
-  system size, while producing encodings of comparable Pauli weight (pinned by a
+  backend is faster (e.g. ~3–6× for JKMN on H2O), the edge growing with system
+  size, while producing encodings identical to `index_list` (pinned by a
   `topphatt_bit_sliced_weight_snapshot` regression test).
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and

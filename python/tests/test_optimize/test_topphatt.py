@@ -124,10 +124,9 @@ def test_topphatt_bit_sliced_h2o_weights_match_snapshot(
 
     Compares the bit_sliced topphatt Pauli weight and coefficient Pauli weight
     (each normalised to the naive encode) against a stored snapshot. The
-    bit_sliced backend deduplicates terms on their parity-set rather than the
-    index_list backend's multiset rule, so it can pick a different but equally
-    valid encoding than the default index_list backend; this test locks in the
-    resulting weights so a regression in either is caught.
+    bit_sliced backend deduplicates whole terms on the same multiset rule as the
+    default index_list backend, so it produces an identical encoding; this test
+    locks in the resulting weights so a regression is caught.
     """
     ones = water_data["ones"]
     twos = water_data["twos"]

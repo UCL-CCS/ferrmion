@@ -14,18 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transposed bit-vector layout — one `u64` bit-vector per Majorana index whose
   bits index terms, so scoring a selection reads only the three relevant vectors
   and computes the Pauli weight with word-parallel bit ops over `⌈T/64⌉` words.
-  It has no mode ceiling. `topphatt` is now a thin wrapper over the generic
-  `topphatt_impl`. A criterion benchmark (`topphatt_bitvec`) compares the
-  index-list and bit-sliced backends over a grid of mode count and Majorana term
-  degree (plus large-mode points), with additional `term_store_build`
-  (conversion-only) and `topphatt_end_to_end` (preparation-inclusive) groups
-  confirming the format-conversion cost is negligible (microseconds) next to the
-  optimizer. The bit-sliced backend does no term deduplication, so on dense inputs
-  it can pick a different (but equally valid) encoding than the index-list
-  backend.
+  It has no mode ceiling. A third backend, `SparseListTermStore`, is the sparse
+  form of the transpose — one sorted `Vec<u32>` of term indices per Majorana, so a
+  selection's weight is a 3-way list merge; it suits sparse (e.g. molecular)
+  Hamiltonians where the dense bit columns are mostly zero, and runs the identical
+  algorithm as `BitSlicedTermStore` (bit-identical encodings). `topphatt` is now a
+  thin wrapper over the generic `topphatt_impl`. A criterion benchmark
+  (`topphatt_bitvec`) compares the index-list, bit-sliced and sparse-list backends
+  over a grid of mode count and Majorana term degree (plus large-mode points),
+  with additional `term_store_build` (conversion-only) and `topphatt_end_to_end`
+  (preparation-inclusive) groups confirming the format-conversion cost is
+  negligible (microseconds) next to the optimizer. The transposed backends do no
+  term deduplication, so on dense inputs they can pick a different (but equally
+  valid) encoding than the index-list backend.
 - `backend` argument on `TernaryTree.encode_topphatt` and the `core.topphatt` /
   `core.encode_topphatt` bindings, selecting the term-store backend
-  (`"index_list"`, default, or `"bit_sliced"`). The bit-sliced backend uses the
+  (`"index_list"`, default, `"bit_sliced"`, or `"sparse_list"`). The bit-sliced backend uses the
   same upper-range node representative as the index-list backend, so it is valid
   on every tree topology (Jordan-Wigner, parity, Bravyi-Kitaev, JKMN). A
   parametrized Python benchmark (`test_benchmark_encode_topphatt_backend`)
@@ -90,6 +94,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manual scoped-thread pool with its `Mutex`/`RwLock`. The branch-and-bound
   early-exit and reproducible tie-breaking are preserved, and the `num_cpus`
   dependency is dropped in favour of rayon's global thread pool.
+
+### Fixed
+- The transposed TOPP-HATT backends now parity-canonicalise each Majorana term at
+  build time (γ²=I): an index appearing an even number of times in a term cancels.
+  `BitSlicedTermStore` previously OR-ed term bits and `SparseListTermStore` pushed
+  one entry per occurrence, so a repeated index was wrongly treated as present.
+  This affected Hamiltonians with number-operator-like terms (e.g. molecular
+  Hamiltonians, where many terms repeat an index); inputs with only distinct
+  indices per term (random/Hubbard) were unaffected. Both transposed backends now
+  match `ArrayVecTermStore`'s per-term Pauli weight and each other exactly. The
+  `topphatt_bit_sliced_weight_snapshot` regression values are updated accordingly.
 
 ### Removed
 - Python classes `FermionQubitEncoding`, `MajoranaStringEncoding` and the

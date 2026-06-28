@@ -9,7 +9,7 @@ use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{MajoranaSparse, SymplecticOperator};
 use ferrmion_core::optimise::{
-    hatt, topphatt, topphatt_impl, BitSlicedTermStore, NodeOrderHeuristic,
+    hatt, topphatt, topphatt_impl, BitSlicedTermStore, NodeOrderHeuristic, SparseListTermStore,
 };
 use ferrmion_core::utils;
 use log::debug;
@@ -218,9 +218,10 @@ pub(crate) fn hatt_py(
 ///
 /// `"index_list"` (default) uses the production `Vec<ArrayVec<..>>` store;
 /// `"bit_sliced"` uses the transposed `BitSlicedTermStore` (one `u64` bit-vector
-/// per Majorana index). The bit-sliced backend does no term deduplication, so it
-/// can produce a different (but valid) encoding — it is provided for performance
-/// comparison.
+/// per Majorana index); `"sparse_list"` uses the sparse `SparseListTermStore`
+/// (one sorted list of term indices per Majorana index). The transposed backends
+/// do no term deduplication, so they can produce a different (but valid) encoding
+/// — they are provided for performance comparison.
 fn run_topphatt(
     hamiltonian: MajoranaSparse,
     tree: TernaryTree,
@@ -234,8 +235,13 @@ fn run_topphatt(
             let store = BitSlicedTermStore::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
             Ok(topphatt_impl(store, tree, parallelize, heuristic)?)
         }
+        "sparse_list" => {
+            let store = SparseListTermStore::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
+            Ok(topphatt_impl(store, tree, parallelize, heuristic)?)
+        }
         other => Err(CoreError::Value(format!(
-            "unknown topphatt backend: {other:?} (expected \"index_list\" or \"bit_sliced\")"
+            "unknown topphatt backend: {other:?} \
+             (expected \"index_list\", \"bit_sliced\" or \"sparse_list\")"
         ))),
     }
 }
@@ -255,7 +261,7 @@ fn run_topphatt(
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
 ///     backend: Term-store backend, ``"index_list"`` (default) or
-///         ``"bit_sliced"`` (transposed bit-vector layout, for benchmarking).
+///         ``"bit_sliced"`` / ``"sparse_list"`` (transposed layouts, for benchmarking).
 ///
 /// Returns:
 ///     MajoranaEncoding: The optimised encoding.
@@ -298,7 +304,7 @@ pub(crate) fn topphatt_py(
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
 ///     backend: Term-store backend, ``"index_list"`` (default) or
-///         ``"bit_sliced"`` (transposed bit-vector layout, for benchmarking).
+///         ``"bit_sliced"`` / ``"sparse_list"`` (transposed layouts, for benchmarking).
 ///
 /// Returns:
 ///     Tuple of ``(QubitHamiltonian, MajoranaEncoding)``.

@@ -246,10 +246,11 @@ class TernaryTree:
             seed: RNG seed for ``heuristic="random"``. Ignored otherwise;
                 defaults to ``0`` when omitted.
             backend: Term-store backend driving the optimisation,
-                ``"index_list"`` (default) or ``"bit_sliced"`` (transposed
-                bit-vector layout). The bit-sliced backend does no term
-                deduplication and may produce a different but valid encoding;
-                it is provided for performance comparison.
+                ``"index_list"`` (default), ``"bit_sliced"`` (transposed
+                bit-vector layout) or ``"sparse_list"`` (sparse inverted index:
+                a sorted list of term indices per Majorana). The transposed
+                backends do no term deduplication and may produce a different but
+                valid encoding; they are provided for performance comparison.
 
         Returns:
             tuple[QubitHamiltonian, MajoranaEncoding]: The encoded qubit

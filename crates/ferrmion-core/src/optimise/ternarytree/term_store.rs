@@ -260,12 +260,17 @@ pub struct BitSlicedTermStore {
 impl BitSlicedTermStore {
     /// Build a bit-sliced store from Majorana-index terms.
     ///
-    /// `n_modes` sizes the column table to `3*n_modes + 1` indices. Unlike the
-    /// row-major bit backends, this store uses the **same upper-range node
-    /// representative as the index-list backend** (`node + 2*n_nodes + 1`), so it
-    /// stays compatible with the orchestration's magnitude-based edge
-    /// classification on every tree topology (not just JKMN). There is no
-    /// word-width mode ceiling: the `u64` words slice terms, not indices.
+    /// `n_modes` sizes the column table to `3*n_modes + 1` indices. The store uses
+    /// the **same upper-range node representative as the index-list backend**
+    /// (`node + 2*n_nodes + 1`), so it stays compatible with the orchestration's
+    /// magnitude-based edge classification on every tree topology (not just
+    /// JKMN). There is no word-width mode ceiling: the `u64` words slice terms,
+    /// not indices.
+    ///
+    /// Each term is **parity-canonicalised** (γ²=I): a bit is XOR-toggled per
+    /// index occurrence, so an index appearing an even number of times in a term
+    /// cancels — matching `qubit_term_weight` and the XOR `reduce`. (Molecular
+    /// Majorana terms include number operators like `[0,0]` that must cancel.)
     pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAJORANA_MAX]>], n_modes: usize) -> Self {
         let n_terms = terms.len();
         let n_words = n_terms.div_ceil(64);
@@ -275,7 +280,8 @@ impl BitSlicedTermStore {
             let word = t / 64;
             let bit = 1u64 << (t % 64);
             for &idx in term.iter() {
-                columns[idx as usize][word] |= bit;
+                // XOR (not OR): a repeated index toggles back off — γ²=I parity.
+                columns[idx as usize][word] ^= bit;
             }
         }
         Self {
@@ -358,6 +364,186 @@ impl MajoranaTermStore for BitSlicedTermStore {
     }
 }
 
+/// Sparse inverted-index backend.
+///
+/// The sparse counterpart of [`BitSlicedTermStore`]: instead of a dense `u64`
+/// bit-vector per index, each index keeps a **sorted list of the term indices it
+/// appears in**. For sparse Hamiltonians (e.g. molecular) the dense bit columns
+/// are mostly zero, so these lists are short and scoring a selection — a 3-way
+/// merge of three lists — costs `O(|L0|+|L1|+|L2|)` instead of `O(T/64)`.
+///
+/// It runs the identical no-dedup parity algorithm as [`BitSlicedTermStore`]
+/// (same per-selection weight, same reduction and upper-range representative), so
+/// `topphatt_impl` over it yields encodings identical to the bit-sliced backend;
+/// only the representation and performance differ. No mode ceiling.
+pub struct SparseListTermStore {
+    n_terms: usize,
+    /// One ascending, duplicate-free list of term indices per index (length
+    /// `3*n_modes + 1`): real Majoranas `0..2*n_nodes`, the all-Z leaf
+    /// `2*n_nodes`, and node representatives `2*n_nodes+1..=3*n_nodes`.
+    lists: Vec<Vec<u32>>,
+}
+
+impl SparseListTermStore {
+    /// Build a sparse inverted index from Majorana-index terms.
+    ///
+    /// Uses the index-list/bit-sliced upper-range node representative
+    /// (`node + 2*n_nodes + 1`), so it is valid on every tree topology and has no
+    /// mode ceiling.
+    ///
+    /// Each term is **parity-canonicalised** (γ²=I): only indices appearing an
+    /// odd number of times in the term are recorded, so number-operator terms
+    /// like `[0,0]` cancel — matching `qubit_term_weight` and the bit-sliced
+    /// backend.
+    pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAJORANA_MAX]>], n_modes: usize) -> Self {
+        let n_terms = terms.len();
+        let n_cols = 3 * n_modes + 1;
+        let mut lists = vec![Vec::new(); n_cols];
+        for (t, term) in terms.iter().enumerate() {
+            // Reduce the term to its odd-multiplicity indices (γ²=I parity) by
+            // toggling membership, then record this term under each survivor.
+            let mut parity: ArrayVec<[u16; MAJORANA_MAX]> = ArrayVec::new();
+            for &idx in term.iter() {
+                if let Some(pos) = parity.iter().position(|&x| x == idx) {
+                    parity.remove(pos);
+                } else {
+                    parity.push(idx);
+                }
+            }
+            for &idx in parity.iter() {
+                // Terms are visited in ascending `t`, so each list stays sorted
+                // and duplicate-free.
+                lists[idx as usize].push(t as u32);
+            }
+        }
+        Self { n_terms, lists }
+    }
+}
+
+impl MajoranaTermStore for SparseListTermStore {
+    fn len(&self) -> usize {
+        self.n_terms
+    }
+
+    fn evaluate_combination(
+        &self,
+        comb: &[u16],
+        active: usize,
+        bound: &AtomicUsize,
+    ) -> ToppHattSelection {
+        let comb = match normalise_comb(comb) {
+            Some(comb) => comb,
+            None => return ToppHattSelection::WORST,
+        };
+
+        let a = &self.lists[comb[0] as usize];
+        let b = &self.lists[comb[1] as usize];
+        let c = &self.lists[comb[2] as usize];
+
+        let min_weight = bound.load(Ordering::Relaxed);
+
+        // 3-way merge of the sorted term lists. For each term present in at least
+        // one list, `count` (∈ 1..=3) is how many of the three lists contain it;
+        // the Pauli weight is 1 unless `count` is a multiple of 3 (here only 3).
+        // `u32::MAX` is the exhausted-list sentinel (never a real term index).
+        let (mut i, mut j, mut k) = (0usize, 0usize, 0usize);
+        let mut weight = 0usize;
+        loop {
+            let va = a.get(i).copied().unwrap_or(u32::MAX);
+            let vb = b.get(j).copied().unwrap_or(u32::MAX);
+            let vc = c.get(k).copied().unwrap_or(u32::MAX);
+            let m = va.min(vb).min(vc);
+            if m == u32::MAX {
+                break;
+            }
+            let mut count = 0u32;
+            if va == m {
+                i += 1;
+                count += 1;
+            }
+            if vb == m {
+                j += 1;
+                count += 1;
+            }
+            if vc == m {
+                k += 1;
+                count += 1;
+            }
+            if !count.is_multiple_of(3) {
+                weight += 1;
+            }
+            if weight > min_weight {
+                break;
+            }
+        }
+
+        bound.fetch_min(weight, Ordering::Relaxed);
+
+        ToppHattSelection {
+            min_weight: weight,
+            min_parent: active,
+            leaf_indices: comb,
+        }
+    }
+
+    fn reduce(&mut self, min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
+        // Upper-range node token, matching the index-list and bit-sliced backends.
+        let repr = (min_parent + n_leaves) as u16;
+        let (c0, c1, c2) = (
+            selection[0] as usize,
+            selection[1] as usize,
+            selection[2] as usize,
+        );
+
+        // 3-way merge collecting the terms that appear in an ODD number of the
+        // three selected lists (count 1 or 3) — the parity the representative
+        // carries, matching the bit-sliced XOR reduction. Output stays ascending.
+        let parity: Vec<u32> = {
+            let a = &self.lists[c0];
+            let b = &self.lists[c1];
+            let c = &self.lists[c2];
+            let mut out: Vec<u32> = Vec::new();
+            let (mut i, mut j, mut k) = (0usize, 0usize, 0usize);
+            loop {
+                let va = a.get(i).copied().unwrap_or(u32::MAX);
+                let vb = b.get(j).copied().unwrap_or(u32::MAX);
+                let vc = c.get(k).copied().unwrap_or(u32::MAX);
+                let m = va.min(vb).min(vc);
+                if m == u32::MAX {
+                    break;
+                }
+                let mut count = 0u32;
+                if va == m {
+                    i += 1;
+                    count += 1;
+                }
+                if vb == m {
+                    j += 1;
+                    count += 1;
+                }
+                if vc == m {
+                    k += 1;
+                    count += 1;
+                }
+                if count & 1 == 1 {
+                    out.push(m);
+                }
+            }
+            out
+        };
+
+        // Clear the three selected lists and install the representative's list.
+        // `repr` is a fresh upper index distinct from the selection, so its list
+        // was empty.
+        self.lists[c0].clear();
+        self.lists[c1].clear();
+        self.lists[c2].clear();
+        self.lists[repr as usize] = parity;
+
+        repr
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,6 +552,43 @@ mod tests {
     fn weight_via_store<S: MajoranaTermStore>(store: &S, comb: &[u16]) -> usize {
         let bound = AtomicUsize::new(usize::MAX);
         store.evaluate_combination(comb, 0, &bound).min_weight
+    }
+
+    #[test]
+    fn transposed_backends_parity_canonicalise_repeated_indices() {
+        // Molecular Majorana Hamiltonians include number-operator terms with a
+        // repeated index (γ²=I), e.g. `[0,0]` or `[0,0,2,3]`. The index-list
+        // backend handles these via XOR-parity; the transposed backends must
+        // match by canonicalising each term to its odd-multiplicity indices.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 0),
+            array_vec!([u16; 7] => 0u16, 0, 2, 3),
+            array_vec!([u16; 7] => 2u16, 2, 2, 3),
+            array_vec!([u16; 7] => 1u16, 4, 5),
+            array_vec!([u16; 7] => 0u16, 1),
+        ];
+        let av = ArrayVecTermStore::new(terms.clone());
+        let bits = BitSlicedTermStore::from_arrayvecs(&terms, 4);
+        let sparse = SparseListTermStore::from_arrayvecs(&terms, 4);
+
+        for a in 0u16..8 {
+            for b in 0u16..8 {
+                for c in 0u16..8 {
+                    let comb = [a, b, c];
+                    let expected = weight_via_store(&av, &comb);
+                    assert_eq!(
+                        expected,
+                        weight_via_store(&bits, &comb),
+                        "bit-sliced parity differs for comb {comb:?}"
+                    );
+                    assert_eq!(
+                        expected,
+                        weight_via_store(&sparse, &comb),
+                        "sparse-list parity differs for comb {comb:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
@@ -435,6 +658,71 @@ mod tests {
                 weight_via_store(&expected, &comb),
                 weight_via_store(&sliced, &comb),
                 "reduced bit-sliced weight differs for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sparse_list_weight_matches_index_list() {
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 1),
+            array_vec!([u16; 7] => 0u16, 1, 2),
+            array_vec!([u16; 7] => 0u16, 3, 4, 5),
+        ];
+        let av = ArrayVecTermStore::new(terms.clone());
+        let sparse = SparseListTermStore::from_arrayvecs(&terms, 4);
+
+        for comb in [[0u16, 1, 2], [0, 1, 3], [2, 3, 4], [1, 4, 5]] {
+            assert_eq!(
+                weight_via_store(&av, &comb),
+                weight_via_store(&sparse, &comb),
+                "sparse-list weights differ for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sparse_list_weight_no_mode_ceiling() {
+        // Indices past any fixed-word ceiling: the sparse store is indexed by
+        // Majorana index with no width limit.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 200),
+            array_vec!([u16; 7] => 100u16, 200, 250),
+        ];
+        let av = ArrayVecTermStore::new(terms.clone());
+        let sparse = SparseListTermStore::from_arrayvecs(&terms, 130);
+        for comb in [[0u16, 100, 200], [0, 200, 250], [100, 200, 250]] {
+            assert_eq!(
+                weight_via_store(&av, &comb),
+                weight_via_store(&sparse, &comb),
+                "sparse-list weight differs for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sparse_list_reduce_parity_matches() {
+        // Same reduce case as `bit_sliced_reduce_parity_matches`, checked via the
+        // post-reduction weights.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 1, 2, 3),
+            array_vec!([u16; 7] => 0u16, 2, 3, 4),
+        ];
+        let n_leaves = 57;
+        let mut sparse = SparseListTermStore::from_arrayvecs(&terms, 28);
+        let repr = sparse.reduce(0, [2, 3, 55], n_leaves);
+        assert_eq!(repr, n_leaves as u16);
+
+        let reduced = vec![
+            array_vec!([u16; 7] => 0u16, 1),
+            array_vec!([u16; 7] => 0u16, 4),
+        ];
+        let expected = ArrayVecTermStore::new(reduced);
+        for comb in [[0u16, 1, 4], [1, 4, 5], [0, 1, 2]] {
+            assert_eq!(
+                weight_via_store(&expected, &comb),
+                weight_via_store(&sparse, &comb),
+                "reduced sparse-list weight differs for comb {comb:?}"
             );
         }
     }

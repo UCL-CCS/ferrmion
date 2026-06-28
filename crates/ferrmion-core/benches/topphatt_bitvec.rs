@@ -10,9 +10,11 @@
 //! - **Majorana term degree** `d` (operators per term) — higher `d` does more
 //!   per-term work, which the bit-sliced backend turns into word-parallel ops.
 //!
-//! Two backends are compared:
+//! Three backends are compared:
 //! - `index_list`: `Vec<ArrayVec<[u16; 7]>>`.
 //! - `bit_sliced`: one `u64` bit-vector per Majorana index, bits indexing terms.
+//! - `sparse_list`: one sorted `Vec<u32>` of term indices per Majorana index —
+//!   the sparse form of `bit_sliced`; a selection's weight is a 3-way list merge.
 //!
 //! Note: the bit-sliced backend can pick different (but equally valid) encodings
 //! on dense inputs because it does no term deduplication. The work done is still
@@ -25,6 +27,7 @@ use ferrmion_core::encode::ternarytree::TernaryTree;
 use ferrmion_core::operators::MajoranaSparse;
 use ferrmion_core::optimise::{
     topphatt, topphatt_impl, ArrayVecTermStore, BitSlicedTermStore, NodeOrderHeuristic,
+    SparseListTermStore,
 };
 use num_complex::Complex64;
 use rand::{Rng, SeedableRng};
@@ -91,6 +94,24 @@ fn bench_topphatt_backends(c: &mut Criterion) {
                     BatchSize::SmallInput,
                 );
             });
+
+            group.bench_with_input(
+                BenchmarkId::new("sparse_list", &param),
+                &n_modes,
+                |b, &n| {
+                    b.iter_batched(
+                        || {
+                            let store = SparseListTermStore::from_arrayvecs(&terms, n);
+                            (store, TernaryTree::naive_jkmn(n))
+                        },
+                        |(store, tree)| {
+                            topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight)
+                                .unwrap()
+                        },
+                        BatchSize::SmallInput,
+                    );
+                },
+            );
         }
     }
 
@@ -133,6 +154,23 @@ fn bench_topphatt_large_modes(c: &mut Criterion) {
                 BatchSize::SmallInput,
             );
         });
+
+        group.bench_with_input(
+            BenchmarkId::new("sparse_list", &param),
+            &n_modes,
+            |b, &n| {
+                b.iter_batched(
+                    || {
+                        let store = SparseListTermStore::from_arrayvecs(&terms, n);
+                        (store, TernaryTree::naive_jkmn(n))
+                    },
+                    |(store, tree)| {
+                        topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+        );
     }
 
     group.finish();
@@ -159,6 +197,14 @@ fn bench_term_store_build(c: &mut Criterion) {
             group.bench_with_input(BenchmarkId::new("bit_sliced", &param), &n_modes, |b, &n| {
                 b.iter(|| black_box(BitSlicedTermStore::from_arrayvecs(black_box(&terms), n)));
             });
+
+            group.bench_with_input(
+                BenchmarkId::new("sparse_list", &param),
+                &n_modes,
+                |b, &n| {
+                    b.iter(|| black_box(SparseListTermStore::from_arrayvecs(black_box(&terms), n)));
+                },
+            );
         }
     }
 
@@ -199,6 +245,22 @@ fn bench_topphatt_end_to_end(c: &mut Criterion) {
                     BatchSize::SmallInput,
                 );
             });
+
+            group.bench_with_input(
+                BenchmarkId::new("sparse_list", &param),
+                &n_modes,
+                |b, &n| {
+                    b.iter_batched(
+                        || TernaryTree::naive_jkmn(n),
+                        |tree| {
+                            let store = SparseListTermStore::from_arrayvecs(&terms, n);
+                            topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight)
+                                .unwrap()
+                        },
+                        BatchSize::SmallInput,
+                    );
+                },
+            );
         }
     }
 

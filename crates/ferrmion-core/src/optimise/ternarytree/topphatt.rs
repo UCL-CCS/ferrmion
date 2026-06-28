@@ -776,7 +776,7 @@ mod test_topphatt {
     use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
     use crate::optimise::ternarytree::hatt::{qubit_term_weight, reduce_hamiltonian};
-    use crate::optimise::ternarytree::term_store::BitSlicedTermStore;
+    use crate::optimise::ternarytree::term_store::{BitSlicedTermStore, SparseListTermStore};
     use log::debug;
     use ndarray::arr1;
     use num_complex::Complex64;
@@ -1256,6 +1256,7 @@ mod test_topphatt {
                 let hamiltonian = random_majorana(n_modes, 6 * n_modes, seed);
                 let n_majoranas = 2 * n_modes;
                 let sliced = BitSlicedTermStore::from_arrayvecs(&hamiltonian.indices, n_modes);
+                let sparse = SparseListTermStore::from_arrayvecs(&hamiltonian.indices, n_modes);
                 let av_tree = topphatt(
                     hamiltonian,
                     TernaryTree::naive_jkmn(n_modes),
@@ -1270,14 +1271,28 @@ mod test_topphatt {
                     NodeOrderHeuristic::MinWeight,
                 )
                 .unwrap();
+                let t_sparse = topphatt_impl(
+                    sparse,
+                    TernaryTree::naive_jkmn(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap();
                 let av = av_tree.build_encoding(n_modes).unwrap();
                 let e_sliced = t_sliced.build_encoding(n_modes).unwrap();
+                let e_sparse = t_sparse.build_encoding(n_modes).unwrap();
 
                 // A valid n-mode encoding has 2*n Majorana operators. The
                 // transposed store does no dedup so it may pick a different (but
-                // valid) encoding — assert validity, not equality.
+                // valid) encoding — assert validity, not equality vs index-list.
                 assert_eq!(av.operators.ipowers.len(), n_majoranas);
                 assert_eq!(e_sliced.operators.ipowers.len(), n_majoranas);
+
+                // The sparse inverted-index store runs the identical algorithm as
+                // the bit-sliced store, so it must agree with it exactly.
+                assert_eq!(e_sparse.operators.x_block, e_sliced.operators.x_block);
+                assert_eq!(e_sparse.operators.z_block, e_sliced.operators.z_block);
+                assert_eq!(e_sparse.operators.ipowers, e_sliced.operators.ipowers);
 
                 total += 1;
                 if av.operators.x_block != e_sliced.operators.x_block
@@ -1337,6 +1352,28 @@ mod test_topphatt {
                     sliced.operators.ipowers.len(),
                     2 * n_modes,
                     "bit_sliced {name} seed {seed}"
+                );
+
+                // The sparse inverted-index store must agree with bit_sliced
+                // exactly on every topology.
+                let sparse_store =
+                    SparseListTermStore::from_arrayvecs(&hamiltonian.indices, n_modes);
+                let sparse = topphatt_impl(
+                    sparse_store,
+                    build(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap()
+                .build_encoding(n_modes)
+                .unwrap();
+                assert_eq!(
+                    sparse.operators.x_block, sliced.operators.x_block,
+                    "sparse vs bit_sliced x {name} seed {seed}"
+                );
+                assert_eq!(
+                    sparse.operators.z_block, sliced.operators.z_block,
+                    "sparse vs bit_sliced z {name} seed {seed}"
                 );
             }
         }

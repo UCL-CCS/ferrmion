@@ -1,6 +1,6 @@
 {
   "JW": { "pauli_weight": 0.741, "coefficient_pauli_weight": 0.773 },
   "BK": { "pauli_weight": 0.993, "coefficient_pauli_weight": 0.698 },
-  "PE": { "pauli_weight": 0.759, "coefficient_pauli_weight": 0.836 },
-  "JKMN": { "pauli_weight": 0.943, "coefficient_pauli_weight": 0.707 }
+  "PE": { "pauli_weight": 0.761, "coefficient_pauli_weight": 0.835 },
+  "JKMN": { "pauli_weight": 0.944, "coefficient_pauli_weight": 0.783 }
 }

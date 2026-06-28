@@ -24,9 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over a grid of mode count and Majorana term degree (plus large-mode points),
   with additional `term_store_build` (conversion-only) and `topphatt_end_to_end`
   (preparation-inclusive) groups confirming the format-conversion cost is
-  negligible (microseconds) next to the optimizer. The transposed backends do no
-  term deduplication, so on dense inputs they can pick a different (but equally
-  valid) encoding than the index-list backend.
+  negligible (microseconds) next to the optimizer. The transposed backends
+  deduplicate terms on their **parity-set** (two terms that are the same Pauli
+  operator are counted once) via an incremental, shared `ParitySetDedup`; because
+  this differs from the index-list backend's coarser multiset deduplication, they
+  can pick a different (but equally valid) encoding.
 - `backend` argument on `TernaryTree.encode_topphatt` and the `core.topphatt` /
   `core.encode_topphatt` bindings, selecting the term-store backend
   (`"index_list"`, default, `"bit_sliced"`, or `"sparse_list"`). The bit-sliced backend uses the
@@ -35,8 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parametrized Python benchmark (`test_benchmark_encode_topphatt_backend`)
   compares the two backends on the molecular fixtures; on this data the bit-sliced
   backend is ~1.0–2.1× faster (e.g. ~2× for JKMN on H2O), the edge growing with
-  system size, while producing encodings of essentially equal Pauli weight
-  (pinned by a `topphatt_bit_sliced_weight_snapshot` regression test).
+  system size, while producing encodings of comparable Pauli weight (pinned by a
+  `topphatt_bit_sliced_weight_snapshot` regression test).
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
   `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.

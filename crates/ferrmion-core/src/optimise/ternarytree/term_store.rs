@@ -28,16 +28,18 @@
 //!
 //! # Parity vs. multiplicity (semantic note)
 //!
-//! [`reduce_hamiltonian`] pads each term with repeated copies of the parent
-//! token and deduplicates on the resulting *multiset*. The weight function only
-//! depends on the *parity* of each index. The bit-sliced backend does no term
-//! deduplication at all (emptied terms become all-zero columns contributing zero
-//! weight), so on inputs where the index-list backend would merge distinct terms
-//! it can pick a different — but equally valid — optimal selection. Both yield
-//! valid encodings.
+//! [`reduce_hamiltonian`] (the index-list backend) pads each term with repeated
+//! copies of the parent token and deduplicates on the resulting *multiset*. The
+//! weight function only depends on the *parity* of each index. The transposed
+//! backends instead deduplicate on each term's **parity-set** (two terms that are
+//! the same Pauli operator are counted once; see [`ParitySetDedup`]) — the
+//! physically meaningful notion. Both remove duplicate terms, but the rules
+//! differ (multiset vs. parity-set), so the transposed backends can still pick a
+//! different — but equally valid — encoding than the index-list backend.
 
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tinyvec::ArrayVec;
 
@@ -115,6 +117,139 @@ fn normalise_comb(comb: &[u16]) -> Option<[u16; 3]> {
         return None;
     }
     Some(comb)
+}
+
+/// Reduce a Majorana term to its **parity-set** (γ²=I): the sorted, distinct
+/// indices that appear an odd number of times. An index appearing an even number
+/// of times cancels. This is the canonical form the transposed backends store.
+fn parity_set(term: &[u16]) -> ArrayVec<[u16; MAJORANA_MAX]> {
+    let mut p: ArrayVec<[u16; MAJORANA_MAX]> = ArrayVec::new();
+    for &idx in term {
+        if let Some(pos) = p.iter().position(|&x| x == idx) {
+            p.remove(pos);
+        } else {
+            p.push(idx);
+        }
+    }
+    p.sort_unstable();
+    p
+}
+
+/// Deterministic FNV-1a fingerprint of a sorted parity-set, used to find
+/// candidate duplicate terms cheaply (collisions are resolved by comparing the
+/// sets directly).
+#[inline]
+fn fingerprint(sig: &[u16]) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for &x in sig {
+        h ^= x as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// Parity-set deduplication shared by the transposed backends.
+///
+/// Two Majorana terms with the same parity-set are the same Pauli operator, so
+/// they should be counted once. This tracks, per term, its current parity-set
+/// signature plus a `live` flag; exact duplicates (and empty/identity terms) are
+/// marked dead and excluded from the per-selection weight. Detection is
+/// **incremental**: a reduction only re-examines the terms it touches.
+///
+/// Both transposed backends drive an identical instance in the same term order,
+/// so they make identical liveness decisions and yield identical encodings.
+struct ParitySetDedup {
+    /// Per-term parity-set, sorted ascending. Kept in sync with the backend's
+    /// columns/lists.
+    sigs: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
+    /// Per-term fingerprint of `sigs`.
+    fps: Vec<u64>,
+    /// Fingerprint → live term ids sharing it (for collision lookup).
+    buckets: HashMap<u64, Vec<u32>>,
+    /// Per-term liveness; a dead term is no longer counted.
+    live: Vec<bool>,
+}
+
+impl ParitySetDedup {
+    /// Build from each term's parity-set, dropping empty (identity) terms and
+    /// merging exact-duplicate inputs. Terms are processed in ascending id, so
+    /// the smallest id of each duplicate group survives — deterministically.
+    fn new(sigs: Vec<ArrayVec<[u16; MAJORANA_MAX]>>) -> Self {
+        let n = sigs.len();
+        let mut fps = vec![0u64; n];
+        let mut buckets: HashMap<u64, Vec<u32>> = HashMap::new();
+        let mut live = vec![true; n];
+        for t in 0..n {
+            if sigs[t].is_empty() {
+                live[t] = false; // identity term: never contributes weight
+                continue;
+            }
+            let f = fingerprint(&sigs[t]);
+            fps[t] = f;
+            let is_dup = buckets
+                .get(&f)
+                .is_some_and(|b| b.iter().any(|&o| sigs[o as usize] == sigs[t]));
+            if is_dup {
+                live[t] = false;
+            } else {
+                buckets.entry(f).or_default().push(t as u32);
+            }
+        }
+        Self {
+            sigs,
+            fps,
+            buckets,
+            live,
+        }
+    }
+
+    /// Apply a reduction to one affected term: replace any selection members in
+    /// its parity-set with `repr` (parity — `repr` is added iff an odd number of
+    /// members were present), then re-detect empties and duplicates. Returns the
+    /// term's liveness afterwards.
+    fn update_term(&mut self, t: u32, selection: [u16; 3], repr: u16) -> bool {
+        let ti = t as usize;
+        if !self.live[ti] {
+            return false;
+        }
+        // Detach t from its current fingerprint bucket.
+        if let Some(bucket) = self.buckets.get_mut(&self.fps[ti]) {
+            if let Some(pos) = bucket.iter().position(|&o| o == t) {
+                bucket.swap_remove(pos);
+            }
+        }
+        // Parity update of the signature (mirrors the column/list XOR).
+        {
+            let sig = &mut self.sigs[ti];
+            let mut cnt = 0u32;
+            for &s in &selection {
+                if let Some(pos) = sig.iter().position(|&x| x == s) {
+                    sig.remove(pos);
+                    cnt += 1;
+                }
+            }
+            if cnt & 1 == 1 {
+                let pos = sig.iter().position(|&x| x > repr).unwrap_or(sig.len());
+                sig.insert(pos, repr);
+            }
+        }
+        if self.sigs[ti].is_empty() {
+            self.live[ti] = false;
+            return false;
+        }
+        let f = fingerprint(&self.sigs[ti]);
+        self.fps[ti] = f;
+        let is_dup = self.buckets.get(&f).is_some_and(|b| {
+            b.iter()
+                .any(|&o| self.live[o as usize] && self.sigs[o as usize] == self.sigs[ti])
+        });
+        if is_dup {
+            self.live[ti] = false;
+            return false;
+        }
+        self.buckets.entry(f).or_default().push(t);
+        true
+    }
 }
 
 /// Storage and hot-path operations for a Majorana Hamiltonian during TOPP-HATT.
@@ -241,12 +376,14 @@ impl MajoranaTermStore for ArrayVecTermStore {
 /// selection and computes the whole Pauli weight with word-parallel bit ops over
 /// `⌈T/64⌉` words, instead of touching every term.
 ///
-/// Because terms are fixed bit positions shared across all columns, this backend
-/// performs **no term drop/dedup** during reduction: emptied terms become
-/// all-zero columns (and contribute 0 weight automatically), but duplicates are
-/// counted with multiplicity. It matches the index-list per-selection weight, yet
-/// can pick a different (still valid) encoding on inputs where the index-list
-/// backend would merge terms. It has no mode ceiling: columns are indexed by
+/// Terms are fixed bit positions shared across all columns. Duplicate terms (two
+/// terms that became the same Pauli operator) are removed by **parity-set
+/// deduplication**: a [`ParitySetDedup`] tracks each term's parity-set and a
+/// `live` mask, and a deduplicated term is excluded from the weight by ANDing the
+/// mask into the per-word accumulation. Because this merges terms on their
+/// *parity*-set (the physically meaningful notion) rather than the index-list
+/// backend's coarser multiset rule, it can still pick a different (but valid)
+/// encoding than `index_list`. It has no mode ceiling: columns are indexed by
 /// Majorana index, and the `u64` words slice terms.
 pub struct BitSlicedTermStore {
     n_terms: usize,
@@ -255,6 +392,12 @@ pub struct BitSlicedTermStore {
     /// `0..2*n_nodes`, the all-Z leaf `2*n_nodes`, and node representatives
     /// `2*n_nodes+1..=3*n_nodes`.
     columns: Vec<Vec<u64>>,
+    /// Per-term parity-set deduplication state (shared logic with the sparse
+    /// backend, so both make identical liveness decisions).
+    dedup: ParitySetDedup,
+    /// Word-packed liveness mask mirroring `dedup.live`; bit `t` set ⇔ term `t`
+    /// is still counted. ANDed into the per-word weight accumulation.
+    live_words: Vec<u64>,
 }
 
 impl BitSlicedTermStore {
@@ -271,11 +414,15 @@ impl BitSlicedTermStore {
     /// index occurrence, so an index appearing an even number of times in a term
     /// cancels — matching `qubit_term_weight` and the XOR `reduce`. (Molecular
     /// Majorana terms include number operators like `[0,0]` that must cancel.)
+    ///
+    /// Duplicate and identity (empty parity-set) input terms are also merged at
+    /// build time by the [`ParitySetDedup`], so they are counted once.
     pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAJORANA_MAX]>], n_modes: usize) -> Self {
         let n_terms = terms.len();
         let n_words = n_terms.div_ceil(64);
         let n_cols = 3 * n_modes + 1;
         let mut columns = vec![vec![0u64; n_words]; n_cols];
+        let mut sigs: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = Vec::with_capacity(n_terms);
         for (t, term) in terms.iter().enumerate() {
             let word = t / 64;
             let bit = 1u64 << (t % 64);
@@ -283,11 +430,21 @@ impl BitSlicedTermStore {
                 // XOR (not OR): a repeated index toggles back off — γ²=I parity.
                 columns[idx as usize][word] ^= bit;
             }
+            sigs.push(parity_set(term));
+        }
+        let dedup = ParitySetDedup::new(sigs);
+        let mut live_words = vec![0u64; n_words];
+        for (t, &alive) in dedup.live.iter().enumerate() {
+            if alive {
+                live_words[t / 64] |= 1u64 << (t % 64);
+            }
         }
         Self {
             n_terms,
             n_words,
             columns,
+            dedup,
+            live_words,
         }
     }
 }
@@ -316,12 +473,13 @@ impl MajoranaTermStore for BitSlicedTermStore {
 
         // Per term the Pauli weight is 1 iff exactly one or two of the three
         // children are present: `(a|b|c) & !(a&b&c)` (count 0 or 3 ⇒ identity).
-        // Accumulate word by word, keeping the branch-and-bound early-exit.
+        // AND the live mask so deduplicated terms are not counted. Accumulate
+        // word by word, keeping the branch-and-bound early-exit.
         let mut weight = 0usize;
         for w in 0..self.n_words {
             let any = a[w] | b[w] | c[w];
             let all = a[w] & b[w] & c[w];
-            weight += (any & !all).count_ones() as usize;
+            weight += (any & !all & self.live_words[w]).count_ones() as usize;
             if weight > min_weight {
                 break;
             }
@@ -348,10 +506,27 @@ impl MajoranaTermStore for BitSlicedTermStore {
             selection[2] as usize,
         );
 
+        // Terms touched by this reduction are exactly those with one of the three
+        // selected indices in their parity-set — the set bits of the union of the
+        // three columns (read before the columns are cleared). Re-examine each for
+        // emptied/duplicate parity-sets, updating the live mask. Ascending term-id
+        // order matches the sparse backend's merge order, so both dedup alike.
+        for w in 0..self.n_words {
+            let mut u = self.columns[c0][w] | self.columns[c1][w] | self.columns[c2][w];
+            while u != 0 {
+                let t = (w as u32) * 64 + u.trailing_zeros();
+                if !self.dedup.update_term(t, selection, repr) {
+                    self.live_words[w] &= !(1u64 << (t % 64));
+                }
+                u &= u - 1;
+            }
+        }
+
         // Per term, the representative carries the parity of the removed indices
         // (matching the parent-token padding in the index-list reduction). Read
         // the three columns into a parity buffer, clear them, then write the
-        // parity into the representative's column. No terms are dropped.
+        // parity into the representative's column. Dead terms stay masked by
+        // `live_words`.
         let parity: Vec<u64> = (0..self.n_words)
             .map(|w| self.columns[c0][w] ^ self.columns[c1][w] ^ self.columns[c2][w])
             .collect();
@@ -372,16 +547,20 @@ impl MajoranaTermStore for BitSlicedTermStore {
 /// are mostly zero, so these lists are short and scoring a selection — a 3-way
 /// merge of three lists — costs `O(|L0|+|L1|+|L2|)` instead of `O(T/64)`.
 ///
-/// It runs the identical no-dedup parity algorithm as [`BitSlicedTermStore`]
-/// (same per-selection weight, same reduction and upper-range representative), so
-/// `topphatt_impl` over it yields encodings identical to the bit-sliced backend;
-/// only the representation and performance differ. No mode ceiling.
+/// It runs the identical parity algorithm as [`BitSlicedTermStore`] — same
+/// per-selection weight, same reduction and upper-range representative, and the
+/// same [`ParitySetDedup`] driven in the same term order — so `topphatt_impl`
+/// over it yields encodings identical to the bit-sliced backend; only the
+/// representation and performance differ. No mode ceiling.
 pub struct SparseListTermStore {
     n_terms: usize,
     /// One ascending, duplicate-free list of term indices per index (length
     /// `3*n_modes + 1`): real Majoranas `0..2*n_nodes`, the all-Z leaf
     /// `2*n_nodes`, and node representatives `2*n_nodes+1..=3*n_nodes`.
     lists: Vec<Vec<u32>>,
+    /// Per-term parity-set deduplication state. A dead term is skipped in the
+    /// weight merge; shared logic with the bit-sliced backend.
+    dedup: ParitySetDedup,
 }
 
 impl SparseListTermStore {
@@ -394,29 +573,28 @@ impl SparseListTermStore {
     /// Each term is **parity-canonicalised** (γ²=I): only indices appearing an
     /// odd number of times in the term are recorded, so number-operator terms
     /// like `[0,0]` cancel — matching `qubit_term_weight` and the bit-sliced
-    /// backend.
+    /// backend. Duplicate and identity input terms are merged at build time by
+    /// the [`ParitySetDedup`].
     pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAJORANA_MAX]>], n_modes: usize) -> Self {
         let n_terms = terms.len();
         let n_cols = 3 * n_modes + 1;
         let mut lists = vec![Vec::new(); n_cols];
+        let mut sigs: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = Vec::with_capacity(n_terms);
         for (t, term) in terms.iter().enumerate() {
-            // Reduce the term to its odd-multiplicity indices (γ²=I parity) by
-            // toggling membership, then record this term under each survivor.
-            let mut parity: ArrayVec<[u16; MAJORANA_MAX]> = ArrayVec::new();
-            for &idx in term.iter() {
-                if let Some(pos) = parity.iter().position(|&x| x == idx) {
-                    parity.remove(pos);
-                } else {
-                    parity.push(idx);
-                }
-            }
+            let parity = parity_set(term);
             for &idx in parity.iter() {
                 // Terms are visited in ascending `t`, so each list stays sorted
                 // and duplicate-free.
                 lists[idx as usize].push(t as u32);
             }
+            sigs.push(parity);
         }
-        Self { n_terms, lists }
+        let dedup = ParitySetDedup::new(sigs);
+        Self {
+            n_terms,
+            lists,
+            dedup,
+        }
     }
 }
 
@@ -469,7 +647,9 @@ impl MajoranaTermStore for SparseListTermStore {
                 k += 1;
                 count += 1;
             }
-            if !count.is_multiple_of(3) {
+            // Skip deduplicated terms; otherwise weight 1 unless count is a
+            // multiple of 3 (here, 3).
+            if self.dedup.live[m as usize] && !count.is_multiple_of(3) {
                 weight += 1;
             }
             if weight > min_weight {
@@ -495,14 +675,14 @@ impl MajoranaTermStore for SparseListTermStore {
             selection[2] as usize,
         );
 
-        // 3-way merge collecting the terms that appear in an ODD number of the
-        // three selected lists (count 1 or 3) — the parity the representative
-        // carries, matching the bit-sliced XOR reduction. Output stays ascending.
-        let parity: Vec<u32> = {
+        // 3-way merge over the three selected lists, recording each touched term
+        // (ascending) and whether it appears in an ODD number of them (so the
+        // representative carries it, matching the bit-sliced XOR reduction).
+        let mut merged: Vec<(u32, bool)> = Vec::new();
+        {
             let a = &self.lists[c0];
             let b = &self.lists[c1];
             let c = &self.lists[c2];
-            let mut out: Vec<u32> = Vec::new();
             let (mut i, mut j, mut k) = (0usize, 0usize, 0usize);
             loop {
                 let va = a.get(i).copied().unwrap_or(u32::MAX);
@@ -525,12 +705,19 @@ impl MajoranaTermStore for SparseListTermStore {
                     k += 1;
                     count += 1;
                 }
-                if count & 1 == 1 {
-                    out.push(m);
-                }
+                merged.push((m, count & 1 == 1));
             }
-            out
-        };
+        }
+
+        // Re-examine each touched term for emptied/duplicate parity-sets, then
+        // install only the live representatives into `repr`'s list (ascending).
+        let mut parity: Vec<u32> = Vec::with_capacity(merged.len());
+        for (m, odd) in merged {
+            let live_after = self.dedup.update_term(m, selection, repr);
+            if live_after && odd {
+                parity.push(m);
+            }
+        }
 
         // Clear the three selected lists and install the representative's list.
         // `repr` is a fresh upper index distinct from the selection, so its list
@@ -560,10 +747,12 @@ mod tests {
         // repeated index (γ²=I), e.g. `[0,0]` or `[0,0,2,3]`. The index-list
         // backend handles these via XOR-parity; the transposed backends must
         // match by canonicalising each term to its odd-multiplicity indices.
+        // Parity-sets here are all distinct ({}, {2,3}, {3}, {1,4,5}, {0,1}), so
+        // deduplication is a no-op and the three backends agree term-for-term.
         let terms = vec![
             array_vec!([u16; 7] => 0u16, 0),
             array_vec!([u16; 7] => 0u16, 0, 2, 3),
-            array_vec!([u16; 7] => 2u16, 2, 2, 3),
+            array_vec!([u16; 7] => 2u16, 2, 3),
             array_vec!([u16; 7] => 1u16, 4, 5),
             array_vec!([u16; 7] => 0u16, 1),
         ];
@@ -589,6 +778,28 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn transposed_backends_deduplicate_parity_equal_terms() {
+        // `[0,0,2,3]` and `[2,3]` are the same Pauli operator (parity-set {2,3}).
+        // The transposed backends merge them, so {2,3} is counted once; the
+        // index-list backend does not deduplicate at evaluation time, so it
+        // counts both. The two transposed backends must still agree with each
+        // other.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 0, 2, 3),
+            array_vec!([u16; 7] => 2u16, 3),
+        ];
+        let av = ArrayVecTermStore::new(terms.clone());
+        let bits = BitSlicedTermStore::from_arrayvecs(&terms, 4);
+        let sparse = SparseListTermStore::from_arrayvecs(&terms, 4);
+
+        // comb [2,3,5]: term {2,3} has two of the three present ⇒ weight 1 each.
+        let comb = [2u16, 3, 5];
+        assert_eq!(weight_via_store(&av, &comb), 2, "index-list counts both");
+        assert_eq!(weight_via_store(&bits, &comb), 1, "bit-sliced dedups");
+        assert_eq!(weight_via_store(&sparse, &comb), 1, "sparse-list dedups");
     }
 
     #[test]

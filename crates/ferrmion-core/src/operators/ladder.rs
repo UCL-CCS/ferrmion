@@ -1,5 +1,4 @@
 //! Ladder Operators, shared for Qubits and Fermions
-use ndarray::{arr1, Array1};
 use num_complex::c64;
 use num_complex::Complex64;
 use std::{result::Result, str::FromStr};
@@ -65,10 +64,11 @@ impl LadderOperator {
     /// assert_eq!(coeffs[0], Complex64::new(0.5, 0.0));
     /// assert_eq!(coeffs[1], Complex64::new(0.0, -0.5));
     /// ```
-    pub fn majorana_coefficients(&self) -> Array1<Complex64> {
-        match &self {
-            LadderOperator::Creation => arr1(&[c64(0.5, 0.0), c64(0., -0.5)]),
-            LadderOperator::Annihilation => arr1(&[c64(0.5, 0.0), c64(0., 0.5)]),
+    /// Stack-allocated variant of [`LadderOperator::majorana_coefficients`].
+    pub fn majorana_coefficients(&self) -> [Complex64; 2] {
+        match self {
+            LadderOperator::Creation => [c64(0.5, 0.0), c64(0., -0.5)],
+            LadderOperator::Annihilation => [c64(0.5, 0.0), c64(0., 0.5)],
         }
     }
 }

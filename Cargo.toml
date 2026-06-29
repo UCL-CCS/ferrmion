@@ -30,6 +30,10 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "decode_zbasis_ensemble"
 harness = false
 
+[[bench]]
+name = "majorana_sparse_construction"
+harness = false
+
 [profile.profiling]
 inherits = "release"
 debug = true

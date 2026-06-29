@@ -20,16 +20,10 @@ const MAX_MAJORANAS: usize = 7;
 /// the serial path is used, avoiding rayon's scheduling overhead on small inputs.
 const PARALLEL_TERM_THRESHOLD: usize = 256;
 
-/// Number of terms accumulated per rayon task in the parallel path. Fixed
-/// independent of the worker count so the per-chunk maps are collected and
-/// merged in a deterministic order — the floating-point result therefore does
-/// not depend on how rayon schedules the work.
+/// Minimum number of terms a single rayon task expands in the parallel path
+/// (`with_min_len`), so tiny per-term work is batched rather than scheduled
+/// individually.
 const PARALLEL_CHUNK: usize = 64;
-
-/// Stack-allocated fermionic mode indices for a single term. The Majorana key
-/// built from a term has the same length, which is already bounded by
-/// [`MAX_MAJORANAS`], so the fermionic indices share that capacity.
-type TermIndices = ArrayVec<[usize; MAX_MAJORANAS]>;
 
 /*
 Fermion
@@ -419,82 +413,137 @@ impl MajoranaHashMap {
         self.append_term(&fproduct.action, &fproduct.indices, fproduct.coefficient);
     }
 
-    /// Append a Fermionic Hamiltonian in sparse form to the [`MajoranaHashMap`].
+    /// Append a Fermionic operator in sparse form to the [`MajoranaHashMap`].
     ///
-    /// Each row of `fsparse` is an independent term, so for large operators the
-    /// expansion is run across rayon worker threads (see [`PARALLEL_TERM_THRESHOLD`]).
-    fn append_fermion_sparse(&mut self, fsparse: FermionSparse) {
+    /// Each row of `fsparse` is an independent term sharing `fsparse.action`. For
+    /// large operators (at least [`PARALLEL_TERM_THRESHOLD`] rows) the expansion
+    /// runs across rayon worker threads.
+    fn append_fermion_sparse(&mut self, fsparse: &FermionSparse) {
         debug!("FSparse Indices {:?}", &fsparse.indices);
-        let terms: Vec<(TermIndices, Complex64)> = fsparse
-            .indices
-            .axis_iter(Axis(0))
-            .zip(fsparse.coefficients.iter())
-            .map(|(ind, &coeff)| (ind.iter().copied().collect(), coeff))
-            .collect();
-        self.extend_terms(&fsparse.action, &terms);
-        debug!("MBTree {:?}\n", &self);
-    }
+        let action = fsparse.action.as_slice();
+        let indices = &fsparse.indices;
+        let coefficients = &fsparse.coefficients;
+        let n_terms = indices.nrows();
 
-    /// Expand many independent terms that share an `action` into their Majorana
-    /// components and accumulate them into the map.
-    ///
-    /// For at least [`PARALLEL_TERM_THRESHOLD`] terms the expansion runs across
-    /// rayon worker threads: the work is split into fixed-size chunks
-    /// (independent of the worker count), each chunk accumulates into a
-    /// thread-local map, and the per-chunk maps are collected in chunk order and
-    /// merged serially. The merge order — and therefore the floating-point
-    /// result — is thus deterministic regardless of how rayon schedules the work.
-    fn extend_terms(&mut self, action: &[LadderOperator], terms: &[(TermIndices, Complex64)]) {
-        if terms.len() < PARALLEL_TERM_THRESHOLD {
-            for (indices, coeff) in terms {
-                append_term_into(&mut self.operators, action, indices, *coeff);
+        if n_terms < PARALLEL_TERM_THRESHOLD {
+            for r in 0..n_terms {
+                let row: ArrayVec<[usize; MAX_MAJORANAS]> =
+                    indices.row(r).iter().copied().collect();
+                append_term_into(&mut self.operators, action, &row, coefficients[r]);
             }
+            debug!("MBTree {:?}\n", &self);
             return;
         }
-        let partials: Vec<HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>> = terms
-            .par_chunks(PARALLEL_CHUNK)
-            .map(|chunk| {
+
+        // Phase 1 — expand chunks of independent terms into thread-local maps in
+        // parallel. Each chunk dedups its own contributions (aHash), so the
+        // intermediate stays small.
+        let partials: Vec<HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>> = (0..n_terms)
+            .into_par_iter()
+            .chunks(PARALLEL_CHUNK)
+            .map(|rows| {
                 let mut local = HashMap::new();
-                for (indices, coeff) in chunk {
-                    append_term_into(&mut local, action, indices, *coeff);
+                for r in rows {
+                    let row: ArrayVec<[usize; MAX_MAJORANAS]> =
+                        indices.row(r).iter().copied().collect();
+                    append_term_into(&mut local, action, &row, coefficients[r]);
                 }
                 local
             })
             .collect();
-        for local in partials {
-            for (key, value) in local {
-                *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
+
+        // Phase 2 — merge the per-chunk maps. The key space is partitioned into
+        // shards so the merge itself runs in parallel; each shard scans the chunk
+        // maps in chunk order and owns a disjoint set of keys, so a key's value is
+        // summed in chunk order regardless of the shard count — the result is
+        // deterministic and independent of how rayon schedules the work.
+        let n_shards = rayon::current_num_threads().max(1);
+        if n_shards == 1 {
+            merge_into(&mut self.operators, &partials, 0, 1);
+        } else {
+            let shards: Vec<HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>> = (0..n_shards)
+                .into_par_iter()
+                .map(|shard| {
+                    let mut out = HashMap::new();
+                    merge_into(&mut out, &partials, shard, n_shards);
+                    out
+                })
+                .collect();
+            for shard in shards {
+                for (key, value) in shard {
+                    *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
+                }
+            }
+        }
+        debug!("MBTree {:?}\n", &self);
+    }
+}
+
+/// Accumulate the entries of `partials` whose key falls in shard `shard`
+/// (`hash(key) % n_shards`) into `out`, scanning the chunk maps in order so each
+/// key is summed deterministically in chunk order.
+fn merge_into(
+    out: &mut HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
+    partials: &[HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>],
+    shard: usize,
+    n_shards: usize,
+) {
+    for local in partials {
+        for (key, &value) in local {
+            if n_shards == 1 || shard_of(key) % n_shards == shard {
+                *out.entry(*key).or_insert(Complex64::ZERO) += value;
             }
         }
     }
 }
 
-/// Expand one fermionic term into its `2^n` Majorana components and accumulate
-/// them into `operators`. Shared by the serial and parallel accumulation paths
-/// of [`MajoranaHashMap`].
+/// Stable (run-independent) hash of a Majorana key used to assign it to a merge
+/// shard. FNV-1a over the `u16` indices — cheap and well-spread.
+fn shard_of(key: &ArrayVec<[u16; MAX_MAJORANAS]>) -> usize {
+    let mut hash: usize = 0xcbf2_9ce4_8422_2325;
+    for &index in key.iter() {
+        hash = (hash ^ index as usize).wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
+}
+
+/// Expand one fermionic term into its `2^n` Majorana `(key, value)` contributions.
 ///
 /// Each of the `2^n` offset combinations is the bit pattern of `mask`: bit `j`
-/// selects the Majorana component (`0` or `1`) for operator position `j`. This
-/// visits the same combinations as a cartesian product but without allocating a
-/// Vec per combination, and the key is built straight into a stack `ArrayVec`,
-/// so the loop is allocation-free.
+/// selects the Majorana component (`0` or `1`) for operator position `j`. The key
+/// is built straight into a stack `ArrayVec`, so the iterator is allocation-free.
+/// The returned iterator owns `indices` and borrows `action`.
+fn term_contributions(
+    action: &[LadderOperator],
+    indices: ArrayVec<[usize; MAX_MAJORANAS]>,
+    coeff: Complex64,
+) -> impl Iterator<Item = (ArrayVec<[u16; MAX_MAJORANAS]>, Complex64)> + '_ {
+    let term_length = action.len();
+    (0u32..(1u32 << term_length)).map(move |mask| {
+        let mut scaler = c64(1., 0.);
+        let mut key: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+        for (j, (op, &idx)) in action.iter().zip(&indices).enumerate() {
+            let o = ((mask >> j) & 1) as usize;
+            scaler *= op.majorana_coefficients_pair()[o];
+            key.push((2 * idx + o) as u16);
+        }
+        let sign = majorise_key(&mut key);
+        (key, coeff * scaler * sign)
+    })
+}
+
+/// Expand one fermionic term into its `2^n` Majorana components and accumulate
+/// them into `operators`. Used by the single-term and below-threshold serial
+/// paths of [`MajoranaHashMap`].
 fn append_term_into(
     operators: &mut HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
     action: &[LadderOperator],
     indices: &[usize],
     coeff: Complex64,
 ) {
-    let term_length = action.len();
-    for mask in 0u32..(1u32 << term_length) {
-        let mut scaler = c64(1., 0.);
-        let mut key: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-        for (j, (op, &idx)) in action.iter().zip(indices).enumerate() {
-            let o = ((mask >> j) & 1) as usize;
-            scaler *= op.majorana_coefficients_pair()[o];
-            key.push((2 * idx + o) as u16);
-        }
-        let sign = majorise_key(&mut key);
-        *operators.entry(key).or_insert(Complex64::ZERO) += coeff * scaler * sign;
+    let row: ArrayVec<[usize; MAX_MAJORANAS]> = indices.iter().copied().collect();
+    for (key, value) in term_contributions(action, row, coeff) {
+        *operators.entry(key).or_insert(Complex64::ZERO) += value;
     }
 }
 /// Sparse represtnation of a set of [`MajoranaProduct`] operators.
@@ -584,20 +633,28 @@ impl MajoranaSparse {
                     LadderOperator::try_from(v).expect("Signature components should be + or -")
                 })
                 .collect();
-            // Gather this signature's non-zero, antisymmetry-valid entries as
-            // independent terms, then expand them (in parallel for large tensors).
-            let terms: Vec<(TermIndices, Complex64)> = coeff_view
+            let term_length = action.len();
+            // Gather this signature's non-zero, antisymmetry-valid entries into a
+            // FermionSparse and expand it (in parallel for large tensors).
+            let mut flat_indices: Vec<usize> = Vec::new();
+            let mut coefficients: Vec<Complex64> = Vec::new();
+            coeff_view
                 .indexed_iter()
                 .filter(|(_, &v)| v != 0.0)
-                .filter_map(|(ind, &v)| {
+                .for_each(|(ind, &v)| {
                     let iv = ind.into_dimension();
                     let indices = iv.as_array_view();
                     let slice = indices.as_slice().unwrap();
-                    is_valid_fermion_term(&action, slice)
-                        .then(|| (slice.iter().copied().collect(), c64(v, 0.)))
-                })
-                .collect();
-            majoranas.extend_terms(&action, &terms);
+                    if is_valid_fermion_term(&action, slice) {
+                        flat_indices.extend_from_slice(slice);
+                        coefficients.push(c64(v, 0.));
+                    }
+                });
+            let indices = Array2::from_shape_vec((coefficients.len(), term_length), flat_indices)
+                .expect("Collected indices should form a rectangular array.");
+            let fsparse = FermionSparse::new(action, indices, Array1::from(coefficients))
+                .expect("Indices and coefficients should be consistent.");
+            majoranas.append_fermion_sparse(&fsparse);
         }
         debug!("Getting MSparse");
         let mut hamiltonian = MajoranaSparse::from(majoranas);
@@ -662,10 +719,8 @@ impl From<FermionProduct> for MajoranaSparse {
 
 impl From<FermionSparse> for MajoranaSparse {
     fn from(sft: FermionSparse) -> Self {
-        // Start off by creating a BTreeMap as we'll need to add a few fermionic terms
-        // to each majorana term
         let mut majoranas: MajoranaHashMap = MajoranaHashMap::new();
-        majoranas.append_fermion_sparse(sft);
+        majoranas.append_fermion_sparse(&sft);
         majoranas.into()
     }
 }
@@ -673,7 +728,7 @@ impl From<FermionSparse> for MajoranaSparse {
 impl From<Vec<FermionSparse>> for MajoranaSparse {
     fn from(sft: Vec<FermionSparse>) -> Self {
         let mut majoranas: MajoranaHashMap = MajoranaHashMap::new();
-        sft.into_iter().for_each(|term| {
+        sft.iter().for_each(|term| {
             majoranas.append_fermion_sparse(term);
         });
         majoranas.into()

@@ -117,14 +117,14 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, parallelize, wate
 
 
 @pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
-def test_topphatt_bit_sliced_h2o_weights_match_snapshot(
-    encoding, water_data, topphatt_bit_sliced_weight_snapshot
+def test_topphatt_dense_transpose_h2o_weights_match_snapshot(
+    encoding, water_data, topphatt_weight_snapshot
 ):
-    """Regression-pin the bit_sliced backend's output-tree quality on H2O sto-3g.
+    """Regression-pin the dense_transpose backend's output-tree quality on H2O sto-3g.
 
-    Compares the bit_sliced topphatt Pauli weight and coefficient Pauli weight
+    Compares the dense_transpose topphatt Pauli weight and coefficient Pauli weight
     (each normalised to the naive encode) against a stored snapshot. The
-    bit_sliced backend deduplicates whole terms on the same multiset rule as the
+    dense_transpose backend deduplicates whole terms on the same multiset rule as the
     default index_list backend, so it produces an identical encoding; this test
     locks in the resulting weights so a regression is caught.
     """
@@ -142,9 +142,9 @@ def test_topphatt_bit_sliced_h2o_weights_match_snapshot(
         case "JKMN":
             tree = TernaryTree.jkmn(fham.n_modes)
     qham_naive = tree.encode(fham)
-    qham, _ = tree.encode_topphatt(fham, parallelize=False, backend="bit_sliced")
+    qham, _ = tree.encode_topphatt(fham, parallelize=False, backend="dense_transpose")
 
-    snapshot = topphatt_bit_sliced_weight_snapshot[encoding]
+    snapshot = topphatt_weight_snapshot[encoding]
     assert np.isclose(
         float(pauli_weight(qham)[0] / pauli_weight(qham_naive)[0]),
         snapshot["pauli_weight"],

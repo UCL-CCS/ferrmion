@@ -13,7 +13,7 @@ use thiserror::Error;
 use tinyvec::ArrayVec;
 
 use crate::encode::ternarytree::{TTFlatpack, TernaryTree, TernaryTreeError};
-pub(crate) const MAJORANA_MAX: usize = 7;
+pub(crate) const MAX_MAJORANAS: usize = 7;
 
 /// Errors produced during HATT construction.
 #[derive(Debug, Error)]
@@ -53,7 +53,7 @@ pub enum HattError {
 /// together, they act with the identity as XYZ=-iI
 #[inline(always)]
 pub(crate) fn qubit_term_weight(
-    term: &ArrayVec<[u16; MAJORANA_MAX]>,
+    term: &ArrayVec<[u16; MAX_MAJORANAS]>,
     sorted_children: &[u16; 3],
 ) -> usize {
     let mut even_parity_paulis = [true, true, true];
@@ -90,11 +90,11 @@ pub(crate) fn qubit_term_weight(
 /// We can therefore substitute a single index, representing the node, in place of
 /// all the individual Majorana operator indices.
 pub(crate) fn reduce_hamiltonian(
-    majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
+    majorana_terms: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
     parent_majorana_index: u16,
     selection: [u16; 3],
-) -> Vec<ArrayVec<[u16; MAJORANA_MAX]>> {
-    let mut result: Vec<ArrayVec<[u16; MAJORANA_MAX]>> = majorana_terms
+) -> Vec<ArrayVec<[u16; MAX_MAJORANAS]>> {
+    let mut result: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> = majorana_terms
         .into_iter()
         .map(|mut term| {
             let original_len = term.len();
@@ -124,7 +124,7 @@ pub(crate) fn reduce_hamiltonian(
 /// Returns the constructed [`TernaryTree`] plus the total Pauli weight.
 /// A flatpack is recoverable from the tree via [`TernaryTree::to_flatpack`].
 pub fn hatt(
-    majorana_terms: Vec<ArrayVec<[u16; MAJORANA_MAX]>>,
+    majorana_terms: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
     n_modes: usize,
 ) -> Result<(TernaryTree, usize), HattError> {
     let n_leaves = 2 * n_modes + 1;

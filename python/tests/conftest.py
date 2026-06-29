@@ -96,13 +96,3 @@ def topphatt_weight_snapshot(water_data) -> dict:
         data = json.load(file)
 
     return data
-
-@fixture(scope="module")
-def topphatt_bit_sliced_weight_snapshot() -> dict:
-    folder = Path(__file__).parent
-    filename = "./data/topphatt_bit_sliced_weight_snapshot.json"
-
-    with open(folder.joinpath(filename), "rb") as file:
-        data = json.load(file)
-
-    return data

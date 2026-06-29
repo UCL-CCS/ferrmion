@@ -9,7 +9,7 @@ use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{MajoranaSparse, SymplecticOperator};
 use ferrmion_core::optimise::{
-    hatt, topphatt, topphatt_impl, BitSlicedTermStore, NodeOrderHeuristic, SparseListTermStore,
+    hatt, topphatt, MajoranaDenseTranspose, MajoranaSparseTranspose, NodeOrderHeuristic,
 };
 use ferrmion_core::utils;
 use log::debug;
@@ -216,9 +216,9 @@ pub(crate) fn hatt_py(
 
 /// Run TOPP-HATT over the requested Majorana term-store backend.
 ///
-/// `"index_list"` (default) uses the production `Vec<ArrayVec<..>>` store;
-/// `"bit_sliced"` uses the transposed `BitSlicedTermStore` (one `u64` bit-vector
-/// per Majorana index); `"sparse_list"` uses the sparse `SparseListTermStore`
+/// `"sparse"` (default) uses the production `Vec<ArrayVec<..>>` store;
+/// `"dense_transpose"` uses the transposed `MajoranaDenseTranspose` (one `u64` bit-vector
+/// per Majorana index); `"sparse_transpose"` uses the sparse `SparseListTermStore`
 /// (one sorted list of term indices per Majorana index). The transposed backends
 /// do no term deduplication, so they can produce a different (but valid) encoding
 /// — they are provided for performance comparison.
@@ -230,18 +230,18 @@ fn run_topphatt(
     backend: &str,
 ) -> Result<TernaryTree, CoreError> {
     match backend {
-        "index_list" => Ok(topphatt(hamiltonian, tree, parallelize, heuristic)?),
-        "bit_sliced" => {
-            let store = BitSlicedTermStore::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
-            Ok(topphatt_impl(store, tree, parallelize, heuristic)?)
+        "sparse" => Ok(topphatt(hamiltonian, tree, parallelize, heuristic)?),
+        "dense_transpose" => {
+            let store = MajoranaDenseTranspose::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
+            Ok(topphatt(store, tree, parallelize, heuristic)?)
         }
-        "sparse_list" => {
-            let store = SparseListTermStore::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
-            Ok(topphatt_impl(store, tree, parallelize, heuristic)?)
+        "sparse_transpose" => {
+            let store = MajoranaSparseTranspose::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
+            Ok(topphatt(store, tree, parallelize, heuristic)?)
         }
         other => Err(CoreError::Value(format!(
             "unknown topphatt backend: {other:?} \
-             (expected \"index_list\", \"bit_sliced\" or \"sparse_list\")"
+             (expected \"index_list\", \"dense_transpose\" or \"sparse_list\")"
         ))),
     }
 }
@@ -260,13 +260,13 @@ fn run_topphatt(
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
-///     backend: Term-store backend, ``"index_list"`` (default) or
-///         ``"bit_sliced"`` / ``"sparse_list"`` (transposed layouts, for benchmarking).
+///     backend: Term-store backend, ``"sparse"`` (default) or
+///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
 ///
 /// Returns:
 ///     MajoranaEncoding: The optimised encoding.
 #[pyfunction(name = "topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "index_list"))]
+#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn topphatt_py(
     py: Python<'_>,
@@ -303,13 +303,13 @@ pub(crate) fn topphatt_py(
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
-///     backend: Term-store backend, ``"index_list"`` (default) or
-///         ``"bit_sliced"`` / ``"sparse_list"`` (transposed layouts, for benchmarking).
+///     backend: Term-store backend, ``"sparse"`` (default) or
+///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
 ///
 /// Returns:
 ///     Tuple of ``(QubitHamiltonian, MajoranaEncoding)``.
 #[pyfunction(name = "encode_topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, fham, parallelize = true, heuristic = "min_weight", seed = None, backend = "index_list"))]
+#[pyo3(signature = (flatpack, n_qubits, fham, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn encode_topphatt_py(
     py: Python<'_>,

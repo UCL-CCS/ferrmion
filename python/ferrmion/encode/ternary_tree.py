@@ -231,7 +231,7 @@ class TernaryTree:
         parallelize: bool = True,
         heuristic: str = "min_weight",
         seed: int | None = None,
-        backend: str = "index_list",
+        backend: str = "dense_transpose",
     ) -> tuple[QubitHamiltonian, MajoranaEncoding]:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
@@ -246,8 +246,8 @@ class TernaryTree:
             seed: RNG seed for ``heuristic="random"``. Ignored otherwise;
                 defaults to ``0`` when omitted.
             backend: Term-store backend driving the optimisation,
-                ``"index_list"`` (default), ``"bit_sliced"`` (transposed
-                bit-vector layout) or ``"sparse_list"`` (sparse inverted index:
+                ``"sparse"`` (default), ``"dense_transpose"`` (transposed
+                bit-vector layout) or ``"sparse_transpose"`` (sparse inverted index:
                 a sorted list of term indices per Majorana). The transposed
                 backends do no term deduplication and may produce a different but
                 valid encoding; they are provided for performance comparison.

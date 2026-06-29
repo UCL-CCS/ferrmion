@@ -6,6 +6,8 @@ from functools import partial
 import numpy as np
 from numpy.typing import NDArray
 
+from ferrmion import QubitHamiltonian
+
 from .enumeration.evolutionary import lambda_plus_mu
 
 logger = logging.getLogger(__name__)
@@ -92,7 +94,9 @@ def minimise_mi_distance(
     return best
 
 
-def coefficient_pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]:
+def coefficient_pauli_weight(
+    pauli_hamiltonian: dict[str, float] | QubitHamiltonian,
+) -> list[float]:
     """The Pauli-weight of a qubit hamiltonian,scaled by the term coefficients.
 
     Args:
@@ -119,7 +123,7 @@ def coefficient_pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]
     return [np.sum(weighted_terms)]
 
 
-def pauli_weight(pauli_hamiltonian: dict[str, float]) -> list[float]:
+def pauli_weight(pauli_hamiltonian: dict[str, float] | QubitHamiltonian) -> list[float]:
     """The Pauli-weight of a qubit hamiltonianscaled by the term coefficients.
 
     Args:

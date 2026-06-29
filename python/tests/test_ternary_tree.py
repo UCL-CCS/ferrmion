@@ -586,26 +586,6 @@ def test_benchmark_encode_topphatt(benchmark,encoding, mol_data_sets):
     benchmark(lambda: encoding.encode_topphatt(fham))
 
 
-@pytest.mark.parametrize(
-    "encoding",
-    [
-        TernaryTree.jordan_wigner,
-        TernaryTree.parity,
-        TernaryTree.bravyi_kitaev,
-        TernaryTree.jkmn,
-    ],
-)
-@pytest.mark.parametrize("backend", ["index_list", "bit_sliced"])
-def test_benchmark_encode_topphatt_backend(
-    benchmark, encoding, backend, mol_data_sets
-):
-    """Head-to-head of the index-list and transposed bit-sliced term stores."""
-    ones = mol_data_sets["ones"]
-    twos = mol_data_sets["twos"]
-    e_nuc = mol_data_sets["constant_energy"]
-    fham = FermionHamiltonian(terms={"+-": ones, "++--": twos}, constant_energy=e_nuc)
-    encoding: TernaryTree = encoding(fham.n_modes)
-    benchmark(lambda: encoding.encode_topphatt(fham, backend=backend))
 
 
 # @pytest.mark.parametrize("encoding", [TernaryTree.jordan_wigner, TernaryTree.parity, TernaryTree.bravyi_kitaev, TernaryTree.jkmn])

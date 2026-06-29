@@ -11,9 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `backend` argument on `TernaryTree.encode_topphatt` and the `core.topphatt` /
   `core.encode_topphatt` bindings, selecting the term-store backend
-  (`"sparse"`, default, `"dense_transpose"`, or `"sparse_transpose"`). The bit-sliced backend uses the
-  same upper-range node representative as the index-list backend, so it is valid
-  on every tree topology (Jordan-Wigner, parity, Bravyi-Kitaev, JKMN).
+  (`"sparse"`, default, `"dense_transpose"`, or `"sparse_transpose"`).
 - `MajoranaSparse`, a Rust-backed class exposed from `ferrmion.core` representing
   a sparse Majorana-operator Hamiltonian, with `indices`, `coefficients` and
   `constant` properties. Obtainable via `FermionHamiltonian.to_majorana_sparse()`.

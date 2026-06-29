@@ -1,24 +1,23 @@
-//! Compare the index-list ([`ArrayVecTermStore`]) and transposed bit-sliced
-//! ([`MajoranaDenseTranspose`]) Majorana-term backends for TOPP-HATT.
+//! Compare the sparse ([`MajoranaSparse`]) and transposed Majorana-term backends
+//! for TOPP-HATT.
 //!
-//! Both backends run the identical orchestration via `topphatt` /
-//! `topphatt_impl`; only the per-term weight evaluation and Hamiltonian
-//! reduction differ. The benchmark sweeps synthetic Majorana Hamiltonians on
-//! JKMN trees over two axes so the performance gap can be read as a function of
-//! both:
+//! All backends run the identical orchestration via `topphatt`; only the
+//! per-term weight evaluation and Hamiltonian reduction differ. The benchmark
+//! sweeps synthetic Majorana Hamiltonians on JKMN trees over two axes so the
+//! performance gap can be read as a function of both:
 //! - **number of modes** `m` (problem size), and
 //! - **Majorana term degree** `d` (operators per term) — higher `d` does more
 //!   per-term work, which the bit-sliced backend turns into word-parallel ops.
 //!
 //! Three backends are compared:
-//! - `index_list`: `Vec<ArrayVec<[u16; 7]>>`.
-//! - `dense_transpose`: one `u64` bit-vector per Majorana index, bits indexing terms.
-//! - `sparse_list`: one sorted `Vec<u32>` of term indices per Majorana index —
-//!   the sparse form of `dense_transpose`; a selection's weight is a 3-way list merge.
+//! - `sparse`: the production `MajoranaSparse` (one index-list per term).
+//! - `dense_transpose`: one `u64` bit-vector per Majorana index, bits indexing
+//!   terms (via [`DenseTransposeTarget`]).
+//! - `sparse_transpose`: one sorted `Vec<u32>` of term indices per Majorana index
+//!   (via [`SparseTransposeTarget`]); a selection's weight is a 3-way list merge.
 //!
-//! Note: the bit-sliced backend can pick different (but equally valid) encodings
-//! on dense inputs because it does no term deduplication. The work done is still
-//! representative of each approach.
+//! All three deduplicate whole terms identically, so they produce identical
+//! encodings; only the representation and performance differ.
 
 use std::collections::BTreeSet;
 
@@ -26,8 +25,7 @@ use criterion::{black_box, criterion_group, criterion_main, BatchSize, Benchmark
 use ferrmion_core::encode::ternarytree::TernaryTree;
 use ferrmion_core::operators::MajoranaSparse;
 use ferrmion_core::optimise::{
-    topphatt, topphatt_impl, ArrayVecTermStore, MajoranaDenseTranspose, MajoranaSparseTranspose,
-    NodeOrderHeuristic,
+    topphatt, DenseTransposeTarget, NodeOrderHeuristic, SparseTransposeTarget,
 };
 use num_complex::Complex64;
 use rand::{Rng, SeedableRng};
@@ -88,12 +86,11 @@ fn bench_topphatt_backends(c: &mut Criterion) {
                 |b, &n| {
                     b.iter_batched(
                         || {
-                            let store = MajoranaDenseTranspose::from_arrayvecs(&terms, n);
+                            let store = DenseTransposeTarget::from_arrayvecs(&terms, n);
                             (store, TernaryTree::naive_jkmn(n))
                         },
                         |(store, tree)| {
-                            topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight)
-                                .unwrap()
+                            topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                         },
                         BatchSize::SmallInput,
                     );
@@ -106,12 +103,11 @@ fn bench_topphatt_backends(c: &mut Criterion) {
                 |b, &n| {
                     b.iter_batched(
                         || {
-                            let store = MajoranaSparseTranspose::from_arrayvecs(&terms, n);
+                            let store = SparseTransposeTarget::from_arrayvecs(&terms, n);
                             (store, TernaryTree::naive_jkmn(n))
                         },
                         |(store, tree)| {
-                            topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight)
-                                .unwrap()
+                            topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                         },
                         BatchSize::SmallInput,
                     );
@@ -153,11 +149,11 @@ fn bench_topphatt_large_modes(c: &mut Criterion) {
             |b, &n| {
                 b.iter_batched(
                     || {
-                        let store = MajoranaDenseTranspose::from_arrayvecs(&terms, n);
+                        let store = DenseTransposeTarget::from_arrayvecs(&terms, n);
                         (store, TernaryTree::naive_jkmn(n))
                     },
                     |(store, tree)| {
-                        topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                        topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                     },
                     BatchSize::SmallInput,
                 );
@@ -170,11 +166,11 @@ fn bench_topphatt_large_modes(c: &mut Criterion) {
             |b, &n| {
                 b.iter_batched(
                     || {
-                        let store = MajoranaSparseTranspose::from_arrayvecs(&terms, n);
+                        let store = SparseTransposeTarget::from_arrayvecs(&terms, n);
                         (store, TernaryTree::naive_jkmn(n))
                     },
                     |(store, tree)| {
-                        topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                        topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                     },
                     BatchSize::SmallInput,
                 );
@@ -198,9 +194,15 @@ fn bench_term_store_build(c: &mut Criterion) {
             let terms = random_terms(n_modes, n_terms, degree, 0xC0FFEE);
             let param = format!("m{n_modes}_d{degree}");
 
-            // index_list is already the canonical form; "conversion" is a clone.
+            // `sparse` is the canonical form; "conversion" builds a `MajoranaSparse`.
+            let coefficients: Vec<Complex64> = vec![Complex64::new(1.0, 0.0); terms.len()];
             group.bench_with_input(BenchmarkId::new("sparse", &param), &n_modes, |b, _| {
-                b.iter(|| black_box(ArrayVecTermStore::new(black_box(&terms).clone())));
+                b.iter(|| {
+                    black_box(
+                        MajoranaSparse::new(black_box(&terms).clone(), coefficients.clone(), 0.0)
+                            .unwrap(),
+                    )
+                });
             });
 
             group.bench_with_input(
@@ -208,7 +210,7 @@ fn bench_term_store_build(c: &mut Criterion) {
                 &n_modes,
                 |b, &n| {
                     b.iter(|| {
-                        black_box(MajoranaDenseTranspose::from_arrayvecs(black_box(&terms), n))
+                        black_box(DenseTransposeTarget::from_arrayvecs(black_box(&terms), n))
                     });
                 },
             );
@@ -218,10 +220,7 @@ fn bench_term_store_build(c: &mut Criterion) {
                 &n_modes,
                 |b, &n| {
                     b.iter(|| {
-                        black_box(MajoranaSparseTranspose::from_arrayvecs(
-                            black_box(&terms),
-                            n,
-                        ))
+                        black_box(SparseTransposeTarget::from_arrayvecs(black_box(&terms), n))
                     });
                 },
             );
@@ -244,12 +243,14 @@ fn bench_topphatt_end_to_end(c: &mut Criterion) {
             let terms = random_terms(n_modes, n_terms, degree, 0xC0FFEE);
             let param = format!("m{n_modes}_d{degree}");
 
+            let coefficients: Vec<Complex64> = vec![Complex64::new(1.0, 0.0); terms.len()];
             group.bench_with_input(BenchmarkId::new("sparse", &param), &n_modes, |b, &n| {
                 b.iter_batched(
                     || TernaryTree::naive_jkmn(n),
                     |tree| {
-                        let store = ArrayVecTermStore::new(terms.clone());
-                        topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
+                        let store =
+                            MajoranaSparse::new(terms.clone(), coefficients.clone(), 0.0).unwrap();
+                        topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                     },
                     BatchSize::SmallInput,
                 );
@@ -262,9 +263,8 @@ fn bench_topphatt_end_to_end(c: &mut Criterion) {
                     b.iter_batched(
                         || TernaryTree::naive_jkmn(n),
                         |tree| {
-                            let store = MajoranaDenseTranspose::from_arrayvecs(&terms, n);
-                            topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight)
-                                .unwrap()
+                            let store = DenseTransposeTarget::from_arrayvecs(&terms, n);
+                            topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                         },
                         BatchSize::SmallInput,
                     );
@@ -278,9 +278,8 @@ fn bench_topphatt_end_to_end(c: &mut Criterion) {
                     b.iter_batched(
                         || TernaryTree::naive_jkmn(n),
                         |tree| {
-                            let store = MajoranaSparseTranspose::from_arrayvecs(&terms, n);
-                            topphatt_impl(store, tree, false, NodeOrderHeuristic::MinWeight)
-                                .unwrap()
+                            let store = SparseTransposeTarget::from_arrayvecs(&terms, n);
+                            topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                         },
                         BatchSize::SmallInput,
                     );

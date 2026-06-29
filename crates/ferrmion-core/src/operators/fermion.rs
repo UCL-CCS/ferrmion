@@ -2,13 +2,13 @@
 use crate::operators::ladder::LadderOperator;
 use crate::spaces::Fermion;
 use crate::utils::COEFFICIENT_TOLERANCE;
+use ahash::{HashMap, HashMapExt};
 use log::debug;
 use ndarray::{arr0, s, Dimension};
 use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, IntoDimension};
 use num_complex::Complex64;
 use num_complex::{c64, ComplexFloat};
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::result::Result;
 use tinyvec::ArrayVec;
 

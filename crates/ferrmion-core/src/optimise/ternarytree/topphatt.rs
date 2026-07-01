@@ -7,13 +7,541 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::zip;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use thiserror::Error;
 use tinyvec::ArrayVec;
 
 use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
-use crate::operators::MajoranaSparse;
-use crate::optimise::ternarytree::hatt::{qubit_term_weight, reduce_hamiltonian};
+use crate::operators::{MajoranaDenseTranspose, MajoranaSparse, MajoranaSparseTranspose};
+
+use super::hatt::{qubit_term_weight, reduce_hamiltonian, MAX_MAJORANAS};
+
+trait Sealed {}
+
+/// Storage and hot-path operations for a Majorana Hamiltonian during TOPP-HATT.
+///
+/// Implementors own the term collection and expose only what the assignment loop
+/// needs, so the orchestration can be written once and run over any backend.
+#[allow(private_bounds)]
+pub trait Backend: Sealed {
+    /// Number of terms currently held.
+    fn len(&self) -> usize;
+
+    /// Whether the Hamiltonian has no terms left.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Score a single leaf-index combination, returning a candidate selection.
+    ///
+    /// `bound` holds the lowest weight found so far across every thread and
+    /// active node: it is read to drive the branch-and-bound early-exit and
+    /// lowered (lock-free) whenever a smaller weight is computed. Because pruning
+    /// only abandons combinations whose partial weight already exceeds `bound`,
+    /// no combination that ties or beats the running minimum is discarded, so the
+    /// selection stays deterministic.
+    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize;
+
+    /// Simplify the Hamiltonian after a node's children have been chosen.
+    ///
+    /// Substitutes the three `selection` indices with a single representative
+    /// index and returns that representative, which the caller records so the
+    /// restriction system can refer to the new node.
+    fn reduce(&mut self, min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16;
+}
+
+impl Sealed for MajoranaSparse {}
+
+impl Backend for MajoranaSparse {
+    fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize {
+        let mut sorted_comb: [u16; 3] = comb;
+        sorted_comb.sort_unstable();
+        let comb_min = sorted_comb[0];
+        let comb_max = sorted_comb[2];
+
+        let min_weight = bound.load(Ordering::Relaxed);
+
+        // We expect that the hamiltonian terms are sorted!
+        let weight = self
+            .indices
+            .iter()
+            .filter(|inds| {
+                // Safety
+                //
+                // We know that `inds` is sorted, and non-empty as
+                // `MajoranaSparse` is prepared with sorted indices, and
+                // `reduce_hamiltonian` preserves sorted order while removing
+                // duplicate indices.
+                let inds_min = unsafe { inds.first().unwrap_unchecked() };
+                let inds_max = unsafe { inds.last().unwrap_unchecked() };
+                (comb_min <= *inds_max) & (comb_max >= *inds_min)
+            })
+            .fold_while(0, |acc, inds| {
+                if acc > min_weight {
+                    Done(acc)
+                } else {
+                    Continue(acc + qubit_term_weight(inds, &comb))
+                }
+            })
+            .into_inner();
+
+        bound.fetch_min(weight, Ordering::Relaxed);
+
+        weight
+    }
+
+    fn reduce(&mut self, min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
+        let parent = (min_parent + n_leaves) as u16;
+        let terms = std::mem::take(&mut self.indices);
+        self.indices = reduce_hamiltonian(terms, parent, selection);
+        parent
+    }
+}
+
+/// TOPP-HATT backend wrapping a [`MajoranaDenseTranspose`] with whole-term
+/// deduplication.
+///
+/// The transpose is a pure operator representation; this wrapper adds the
+/// TOPP-HATT-specific [`MultisetDedup`] (the index-list backend's whole-term
+/// rule) plus a packed `live_words` mask. A deduplicated term is excluded from
+/// the weight by ANDing the mask into the per-word accumulation, so the fast
+/// parity weight evaluation is unchanged and the backend reproduces the
+/// index-list backend's encodings exactly.
+pub struct DenseTransposeBackend {
+    transpose: MajoranaDenseTranspose,
+    dedup: MultisetDedup,
+    /// Word-packed liveness mask mirroring `dedup.live`; bit `t` set ⇔ term `t`
+    /// is still counted.
+    live_words: Vec<u64>,
+}
+
+impl DenseTransposeBackend {
+    /// Build a dense-transpose backend from Majorana-index terms. Builds the pure
+    /// transpose, the multiset dedup, and the derived liveness mask. Duplicate
+    /// and identity input terms are merged at build time by the [`MultisetDedup`].
+    pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAX_MAJORANAS]>], n_modes: usize) -> Self {
+        let transpose = MajoranaDenseTranspose::from_arrayvecs(terms, n_modes);
+        let dedup = MultisetDedup::new(terms);
+        let mut live_words = vec![0u64; transpose.n_words];
+        for (t, &alive) in dedup.live.iter().enumerate() {
+            if alive {
+                live_words[t / 64] |= 1u64 << (t % 64);
+            }
+        }
+        Self {
+            transpose,
+            dedup,
+            live_words,
+        }
+    }
+}
+
+impl Sealed for DenseTransposeBackend {}
+
+impl Backend for DenseTransposeBackend {
+    fn len(&self) -> usize {
+        self.transpose.n_terms
+    }
+
+    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize {
+        let a = &self.transpose.columns[comb[0] as usize];
+        let b = &self.transpose.columns[comb[1] as usize];
+        let c = &self.transpose.columns[comb[2] as usize];
+
+        let min_weight = bound.load(Ordering::Relaxed);
+
+        // Per term the Pauli weight is 1 iff exactly one or two of the three
+        // children are present: `(a|b|c) & !(a&b&c)` (count 0 or 3 ⇒ identity).
+        // AND the live mask so deduplicated terms are not counted. Accumulate
+        // word by word, keeping the branch-and-bound early-exit.
+        let mut weight = 0usize;
+        for w in 0..self.transpose.n_words {
+            let any = a[w] | b[w] | c[w];
+            let all = a[w] & b[w] & c[w];
+            weight += (any & !all & self.live_words[w]).count_ones() as usize;
+            if weight > min_weight {
+                break;
+            }
+        }
+
+        bound.fetch_min(weight, Ordering::Relaxed);
+
+        weight
+    }
+
+    fn reduce(&mut self, min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
+        // Use the index-list backend's upper-range node token so the
+        // orchestration classifies this node's edges identically (the
+        // representative is `≥ n_leaves`, never mistaken for a real leaf).
+        let repr = (min_parent + n_leaves) as u16;
+
+        let (c0, c1, c2) = (
+            selection[0] as usize,
+            selection[1] as usize,
+            selection[2] as usize,
+        );
+
+        // Multiset (whole-term) deduplication: map selection members to `repr`
+        // in every live term's multiset signature and merge duplicates, matching
+        // the index-list backend. Clear the live bit of each newly-dead term.
+        for t in self.dedup.reduce(selection, repr) {
+            self.live_words[(t / 64) as usize] &= !(1u64 << (t % 64));
+        }
+
+        // Per term, the representative carries the parity of the removed indices
+        // (matching the parent-token padding in the index-list reduction). Read
+        // the three columns into a parity buffer, clear them, then write the
+        // parity into the representative's column. Dead terms stay masked by
+        // `live_words`.
+        let columns = &mut self.transpose.columns;
+        let parity: Vec<u64> = (0..self.transpose.n_words)
+            .map(|w| columns[c0][w] ^ columns[c1][w] ^ columns[c2][w])
+            .collect();
+        for &col in &[c0, c1, c2] {
+            columns[col].iter_mut().for_each(|w| *w = 0);
+        }
+        columns[repr as usize].copy_from_slice(&parity);
+
+        repr
+    }
+}
+
+/// TOPP-HATT backend wrapping a [`MajoranaSparseTranspose`] with whole-term
+/// deduplication.
+///
+/// The sparse counterpart of [`DenseTransposeBackend`]: the transpose is a pure
+/// operator representation and this wrapper adds the same [`MultisetDedup`]
+/// driven in the same term order, so it yields encodings identical to the
+/// dense-transpose backend *and* to the index-list backend; only the
+/// representation and performance differ. Deduplicated terms are skipped in the
+/// 3-way merge.
+pub struct SparseTransposeBackend {
+    transpose: MajoranaSparseTranspose,
+    dedup: MultisetDedup,
+}
+
+impl SparseTransposeBackend {
+    /// Build a sparse-transpose backend from Majorana-index terms. Builds the pure
+    /// transpose and the multiset dedup (built from the raw terms, matching the
+    /// index-list rule).
+    pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAX_MAJORANAS]>], n_modes: usize) -> Self {
+        Self {
+            transpose: MajoranaSparseTranspose::from_arrayvecs(terms, n_modes),
+            dedup: MultisetDedup::new(terms),
+        }
+    }
+}
+
+impl Sealed for SparseTransposeBackend {}
+
+impl Backend for SparseTransposeBackend {
+    fn len(&self) -> usize {
+        self.transpose.n_terms
+    }
+
+    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize {
+        let a = &self.transpose.lists[comb[0] as usize];
+        let b = &self.transpose.lists[comb[1] as usize];
+        let c = &self.transpose.lists[comb[2] as usize];
+
+        let min_weight = bound.load(Ordering::Relaxed);
+
+        // 3-way merge of the sorted term lists. For each term present in at least
+        // one list, `count` (∈ 1..=3) is how many of the three lists contain it;
+        // the Pauli weight is 1 unless `count` is a multiple of 3 (here only 3).
+        // `u32::MAX` is the exhausted-list sentinel (never a real term index).
+        let (mut i, mut j, mut k) = (0usize, 0usize, 0usize);
+        let mut weight = 0usize;
+        loop {
+            let va = a.get(i).copied().unwrap_or(u32::MAX);
+            let vb = b.get(j).copied().unwrap_or(u32::MAX);
+            let vc = c.get(k).copied().unwrap_or(u32::MAX);
+            let m = va.min(vb).min(vc);
+            if m == u32::MAX {
+                break;
+            }
+            let mut count = 0u32;
+            if va == m {
+                i += 1;
+                count += 1;
+            }
+            if vb == m {
+                j += 1;
+                count += 1;
+            }
+            if vc == m {
+                k += 1;
+                count += 1;
+            }
+            // Skip deduplicated terms; otherwise weight 1 unless count is a
+            // multiple of 3 (here, 3).
+            if self.dedup.live[m as usize] && !count.is_multiple_of(3) {
+                weight += 1;
+            }
+            if weight > min_weight {
+                break;
+            }
+        }
+
+        bound.fetch_min(weight, Ordering::Relaxed);
+
+        weight
+    }
+
+    fn reduce(&mut self, min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
+        // Upper-range node token, matching the index-list and bit-sliced backends.
+        let repr = (min_parent + n_leaves) as u16;
+        let (c0, c1, c2) = (
+            selection[0] as usize,
+            selection[1] as usize,
+            selection[2] as usize,
+        );
+
+        // Multiset (whole-term) deduplication, matching the index-list backend:
+        // map selection members to `repr` in every live term's multiset and merge
+        // duplicates. Updates `self.dedup.live`.
+        let _ = self.dedup.reduce(selection, repr);
+
+        // 3-way merge over the three selected parity lists; the representative
+        // carries each term that appears in an ODD number of them (matching the
+        // bit-sliced XOR reduction) and is still live. Output stays ascending.
+        let mut parity: Vec<u32> = Vec::new();
+        {
+            let a = &self.transpose.lists[c0];
+            let b = &self.transpose.lists[c1];
+            let c = &self.transpose.lists[c2];
+            let (mut i, mut j, mut k) = (0usize, 0usize, 0usize);
+            loop {
+                let va = a.get(i).copied().unwrap_or(u32::MAX);
+                let vb = b.get(j).copied().unwrap_or(u32::MAX);
+                let vc = c.get(k).copied().unwrap_or(u32::MAX);
+                let m = va.min(vb).min(vc);
+                if m == u32::MAX {
+                    break;
+                }
+                let mut count = 0u32;
+                if va == m {
+                    i += 1;
+                    count += 1;
+                }
+                if vb == m {
+                    j += 1;
+                    count += 1;
+                }
+                if vc == m {
+                    k += 1;
+                    count += 1;
+                }
+                if count & 1 == 1 && self.dedup.live[m as usize] {
+                    parity.push(m);
+                }
+            }
+        }
+
+        // Clear the three selected lists and install the representative's list.
+        // `repr` is a fresh upper index distinct from the selection, so its list
+        // was empty.
+        self.transpose.lists[c0].clear();
+        self.transpose.lists[c1].clear();
+        self.transpose.lists[c2].clear();
+        self.transpose.lists[repr as usize] = parity;
+
+        repr
+    }
+}
+
+/// The result of a single TOPP-HATT assignment step.
+///
+/// Stores the minimum Pauli weight found, the parent node chosen,
+/// and the three leaf indices assigned to that node's edges.
+#[derive(Debug, Clone, Copy)]
+struct Selection {
+    pub(crate) min_weight: usize,
+    pub(crate) min_parent: usize,
+    pub(crate) leaf_indices: [u16; 3],
+}
+
+impl Selection {
+    /// Sentinel "no selection" value. Used both to initialise the search and as
+    /// the identity element of [`ToppHattSelection::combine`]: every real
+    /// candidate compares better.
+    pub(crate) const WORST: Self = Self {
+        min_weight: usize::MAX,
+        min_parent: usize::MAX,
+        leaf_indices: [u16::MAX; 3],
+    };
+
+    /// Pack this selection's three leaf indices into a single `u64` for
+    /// deterministic tie-breaking.
+    #[inline(always)]
+    pub(crate) fn packed_leaf_indices(&self) -> u64 {
+        (self.leaf_indices[0] as u64) << 16
+            | (self.leaf_indices[1] as u64) << 32
+            | (self.leaf_indices[2] as u64) << 48
+    }
+
+    /// Combine two candidate selections, keeping the lower Pauli weight and
+    /// breaking ties deterministically by the packed leaf indices (see
+    /// [`ToppHattSelection::packed_leaf_indices`]).
+    ///
+    /// This combine is associative and order-independent, so the reduction yields
+    /// the same selection whether combinations are reduced in parallel or folded
+    /// sequentially.
+    #[inline(always)]
+    pub(crate) fn combine(self, candidate: Self) -> Self {
+        let take_candidate = candidate.min_weight < self.min_weight
+            || (candidate.min_weight == self.min_weight
+                && self.min_weight != usize::MAX
+                && candidate.packed_leaf_indices() > self.packed_leaf_indices());
+        if take_candidate {
+            candidate
+        } else {
+            self
+        }
+    }
+}
+
+/// Normalise a raw combination (length 2 or 3) into three leaf indices.
+///
+/// A length-2 combination encodes an even-Majorana / Z pair; the odd partner is
+/// inferred. Returns `None` for invalid combinations (a repeated Z leaf).
+#[inline(always)]
+fn normalise_comb(comb: &[u16]) -> Option<[u16; 3]> {
+    let comb: [u16; 3] = if comb.len() == 3 {
+        [comb[0], comb[1], comb[2]]
+    } else {
+        let pair = if comb[0].is_multiple_of(2) {
+            comb[0] + 1
+        } else {
+            comb[0] - 1
+        };
+        [comb[0], pair, comb[1]]
+    };
+
+    if comb[0] == comb[2] || comb[1] == comb[2] {
+        return None;
+    }
+    Some(comb)
+}
+
+/// Multiset (whole-term) deduplication — the index-list backend's rule.
+///
+/// This merges terms that are identical as **multisets** (with parent-token
+/// padding, length preserved), reproducing `reduce_hamiltonian`'s `sort + dedup`.
+/// It therefore yields encodings identical to the index-list backend while
+/// leaving the fast (parity) weight evaluation untouched. Both transposed
+/// backends drive an identical instance in the same term order, so they make
+/// identical liveness decisions and yield identical encodings. Because the
+/// multiset can hold
+/// even-multiplicity members that the parity columns drop, the reduction scans
+/// every live term's signature rather than reading the columns.
+struct MultisetDedup {
+    /// Per-term multiset signature, sorted, length-preserving (selection members
+    /// are mapped to the representative, not removed).
+    sigs: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+    fingerprints: Vec<u64>,
+    buckets: HashMap<u64, Vec<u32>>,
+    live: Vec<bool>,
+}
+
+impl MultisetDedup {
+    /// Deterministic FNV-1a fingerprint of a sorted parity-set, used to find
+    /// candidate duplicate terms cheaply (collisions are resolved by comparing
+    /// the sets directly).
+    #[inline]
+    fn fingerprint(sig: &[u16]) -> u64 {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        for &x in sig {
+            h ^= x as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        h
+    }
+
+    fn new(terms: &[ArrayVec<[u16; MAX_MAJORANAS]>]) -> Self {
+        let n = terms.len();
+        let mut sigs: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> = Vec::with_capacity(n);
+        for term in terms {
+            let mut s = *term;
+            s.sort_unstable();
+            sigs.push(s);
+        }
+        let mut fingerprints = vec![0u64; n];
+        let mut buckets: HashMap<u64, Vec<u32>> = HashMap::new();
+        let mut live = vec![true; n];
+        for t in 0..n {
+            if sigs[t].is_empty() {
+                live[t] = false;
+                continue;
+            }
+            let f = Self::fingerprint(&sigs[t]);
+            fingerprints[t] = f;
+            let is_dup = buckets
+                .get(&f)
+                .is_some_and(|b| b.iter().any(|&o| sigs[o as usize] == sigs[t]));
+            if is_dup {
+                live[t] = false;
+            } else {
+                buckets.entry(f).or_default().push(t as u32);
+            }
+        }
+        Self {
+            sigs,
+            fingerprints,
+            buckets,
+            live,
+        }
+    }
+
+    /// Map selection members to `repr` (multiset, length-preserving) in every live
+    /// term, drop all-`repr` terms, and merge multiset-duplicates. Returns the
+    /// ids that became dead so the caller can update its live mask.
+    fn reduce(&mut self, selection: [u16; 3], repr: u16) -> Vec<u32> {
+        let mut dead = Vec::new();
+        for t in 0..self.sigs.len() {
+            if !self.live[t] || !self.sigs[t].iter().any(|&x| selection.contains(&x)) {
+                continue;
+            }
+            if let Some(b) = self.buckets.get_mut(&self.fingerprints[t]) {
+                if let Some(p) = b.iter().position(|&o| o == t as u32) {
+                    b.swap_remove(p);
+                }
+            }
+            {
+                let sig = &mut self.sigs[t];
+                for x in sig.iter_mut() {
+                    if selection.contains(x) {
+                        *x = repr;
+                    }
+                }
+                sig.sort_unstable();
+            }
+            if self.sigs[t].iter().all(|&x| x == repr) {
+                self.live[t] = false;
+                dead.push(t as u32);
+                continue;
+            }
+            let f = Self::fingerprint(&self.sigs[t]);
+            self.fingerprints[t] = f;
+            let is_dup = self.buckets.get(&f).is_some_and(|b| {
+                b.iter()
+                    .any(|&o| self.live[o as usize] && self.sigs[o as usize] == self.sigs[t])
+            });
+            if is_dup {
+                self.live[t] = false;
+                dead.push(t as u32);
+            } else {
+                self.buckets.entry(f).or_default().push(t as u32);
+            }
+        }
+        dead
+    }
+}
 
 /// Strategy for selecting which active node to expand at each TOPP-HATT step.
 ///
@@ -94,129 +622,11 @@ impl NodeOrderHeuristic {
 #[derive(Debug, Error)]
 pub enum ToppHattError {
     #[error("Found invalid restriction: {0:?}.")]
-    InvalidRestriction(Restriction),
+    InvalidRestriction(NodeRestriction),
     #[error("No selection made for loop index {0}.")]
     NoSelectionMade(usize),
     #[error("No min parent for loop index {0}.")]
     NoMinParentFound(usize),
-}
-
-/// The result of a single TOPP-HATT assignment step.
-///
-/// Stores the minimum Pauli weight found, the parent node chosen,
-/// and the three leaf indices assigned to that node's edges.
-#[derive(Debug, Clone, Copy)]
-pub struct ToppHattSelection {
-    min_weight: usize,
-    min_parent: usize,
-    leaf_indices: [u16; 3],
-}
-
-impl ToppHattSelection {
-    /// Sentinel "no selection" value. Used both to initialise the search and as
-    /// the identity element of [`combine`]: every real candidate compares better.
-    const WORST: Self = Self {
-        min_weight: usize::MAX,
-        min_parent: usize::MAX,
-        leaf_indices: [u16::MAX; 3],
-    };
-}
-
-// Pack three leaf indices into a single `u64` for deterministic tie-breaking.
-#[inline(always)]
-fn packed_leaf_indices(leaf_indices: [u16; 3]) -> u64 {
-    (leaf_indices[0] as u64) << 16 | (leaf_indices[1] as u64) << 32 | (leaf_indices[2] as u64) << 48
-}
-
-// Combine two candidate selections, keeping the lower Pauli weight and breaking
-// ties deterministically by the packed leaf indices (see [`packed_leaf_indices`]).
-//
-// This combine is associative and order-independent, so the reduction yields the
-// same selection whether combinations are reduced in parallel or folded
-// sequentially.
-#[inline(always)]
-fn combine(current: ToppHattSelection, candidate: ToppHattSelection) -> ToppHattSelection {
-    let take_candidate = candidate.min_weight < current.min_weight
-        || (candidate.min_weight == current.min_weight
-            && current.min_weight != usize::MAX
-            && packed_leaf_indices(candidate.leaf_indices)
-                > packed_leaf_indices(current.leaf_indices));
-    if take_candidate {
-        candidate
-    } else {
-        current
-    }
-}
-
-// Score a single leaf-index combination, returning a candidate selection.
-///
-/// The combination is normalised to three leaf indices; invalid combinations (a
-/// repeated z leaf) are rejected by returning [`ToppHattSelection::WORST`].
-/// `bound` holds the lowest weight found so far across every thread and active
-/// node: it is read to drive the branch-and-bound early-exit and lowered
-/// (lock-free) whenever a smaller weight is computed. Because pruning only abandons
-/// combinations whose partial weight already exceeds `bound`, no combination that
-/// ties or beats the running minimum is ever discarded, so the selection stays
-/// deterministic.
-fn evaluate_combination(
-    comb: &[u16],
-    active: usize,
-    hamiltonian: &MajoranaSparse,
-    bound: &AtomicUsize,
-) -> ToppHattSelection {
-    let comb: [u16; 3] = if comb.len() == 3 {
-        [comb[0], comb[1], comb[2]]
-    } else {
-        let pair = if comb[0].is_multiple_of(2) {
-            comb[0] + 1
-        } else {
-            comb[0] - 1
-        };
-        [comb[0], pair, comb[1]]
-    };
-
-    if comb[0] == comb[2] || comb[1] == comb[2] {
-        return ToppHattSelection::WORST;
-    }
-
-    let mut sorted_comb: [u16; 3] = comb;
-    sorted_comb.sort_unstable();
-    let comb_min = sorted_comb[0];
-    let comb_max = sorted_comb[2];
-
-    let min_weight = bound.load(Ordering::Relaxed);
-
-    // We expect that the hamiltonian terms are sorted!
-    let weight = hamiltonian
-        .indices
-        .iter()
-        .filter(|inds| {
-            // Safety
-            //
-            // We know that `inds` is sorted, and non-empty as
-            // [`MajoranaSparse] is prepared with sorted indices,
-            // and `reduce_hamiltonian` preserves sorted order while
-            // removing duplicate indices.
-            let inds_min = unsafe { inds.first().unwrap_unchecked() };
-            let inds_max = unsafe { inds.last().unwrap_unchecked() };
-            (comb_min <= *inds_max) & (comb_max >= *inds_min)
-        })
-        .fold_while(0, |acc, inds| {
-            if acc > min_weight {
-                Done(acc)
-            } else {
-                Continue(acc + qubit_term_weight(inds, &comb))
-            }
-        })
-        .into_inner();
-
-    bound.fetch_min(weight, Ordering::Relaxed);
-
-    ToppHattSelection {
-        min_weight: weight,
-        min_parent: active,
-        leaf_indices: comb,
-    }
 }
 
 /// Restrictons on which Majorana operator can be assigned
@@ -226,7 +636,7 @@ fn evaluate_combination(
 /// - a leaf, with  or without an assiged Majorana.
 /// - nothing
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Restriction {
+pub enum NodeRestriction {
     /// The edge can have any assignment.
     Any,
     /// The edge must have an odd-indexed Majorana.
@@ -241,16 +651,25 @@ pub enum Restriction {
     Empty,
 }
 
-impl Restriction {
+impl NodeRestriction {
     /// Find the available subset of Majorana indices which a restricion allows.
     ///
-    /// As the procedure progresses, the set of unassigned indices will become more restrictive.
-    fn get_index_subset(&self, unassigned: &BTreeSet<usize>, n_nodes: usize) -> Vec<u16> {
+    /// As the procedure progresses, the set of unassigned indices will become
+    /// more restrictive. `representatives[c]` gives the index that currently
+    /// stands in for child node `c`; this is the term-store's chosen
+    /// representative — the upper-range token `c + 2*n_nodes + 1` for both the
+    /// index-list and bit-sliced backends.
+    fn get_index_subset(
+        &self,
+        unassigned: &BTreeSet<usize>,
+        n_nodes: usize,
+        representatives: &[u16],
+    ) -> Vec<u16> {
         match self {
             // Incomplete selections.
-            Restriction::EvenLeaf => unassigned.iter().map(|v| (2 * v) as u16).collect(),
-            Restriction::OddLeaf => unassigned.iter().map(|v| ((2 * v) + 1) as u16).collect(),
-            Restriction::Any => {
+            NodeRestriction::EvenLeaf => unassigned.iter().map(|v| (2 * v) as u16).collect(),
+            NodeRestriction::OddLeaf => unassigned.iter().map(|v| ((2 * v) + 1) as u16).collect(),
+            NodeRestriction::Any => {
                 let mut allowed: Vec<u16> = unassigned
                     .iter()
                     .map(|v| (2 * v) as u16)
@@ -259,11 +678,11 @@ impl Restriction {
                 allowed
             }
             // Completed selections.
-            Restriction::ChildNode(child_index) => {
-                vec![(*child_index as u16 + 2 * n_nodes as u16 + 1)]
+            NodeRestriction::ChildNode(child_index) => {
+                vec![representatives[*child_index as usize]]
             }
-            Restriction::Empty => vec![(2 * n_nodes) as u16],
-            Restriction::Majorana(index) => vec![*index],
+            NodeRestriction::Empty => vec![(2 * n_nodes) as u16],
+            NodeRestriction::Majorana(index) => vec![*index],
         }
     }
 }
@@ -294,18 +713,18 @@ struct LeafPair {
 /// - produce real-valued.
 #[derive(Debug, PartialEq)]
 struct TreeRestrictions {
-    x: Vec<Restriction>,
-    y: Vec<Restriction>,
-    z: Vec<Restriction>,
+    x: Vec<NodeRestriction>,
+    y: Vec<NodeRestriction>,
+    z: Vec<NodeRestriction>,
     pairs: HashMap<LeafLocation, LeafLocation>,
 }
 
 impl TreeRestrictions {
     /// Create a set of [`TreeRestrictons`] for  a [`TernaryTree`].
     fn new(tree: &TernaryTree) -> Self {
-        let x: Vec<Restriction> = vec![Restriction::Any; tree.n_nodes];
-        let y: Vec<Restriction> = vec![Restriction::Any; tree.n_nodes];
-        let z: Vec<Restriction> = vec![Restriction::Any; tree.n_nodes];
+        let x: Vec<NodeRestriction> = vec![NodeRestriction::Any; tree.n_nodes];
+        let y: Vec<NodeRestriction> = vec![NodeRestriction::Any; tree.n_nodes];
+        let z: Vec<NodeRestriction> = vec![NodeRestriction::Any; tree.n_nodes];
         let pairs: HashMap<LeafLocation, LeafLocation> = HashMap::new();
 
         let mut output = Self { x, y, z, pairs };
@@ -330,7 +749,7 @@ impl TreeRestrictions {
             .iter()
             .position(|&v| v.is_none())
             .expect("Input tree should not have all-z leaf assigned.");
-        self.z[all_z_index] = Restriction::Empty;
+        self.z[all_z_index] = NodeRestriction::Empty;
     }
 
     /// Add restrictions to keep parent-child relationships.
@@ -345,7 +764,7 @@ impl TreeRestrictions {
         ) {
             for (r, c) in zip(restriction, children) {
                 if let Some(Child::Node(child_index)) = c {
-                    *r = Restriction::ChildNode(*child_index)
+                    *r = NodeRestriction::ChildNode(*child_index)
                 }
             }
         }
@@ -368,10 +787,10 @@ impl TreeRestrictions {
                 // want to be able to continue.
                 match c {
                     Some(Child::XLeaf(_)) => {
-                        *r = Restriction::EvenLeaf;
+                        *r = NodeRestriction::EvenLeaf;
                     }
                     Some(Child::YLeaf(_)) => {
-                        *r = Restriction::OddLeaf;
+                        *r = NodeRestriction::OddLeaf;
                     }
                     _ => {
                         continue;
@@ -465,7 +884,7 @@ impl TreeRestrictions {
         ) {
             for (r, c) in zip(res, child_of) {
                 match r {
-                    Restriction::Majorana(index) => {
+                    NodeRestriction::Majorana(index) => {
                         if index % 2 == 0 {
                             *c = Some(Child::XLeaf((index / 2) as u8));
                         } else {
@@ -476,10 +895,10 @@ impl TreeRestrictions {
                             "Index too high: {index}"
                         );
                     }
-                    Restriction::ChildNode(_) => {
+                    NodeRestriction::ChildNode(_) => {
                         debug_assert!(matches!(c, Some(Child::Node(_))));
                     }
-                    Restriction::Empty => {
+                    NodeRestriction::Empty => {
                         debug_assert!(c.is_none())
                     }
                     _ => return Err(ToppHattError::InvalidRestriction(*r)),
@@ -579,8 +998,12 @@ impl NodeDependencies {
 ///
 /// Optimises a given [`TernaryTree`] to minimise the Pauli-weight
 /// of the qubit hamiltonian obtained by encoding the input [`MajoranaSparse`] hamiltonian.
-pub fn topphatt(
-    mut hamiltonian: MajoranaSparse,
+///
+/// This is a thin wrapper that runs the algorithm over the production
+/// [`MajoranaSparse`] backend. See [`topphatt_impl`] to run it over an
+/// alternative [`MajoranaTermStore`] (e.g. the bit-packed prototype).
+pub fn topphatt<S: Backend + Sync>(
+    mut backend: S,
     mut tree: TernaryTree,
     parallelize: bool,
     heuristic: NodeOrderHeuristic,
@@ -590,7 +1013,7 @@ pub fn topphatt(
 
     // Rough threshold at which parallelism is worth the overhead. When enabled the
     // weight search runs on rayon's global thread pool.
-    let mut use_parallel = parallelize && hamiltonian.indices.len() > 1000;
+    let mut use_parallel = parallelize && backend.len() > 1000;
 
     // Created once outside the assignment loop so a single RNG stream is
     // consumed across all iterations, rather than reseeded each step.
@@ -601,12 +1024,20 @@ pub fn topphatt(
 
     // Reversing the direction tends to give better results for molecules
     let mut unassigned_modes: BTreeSet<usize> = BTreeSet::from_iter(0..tree.n_nodes);
+
+    // Index that currently represents each (eventually formed) node. Initialised
+    // to the index-list backend's upper-range token `node + 2*n_nodes + 1`;
+    // `store.reduce` overwrites each entry with the backend's own representative
+    // as nodes are formed, and entries are only ever read after the node they
+    // describe has been reduced (children are reduced before their parents become
+    // active).
+    let n_leaves_total = 2 * tree.n_nodes + 1;
+    let mut representatives: Vec<u16> = (0..tree.n_nodes)
+        .map(|node| (node + n_leaves_total) as u16)
+        .collect();
+
     let mut total_weight = 0;
-    debug!(
-        "Number of hamiltonian terms {:?}",
-        hamiltonian.indices.len()
-    );
-    debug!("Hamiltonian indices\n{:?}", &hamiltonian.indices);
+    debug!("Number of hamiltonian terms {:?}", backend.len());
     'assign: for loop_index in 0..tree.n_nodes {
         debug!("loop {:}", loop_index);
         debug!("Restrictions {:?}", restrictions);
@@ -615,7 +1046,7 @@ pub fn topphatt(
         let n_leaves = 2 * tree.n_nodes + 1;
 
         // Best (lowest-weight) candidate found across all active nodes this step.
-        let mut best = ToppHattSelection::WORST;
+        let mut best = Selection::WORST;
         // Lowest weight found so far, shared across threads and active nodes to
         // drive the branch-and-bound early-exit in `evaluate_combination`.
         let bound = AtomicUsize::new(usize::MAX);
@@ -643,8 +1074,11 @@ pub fn topphatt(
         // Since they can only have one of each of EvenLeaf and Oddleaf on the x and y branches,
         // while the z branch can be either EvenLeaf or OddLeaf.
         if active_nodes.len() > 1 {
-            let mut unique_choices: HashSet<(&Restriction, &Restriction, &Restriction)> =
-                HashSet::with_capacity(active_nodes.len());
+            let mut unique_choices: HashSet<(
+                &NodeRestriction,
+                &NodeRestriction,
+                &NodeRestriction,
+            )> = HashSet::with_capacity(active_nodes.len());
 
             active_nodes = active_nodes
                 .into_iter()
@@ -666,17 +1100,26 @@ pub fn topphatt(
 
         debug!("Active Nodes {:?}", active_nodes);
         for active in active_nodes {
-            let mut allowed_x =
-                restrictions.x[active].get_index_subset(&unassigned_modes, tree.n_nodes);
+            let mut allowed_x = restrictions.x[active].get_index_subset(
+                &unassigned_modes,
+                tree.n_nodes,
+                &representatives,
+            );
             // Optimisation:
             // Reversing x, y but leaving z increadsing order reduces the runtime for
             // for hamiltonians in tests.
             allowed_x.reverse();
-            let mut allowed_y =
-                restrictions.y[active].get_index_subset(&unassigned_modes, tree.n_nodes);
+            let mut allowed_y = restrictions.y[active].get_index_subset(
+                &unassigned_modes,
+                tree.n_nodes,
+                &representatives,
+            );
             allowed_y.reverse();
-            let allowed_z =
-                restrictions.z[active].get_index_subset(&unassigned_modes, tree.n_nodes);
+            let allowed_z = restrictions.z[active].get_index_subset(
+                &unassigned_modes,
+                tree.n_nodes,
+                &representatives,
+            );
 
             debug!("Allowed X {:?}", allowed_x);
             debug!("Allowed Y {:?}", allowed_y);
@@ -684,8 +1127,8 @@ pub fn topphatt(
 
             let product = match (restrictions.x[active], restrictions.y[active]) {
                 (
-                    Restriction::EvenLeaf | Restriction::OddLeaf,
-                    Restriction::EvenLeaf | Restriction::OddLeaf,
+                    NodeRestriction::EvenLeaf | NodeRestriction::OddLeaf,
+                    NodeRestriction::EvenLeaf | NodeRestriction::OddLeaf,
                 ) => [allowed_x, allowed_z].into_iter().multi_cartesian_product(),
                 _ => [allowed_x, allowed_y, allowed_z]
                     .into_iter()
@@ -711,15 +1154,31 @@ pub fn topphatt(
             let node_best = if use_parallel {
                 combos
                     .par_iter()
-                    .map(|comb| evaluate_combination(comb, active, &hamiltonian, &bound))
-                    .reduce(|| ToppHattSelection::WORST, combine)
+                    .filter_map(|comb| normalise_comb(comb))
+                    .map(|comb| {
+                        let weight = backend.evaluate_combination(comb, &bound);
+                        Selection {
+                            min_weight: weight,
+                            min_parent: active,
+                            leaf_indices: comb,
+                        }
+                    })
+                    .reduce(|| Selection::WORST, Selection::combine)
             } else {
                 combos
                     .iter()
-                    .map(|comb| evaluate_combination(comb, active, &hamiltonian, &bound))
-                    .fold(ToppHattSelection::WORST, combine)
+                    .filter_map(|comb| normalise_comb(comb))
+                    .map(|comb| {
+                        let weight = backend.evaluate_combination(comb, &bound);
+                        Selection {
+                            min_weight: weight,
+                            min_parent: active,
+                            leaf_indices: comb,
+                        }
+                    })
+                    .fold(Selection::WORST, Selection::combine)
             };
-            best = combine(best, node_best);
+            best = best.combine(node_best);
         }
         // debug!("Selection {:?}", &selection);
         let selection = best;
@@ -758,9 +1217,9 @@ pub fn topphatt(
             ],
         ) {
             if (sel as usize) < n_leaves - 1 {
-                res[selection.min_parent] = Restriction::Majorana(sel);
+                res[selection.min_parent] = NodeRestriction::Majorana(sel);
             } else if (sel as usize) == n_leaves {
-                res[selection.min_parent] = Restriction::Empty;
+                res[selection.min_parent] = NodeRestriction::Empty;
             }
         }
 
@@ -784,9 +1243,15 @@ pub fn topphatt(
             debug!("partner location {:?}", partner_location);
 
             match partner_location.1 {
-                Edge::X => restrictions.x[partner_location.0] = Restriction::Majorana(pair_index),
-                Edge::Y => restrictions.y[partner_location.0] = Restriction::Majorana(pair_index),
-                Edge::Z => restrictions.z[partner_location.0] = Restriction::Majorana(pair_index),
+                Edge::X => {
+                    restrictions.x[partner_location.0] = NodeRestriction::Majorana(pair_index)
+                }
+                Edge::Y => {
+                    restrictions.y[partner_location.0] = NodeRestriction::Majorana(pair_index)
+                }
+                Edge::Z => {
+                    restrictions.z[partner_location.0] = NodeRestriction::Majorana(pair_index)
+                }
             }
         }
 
@@ -795,13 +1260,15 @@ pub fn topphatt(
             .filter(|&ind| {
                 matches!(
                     restrictions.x[ind],
-                    Restriction::Majorana(_) | Restriction::ChildNode(_)
+                    NodeRestriction::Majorana(_) | NodeRestriction::ChildNode(_)
                 ) & matches!(
                     restrictions.y[ind],
-                    Restriction::Majorana(_) | Restriction::ChildNode(_)
+                    NodeRestriction::Majorana(_) | NodeRestriction::ChildNode(_)
                 ) & matches!(
                     restrictions.z[ind],
-                    Restriction::Majorana(_) | Restriction::ChildNode(_) | Restriction::Empty
+                    NodeRestriction::Majorana(_)
+                        | NodeRestriction::ChildNode(_)
+                        | NodeRestriction::Empty
                 )
             })
             .collect();
@@ -810,17 +1277,16 @@ pub fn topphatt(
             .iter()
             .for_each(|&ind| node_dependencies.drop_node(ind));
 
-        let parent_majorana_index = selection.min_parent + n_leaves;
-        debug!("Parent Majorana Index {parent_majorana_index}.");
-        hamiltonian.indices = reduce_hamiltonian(
-            hamiltonian.indices,
-            parent_majorana_index as u16,
-            selection.leaf_indices,
+        let representative = backend.reduce(selection.min_parent, selection.leaf_indices, n_leaves);
+        representatives[selection.min_parent] = representative;
+        debug!(
+            "Node {} represented by index {representative}.",
+            selection.min_parent
         );
-        if hamiltonian.indices.len() < 1000 {
+        if backend.len() < 1000 {
             use_parallel = false;
         }
-        debug!("Reduced Hamiltonian {:#?}", hamiltonian.indices);
+        debug!("Reduced Hamiltonian to {} terms", backend.len());
         debug!("Finished loop\n\n\n");
         if unassigned_modes.is_empty() {
             break 'assign;
@@ -840,13 +1306,245 @@ pub fn topphatt(
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
+    use num_complex::Complex64;
+    use tinyvec::array_vec;
+
+    fn weight_via_store<S: Backend>(store: &S, comb: &[u16]) -> usize {
+        let bound = AtomicUsize::new(usize::MAX);
+        let comb = normalise_comb(comb);
+        if let Some(comb) = comb {
+            store.evaluate_combination(comb, &bound)
+        } else {
+            usize::MAX
+        }
+    }
+
+    #[test]
+    fn transposed_backends_parity_canonicalise_repeated_indices() {
+        // Molecular Majorana Hamiltonians include number-operator terms with a
+        // repeated index (γ²=I), e.g. `[0,0]` or `[0,0,2,3]`. The index-list
+        // backend handles these via XOR-parity; the transposed backends must
+        // match by canonicalising each term to its odd-multiplicity indices.
+        // Parity-sets here are all distinct ({}, {2,3}, {3}, {1,4,5}, {0,1}), so
+        // deduplication is a no-op and the three backends agree term-for-term.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 0),
+            array_vec!([u16; 7] => 0u16, 0, 2, 3),
+            array_vec!([u16; 7] => 2u16, 2, 3),
+            array_vec!([u16; 7] => 1u16, 4, 5),
+            array_vec!([u16; 7] => 0u16, 1),
+        ];
+        let av =
+            MajoranaSparse::new(terms.clone(), vec![Complex64::ONE; terms.len()], 0.0).unwrap();
+        let bits = DenseTransposeBackend::from_arrayvecs(&terms, 4);
+        let sparse = SparseTransposeBackend::from_arrayvecs(&terms, 4);
+
+        for a in 0u16..8 {
+            for b in 0u16..8 {
+                for c in 0u16..8 {
+                    let comb = [a, b, c];
+                    let expected = weight_via_store(&av, &comb);
+                    assert_eq!(
+                        expected,
+                        weight_via_store(&bits, &comb),
+                        "bit-sliced parity differs for comb {comb:?}"
+                    );
+                    assert_eq!(
+                        expected,
+                        weight_via_store(&sparse, &comb),
+                        "sparse-list parity differs for comb {comb:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn transposed_backends_deduplicate_whole_terms_like_index_list() {
+        // The transposed backends deduplicate on the *multiset* rule, matching the
+        // index-list backend. Two *identical* terms collapse to one; but
+        // `[0,0,2,3]` and `[2,3]` (parity-equal, multiset-distinct) are kept apart
+        // — exactly as `index_list` does — so all three backends agree.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 0, 2, 3), // multiset {0,0,2,3}, parity {2,3}
+            array_vec!([u16; 7] => 2u16, 3),       // multiset {2,3},     parity {2,3}
+            array_vec!([u16; 7] => 2u16, 3),       // exact duplicate of the above
+        ];
+        let av =
+            MajoranaSparse::new(terms.clone(), vec![Complex64::ONE; terms.len()], 0.0).unwrap();
+        let bits = DenseTransposeBackend::from_arrayvecs(&terms, 4);
+        let sparse = SparseTransposeBackend::from_arrayvecs(&terms, 4);
+
+        // comb [2,3,5]: each surviving {2,3} term has two of the three present ⇒
+        // weight 1. index_list does not dedup at eval time, so it counts all three
+        // raw terms (weight 3); the transposed backends merge the exact duplicate
+        // at build time, counting two distinct terms (weight 2). They agree with
+        // each other, which is the guarantee under test here.
+        let comb = [2u16, 3, 5];
+        assert_eq!(
+            weight_via_store(&bits, &comb),
+            weight_via_store(&sparse, &comb),
+            "transposed backends must agree"
+        );
+        assert_eq!(weight_via_store(&bits, &comb), 2, "exact duplicate merged");
+        // index_list keeps all three raw terms at evaluation time.
+        assert_eq!(weight_via_store(&av, &comb), 3);
+    }
+
+    #[test]
+    fn bit_weight_matches_index_list() {
+        // Mirrors the qubit_term_weight cases in topphatt's tests, summed over a
+        // small Hamiltonian, for both backends.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 1),
+            array_vec!([u16; 7] => 0u16, 1, 2),
+            array_vec!([u16; 7] => 0u16, 3, 4, 5),
+        ];
+        let av =
+            MajoranaSparse::new(terms.clone(), vec![Complex64::ONE; terms.len()], 0.0).unwrap();
+        let sliced = DenseTransposeBackend::from_arrayvecs(&terms, 4);
+
+        for comb in [[0u16, 1, 2], [0, 1, 3], [2, 3, 4], [1, 4, 5]] {
+            assert_eq!(
+                weight_via_store(&av, &comb),
+                weight_via_store(&sliced, &comb),
+                "bit-sliced weights differ for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dense_transpose_weight_no_mode_ceiling() {
+        // Indices well past any native-word ceiling: the transposed store has no
+        // limit because words slice terms, not indices.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 200),
+            array_vec!([u16; 7] => 100u16, 200, 250),
+        ];
+        let av =
+            MajoranaSparse::new(terms.clone(), vec![Complex64::ONE; terms.len()], 0.0).unwrap();
+        let sliced = DenseTransposeBackend::from_arrayvecs(&terms, 130);
+        for comb in [[0u16, 100, 200], [0, 200, 250], [100, 200, 250]] {
+            assert_eq!(
+                weight_via_store(&av, &comb),
+                weight_via_store(&sliced, &comb),
+                "bit-sliced weight differs for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dense_transpose_reduce_parity_matches() {
+        // Same reduce case as `bit_reduce_parity_matches`, checked via the
+        // post-reduction weights (the transposed store has no flat term list).
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 1, 2, 3),
+            array_vec!([u16; 7] => 0u16, 2, 3, 4),
+        ];
+        let n_leaves = 57;
+        let mut sliced = DenseTransposeBackend::from_arrayvecs(&terms, 28);
+        let repr = sliced.reduce(0, [2, 3, 55], n_leaves);
+        // Upper-range node token (min_parent 0 + n_leaves), matching the
+        // index-list convention.
+        assert_eq!(repr, n_leaves as u16);
+
+        // After reduction terms are {0,1} and {0,4}. Spot-check a few combs
+        // against an index-list store holding those reduced terms.
+        let reduced = vec![
+            array_vec!([u16; 7] => 0u16, 1),
+            array_vec!([u16; 7] => 0u16, 4),
+        ];
+        let n_terms = reduced.len();
+        let expected = MajoranaSparse::new(reduced, vec![Complex64::ONE; n_terms], 0.0).unwrap();
+        for comb in [[0u16, 1, 4], [1, 4, 5], [0, 1, 2]] {
+            assert_eq!(
+                weight_via_store(&expected, &comb),
+                weight_via_store(&sliced, &comb),
+                "reduced bit-sliced weight differs for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sparse_list_weight_matches_index_list() {
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 1),
+            array_vec!([u16; 7] => 0u16, 1, 2),
+            array_vec!([u16; 7] => 0u16, 3, 4, 5),
+        ];
+        let av =
+            MajoranaSparse::new(terms.clone(), vec![Complex64::ONE; terms.len()], 0.0).unwrap();
+        let sparse = SparseTransposeBackend::from_arrayvecs(&terms, 4);
+
+        for comb in [[0u16, 1, 2], [0, 1, 3], [2, 3, 4], [1, 4, 5]] {
+            assert_eq!(
+                weight_via_store(&av, &comb),
+                weight_via_store(&sparse, &comb),
+                "sparse-list weights differ for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sparse_list_weight_no_mode_ceiling() {
+        // Indices past any fixed-word ceiling: the sparse store is indexed by
+        // Majorana index with no width limit.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 200),
+            array_vec!([u16; 7] => 100u16, 200, 250),
+        ];
+        let av =
+            MajoranaSparse::new(terms.clone(), vec![Complex64::ONE; terms.len()], 0.0).unwrap();
+        let sparse = SparseTransposeBackend::from_arrayvecs(&terms, 130);
+        for comb in [[0u16, 100, 200], [0, 200, 250], [100, 200, 250]] {
+            assert_eq!(
+                weight_via_store(&av, &comb),
+                weight_via_store(&sparse, &comb),
+                "sparse-list weight differs for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sparse_list_reduce_parity_matches() {
+        // Same reduce case as `dense_transpose_reduce_parity_matches`, checked via the
+        // post-reduction weights.
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 1, 2, 3),
+            array_vec!([u16; 7] => 0u16, 2, 3, 4),
+        ];
+        let n_leaves = 57;
+        let mut sparse = SparseTransposeBackend::from_arrayvecs(&terms, 28);
+        let repr = sparse.reduce(0, [2, 3, 55], n_leaves);
+        assert_eq!(repr, n_leaves as u16);
+
+        let reduced = vec![
+            array_vec!([u16; 7] => 0u16, 1),
+            array_vec!([u16; 7] => 0u16, 4),
+        ];
+        let n_terms = reduced.len();
+        let expected = MajoranaSparse::new(reduced, vec![Complex64::ONE; n_terms], 0.0).unwrap();
+        for comb in [[0u16, 1, 4], [1, 4, 5], [0, 1, 2]] {
+            assert_eq!(
+                weight_via_store(&expected, &comb),
+                weight_via_store(&sparse, &comb),
+                "reduced sparse-list weight differs for comb {comb:?}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod test_topphatt {
     use super::Edge::{X, Y, Z};
-    use super::Restriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
+    use super::NodeRestriction::{ChildNode, Empty, EvenLeaf, OddLeaf};
     use super::*;
     use crate::encode::majorana::MajoranaEncoding;
     use crate::encode::ternarytree::TTFlatpack;
     use crate::encode::ternarytree::TernaryTree;
+    use crate::optimise::ternarytree::hatt::{qubit_term_weight, reduce_hamiltonian};
     use log::debug;
     use ndarray::arr1;
     use num_complex::Complex64;
@@ -1233,5 +1931,205 @@ mod test_topphatt {
         ];
 
         assert_eq!(hamiltonian, expected);
+    }
+
+    /// Run the index-list and bit-sliced backends on the same input and assert
+    /// they produce identical encodings. `make_tree` is called per run because
+    /// [`TernaryTree`] is not `Clone` and each run consumes its tree. (The
+    /// bit-sliced backend deduplicates whole terms on the same multiset rule as
+    /// the index-list backend, so they match exactly.)
+    fn assert_backends_agree(
+        hamiltonian: MajoranaSparse,
+        make_tree: impl Fn() -> TernaryTree,
+        n_modes: usize,
+        heuristic: NodeOrderHeuristic,
+    ) {
+        let sliced = DenseTransposeBackend::from_arrayvecs(&hamiltonian.indices, n_modes);
+
+        let av_tree = topphatt(hamiltonian, make_tree(), false, heuristic).unwrap();
+        let sliced_tree = topphatt(sliced, make_tree(), false, heuristic).unwrap();
+
+        let av = av_tree.build_encoding(n_modes).unwrap();
+        let bs = sliced_tree.build_encoding(n_modes).unwrap();
+
+        assert_eq!(
+            av.operators.x_block, bs.operators.x_block,
+            "x_block differs"
+        );
+        assert_eq!(
+            av.operators.z_block, bs.operators.z_block,
+            "z_block differs"
+        );
+        assert_eq!(av.operators.ipowers, bs.operators.ipowers, "ipowers differ");
+    }
+
+    #[test]
+    fn test_bit_backend_matches_arrayvec_on_fixture() {
+        let (hamiltonian, _tree) = multi_active_fixture();
+        assert_backends_agree(
+            hamiltonian,
+            || TernaryTree::naive_jkmn(7),
+            7,
+            NodeOrderHeuristic::MinWeight,
+        );
+    }
+
+    /// Deterministic random Majorana Hamiltonian for `n_modes` modes: `n_terms`
+    /// terms of length 2 or 4 with distinct, sorted indices in `0..2*n_modes`.
+    fn random_majorana(n_modes: usize, n_terms: usize, seed: u64) -> MajoranaSparse {
+        use rand::Rng;
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+        let n_majoranas = 2 * n_modes;
+        let mut indices = Vec::with_capacity(n_terms);
+        let mut coefficients = Vec::with_capacity(n_terms);
+        while indices.len() < n_terms {
+            let len = if rng.random_bool(0.5) { 2 } else { 4 };
+            let mut chosen: BTreeSet<u16> = BTreeSet::new();
+            while chosen.len() < len {
+                chosen.insert(rng.random_range(0..n_majoranas) as u16);
+            }
+            let term: ArrayVec<[u16; 7]> = chosen.into_iter().collect();
+            indices.push(term);
+            coefficients.push(Complex64::new(1.0, 0.0));
+        }
+        // De-duplicate so the index-list backend's terms are unique, matching
+        // how real Majorana Hamiltonians are prepared.
+        let mut seen: HashSet<ArrayVec<[u16; 7]>> = HashSet::new();
+        let mut uniq_indices = Vec::new();
+        let mut uniq_coeffs = Vec::new();
+        for (t, c) in indices.into_iter().zip(coefficients) {
+            if seen.insert(t) {
+                uniq_indices.push(t);
+                uniq_coeffs.push(c);
+            }
+        }
+        MajoranaSparse::new(uniq_indices, uniq_coeffs, 0.0).unwrap()
+    }
+
+    /// All three backends must produce **identical** valid encodings on random
+    /// inputs: the transposed backends deduplicate whole terms on the same
+    /// multiset rule as the index-list backend, so `index_list == dense_transpose ==
+    /// sparse_list` (x/z blocks and ipowers) for every instance.
+    #[test]
+    fn test_dense_transpose_valid_encodings_random() {
+        for n_modes in [4usize, 6, 8, 10] {
+            for seed in 0..20u64 {
+                let hamiltonian = random_majorana(n_modes, 6 * n_modes, seed);
+                let n_majoranas = 2 * n_modes;
+                let sliced = DenseTransposeBackend::from_arrayvecs(&hamiltonian.indices, n_modes);
+                let sparse = SparseTransposeBackend::from_arrayvecs(&hamiltonian.indices, n_modes);
+                let av_tree = topphatt(
+                    hamiltonian,
+                    TernaryTree::naive_jkmn(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap();
+                let t_sliced = topphatt(
+                    sliced,
+                    TernaryTree::naive_jkmn(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap();
+                let t_sparse = topphatt(
+                    sparse,
+                    TernaryTree::naive_jkmn(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap();
+                let av = av_tree.build_encoding(n_modes).unwrap();
+                let e_sliced = t_sliced.build_encoding(n_modes).unwrap();
+                let e_sparse = t_sparse.build_encoding(n_modes).unwrap();
+
+                // A valid n-mode encoding has 2*n Majorana operators.
+                assert_eq!(av.operators.ipowers.len(), n_majoranas);
+
+                // The transposed backends now deduplicate whole terms on the same
+                // multiset rule as the index-list backend, so all three produce
+                // identical encodings.
+                assert_eq!(e_sliced.operators.x_block, av.operators.x_block);
+                assert_eq!(e_sliced.operators.z_block, av.operators.z_block);
+                assert_eq!(e_sliced.operators.ipowers, av.operators.ipowers);
+                assert_eq!(e_sparse.operators.x_block, av.operators.x_block);
+                assert_eq!(e_sparse.operators.z_block, av.operators.z_block);
+                assert_eq!(e_sparse.operators.ipowers, av.operators.ipowers);
+            }
+        }
+    }
+
+    /// `dense_transpose` must produce valid encodings on *every* tree topology, not
+    /// just JKMN. The Jordan-Wigner chain in particular has node z-edges whose
+    /// representative previously tripped the orchestration's magnitude-based edge
+    /// classification (panic: "All leaves should have pairs"); the upper-range
+    /// representative fixes it. The index-list backend is checked alongside as a
+    /// control.
+    #[test]
+    fn test_dense_transpose_valid_on_all_topologies() {
+        let n_modes = 6;
+        for name in ["jordan_wigner", "parity", "bravyi_kitaev", "jkmn"] {
+            let build = |n: usize| match name {
+                "jordan_wigner" => TernaryTree::naive_jordan_wigner(n),
+                "parity" => TernaryTree::naive_parity(n),
+                "bravyi_kitaev" => TernaryTree::naive_bravyi_kitaev(n),
+                _ => TernaryTree::naive_jkmn(n),
+            };
+            for seed in 0..5u64 {
+                let hamiltonian = random_majorana(n_modes, 6 * n_modes, seed);
+
+                let il = topphatt(
+                    hamiltonian.clone(),
+                    build(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap()
+                .build_encoding(n_modes)
+                .unwrap();
+                assert_eq!(
+                    il.operators.ipowers.len(),
+                    2 * n_modes,
+                    "index_list {name} seed {seed}"
+                );
+
+                let store = DenseTransposeBackend::from_arrayvecs(&hamiltonian.indices, n_modes);
+                let sliced = topphatt(store, build(n_modes), false, NodeOrderHeuristic::MinWeight)
+                    .unwrap()
+                    .build_encoding(n_modes)
+                    .unwrap();
+                // Multiset dedup makes dense_transpose match index_list exactly on
+                // every topology.
+                assert_eq!(
+                    sliced.operators.x_block, il.operators.x_block,
+                    "dense_transpose vs index_list x {name} seed {seed}"
+                );
+                assert_eq!(
+                    sliced.operators.z_block, il.operators.z_block,
+                    "dense_transpose vs index_list z {name} seed {seed}"
+                );
+
+                // The sparse inverted-index store must agree exactly too.
+                let sparse_store =
+                    SparseTransposeBackend::from_arrayvecs(&hamiltonian.indices, n_modes);
+                let sparse = topphatt(
+                    sparse_store,
+                    build(n_modes),
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap()
+                .build_encoding(n_modes)
+                .unwrap();
+                assert_eq!(
+                    sparse.operators.x_block, il.operators.x_block,
+                    "sparse vs index_list x {name} seed {seed}"
+                );
+                assert_eq!(
+                    sparse.operators.z_block, il.operators.z_block,
+                    "sparse vs index_list z {name} seed {seed}"
+                );
+            }
+        }
     }
 }

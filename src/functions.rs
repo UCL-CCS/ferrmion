@@ -8,7 +8,9 @@ use ferrmion_core::encode::majorana::Encode;
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{MajoranaSparse, SymplecticOperator};
-use ferrmion_core::optimise::{hatt, topphatt, NodeOrderHeuristic};
+use ferrmion_core::optimise::{
+    hatt, topphatt, DenseTransposeBackend, NodeOrderHeuristic, SparseTransposeBackend,
+};
 use ferrmion_core::utils;
 use log::debug;
 use numpy::{Complex64, PyArray1, PyReadonlyArray1};
@@ -212,6 +214,42 @@ pub(crate) fn hatt_py(
     Ok((tree.to_flatpack(), weight))
 }
 
+/// Run TOPP-HATT over the requested Majorana term-store backend.
+///
+/// `"sparse"` (default) uses the production `Vec<ArrayVec<..>>` store;
+/// `"dense_transpose"` uses the transposed `MajoranaDenseTranspose` (one `u64` bit-vector
+/// per Majorana index); `"sparse_transpose"` uses the sparse `SparseListTermStore`
+/// (one sorted list of term indices per Majorana index). The transposed backends
+/// do no term deduplication, so they can produce a different (but valid) encoding
+/// — they are provided for performance comparison.
+fn run_topphatt(
+    hamiltonian: MajoranaSparse,
+    flatpack: TTFlatpack,
+    parallelize: bool,
+    heuristic: &str,
+    backend: &str,
+    seed: Option<u64>,
+) -> Result<TernaryTree, CoreError> {
+    let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
+    let tree = TernaryTree::from_flatpack_naive(&flatpack)?;
+
+    match backend {
+        "sparse" => Ok(topphatt(hamiltonian, tree, parallelize, heuristic)?),
+        "dense_transpose" => {
+            let store = DenseTransposeBackend::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
+            Ok(topphatt(store, tree, parallelize, heuristic)?)
+        }
+        "sparse_transpose" => {
+            let store = SparseTransposeBackend::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
+            Ok(topphatt(store, tree, parallelize, heuristic)?)
+        }
+        other => Err(CoreError::Value(format!(
+            "unknown topphatt backend: {other:?} \
+             (expected \"sparse\", \"dense_transpose\" or \"sparse_transpose\")"
+        ))),
+    }
+}
+
 /// Run the TOPPHATT algorithm to optimise a ternary-tree encoding structure.
 ///
 /// TOPPHATT (Tree-Optimised Pauli-weight for Hamiltonian-Adapted Ternary Trees)
@@ -226,28 +264,37 @@ pub(crate) fn hatt_py(
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
+///     backend: Term-store backend, ``"sparse"`` (default) or
+///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
 ///
 /// Returns:
 ///     MajoranaEncoding: The optimised encoding.
 #[pyfunction(name = "topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None))]
+#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
+#[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn topphatt_py(
     py: Python<'_>,
     flatpack: TTFlatpack,
     n_qubits: usize,
-    hamiltonian: PyRef<'_, PyMajoranaSparse>,
+    hamiltonian: PyMajoranaSparse,
     parallelize: bool,
     heuristic: &str,
     seed: Option<u64>,
+    backend: &str,
 ) -> Result<PyMajoranaEncoding, CoreError> {
     debug!("Starting TOPPHATT");
-    let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
-    let mut hamiltonian = hamiltonian.0.clone();
-    hamiltonian.constant = 0.0;
+    // let mut hamiltonian = hamiltonian.0;
+    // hamiltonian.constant = 0.0;
 
     let encoding = py.allow_threads(|| -> Result<_, CoreError> {
-        let tree = TernaryTree::from_flatpack_naive(&flatpack)?;
-        let tree = topphatt(hamiltonian, tree, parallelize, heuristic)?;
+        let tree = run_topphatt(
+            hamiltonian.0,
+            flatpack,
+            parallelize,
+            heuristic,
+            backend,
+            seed,
+        )?;
         Ok(tree.build_encoding(n_qubits)?)
     })?;
     Ok(PyMajoranaEncoding(encoding))
@@ -265,11 +312,14 @@ pub(crate) fn topphatt_py(
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
+///     backend: Term-store backend, ``"sparse"`` (default) or
+///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
 ///
 /// Returns:
 ///     Tuple of ``(QubitHamiltonian, MajoranaEncoding)``.
 #[pyfunction(name = "encode_topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, fham, parallelize = true, heuristic = "min_weight", seed = None))]
+#[pyo3(signature = (flatpack, n_qubits, fham, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
+#[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn encode_topphatt_py(
     py: Python<'_>,
     flatpack: TTFlatpack,
@@ -278,16 +328,21 @@ pub(crate) fn encode_topphatt_py(
     parallelize: bool,
     heuristic: &str,
     seed: Option<u64>,
+    backend: &str,
 ) -> Result<(PyQubitHamiltonian, PyMajoranaEncoding), CoreError> {
     debug!("Starting TOPPHATT");
-    let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
+    // let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
     let hamiltonian = fham.inner.to_majorana_sparse();
 
     let (qham, encoding) = py.allow_threads(|| -> Result<_, CoreError> {
-        let mut anneal_hamiltonian = hamiltonian.clone();
-        anneal_hamiltonian.constant = 0.0;
-        let tree = TernaryTree::from_flatpack_naive(&flatpack)?;
-        let tree = topphatt(anneal_hamiltonian, tree, parallelize, heuristic)?;
+        let tree = run_topphatt(
+            hamiltonian.clone(),
+            flatpack,
+            parallelize,
+            heuristic,
+            backend,
+            seed,
+        )?;
         let encoding = tree.build_encoding(n_qubits)?;
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);
         Ok((qham, encoding))

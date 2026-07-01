@@ -116,6 +116,47 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, parallelize, wate
     assert np.isclose(float(coefficient_pauli_weight(qham)[0]/coefficient_pauli_weight(qham_naive)[0]), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"], atol=0.01)
 
 
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+def test_topphatt_dense_transpose_h2o_weights_match_snapshot(
+    encoding, water_data, topphatt_weight_snapshot
+):
+    """Regression-pin the dense_transpose backend's output-tree quality on H2O sto-3g.
+
+    Compares the dense_transpose topphatt Pauli weight and coefficient Pauli weight
+    (each normalised to the naive encode) against a stored snapshot. The
+    dense_transpose backend deduplicates whole terms on the same multiset rule as the
+    default index_list backend, so it produces an identical encoding; this test
+    locks in the resulting weights so a regression is caught.
+    """
+    ones = water_data["ones"]
+    twos = water_data["twos"]
+    e_nuc = water_data["constant_energy"]
+    fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
+    match encoding:
+        case "JW":
+            tree = TernaryTree.jordan_wigner(fham.n_modes)
+        case "BK":
+            tree = TernaryTree.bravyi_kitaev(fham.n_modes)
+        case "PE":
+            tree = TernaryTree.parity(fham.n_modes)
+        case "JKMN":
+            tree = TernaryTree.jkmn(fham.n_modes)
+    qham_naive = tree.encode(fham)
+    qham, _ = tree.encode_topphatt(fham, parallelize=False, backend="dense_transpose")
+
+    snapshot = topphatt_weight_snapshot[encoding]
+    assert np.isclose(
+        float(pauli_weight(qham)[0] / pauli_weight(qham_naive)[0]),
+        snapshot["pauli_weight"],
+        atol=0.01,
+    )
+    assert np.isclose(
+        float(coefficient_pauli_weight(qham)[0] / coefficient_pauli_weight(qham_naive)[0]),
+        snapshot["coefficient_pauli_weight"],
+        atol=0.01,
+    )
+
+
 @pytest.mark.parametrize("heuristic", ["min_weight", "x_first", "z_first", "random"])
 def test_topphatt_heuristics_run(heuristic, h2_mol_data_sets):
     ones = h2_mol_data_sets["ones"]

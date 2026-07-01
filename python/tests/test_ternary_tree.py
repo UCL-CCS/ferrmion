@@ -586,6 +586,8 @@ def test_benchmark_encode_topphatt(benchmark,encoding, mol_data_sets):
     benchmark(lambda: encoding.encode_topphatt(fham))
 
 
+
+
 # @pytest.mark.parametrize("encoding", [TernaryTree.jordan_wigner, TernaryTree.parity, TernaryTree.bravyi_kitaev, TernaryTree.jkmn])
 # def test_benchmark_encode_annealed(benchmark,encoding, h2_mol_data_sets):
 #     ones = h2_mol_data_sets["ones"]

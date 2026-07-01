@@ -762,6 +762,99 @@ impl From<Vec<FermionSparse>> for MajoranaSparse {
     }
 }
 
+/// Transposed ("bit-sliced") view of a Majorana Hamiltonian.
+///
+/// Where [`MajoranaSparse`] keeps one index-list per term, this is column-major:
+/// one `u64` bit-vector per **Majorana index**, whose bits correspond to **terms**
+/// (`columns[i]` bit `t` set ⇔ term `t` contains index `i`). Scoring a candidate
+/// selection then reads only the three relevant vectors and computes a Pauli
+/// weight with word-parallel bit ops over `⌈T/64⌉` words, instead of touching
+/// every term.
+///
+/// This is a pure operator representation: it carries no algorithm state. Each
+/// term is **parity-canonicalised** (γ²=I), a bit XOR-toggled per index
+/// occurrence, so an index appearing an even number of times in a term cancels.
+/// There is no mode ceiling — columns are indexed by Majorana index and the `u64`
+/// words slice terms.
+pub struct MajoranaDenseTranspose {
+    pub n_terms: usize,
+    pub n_words: usize,
+    /// One bit-vector per index (length `3*n_modes + 1`): real Majoranas
+    /// `0..2*n_nodes`, the all-Z leaf `2*n_nodes`, and node representatives
+    /// `2*n_nodes+1..=3*n_nodes`.
+    pub columns: Vec<Vec<u64>>,
+}
+
+impl MajoranaDenseTranspose {
+    /// Build a dense transpose from Majorana-index terms, sizing the column table
+    /// to `3*n_modes + 1` indices (real Majoranas, the all-Z leaf, and node
+    /// representatives). Terms are parity-canonicalised by XOR-toggling.
+    pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAX_MAJORANAS]>], n_modes: usize) -> Self {
+        let n_terms = terms.len();
+        let n_words = n_terms.div_ceil(64);
+        let n_cols = 3 * n_modes + 1;
+        let mut columns = vec![vec![0u64; n_words]; n_cols];
+        for (t, term) in terms.iter().enumerate() {
+            let word = t / 64;
+            let bit = 1u64 << (t % 64);
+            for &idx in term.iter() {
+                // XOR (not OR): a repeated index toggles back off — γ²=I parity.
+                columns[idx as usize][word] ^= bit;
+            }
+        }
+        Self {
+            n_terms,
+            n_words,
+            columns,
+        }
+    }
+}
+
+/// Sparse inverted-index view of a Majorana Hamiltonian.
+///
+/// The sparse counterpart of [`MajoranaDenseTranspose`]: instead of a dense `u64`
+/// bit-vector per index, each index keeps a **sorted list of the term indices it
+/// appears in**. For sparse Hamiltonians (e.g. molecular) the dense bit columns
+/// are mostly zero, so these lists are short and scoring a selection — a 3-way
+/// merge of three lists — costs `O(|L0|+|L1|+|L2|)` instead of `O(T/64)`.
+///
+/// Like [`MajoranaDenseTranspose`] this is a pure operator representation. The
+/// lists are parity-canonicalised (γ²=I): only indices appearing an odd number of
+/// times in a term are recorded. No mode ceiling.
+pub struct MajoranaSparseTranspose {
+    pub n_terms: usize,
+    /// One ascending, duplicate-free list of term indices per index (length
+    /// `3*n_modes + 1`): real Majoranas `0..2*n_nodes`, the all-Z leaf
+    /// `2*n_nodes`, and node representatives `2*n_nodes+1..=3*n_nodes`.
+    pub lists: Vec<Vec<u32>>,
+}
+
+impl MajoranaSparseTranspose {
+    /// Build a sparse inverted index from Majorana-index terms, sizing the list
+    /// table to `3*n_modes + 1` indices. Lists are parity-canonicalised and come
+    /// out ascending and duplicate-free (terms are visited in ascending order).
+    pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAX_MAJORANAS]>], n_modes: usize) -> Self {
+        let n_terms = terms.len();
+        let n_cols = 3 * n_modes + 1;
+        let mut lists = vec![Vec::new(); n_cols];
+        for (t, term) in terms.iter().enumerate() {
+            let mut parity_set: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+            for &idx in term {
+                if let Some(pos) = parity_set.iter().position(|&x| x == idx) {
+                    parity_set.remove(pos);
+                } else {
+                    parity_set.push(idx);
+                }
+            }
+            parity_set.sort_unstable();
+            for idx in parity_set {
+                lists[idx as usize].push(t as u32);
+            }
+        }
+        Self { n_terms, lists }
+    }
+}
+
 #[cfg(test)]
 mod majorana_tests {
     use super::*;

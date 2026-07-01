@@ -178,3 +178,6 @@ development/
 *.development.ipynb
 .benchmarks/
 .vscode
+
+#Demos
+*notebooks/data/saved_ecoding.json

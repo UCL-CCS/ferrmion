@@ -463,12 +463,13 @@ impl MajoranaHashMap {
                     *self.operators.entry(*key).or_insert(Complex64::ZERO) += value;
                 } else {
                     // Stable (run-independent) hash of a Majorana key used to assign it to a merge
-                    // shard. FNV-1a over the `u16` indices — cheap and well-spread.
-                    let mut hash: usize = 0xcbf2_9ce4_8422_2325;
+                    // shard. FNV-1a over the `u16` indices — cheap and well-spread. Uses `u64`
+                    // (not `usize`) so the 64-bit FNV constants are valid on 32-bit targets too.
+                    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
                     for &index in key.iter() {
-                        hash = (hash ^ index as usize).wrapping_mul(0x0100_0000_01b3);
+                        hash = (hash ^ index as u64).wrapping_mul(0x0100_0000_01b3);
                     }
-                    if hash % n_shards == shard {
+                    if (hash % n_shards as u64) as usize == shard {
                         *self.operators.entry(*key).or_insert(Complex64::ZERO) += value;
                     }
                 }

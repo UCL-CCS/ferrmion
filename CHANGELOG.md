@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- 32-bit release wheels (`armv7`, `i686`) failed to compile because
+  `MajoranaHashMap::merge_into`'s stable shard hash used `usize` with 64-bit
+  FNV-1a constants, which overflow `usize` on 32-bit targets. The hash is now
+  computed in `u64`, so the constants are valid on every target width (hash
+  values are unchanged on 64-bit hosts).
+
 ## [0.10.0] - 2026-07-01
 
 ### Added

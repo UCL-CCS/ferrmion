@@ -18,6 +18,15 @@ type Store = BitVec<u64, Lsb0>;
 
 /// A single symplectic block (the X or Z part of one Pauli operator), one bit
 /// per qubit, bitpacked into `u64` words.
+///
+/// # Invariant: dead bits are zero
+///
+/// The unused ("dead") bits above `len()` in the final storage word are always
+/// zero. Every constructor starts from `BitVec::repeat(false, _)`, and every
+/// mutator (`set`, `swap_bit`, `xor_assign`) only ever touches live indices or
+/// preserves zeros (`0 ^ 0 == 0`). The word-level `and_count_ones`,
+/// `or_count_ones`, and `xor_assign` rely on this so they can operate on the raw
+/// `u64` storage without masking the final partial word.
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
 pub struct Block {
     bits: Store,
@@ -70,24 +79,47 @@ impl Block {
     /// Popcount of `self & other` — the number of positions set in both blocks.
     ///
     /// Used for the symplectic phase term (`z & x`) and the Y count (`x & z`).
+    ///
+    /// Operates directly on the underlying `u64` storage words. This is sound
+    /// because every `Block` keeps its unused "dead" bits (above `len()`) at zero
+    /// (see the module-level invariant), so `a & b` in the final partial word can
+    /// never count stray bits. Both operands share the same length, hence the same
+    /// word count.
     #[inline]
     pub fn and_count_ones(&self, other: &Block) -> usize {
-        // Iterate the set bits of self and test the corresponding bit of other.
-        self.bits.iter_ones().filter(|&i| other.bits[i]).count()
+        self.bits
+            .as_raw_slice()
+            .iter()
+            .zip(other.bits.as_raw_slice())
+            .map(|(a, b)| (a & b).count_ones() as usize)
+            .sum()
     }
 
     /// Popcount of `self | other` — the number of positions set in either block.
     ///
     /// Used for the Pauli weight of a row (`x | z`, i.e. non-identity qubits).
+    /// Word-level for the same reason as [`Block::and_count_ones`].
     #[inline]
     pub fn or_count_ones(&self, other: &Block) -> usize {
-        self.count_ones() + other.bits.iter_ones().filter(|&i| !self.bits[i]).count()
+        self.bits
+            .as_raw_slice()
+            .iter()
+            .zip(other.bits.as_raw_slice())
+            .map(|(a, b)| (a | b).count_ones() as usize)
+            .sum()
     }
 
     /// In-place XOR: `self ^= other`.
+    ///
+    /// Word-level over the raw storage; preserves the dead-bits-zero invariant
+    /// since `0 ^ 0 == 0`.
     #[inline]
     pub fn xor_assign(&mut self, other: &Block) {
-        self.bits ^= other.bits.as_bitslice();
+        self.bits
+            .as_raw_mut_slice()
+            .iter_mut()
+            .zip(other.bits.as_raw_slice())
+            .for_each(|(a, &b)| *a ^= b);
     }
 
     /// Return a new block equal to `self ^ other`.

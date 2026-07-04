@@ -31,6 +31,10 @@ name = "decode_zbasis_ensemble"
 harness = false
 
 [[bench]]
+name = "encode_symplectic"
+harness = false
+
+[[bench]]
 name = "majorana_sparse_construction"
 harness = false
 

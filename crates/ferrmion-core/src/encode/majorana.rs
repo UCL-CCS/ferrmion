@@ -4,7 +4,7 @@
 //! for transforming fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    CoefficientPauliWeight, FermionProduct, MajoranaProduct, MajoranaSparse, PauliWeight,
+    Block, CoefficientPauliWeight, FermionProduct, MajoranaProduct, MajoranaSparse, PauliWeight,
     SymplecticMatrix, SymplecticOperator,
 };
 use crate::spaces::{Fermion, Qubit};
@@ -12,7 +12,7 @@ use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
 use crate::utils::COEFFICIENT_TOLERANCE;
 use crate::utils::{self, icount_to_sign};
 use log::{debug, error};
-use ndarray::{Array1, Array2, Axis, Zip};
+use ndarray::{Array1, Array2, Axis};
 use num_complex::{c64, Complex64};
 use rayon::prelude::*;
 use thiserror::Error;
@@ -613,8 +613,17 @@ impl MajoranaEncoding {
     pub fn decode_zbasis_ensemble(&self, ensemble: &ZBasisEnsemble) -> Vec<Option<FockState>> {
         let n_states = ensemble.states.nrows();
 
-        // Working state matrix mutated in-place; coefficients start at ONE (input ignored).
-        let mut current_states = ensemble.states.clone();
+        // Working state as one bitpacked `Block` per state, mutated in-place
+        // across modes. Coefficients start at ONE (input ignored). Packing once
+        // up front lets the parity and state-update steps run as word-level bit
+        // ops, which stays fast even for dense operators (Jordan-Wigner / parity
+        // Z-strings span every qubit) instead of iterating each set bit.
+        let mut state_blocks: Vec<Block> = ensemble
+            .states
+            .rows()
+            .into_iter()
+            .map(Block::from_bool_view)
+            .collect();
         let mut current_coeffs = Array1::from_elem(n_states, Complex64::ONE);
         let mut occupations = Array2::<bool>::default((n_states, self.n_modes));
 
@@ -643,13 +652,14 @@ impl MajoranaEncoding {
             ];
 
             // Compute annihilation coefficients for all states in parallel.
+            // Parity is a word-level popcount of `z & state`.
             let ann_coeffs: Vec<Complex64> = (0..n_states)
                 .into_par_iter()
                 .map(|j| {
-                    let row = current_states.row(j);
+                    let state = &state_blocks[j];
                     let coeff = current_coeffs[j];
-                    let par_l = z_l.iter_ones().filter(|&q| row[q]).count() % 2;
-                    let par_r = z_r.iter_ones().filter(|&q| row[q]).count() % 2;
+                    let par_l = z_l.and_count_ones(state) % 2;
+                    let par_r = z_r.and_count_ones(state) % 2;
                     let lc = coeff * phase_l[par_l];
                     let rc = coeff * phase_r[par_r];
                     lc + Complex64::new(0., 1.) * rc
@@ -662,33 +672,22 @@ impl MajoranaEncoding {
                 .map(|c: &Complex64| c.norm() > COEFFICIENT_TOLERANCE)
                 .collect();
 
-            // Update occupations and accumulated coefficients.
+            // Update occupations, accumulated coefficients, and — for occupied
+            // states — the state itself (XOR with x_l, word-level).
             for (j, (&occ, &ann)) in occupied.iter().zip(ann_coeffs.iter()).enumerate() {
                 if occ {
                     occupations[[j, i]] = true;
                     current_coeffs[j] = ann;
+                    state_blocks[j].xor_assign(x_l);
                 }
             }
-
-            // In-place state update for occupied rows: XOR each row with x_l.
-            let occupied_arr = Array1::from(occupied);
-            Zip::from(current_states.rows_mut())
-                .and(&occupied_arr)
-                .for_each(|mut row, &occ| {
-                    if occ {
-                        for q in x_l.iter_ones() {
-                            let cur = row[q];
-                            row[q] = !cur;
-                        }
-                    }
-                });
         }
 
         // Validate final state matches encoding vacuum.
-        let vacuum = &self.vacuum_state.state;
+        let vacuum_block = Block::from_bool_view(self.vacuum_state.state.view());
         (0..n_states)
             .map(|j| {
-                if current_states.row(j) == vacuum.view() {
+                if state_blocks[j] == vacuum_block {
                     Some(FockState::new(
                         occupations.row(j).to_owned(),
                         Complex64::ONE,

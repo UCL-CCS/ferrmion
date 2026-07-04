@@ -1,11 +1,11 @@
 use crate::operators::{
     CoefficientPauliWeight, FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse,
-    PauliWeight, SymplecticMatrix, SymplecticOperatorView,
+    PauliWeight, SymplecticMatrix,
 };
 use crate::spaces::{Fermion, Qubit};
 use crate::utils::{icount_to_sign, pauli_to_symplectic, COEFFICIENT_TOLERANCE};
 use ahash::RandomState;
-use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, Zip};
+use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis};
 use num_complex::Complex64;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -205,7 +205,7 @@ impl SymplecticHamiltonian {
     }
 
     pub fn n_qubits(&self) -> usize {
-        self.operators.x_block.ncols()
+        self.operators.n_qubits()
     }
 
     /// Build a [`SymplecticHamiltonian`] from an encoded [`QubitHamiltonian`].
@@ -287,13 +287,11 @@ impl SymplecticHamiltonian {
     /// assert_eq!(ham.coefficients[0], 2.0);
     /// ```
     pub fn sort_rows(&mut self) {
-        let n = self.operators.x_block.nrows();
+        let n = self.operators.n_rows();
         let mut indices: Vec<usize> = (0..n).collect();
         indices
             .sort_unstable_by(|&a, &b| self.operators.view_row(a).cmp(&self.operators.view_row(b)));
-        self.operators.x_block = self.operators.x_block.select(Axis(0), &indices);
-        self.operators.z_block = self.operators.z_block.select(Axis(0), &indices);
-        self.operators.ipowers = self.operators.ipowers.select(Axis(0), &indices);
+        self.operators = self.operators.select_rows(&indices);
         self.coefficients = self.coefficients.select(Axis(0), &indices);
     }
 
@@ -320,7 +318,7 @@ impl SymplecticHamiltonian {
     /// assert_eq!(ham.coefficients[1], 3.0);
     /// ```
     pub fn dedup(&mut self) {
-        let n = self.operators.x_block.nrows();
+        let n = self.operators.n_rows();
         if n == 0 {
             return;
         }
@@ -343,9 +341,7 @@ impl SymplecticHamiltonian {
                 summed.push(self.coefficients[i]);
             }
         }
-        self.operators.x_block = self.operators.x_block.select(Axis(0), &keep);
-        self.operators.z_block = self.operators.z_block.select(Axis(0), &keep);
-        self.operators.ipowers = self.operators.ipowers.select(Axis(0), &keep);
+        self.operators = self.operators.select_rows(&keep);
         self.coefficients = Array1::from_vec(summed);
     }
 }
@@ -358,11 +354,11 @@ impl PauliWeight for SymplecticHamiltonian {
 
 impl CoefficientPauliWeight for SymplecticHamiltonian {
     fn coeff_pauli_weight(&self) -> f64 {
-        Zip::from(self.operators.x_block.rows())
-            .and(self.operators.z_block.rows())
-            .and(&self.coefficients)
-            .fold(0., |acc, x, y, coeff| {
-                acc + (coeff.abs() * SymplecticOperatorView::new(0, x, y).pauli_weight() as f64)
+        self.operators
+            .iter_rows()
+            .zip(&self.coefficients)
+            .fold(0., |acc, (row, coeff)| {
+                acc + (coeff.abs() * row.pauli_weight() as f64)
             })
     }
 }

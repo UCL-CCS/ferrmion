@@ -1774,7 +1774,7 @@ mod test_topphatt {
 
         let jw_topphatt = topphatt(hamiltonian, tree, true, NodeOrderHeuristic::MinWeight).unwrap();
         let encoding: MajoranaEncoding = jw_topphatt.build_encoding(3).unwrap();
-        assert_eq!(encoding.operators.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
+        assert_eq!(*encoding.operators.ipowers(), arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
         //     encoding.symplectics,
         //     arr2(&[
@@ -1805,7 +1805,7 @@ mod test_topphatt {
         let tree = TernaryTree::from_flatpack_naive(&flatpack).unwrap();
         let jw_topphatt = topphatt(hamiltonian, tree, true, NodeOrderHeuristic::MinWeight).unwrap();
         let encoding = jw_topphatt.build_encoding(4).unwrap();
-        assert_eq!(encoding.operators.ipowers, arr1(&[0, 1, 0, 1, 0, 1]));
+        assert_eq!(*encoding.operators.ipowers(), arr1(&[0, 1, 0, 1, 0, 1]));
         // assert_eq!(
         //     encoding.symplectics,
         //     arr2(&[
@@ -1855,13 +1855,14 @@ mod test_topphatt {
         let z_enc = z_tree.build_encoding(7).unwrap();
 
         // Both heuristics still produce valid 7-mode encodings.
-        assert_eq!(x_enc.operators.ipowers.len(), 14);
-        assert_eq!(z_enc.operators.ipowers.len(), 14);
+        assert_eq!(x_enc.operators.ipowers().len(), 14);
+        assert_eq!(z_enc.operators.ipowers().len(), 14);
 
         // The two heuristics walk active_nodes from opposite ends, so on a
         // branched tree the resulting symplectic matrix should differ.
         assert_ne!(
-            x_enc.operators.x_block, z_enc.operators.x_block,
+            x_enc.operators.x_bools(),
+            z_enc.operators.x_bools(),
             "XFirst and ZFirst should produce distinct encodings on JKMN(7)"
         );
     }
@@ -1879,9 +1880,18 @@ mod test_topphatt {
         let enc_first = tree_first.build_encoding(7).unwrap();
         let enc_second = tree_second.build_encoding(7).unwrap();
 
-        assert_eq!(enc_first.operators.ipowers, enc_second.operators.ipowers);
-        assert_eq!(enc_first.operators.x_block, enc_second.operators.x_block);
-        assert_eq!(enc_first.operators.z_block, enc_second.operators.z_block);
+        assert_eq!(
+            enc_first.operators.ipowers(),
+            enc_second.operators.ipowers()
+        );
+        assert_eq!(
+            enc_first.operators.x_bools(),
+            enc_second.operators.x_bools()
+        );
+        assert_eq!(
+            enc_first.operators.z_bools(),
+            enc_second.operators.z_bools()
+        );
     }
 
     #[test]
@@ -1905,7 +1915,7 @@ mod test_topphatt {
             let (h, tree) = multi_active_fixture();
             let other = topphatt(h, tree, false, NodeOrderHeuristic::Random { seed }).unwrap();
             let other_enc = other.build_encoding(7).unwrap();
-            if other_enc.operators.x_block != ref_enc.operators.x_block {
+            if other_enc.operators.x_bools() != ref_enc.operators.x_bools() {
                 found_difference = true;
                 break;
             }
@@ -1953,14 +1963,20 @@ mod test_topphatt {
         let bs = sliced_tree.build_encoding(n_modes).unwrap();
 
         assert_eq!(
-            av.operators.x_block, bs.operators.x_block,
+            av.operators.x_bools(),
+            bs.operators.x_bools(),
             "x_block differs"
         );
         assert_eq!(
-            av.operators.z_block, bs.operators.z_block,
+            av.operators.z_bools(),
+            bs.operators.z_bools(),
             "z_block differs"
         );
-        assert_eq!(av.operators.ipowers, bs.operators.ipowers, "ipowers differ");
+        assert_eq!(
+            av.operators.ipowers(),
+            bs.operators.ipowers(),
+            "ipowers differ"
+        );
     }
 
     #[test]
@@ -2044,17 +2060,17 @@ mod test_topphatt {
                 let e_sparse = t_sparse.build_encoding(n_modes).unwrap();
 
                 // A valid n-mode encoding has 2*n Majorana operators.
-                assert_eq!(av.operators.ipowers.len(), n_majoranas);
+                assert_eq!(av.operators.ipowers().len(), n_majoranas);
 
                 // The transposed backends now deduplicate whole terms on the same
                 // multiset rule as the index-list backend, so all three produce
                 // identical encodings.
-                assert_eq!(e_sliced.operators.x_block, av.operators.x_block);
-                assert_eq!(e_sliced.operators.z_block, av.operators.z_block);
-                assert_eq!(e_sliced.operators.ipowers, av.operators.ipowers);
-                assert_eq!(e_sparse.operators.x_block, av.operators.x_block);
-                assert_eq!(e_sparse.operators.z_block, av.operators.z_block);
-                assert_eq!(e_sparse.operators.ipowers, av.operators.ipowers);
+                assert_eq!(e_sliced.operators.x_bools(), av.operators.x_bools());
+                assert_eq!(e_sliced.operators.z_bools(), av.operators.z_bools());
+                assert_eq!(e_sliced.operators.ipowers(), av.operators.ipowers());
+                assert_eq!(e_sparse.operators.x_bools(), av.operators.x_bools());
+                assert_eq!(e_sparse.operators.z_bools(), av.operators.z_bools());
+                assert_eq!(e_sparse.operators.ipowers(), av.operators.ipowers());
             }
         }
     }
@@ -2088,7 +2104,7 @@ mod test_topphatt {
                 .build_encoding(n_modes)
                 .unwrap();
                 assert_eq!(
-                    il.operators.ipowers.len(),
+                    il.operators.ipowers().len(),
                     2 * n_modes,
                     "index_list {name} seed {seed}"
                 );
@@ -2101,11 +2117,13 @@ mod test_topphatt {
                 // Multiset dedup makes dense_transpose match index_list exactly on
                 // every topology.
                 assert_eq!(
-                    sliced.operators.x_block, il.operators.x_block,
+                    sliced.operators.x_bools(),
+                    il.operators.x_bools(),
                     "dense_transpose vs index_list x {name} seed {seed}"
                 );
                 assert_eq!(
-                    sliced.operators.z_block, il.operators.z_block,
+                    sliced.operators.z_bools(),
+                    il.operators.z_bools(),
                     "dense_transpose vs index_list z {name} seed {seed}"
                 );
 
@@ -2122,11 +2140,13 @@ mod test_topphatt {
                 .build_encoding(n_modes)
                 .unwrap();
                 assert_eq!(
-                    sparse.operators.x_block, il.operators.x_block,
+                    sparse.operators.x_bools(),
+                    il.operators.x_bools(),
                     "sparse vs index_list x {name} seed {seed}"
                 );
                 assert_eq!(
-                    sparse.operators.z_block, il.operators.z_block,
+                    sparse.operators.z_bools(),
+                    il.operators.z_bools(),
                     "sparse vs index_list z {name} seed {seed}"
                 );
             }

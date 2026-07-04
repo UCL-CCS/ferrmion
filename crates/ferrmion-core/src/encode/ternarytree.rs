@@ -552,10 +552,10 @@ impl TernaryTree {
                 debug!("leaf_result row={:?}", row);
                 x_block
                     .slice_mut(s![row as usize, ..])
-                    .assign(&op.x_block());
+                    .assign(&op.x_bools());
                 z_block
                     .slice_mut(s![row as usize, ..])
-                    .assign(&op.z_block());
+                    .assign(&op.z_bools());
             });
             debug!("x_block {:?}", x_block);
         }
@@ -1099,7 +1099,7 @@ mod tt_tests {
         let n_qubits = tt.n_nodes;
         let encoding = tt.build_encoding(n_qubits).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 0, 1]);
-        assert_eq!(encoding.operators.ipowers, ipow_expected);
+        assert_eq!(*encoding.operators.ipowers(), ipow_expected);
         let x_expected = arr2(&[
             [true, false, false],
             [true, false, false],
@@ -1108,7 +1108,7 @@ mod tt_tests {
             [false, false, true],
             [false, false, true],
         ]);
-        assert_eq!(encoding.operators.x_block, x_expected);
+        assert_eq!(encoding.operators.x_bools(), x_expected);
         let z_expected = arr2(&[
             [false, false, false],
             [true, false, false],
@@ -1117,7 +1117,7 @@ mod tt_tests {
             [true, true, false],
             [true, true, true],
         ]);
-        assert_eq!(encoding.operators.z_block, z_expected);
+        assert_eq!(encoding.operators.z_bools(), z_expected);
     }
 
     #[test]
@@ -1132,7 +1132,7 @@ mod tt_tests {
         let n_qubits = tt.n_nodes;
         let encoding = tt.build_encoding(n_qubits).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 0, 1]);
-        assert_eq!(encoding.operators.ipowers, ipow_expected);
+        assert_eq!(*encoding.operators.ipowers(), ipow_expected);
         let x_expected = arr2(&[
             [true, false, false],
             [true, false, false],
@@ -1141,7 +1141,7 @@ mod tt_tests {
             [false, false, true],
             [false, false, true],
         ]);
-        assert_eq!(encoding.operators.x_block, x_expected);
+        assert_eq!(encoding.operators.x_bools(), x_expected);
         let z_expected = arr2(&[
             [false, false, false],
             [true, false, false],
@@ -1150,7 +1150,7 @@ mod tt_tests {
             [true, true, false],
             [true, true, true],
         ]);
-        assert_eq!(encoding.operators.z_block, z_expected);
+        assert_eq!(encoding.operators.z_bools(), z_expected);
     }
 
     #[test]
@@ -1158,7 +1158,7 @@ mod tt_tests {
         let tree = TernaryTree::naive_jordan_wigner(3);
         let encoding = tree.build_encoding(3).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 0, 1]);
-        assert_eq!(encoding.operators.ipowers, ipow_expected);
+        assert_eq!(*encoding.operators.ipowers(), ipow_expected);
         let x_expected = arr2(&[
             [true, false, false],
             [true, false, false],
@@ -1167,7 +1167,7 @@ mod tt_tests {
             [false, false, true],
             [false, false, true],
         ]);
-        assert_eq!(encoding.operators.x_block, x_expected);
+        assert_eq!(encoding.operators.x_bools(), x_expected);
         let z_expected = arr2(&[
             [false, false, false],
             [true, false, false],
@@ -1176,7 +1176,7 @@ mod tt_tests {
             [true, true, false],
             [true, true, true],
         ]);
-        assert_eq!(encoding.operators.z_block, z_expected);
+        assert_eq!(encoding.operators.z_bools(), z_expected);
     }
 
     #[test]
@@ -1184,7 +1184,7 @@ mod tt_tests {
         let tree = TernaryTree::naive_parity(3);
         let encoding = tree.build_encoding(3).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 0, 1]);
-        assert_eq!(encoding.operators.ipowers, ipow_expected);
+        assert_eq!(*encoding.operators.ipowers(), ipow_expected);
         let symplectic_expected = arr2(&[
             [true, false, false, false, true, false],
             [true, false, false, true, false, false],
@@ -1193,14 +1193,7 @@ mod tt_tests {
             [true, true, true, false, false, false],
             [true, true, true, false, false, true],
         ]);
-        let combined = ndarray::concatenate(
-            ndarray::Axis(1),
-            &[
-                encoding.operators.x_block.view(),
-                encoding.operators.z_block.view(),
-            ],
-        )
-        .unwrap();
+        let combined = encoding.operators.to_concatenated();
         assert_eq!(combined, symplectic_expected);
     }
 
@@ -1209,7 +1202,7 @@ mod tt_tests {
         let tree = TernaryTree::naive_jkmn(3);
         let encoding = tree.build_encoding(3).unwrap();
         let ipow_expected = arr1(&[0, 1, 0, 1, 1, 2]);
-        assert_eq!(encoding.operators.ipowers, ipow_expected);
+        assert_eq!(*encoding.operators.ipowers(), ipow_expected);
         let symplectic_expected = arr2(&[
             [true, false, false, false, true, false],
             [true, false, false, true, false, true],
@@ -1218,14 +1211,7 @@ mod tt_tests {
             [true, false, true, true, false, false],
             [true, false, true, true, false, true],
         ]);
-        let combined = ndarray::concatenate(
-            ndarray::Axis(1),
-            &[
-                encoding.operators.x_block.view(),
-                encoding.operators.z_block.view(),
-            ],
-        )
-        .unwrap();
+        let combined = encoding.operators.to_concatenated();
         assert_eq!(combined, symplectic_expected);
     }
 

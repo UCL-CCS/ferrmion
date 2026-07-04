@@ -25,6 +25,7 @@ rand_core_legacy = { package = "rand_core", version = "0.6.4" }
 ahash = "0.8.12"
 tinyvec = "1.10.0"
 thiserror = "2.0.17"
+bitvec = "1.1.1"
 
 [dev-dependencies]
 proptest = "1.9.0"

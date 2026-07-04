@@ -254,7 +254,13 @@ impl PyMajoranaEncoding {
         let output = PyDict::new(py);
         // Widen u8 -> u32 so PyO3 produces a list of ints rather than `bytes`
         // (Vec<u8> converts to Python bytes).
-        let ipowers: Vec<u32> = self.0.operators.ipowers.iter().map(|&v| v as u32).collect();
+        let ipowers: Vec<u32> = self
+            .0
+            .operators
+            .ipowers()
+            .iter()
+            .map(|&v| v as u32)
+            .collect();
         output.set_item("ipowers", ipowers)?;
         let symplectics: Vec<Vec<bool>> = self
             .0
@@ -283,7 +289,7 @@ impl PyMajoranaEncoding {
     /// Phase exponents (mod 4) for each Majorana operator row.
     #[getter]
     fn ipowers<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<u8>> {
-        self.0.operators.ipowers.to_owned().into_pyarray(py)
+        self.0.operators.ipowers().to_owned().into_pyarray(py)
     }
 
     /// The symplectic matrix in ``[x_block | z_block]`` layout, of shape

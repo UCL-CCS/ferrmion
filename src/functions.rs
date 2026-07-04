@@ -82,7 +82,9 @@ pub(crate) fn symplectic_product<'py>(
         right.slice(ndarray::s![n..]).to_owned(),
     );
     let result = left_op * right_op.view();
-    let combined = ndarray::concatenate(ndarray::Axis(0), &[result.x_block(), result.z_block()])
+    let x = result.x_bools();
+    let z = result.z_bools();
+    let combined = ndarray::concatenate(ndarray::Axis(0), &[x.view(), z.view()])
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
     Ok((
         result.ipower() as usize,

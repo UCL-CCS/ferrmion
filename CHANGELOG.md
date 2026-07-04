@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Symplectic Pauli operators (`SymplecticOperator`, `SymplecticOperatorView`,
+  `SymplecticMatrix`) now store their X and Z blocks as bitpacked integers via
+  the `bitvec` crate (one bit per qubit) instead of dense `bool` arrays,
+  reducing memory ~8x and turning the symplectic product, Pauli weight and
+  Clifford conjugation into word-level bit operations. `SymplecticMatrix`'s
+  previously public `x_block` / `z_block` / `ipowers` fields are now private
+  behind accessor methods (`row_x`, `row_z`, `ipowers`, `x_bools`, `z_bools`,
+  `view_row`, `select_rows`, `set_x`, `set_z`, `set_ipower`, …). The Python /
+  JSON boundary is unchanged: symplectic data is still exchanged as the
+  concatenated `[x_block | z_block]` boolean array with a `uint8` `ipowers`
+  vector.
+
 ## [0.11.0] - 2026-08-01
 
 ### Changed

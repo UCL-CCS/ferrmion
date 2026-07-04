@@ -163,8 +163,8 @@ impl MajoranaEncoding {
         // Linear independence
         Self::validate_linear_independence(&operators)?;
 
-        let n_modes = operators.x_block.nrows() / 2;
-        let n_qubits = operators.x_block.ncols();
+        let n_modes = operators.n_rows() / 2;
+        let n_qubits = operators.n_qubits();
         let encoding = Self {
             operators,
             n_modes,
@@ -188,15 +188,15 @@ impl MajoranaEncoding {
     pub fn determine_vacuum_state(
         operators: &SymplecticMatrix,
     ) -> Result<ZBasisState, MajoranaEncodingError> {
-        let n_modes = operators.x_block.nrows() / 2;
-        let n_qubits = operators.x_block.ncols();
+        let n_modes = operators.n_rows() / 2;
+        let n_qubits = operators.n_qubits();
 
         // Build GF(2) augmented matrix [A | b] of shape [n_modes, n_qubits + 1].
         let mut mat: Vec<Vec<bool>> = Vec::with_capacity(n_modes);
 
         for i in 0..n_modes {
-            let x0 = operators.x_block.row(2 * i);
-            let x1 = operators.x_block.row(2 * i + 1);
+            let x0 = operators.row_x(2 * i);
+            let x1 = operators.row_x(2 * i + 1);
 
             // Structural check: both γ operators for mode i must flip the same qubits,
             // otherwise no Z-basis state can serve as the vacuum for this mode.
@@ -204,10 +204,10 @@ impl MajoranaEncoding {
                 return Err(MajoranaEncodingError::NoVacuumStateError);
             }
 
-            let z0 = operators.z_block.row(2 * i);
-            let z1 = operators.z_block.row(2 * i + 1);
-            let ip0 = operators.ipowers[2 * i] as i32;
-            let ip1 = operators.ipowers[2 * i + 1] as i32;
+            let z0 = operators.row_z(2 * i);
+            let z1 = operators.row_z(2 * i + 1);
+            let ip0 = operators.ipower(2 * i) as i32;
+            let ip1 = operators.ipower(2 * i + 1) as i32;
 
             // Vacuum condition from try_encode:
             //   γ_{2i}|v⟩ coefficient == -i * γ_{2i+1}|v⟩ coefficient
@@ -220,7 +220,7 @@ impl MajoranaEncoding {
             }
             let b = (diff / 2) != 0;
 
-            let constraint: Vec<bool> = z0.iter().zip(z1.iter()).map(|(a, c)| a ^ c).collect();
+            let constraint: Vec<bool> = (0..n_qubits).map(|q| z0.get(q) ^ z1.get(q)).collect();
 
             // Zero constraint with b=true is immediately inconsistent (0 ≠ 1).
             if constraint.iter().all(|&x| !x) && b {
@@ -272,10 +272,10 @@ impl MajoranaEncoding {
     }
 
     fn validate_operator_shape(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
-        if operators.x_block.shape() != operators.z_block.shape() {
+        if operators.x_bools().dim() != operators.z_bools().dim() {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
-        if !operators.x_block.len_of(Axis(0)).is_multiple_of(2) {
+        if !operators.n_rows().is_multiple_of(2) {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
         Ok(())
@@ -285,16 +285,12 @@ impl MajoranaEncoding {
     ) -> Result<(), MajoranaEncodingError> {
         // Check all distinct pairs anticommute via the symplectic inner product.
         // Two Pauli operators anticommute iff Σ_q (x_i[q]·z_j[q] ⊕ z_i[q]·x_j[q]) is odd.
-        let n_ops = operators.x_block.len_of(Axis(0));
-        let n_qubits = operators.x_block.len_of(Axis(1));
+        let n_ops = operators.n_rows();
         for i in 0..n_ops {
             for j in i + 1..n_ops {
-                let mut inner_product = 0usize;
-                for q in 0..n_qubits {
-                    let xz = operators.x_block[[i, q]] & operators.z_block[[j, q]];
-                    let zx = operators.z_block[[i, q]] & operators.x_block[[j, q]];
-                    inner_product += (xz ^ zx) as usize;
-                }
+                // Symplectic inner product ⟨op_i, op_j⟩ = |x_i & z_j| + |z_i & x_j| (mod 2).
+                let inner_product = operators.row_x(i).and_count_ones(operators.row_z(j))
+                    + operators.row_z(i).and_count_ones(operators.row_x(j));
                 if inner_product.is_multiple_of(2) {
                     return Err(MajoranaEncodingError::InvalidOperatorsError);
                 }
@@ -306,14 +302,8 @@ impl MajoranaEncoding {
     fn validate_linear_independence(
         operators: &SymplecticMatrix,
     ) -> Result<(), MajoranaEncodingError> {
-        let matrix = ndarray::concatenate(
-            Axis(1),
-            &[operators.x_block.view(), operators.z_block.view()],
-        )
-        .expect("X and Z blocks should have compatible shapes");
-
-        // Perform Gaussian elimination on the symplectic matrix.
-        let mut mat = matrix.clone();
+        // Perform Gaussian elimination on the concatenated [x | z] symplectic matrix.
+        let mut mat = operators.to_concatenated();
         let n_rows = mat.len_of(Axis(0));
         let n_cols = mat.len_of(Axis(1));
         let mut pivot_row = 0;
@@ -393,27 +383,20 @@ impl MajoranaEncoding {
     pub fn apply_mode_enumeration(&self, mode_op_map: Vec<usize>) -> MajoranaEncoding {
         assert_eq!(
             2 * mode_op_map.len(),
-            self.operators.ipowers.len(),
+            self.operators.n_rows(),
             "{}",
             format_args!(
                 "Mode op map not same length as ipowers {0:?}",
-                self.operators.ipowers.len()
+                self.operators.n_rows()
             )
         );
         let majorana_rows: Vec<usize> = mode_op_map
             .iter()
             .flat_map(|v| [2 * v, 2 * v + 1])
             .collect();
-        let ipowers: Array1<u8> = self.operators.ipowers.select(Axis(0), &majorana_rows);
-        let x_block: Array2<bool> = self.operators.x_block.select(Axis(0), &majorana_rows);
-        let z_block: Array2<bool> = self.operators.z_block.select(Axis(0), &majorana_rows);
 
         MajoranaEncoding::with_vacuum(
-            SymplecticMatrix {
-                x_block,
-                z_block,
-                ipowers,
-            },
+            self.operators.select_rows(&majorana_rows),
             self.vacuum_state.clone(),
         )
         .expect("Reindexing a valid encoding should never fail.")
@@ -636,12 +619,12 @@ impl MajoranaEncoding {
         let mut occupations = Array2::<bool>::default((n_states, self.n_modes));
 
         for i in (0..self.n_modes).rev() {
-            let x_l = self.operators.x_block.row(2 * i);
-            let z_l = self.operators.z_block.row(2 * i);
-            let ip_l = self.operators.ipowers[2 * i];
-            let x_r = self.operators.x_block.row(2 * i + 1);
-            let z_r = self.operators.z_block.row(2 * i + 1);
-            let ip_r = self.operators.ipowers[2 * i + 1];
+            let x_l = self.operators.row_x(2 * i);
+            let z_l = self.operators.row_z(2 * i);
+            let ip_l = self.operators.ipower(2 * i);
+            let x_r = self.operators.row_x(2 * i + 1);
+            let z_r = self.operators.row_z(2 * i + 1);
+            let ip_r = self.operators.ipower(2 * i + 1);
 
             // Validity: left and right new states must agree; this is an encoding
             // property (x_l == x_r), not per-state.
@@ -665,8 +648,8 @@ impl MajoranaEncoding {
                 .map(|j| {
                     let row = current_states.row(j);
                     let coeff = current_coeffs[j];
-                    let par_l = row.iter().zip(z_l.iter()).filter(|(&a, &b)| a && b).count() % 2;
-                    let par_r = row.iter().zip(z_r.iter()).filter(|(&a, &b)| a && b).count() % 2;
+                    let par_l = z_l.iter_ones().filter(|&q| row[q]).count() % 2;
+                    let par_r = z_r.iter_ones().filter(|&q| row[q]).count() % 2;
                     let lc = coeff * phase_l[par_l];
                     let rc = coeff * phase_r[par_r];
                     lc + Complex64::new(0., 1.) * rc
@@ -693,7 +676,10 @@ impl MajoranaEncoding {
                 .and(&occupied_arr)
                 .for_each(|mut row, &occ| {
                     if occ {
-                        row.zip_mut_with(&x_l, |a, &b| *a ^= b);
+                        for q in x_l.iter_ones() {
+                            let cur = row[q];
+                            row[q] = !cur;
+                        }
                     }
                 });
         }

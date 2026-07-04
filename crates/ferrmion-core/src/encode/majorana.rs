@@ -710,12 +710,11 @@ impl MajoranaEncoding {
 impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
     fn try_encode(&self, input: FockState) -> Result<ZBasisState, MajoranaEncodingError> {
         debug!("\nFock state: {input:?}");
-        let mut zstate: ZBasisState = self.vacuum_state.clone();
-        #[allow(unused_assignments)]
-        let mut left = self.vacuum_state.clone();
-        #[allow(unused_assignments)]
-        let mut right = self.vacuum_state.clone();
-        debug!("Vacuum: {left:?}");
+        // Working state as a bitpacked `Block`, mutated across occupied modes, so
+        // each operator's parity is a word-level popcount of `z & state` rather
+        // than iterating every set bit of a (possibly dense) Z-string.
+        let mut state_block = Block::from_bool_view(self.vacuum_state.state.view());
+        let mut coefficient = self.vacuum_state.coefficient;
 
         // Applying in reverse order ensures JW maps to all +1 states
         // https://arxiv.org/abs/2412.07578v1
@@ -723,31 +722,47 @@ impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
             if !input.state[idx] {
                 continue;
             }
-            debug!("ZState: {zstate:?}");
-            left = self.operators.view_row(2 * idx) * zstate.clone();
-            right = self.operators.view_row(2 * idx + 1) * zstate.clone();
-            debug!("Left: {left:?}");
-            debug!("Right: {right:?}");
-            if left.state != right.state {
+            let x_l = self.operators.row_x(2 * idx);
+            let z_l = self.operators.row_z(2 * idx);
+            let ip_l = self.operators.ipower(2 * idx);
+            let x_r = self.operators.row_x(2 * idx + 1);
+            let z_r = self.operators.row_z(2 * idx + 1);
+            let ip_r = self.operators.ipower(2 * idx + 1);
+
+            // Both Majorana operators of a mode flip the same qubits (x_l == x_r);
+            // otherwise the two candidate states disagree and there is no Z-basis image.
+            if x_l != x_r {
                 return Err(MajoranaEncodingError::NullStateError(input.state));
             }
 
-            if left.coefficient == Complex64::new(0., -1.) * right.coefficient {
-                // Real-eigenvalued encodings
-                zstate = ZBasisState::new(left.state, left.coefficient);
-            } else if left.coefficient == Complex64::new(0., 1.) * right.coefficient {
+            // Phase applied by each operator: i^(ipower + 2·⟨z, state⟩). These
+            // factors are unit-norm, so multiplying the (unit-norm) running
+            // coefficient needs no rescale.
+            let left_coefficient = coefficient
+                * c64(0., 1.)
+                    .powi(((ip_l as usize + 2 * z_l.and_count_ones(&state_block)) % 4) as i32);
+            let right_coefficient = coefficient
+                * c64(0., 1.)
+                    .powi(((ip_r as usize + 2 * z_r.and_count_ones(&state_block)) % 4) as i32);
+
+            // Apply the shared X flip to the working state (word-level XOR).
+            state_block.xor_assign(x_l);
+
+            if left_coefficient == Complex64::new(0., -1.) * right_coefficient {
+                // Real-eigenvalued encodings.
+                coefficient = left_coefficient;
+            } else if left_coefficient == Complex64::new(0., 1.) * right_coefficient {
                 // Coeffs cancel, null state.
                 error!("Fock state encoded to Null state in Z basis.");
                 return Err(MajoranaEncodingError::NullStateError(input.state));
             } else {
-                // Coeffs don't cancel, complex coefficients.
-                zstate = ZBasisState::new(
-                    left.state,
-                    left.coefficient - Complex64::new(0., -1.) * right.coefficient,
-                );
+                // Coeffs don't cancel; renormalise to unit norm (matching
+                // `ZBasisState::new`, whose `combined` here is always non-zero).
+                let combined = left_coefficient - Complex64::new(0., -1.) * right_coefficient;
+                coefficient = combined / combined.norm();
             }
         }
-        Ok(zstate)
+        Ok(ZBasisState::new(state_block.to_bool_array(), coefficient))
     }
 }
 

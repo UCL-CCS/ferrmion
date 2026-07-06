@@ -15,8 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reducing memory ~8x and turning the symplectic product, Pauli weight and
   Clifford conjugation into word-level bit operations. `SymplecticMatrix`'s
   previously public `x_block` / `z_block` / `ipowers` fields are now private
-  behind accessor methods (`row_x`, `row_z`, `ipowers`, `x_bools`, `z_bools`,
-  `view_row`, `select_rows`, `set_x`, `set_z`, `set_ipower`, …). The Python /
+  behind accessor methods. Internally `SymplecticMatrix` stores each block as a
+  single contiguous `Vec<u64>` with rows padded to whole `u64` words, so cloning
+  a matrix is a pair of contiguous copies rather than one heap allocation per
+  operator row; this removes a large regression in `SymplecticHamiltonian::clone`
+  (hot inside the Clifford-heuristic and randomised-subsystem-descent annealers).
+  Consumers route through accessor methods (`row_x`, `row_z`, `ipowers`,
+  `x_bools`, `z_bools`, `view_row`, `select_rows`, `set_x`, `set_z`,
+  `set_ipower`, …). The Python /
   JSON boundary is unchanged: symplectic data is still exchanged as the
   concatenated `[x_block | z_block]` boolean array with a `uint8` `ipowers`
   vector.

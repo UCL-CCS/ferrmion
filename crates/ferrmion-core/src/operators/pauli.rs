@@ -9,8 +9,9 @@
 //! - Sparse operators: Iterables containing product operator indices and coefficients.
 //! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
 //!
-use crate::operators::Block;
+use crate::operators::symplectic_bits::words_for;
 use crate::operators::Clifford;
+use crate::operators::{Block, BlockRef};
 use crate::spaces::Qubit;
 use crate::states::ZBasisState;
 use ndarray::{arr2, Array1, Array2};
@@ -225,19 +226,19 @@ impl SymplecticOperator {
     pub fn view(&self) -> SymplecticOperatorView<'_> {
         SymplecticOperatorView {
             ipower: self.ipower,
-            x: &self.x,
-            z: &self.z,
+            x: self.x.as_ref(),
+            z: self.z.as_ref(),
         }
     }
 
-    /// Return a borrowed reference to the bitpacked X block.
-    pub fn x_bits(&self) -> &Block {
-        &self.x
+    /// Return a borrowed view of the bitpacked X block.
+    pub fn x_bits(&self) -> BlockRef<'_> {
+        self.x.as_ref()
     }
 
-    /// Return a borrowed reference to the bitpacked Z block.
-    pub fn z_bits(&self) -> &Block {
-        &self.z
+    /// Return a borrowed view of the bitpacked Z block.
+    pub fn z_bits(&self) -> BlockRef<'_> {
+        self.z.as_ref()
     }
 
     /// Return the X block as a dense boolean array.
@@ -285,7 +286,7 @@ impl SymplecticOperator {
 
 impl PauliWeight for SymplecticOperator {
     fn pauli_weight(&self) -> usize {
-        self.x.or_count_ones(&self.z)
+        self.x.or_count_ones(self.z.as_ref())
     }
 }
 
@@ -352,7 +353,7 @@ impl Mul<ZBasisState> for SymplecticOperator {
     fn mul(self, rhs: ZBasisState) -> Self::Output {
         let mut state = rhs.state;
         let mut phase_factor = c64(-1., 0.).powi(((2 * self.z.and_count_bools(&state)) % 4) as i32);
-        let y_count: i32 = self.x.and_count_ones(&self.z) as i32;
+        let y_count: i32 = self.x.and_count_ones(self.z.as_ref()) as i32;
         phase_factor *= c64(0., 1.).powi(y_count);
 
         let coefficient = rhs.coefficient * phase_factor;
@@ -373,23 +374,23 @@ impl Mul<ZBasisState> for SymplecticOperator {
 ///
 /// let x = Block::from_bool_view(arr1(&[true, false]).view());
 /// let z = Block::from_bool_view(arr1(&[false, true]).view());
-/// let view = SymplecticOperatorView::new(0, &x, &z);
+/// let view = SymplecticOperatorView::new(0, x.as_ref(), z.as_ref());
 /// let (pauli, ipower) = view.to_pauli_string();
 /// assert_eq!(pauli, "XZ");
 /// assert_eq!(ipower, 0);
 /// ```
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct SymplecticOperatorView<'sym> {
     ipower: u8,
-    x: &'sym Block,
-    z: &'sym Block,
+    x: BlockRef<'sym>,
+    z: BlockRef<'sym>,
 }
 
 impl Qubit for SymplecticOperatorView<'_> {}
 
 impl<'sym> SymplecticOperatorView<'sym> {
     /// Construct a new [`SymplecticOperatorView`] from borrowed bitpacked blocks.
-    pub fn new(ipower: u8, x: &'sym Block, z: &'sym Block) -> Self {
+    pub fn new(ipower: u8, x: BlockRef<'sym>, z: BlockRef<'sym>) -> Self {
         Self { ipower, x, z }
     }
 
@@ -459,8 +460,8 @@ impl PartialOrd for SymplecticOperatorView<'_> {
 impl Ord for SymplecticOperatorView<'_> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.x
-            .cmp(other.x)
-            .then(self.z.cmp(other.z))
+            .cmp(&other.x)
+            .then(self.z.cmp(&other.z))
             .then(self.ipower.cmp(&other.ipower))
     }
 }
@@ -493,26 +494,51 @@ impl Ord for SymplecticOperatorView<'_> {
 /// ```
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct SymplecticMatrix {
-    /// One bitpacked X block per row (row = Majorana/operator index).
-    x: Vec<Block>,
-    /// One bitpacked Z block per row.
-    z: Vec<Block>,
+    /// All X blocks in one contiguous buffer, row-major: row `r` occupies
+    /// `x_words[r*words_per_row .. (r+1)*words_per_row]`. Storing the whole
+    /// matrix in one allocation (rather than a `Vec` of per-row `Block`s) keeps
+    /// `clone` to a single contiguous copy.
+    x_words: Vec<u64>,
+    /// All Z blocks, same row-major layout.
+    z_words: Vec<u64>,
     /// Per-row `i`-power (phase exponent mod 4).
     ipowers: Array1<u8>,
-    /// Number of qubits (bits per block / columns).
+    /// Number of qubits (bits per row).
     n_qubits: usize,
+    /// `u64` words per row = `n_qubits.div_ceil(64)`.
+    words_per_row: usize,
+    /// Number of operator rows.
+    n_rows: usize,
 }
 
 impl Qubit for SymplecticMatrix {}
 
 impl SymplecticMatrix {
-    /// Convert the rows of a dense boolean matrix into bitpacked [`Block`]s.
-    fn blocks_from_bool(matrix: &Array2<bool>) -> Vec<Block> {
-        matrix
-            .rows()
-            .into_iter()
-            .map(Block::from_bool_view)
-            .collect()
+    /// Pack the rows of a dense boolean matrix into one contiguous word buffer,
+    /// `words_per_row` words per row.
+    fn pack(matrix: &Array2<bool>, words_per_row: usize) -> Vec<u64> {
+        let mut words = vec![0u64; matrix.nrows() * words_per_row];
+        for (r, row) in matrix.rows().into_iter().enumerate() {
+            let base = r * words_per_row;
+            for (i, &b) in row.iter().enumerate() {
+                if b {
+                    words[base + (i >> 6)] |= 1u64 << (i & 63);
+                }
+            }
+        }
+        words
+    }
+
+    #[inline]
+    fn x_row(&self, row: usize) -> &[u64] {
+        let base = row * self.words_per_row;
+        &self.x_words[base..base + self.words_per_row]
+    }
+
+    #[inline]
+    fn z_row(&self, row: usize) -> &[u64] {
+        let base = row * self.words_per_row;
+        &self.z_words[base..base + self.words_per_row]
     }
 
     /// Construct a new [`SymplecticMatrix`], automatically computing `i`-powers from the X and Z blocks.
@@ -532,18 +558,24 @@ impl SymplecticMatrix {
     /// ```
     pub fn new(x_block: Array2<bool>, z_block: Array2<bool>) -> Self {
         let n_qubits = x_block.ncols();
-        let x = Self::blocks_from_bool(&x_block);
-        let z = Self::blocks_from_bool(&z_block);
-        let ipowers = Array1::from_iter(
-            x.iter()
-                .zip(&z)
-                .map(|(xr, zr)| (xr.and_count_ones(zr) % 4) as u8),
-        );
+        let n_rows = x_block.nrows();
+        let words_per_row = words_for(n_qubits);
+        let x_words = Self::pack(&x_block, words_per_row);
+        let z_words = Self::pack(&z_block, words_per_row);
+        let mut ipowers = Array1::from_elem(n_rows, 0u8);
+        for (r, ip) in ipowers.iter_mut().enumerate() {
+            let base = r * words_per_row;
+            let xr = BlockRef::new(&x_words[base..base + words_per_row], n_qubits);
+            let zr = BlockRef::new(&z_words[base..base + words_per_row], n_qubits);
+            *ip = (xr.and_count_ones(zr) % 4) as u8;
+        }
         Self {
-            x,
-            z,
+            x_words,
+            z_words,
             ipowers,
             n_qubits,
+            words_per_row,
+            n_rows,
         }
     }
 
@@ -564,21 +596,15 @@ impl SymplecticMatrix {
     /// ```
     pub fn with_ipowers(x_block: Array2<bool>, z_block: Array2<bool>, ipowers: Array1<u8>) -> Self {
         let n_qubits = x_block.ncols();
+        let n_rows = x_block.nrows();
+        let words_per_row = words_for(n_qubits);
         Self {
-            x: Self::blocks_from_bool(&x_block),
-            z: Self::blocks_from_bool(&z_block),
+            x_words: Self::pack(&x_block, words_per_row),
+            z_words: Self::pack(&z_block, words_per_row),
             ipowers,
             n_qubits,
-        }
-    }
-
-    /// Construct a [`SymplecticMatrix`] directly from bitpacked [`Block`] rows.
-    pub fn from_blocks(x: Vec<Block>, z: Vec<Block>, ipowers: Array1<u8>, n_qubits: usize) -> Self {
-        Self {
-            x,
-            z,
-            ipowers,
-            n_qubits,
+            words_per_row,
+            n_rows,
         }
     }
 
@@ -593,11 +619,14 @@ impl SymplecticMatrix {
     /// assert_eq!(id.pauli_weight(), 0);
     /// ```
     pub fn identity(n_modes: usize, n_qubits: usize) -> Self {
+        let words_per_row = words_for(n_qubits);
         Self {
             ipowers: Array1::from_elem(n_modes, 0),
-            x: (0..n_modes).map(|_| Block::zeros(n_qubits)).collect(),
-            z: (0..n_modes).map(|_| Block::zeros(n_qubits)).collect(),
+            x_words: vec![0u64; n_modes * words_per_row],
+            z_words: vec![0u64; n_modes * words_per_row],
             n_qubits,
+            words_per_row,
+            n_rows: n_modes,
         }
     }
 
@@ -610,19 +639,19 @@ impl SymplecticMatrix {
     /// Number of operators (rows).
     #[inline]
     pub fn n_rows(&self) -> usize {
-        self.x.len()
+        self.n_rows
     }
 
     /// Borrow the bitpacked X block of the given row.
     #[inline]
-    pub fn row_x(&self, row: usize) -> &Block {
-        &self.x[row]
+    pub fn row_x(&self, row: usize) -> BlockRef<'_> {
+        BlockRef::new(self.x_row(row), self.n_qubits)
     }
 
     /// Borrow the bitpacked Z block of the given row.
     #[inline]
-    pub fn row_z(&self, row: usize) -> &Block {
-        &self.z[row]
+    pub fn row_z(&self, row: usize) -> BlockRef<'_> {
+        BlockRef::new(self.z_row(row), self.n_qubits)
     }
 
     /// Borrow all per-row `i`-powers.
@@ -640,13 +669,25 @@ impl SymplecticMatrix {
     /// Set the X bit at `(row, qubit)`.
     #[inline]
     pub fn set_x(&mut self, row: usize, qubit: usize, value: bool) {
-        self.x[row].set(qubit, value);
+        let word = row * self.words_per_row + (qubit >> 6);
+        let mask = 1u64 << (qubit & 63);
+        if value {
+            self.x_words[word] |= mask;
+        } else {
+            self.x_words[word] &= !mask;
+        }
     }
 
     /// Set the Z bit at `(row, qubit)`.
     #[inline]
     pub fn set_z(&mut self, row: usize, qubit: usize, value: bool) {
-        self.z[row].set(qubit, value);
+        let word = row * self.words_per_row + (qubit >> 6);
+        let mask = 1u64 << (qubit & 63);
+        if value {
+            self.z_words[word] |= mask;
+        } else {
+            self.z_words[word] &= !mask;
+        }
     }
 
     /// Set the `i`-power of the given row.
@@ -657,18 +698,20 @@ impl SymplecticMatrix {
 
     /// Return the X block as a dense boolean matrix.
     pub fn x_bools(&self) -> Array2<bool> {
-        Self::blocks_to_bool(&self.x, self.n_qubits)
+        let mut out = Array2::from_elem((self.n_rows, self.n_qubits), false);
+        for r in 0..self.n_rows {
+            for i in self.row_x(r).iter_ones() {
+                out[[r, i]] = true;
+            }
+        }
+        out
     }
 
     /// Return the Z block as a dense boolean matrix.
     pub fn z_bools(&self) -> Array2<bool> {
-        Self::blocks_to_bool(&self.z, self.n_qubits)
-    }
-
-    fn blocks_to_bool(blocks: &[Block], n_qubits: usize) -> Array2<bool> {
-        let mut out = Array2::from_elem((blocks.len(), n_qubits), false);
-        for (r, blk) in blocks.iter().enumerate() {
-            for i in blk.iter_ones() {
+        let mut out = Array2::from_elem((self.n_rows, self.n_qubits), false);
+        for r in 0..self.n_rows {
+            for i in self.row_z(r).iter_ones() {
                 out[[r, i]] = true;
             }
         }
@@ -693,12 +736,12 @@ impl SymplecticMatrix {
     /// assert_eq!(combined.shape(), &[1, 4]);
     /// ```
     pub fn to_concatenated(&self) -> Array2<bool> {
-        let mut out = Array2::from_elem((self.x.len(), 2 * self.n_qubits), false);
-        for r in 0..self.x.len() {
-            for i in self.x[r].iter_ones() {
+        let mut out = Array2::from_elem((self.n_rows, 2 * self.n_qubits), false);
+        for r in 0..self.n_rows {
+            for i in self.row_x(r).iter_ones() {
                 out[[r, i]] = true;
             }
-            for i in self.z[r].iter_ones() {
+            for i in self.row_z(r).iter_ones() {
                 out[[r, self.n_qubits + i]] = true;
             }
         }
@@ -722,25 +765,33 @@ impl SymplecticMatrix {
     /// assert_eq!(pauli, "XI");
     /// ```
     pub fn view_row(&self, row: usize) -> SymplecticOperatorView<'_> {
-        SymplecticOperatorView {
-            x: &self.x[row],
-            z: &self.z[row],
-            ipower: self.ipowers[row],
-        }
+        SymplecticOperatorView::new(self.ipowers[row], self.row_x(row), self.row_z(row))
     }
 
     /// Iterate over all rows as [`SymplecticOperatorView`]s.
     pub fn iter_rows(&self) -> impl Iterator<Item = SymplecticOperatorView<'_>> {
-        (0..self.x.len()).map(move |row| self.view_row(row))
+        (0..self.n_rows).map(move |row| self.view_row(row))
     }
 
     /// Return a new matrix containing the given rows, in the given order.
     pub fn select_rows(&self, indices: &[usize]) -> Self {
+        let wpr = self.words_per_row;
+        let mut x_words = vec![0u64; indices.len() * wpr];
+        let mut z_words = vec![0u64; indices.len() * wpr];
+        for (new_row, &old_row) in indices.iter().enumerate() {
+            let (new_base, old_base) = (new_row * wpr, old_row * wpr);
+            x_words[new_base..new_base + wpr]
+                .copy_from_slice(&self.x_words[old_base..old_base + wpr]);
+            z_words[new_base..new_base + wpr]
+                .copy_from_slice(&self.z_words[old_base..old_base + wpr]);
+        }
         Self {
-            x: indices.iter().map(|&i| self.x[i].clone()).collect(),
-            z: indices.iter().map(|&i| self.z[i].clone()).collect(),
+            x_words,
+            z_words,
             ipowers: Array1::from_iter(indices.iter().map(|&i| self.ipowers[i])),
             n_qubits: self.n_qubits,
+            words_per_row: wpr,
+            n_rows: indices.len(),
         }
     }
 
@@ -750,10 +801,12 @@ impl SymplecticMatrix {
     /// [`Clifford`] gates to update an encoding.
     pub(crate) fn transpose(&mut self) -> SymplecticMatrixTranspose<'_> {
         SymplecticMatrixTranspose {
-            x: &mut self.x,
-            z: &mut self.z,
+            x_words: &mut self.x_words,
+            z_words: &mut self.z_words,
             ipowers: &mut self.ipowers,
             n_qubits: self.n_qubits,
+            words_per_row: self.words_per_row,
+            n_rows: self.n_rows,
         }
     }
 
@@ -788,8 +841,7 @@ impl SymplecticMatrix {
     /// assert_eq!(first, "IX");
     /// ```
     pub fn sort_rows(&mut self) {
-        let n = self.x.len();
-        let mut indices: Vec<usize> = (0..n).collect();
+        let mut indices: Vec<usize> = (0..self.n_rows).collect();
         indices.sort_unstable_by(|&a, &b| self.view_row(a).cmp(&self.view_row(b)));
         *self = self.select_rows(&indices);
     }
@@ -805,7 +857,7 @@ impl Mul<&mut ZBasisState> for SymplecticMatrix {
     type Output = ();
 
     fn mul(self, rhs: &mut ZBasisState) {
-        for row in 0..self.x.len() {
+        for row in 0..self.n_rows {
             #[allow(clippy::let_unit_value)]
             let _ = self.view_row(row).mul(&mut *rhs);
         }
@@ -876,15 +928,16 @@ mod symplectic_tests {
 
 /// A qubit-indexed view over a [`SymplecticMatrix`] for Clifford conjugation.
 ///
-/// Clifford gates act on a fixed qubit index across every operator. The
-/// [`SymplecticMatrix`] stores one bitpacked [`Block`] per operator (row), so
-/// this borrows those rows mutably and applies each gate by touching the
-/// relevant qubit bit in every row.
+/// Clifford gates act on a fixed qubit index across every operator. This borrows
+/// the matrix's contiguous X/Z word buffers mutably and applies each gate by
+/// touching the relevant qubit bit in every row.
 pub(crate) struct SymplecticMatrixTranspose<'inner> {
-    x: &'inner mut Vec<Block>,
-    z: &'inner mut Vec<Block>,
+    x_words: &'inner mut Vec<u64>,
+    z_words: &'inner mut Vec<u64>,
     ipowers: &'inner mut Array1<u8>,
     n_qubits: usize,
+    words_per_row: usize,
+    n_rows: usize,
 }
 
 // Clifford conjugation functions
@@ -901,13 +954,27 @@ impl SymplecticMatrixTranspose<'_> {
     /// -1 for each Y
     /// Z -> X and X -> Z
     pub(crate) fn haddamard(&mut self, qubit: usize) {
-        for r in 0..self.x.len() {
-            if self.x[r].get(qubit) && self.z[r].get(qubit) {
+        let word_off = qubit >> 6;
+        let mask = 1u64 << (qubit & 63);
+        for r in 0..self.n_rows {
+            let w = r * self.words_per_row + word_off;
+            let x_set = self.x_words[w] & mask != 0;
+            let z_set = self.z_words[w] & mask != 0;
+            if x_set && z_set {
                 // -1 for each Y
                 self.ipowers[r] = self.ipowers[r].wrapping_add(2);
             }
-            // Z -> X and X -> Z
-            self.x[r].swap_bit(&mut self.z[r], qubit);
+            // Z -> X and X -> Z (swap the two bits).
+            if z_set {
+                self.x_words[w] |= mask;
+            } else {
+                self.x_words[w] &= !mask;
+            }
+            if x_set {
+                self.z_words[w] |= mask;
+            } else {
+                self.z_words[w] &= !mask;
+            }
         }
     }
     /// Apply the Clifford S operator.
@@ -915,27 +982,34 @@ impl SymplecticMatrixTranspose<'_> {
     /// -1 for each X
     /// Z -> Z ^ X
     pub(crate) fn phasegate(&mut self, qubit: usize) {
-        for r in 0..self.x.len() {
-            if self.x[r].get(qubit) {
+        let word_off = qubit >> 6;
+        let mask = 1u64 << (qubit & 63);
+        for r in 0..self.n_rows {
+            let w = r * self.words_per_row + word_off;
+            if self.x_words[w] & mask != 0 {
                 // -1 for each X
                 self.ipowers[r] = self.ipowers[r].wrapping_add(3);
+                // Z -> Z ^ X (X is set here, so toggle Z).
+                self.z_words[w] ^= mask;
             }
-            // Z -> Z ^ X
-            let new_z = self.z[r].get(qubit) ^ self.x[r].get(qubit);
-            self.z[r].set(qubit, new_z);
         }
     }
 
     // Transform a [`Pauli`] operator by this Clifford operator.
     // $P \to CX P CX$
     pub(crate) fn cnot(&mut self, control: usize, target: usize) {
-        for r in 0..self.x.len() {
+        let (control_off, control_mask) = (control >> 6, 1u64 << (control & 63));
+        let (target_off, target_mask) = (target >> 6, 1u64 << (target & 63));
+        for r in 0..self.n_rows {
+            let base = r * self.words_per_row;
             // X: target ^= control
-            let new_xt = self.x[r].get(target) ^ self.x[r].get(control);
-            self.x[r].set(target, new_xt);
+            if self.x_words[base + control_off] & control_mask != 0 {
+                self.x_words[base + target_off] ^= target_mask;
+            }
             // Z: control ^= target
-            let new_zc = self.z[r].get(control) ^ self.z[r].get(target);
-            self.z[r].set(control, new_zc);
+            if self.z_words[base + target_off] & target_mask != 0 {
+                self.z_words[base + control_off] ^= control_mask;
+            }
         }
     }
 
@@ -943,12 +1017,16 @@ impl SymplecticMatrixTranspose<'_> {
         // One Hamming weight per qubit: the count of non-identity Paulis
         // (x | z set) touching that qubit across all operators.
         let mut weights = Array1::from_elem(self.n_qubits, 0usize);
-        for r in 0..self.x.len() {
-            for i in self.x[r].iter_ones() {
+        let wpr = self.words_per_row;
+        for r in 0..self.n_rows {
+            let base = r * wpr;
+            let xr = BlockRef::new(&self.x_words[base..base + wpr], self.n_qubits);
+            let zr = BlockRef::new(&self.z_words[base..base + wpr], self.n_qubits);
+            for i in xr.iter_ones() {
                 weights[i] += 1;
             }
-            for i in self.z[r].iter_ones() {
-                if !self.x[r].get(i) {
+            for i in zr.iter_ones() {
+                if !xr.get(i) {
                     weights[i] += 1;
                 }
             }

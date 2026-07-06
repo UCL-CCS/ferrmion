@@ -656,7 +656,7 @@ impl MajoranaEncoding {
             let ann_coeffs: Vec<Complex64> = (0..n_states)
                 .into_par_iter()
                 .map(|j| {
-                    let state = &state_blocks[j];
+                    let state = state_blocks[j].as_ref();
                     let coeff = current_coeffs[j];
                     let par_l = z_l.and_count_ones(state) % 2;
                     let par_r = z_r.and_count_ones(state) % 2;
@@ -739,11 +739,13 @@ impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
             // factors are unit-norm, so multiplying the (unit-norm) running
             // coefficient needs no rescale.
             let left_coefficient = coefficient
-                * c64(0., 1.)
-                    .powi(((ip_l as usize + 2 * z_l.and_count_ones(&state_block)) % 4) as i32);
+                * c64(0., 1.).powi(
+                    ((ip_l as usize + 2 * z_l.and_count_ones(state_block.as_ref())) % 4) as i32,
+                );
             let right_coefficient = coefficient
-                * c64(0., 1.)
-                    .powi(((ip_r as usize + 2 * z_r.and_count_ones(&state_block)) % 4) as i32);
+                * c64(0., 1.).powi(
+                    ((ip_r as usize + 2 * z_r.and_count_ones(state_block.as_ref())) % 4) as i32,
+                );
 
             // Apply the shared X flip to the working state (word-level XOR).
             state_block.xor_assign(x_l);

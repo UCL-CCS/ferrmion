@@ -1,182 +1,323 @@
 //! Bitpacked storage for symplectic Pauli operators.
 //!
-//! A [`Block`] stores one bit per qubit for a single X or Z symplectic block,
-//! packed into 64-bit machine words via [`bitvec`]. This replaces the previous
+//! A symplectic block stores one bit per qubit for a single X or Z part of a
+//! Pauli operator, packed into 64-bit machine words. This replaces the previous
 //! dense `Array1<bool>` / `Array2<bool>` representation, shrinking memory ~8x
 //! and letting the hot paths (symplectic product, Pauli weight, phase
 //! accumulation) run as word-level bit operations instead of per-`bool` loops.
 //!
+//! Two block flavours are provided:
+//! - [`Block`] — owned (`Vec<u64>`), used for a single `SymplecticOperator` and
+//!   for the mutable working state in `decode`/`try_encode`.
+//! - [`BlockRef`] — a borrowed view over a `&[u64]` slice. `SymplecticMatrix`
+//!   stores all rows in one contiguous buffer (rows padded to whole `u64`
+//!   words), so a row is just a sub-slice viewed as a `BlockRef`. Cloning the
+//!   matrix is then a single contiguous copy rather than one heap allocation
+//!   per row.
+//!
 //! The symplectic convention is unchanged: a qubit's Pauli is read from the
 //! `(x, z)` bit pair — `(false, false) = I`, `(true, false) = X`,
 //! `(false, true) = Z`, `(true, true) = Y`.
+//!
+//! # Invariant: padding bits are zero
+//!
+//! A block of `n_bits` qubits is stored in `words_for(n_bits)` words; the unused
+//! ("padding") bits above `n_bits` in the final word are always zero. Every
+//! constructor zero-fills, and every mutator (`set`, `xor_assign`, the Clifford
+//! kernels) only ever writes bit indices `< n_bits`, so XOR/AND/OR of two
+//! padding-zero blocks stays padding-zero. The word-level popcounts and XOR rely
+//! on this so they can operate on the raw `u64` words without masking the final
+//! partial word. Both operands of a binary op always share the same qubit count,
+//! hence the same word count.
 use bitvec::prelude::*;
 use ndarray::{Array1, ArrayView1};
 use std::cmp::Ordering;
 
-/// Underlying bit store: little-endian bits packed into `u64` words.
-type Store = BitVec<u64, Lsb0>;
+/// Number of `u64` words needed to hold `n_bits` bits.
+#[inline]
+pub(crate) fn words_for(n_bits: usize) -> usize {
+    n_bits.div_ceil(64)
+}
 
-/// A single symplectic block (the X or Z part of one Pauli operator), one bit
-/// per qubit, bitpacked into `u64` words.
-///
-/// # Invariant: dead bits are zero
-///
-/// The unused ("dead") bits above `len()` in the final storage word are always
-/// zero. Every constructor starts from `BitVec::repeat(false, _)`, and every
-/// mutator (`set`, `swap_bit`, `xor_assign`) only ever touches live indices or
-/// preserves zeros (`0 ^ 0 == 0`). The word-level `and_count_ones`,
-/// `or_count_ones`, and `xor_assign` rely on this so they can operate on the raw
-/// `u64` storage without masking the final partial word.
+/// Read bit `i` from a word slice.
+#[inline]
+pub(crate) fn bit_get(words: &[u64], i: usize) -> bool {
+    (words[i >> 6] >> (i & 63)) & 1 != 0
+}
+
+/// Write bit `i` of a word slice.
+#[inline]
+pub(crate) fn bit_set(words: &mut [u64], i: usize, value: bool) {
+    let mask = 1u64 << (i & 63);
+    let word = &mut words[i >> 6];
+    if value {
+        *word |= mask;
+    } else {
+        *word &= !mask;
+    }
+}
+
+/// Popcount of `a & b` over matching word slices.
+#[inline]
+fn and_count(a: &[u64], b: &[u64]) -> usize {
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| (x & y).count_ones() as usize)
+        .sum()
+}
+
+/// Popcount of `a | b` over matching word slices.
+#[inline]
+fn or_count(a: &[u64], b: &[u64]) -> usize {
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| (x | y).count_ones() as usize)
+        .sum()
+}
+
+/// Popcount of a word slice.
+#[inline]
+fn popcount(a: &[u64]) -> usize {
+    a.iter().map(|x| x.count_ones() as usize).sum()
+}
+
+/// In-place `dst ^= src` over matching word slices.
+#[inline]
+fn xor_assign_words(dst: &mut [u64], src: &[u64]) {
+    for (d, s) in dst.iter_mut().zip(src) {
+        *d ^= s;
+    }
+}
+
+/// Iterate the indices of set bits in the first `n_bits` bits of `words`.
+fn iter_ones(words: &[u64], n_bits: usize) -> impl Iterator<Item = usize> + '_ {
+    words.view_bits::<Lsb0>()[..n_bits].iter_ones()
+}
+
+/// Lexicographic order over the first `n_bits`/`m_bits` bits (bit 0 first,
+/// `false < true`), matching the previous `x_block.iter().cmp(...)` behaviour.
+fn cmp_bits(a: &[u64], an: usize, b: &[u64], bn: usize) -> Ordering {
+    a.view_bits::<Lsb0>()[..an]
+        .iter()
+        .by_vals()
+        .cmp(b.view_bits::<Lsb0>()[..bn].iter().by_vals())
+}
+
+/// A borrowed view over one symplectic block (`n_bits` qubits packed into a
+/// `&[u64]` word slice). Cheap to copy.
+#[derive(Clone, Copy, Debug)]
+pub struct BlockRef<'a> {
+    words: &'a [u64],
+    n_bits: usize,
+}
+
+impl<'a> BlockRef<'a> {
+    /// Construct a view over `words`, interpreting the first `n_bits` bits.
+    ///
+    /// `words.len()` must equal `words_for(n_bits)`.
+    #[inline]
+    pub(crate) fn new(words: &'a [u64], n_bits: usize) -> Self {
+        debug_assert_eq!(words.len(), words_for(n_bits));
+        Self { words, n_bits }
+    }
+
+    /// Number of qubits (bits) in this block.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.n_bits
+    }
+
+    /// Whether the block has zero qubits.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.n_bits == 0
+    }
+
+    /// Read the bit at position `i`.
+    #[inline]
+    pub fn get(&self, i: usize) -> bool {
+        bit_get(self.words, i)
+    }
+
+    /// Number of set bits.
+    #[inline]
+    pub fn count_ones(&self) -> usize {
+        popcount(self.words)
+    }
+
+    /// Iterator over the indices of set bits.
+    #[inline]
+    pub fn iter_ones(&self) -> impl Iterator<Item = usize> + 'a {
+        iter_ones(self.words, self.n_bits)
+    }
+
+    /// Popcount of `self & other` (the `z & x` phase term and the Y count).
+    #[inline]
+    pub fn and_count_ones(&self, other: BlockRef) -> usize {
+        and_count(self.words, other.words)
+    }
+
+    /// Popcount of `self | other` (Pauli weight of a row).
+    #[inline]
+    pub fn or_count_ones(&self, other: BlockRef) -> usize {
+        or_count(self.words, other.words)
+    }
+
+    /// Popcount of `self & bools` for a dense boolean array.
+    #[inline]
+    pub fn and_count_bools(&self, bools: &Array1<bool>) -> usize {
+        self.iter_ones().filter(|&i| bools[i]).count()
+    }
+
+    /// Toggle `bools` in place at every position where `self` is set.
+    #[inline]
+    pub fn xor_into_bools(&self, bools: &mut Array1<bool>) {
+        for i in self.iter_ones() {
+            bools[i] = !bools[i];
+        }
+    }
+
+    /// Convert to a dense boolean array (Python / test boundary).
+    pub fn to_bool_array(&self) -> Array1<bool> {
+        let mut out = Array1::from_elem(self.n_bits, false);
+        for i in self.iter_ones() {
+            out[i] = true;
+        }
+        out
+    }
+}
+
+impl PartialEq for BlockRef<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.n_bits == other.n_bits && self.words == other.words
+    }
+}
+impl Eq for BlockRef<'_> {}
+
+impl PartialOrd for BlockRef<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for BlockRef<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        cmp_bits(self.words, self.n_bits, other.words, other.n_bits)
+    }
+}
+
+/// An owned symplectic block: `n_bits` qubits packed into `Vec<u64>` words.
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
 pub struct Block {
-    bits: Store,
+    words: Vec<u64>,
+    n_bits: usize,
 }
 
 impl Block {
-    /// Construct an all-`false` block of length `n` bits.
+    /// Construct an all-`false` block of `n` bits.
     pub fn zeros(n: usize) -> Self {
         Self {
-            bits: Store::repeat(false, n),
+            words: vec![0u64; words_for(n)],
+            n_bits: n,
+        }
+    }
+
+    /// Borrow this block as a [`BlockRef`].
+    #[inline]
+    pub fn as_ref(&self) -> BlockRef<'_> {
+        BlockRef {
+            words: &self.words,
+            n_bits: self.n_bits,
         }
     }
 
     /// Number of qubits (bits) in this block.
     #[inline]
     pub fn len(&self) -> usize {
-        self.bits.len()
+        self.n_bits
     }
 
     /// Whether the block has zero qubits.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.bits.is_empty()
+        self.n_bits == 0
     }
 
     /// Read the bit at position `i`.
     #[inline]
     pub fn get(&self, i: usize) -> bool {
-        self.bits[i]
+        bit_get(&self.words, i)
     }
 
-    /// Set the bit at position `i` to `value`.
+    /// Set the bit at position `i`.
     #[inline]
     pub fn set(&mut self, i: usize, value: bool) {
-        self.bits.set(i, value);
+        bit_set(&mut self.words, i, value);
     }
 
-    /// Number of set bits (the Hamming weight of this block).
+    /// Number of set bits.
     #[inline]
     pub fn count_ones(&self) -> usize {
-        self.bits.count_ones()
+        popcount(&self.words)
     }
 
     /// Iterator over the indices of set bits.
     #[inline]
-    pub fn iter_ones(&self) -> bitvec::slice::IterOnes<'_, u64, Lsb0> {
-        self.bits.iter_ones()
+    pub fn iter_ones(&self) -> impl Iterator<Item = usize> + '_ {
+        iter_ones(&self.words, self.n_bits)
     }
 
-    /// Popcount of `self & other` — the number of positions set in both blocks.
-    ///
-    /// Used for the symplectic phase term (`z & x`) and the Y count (`x & z`).
-    ///
-    /// Operates directly on the underlying `u64` storage words. This is sound
-    /// because every `Block` keeps its unused "dead" bits (above `len()`) at zero
-    /// (see the module-level invariant), so `a & b` in the final partial word can
-    /// never count stray bits. Both operands share the same length, hence the same
-    /// word count.
+    /// Popcount of `self & other`.
     #[inline]
-    pub fn and_count_ones(&self, other: &Block) -> usize {
-        self.bits
-            .as_raw_slice()
-            .iter()
-            .zip(other.bits.as_raw_slice())
-            .map(|(a, b)| (a & b).count_ones() as usize)
-            .sum()
+    pub fn and_count_ones(&self, other: BlockRef) -> usize {
+        and_count(&self.words, other.words)
     }
 
-    /// Popcount of `self | other` — the number of positions set in either block.
-    ///
-    /// Used for the Pauli weight of a row (`x | z`, i.e. non-identity qubits).
-    /// Word-level for the same reason as [`Block::and_count_ones`].
+    /// Popcount of `self | other`.
     #[inline]
-    pub fn or_count_ones(&self, other: &Block) -> usize {
-        self.bits
-            .as_raw_slice()
-            .iter()
-            .zip(other.bits.as_raw_slice())
-            .map(|(a, b)| (a | b).count_ones() as usize)
-            .sum()
+    pub fn or_count_ones(&self, other: BlockRef) -> usize {
+        or_count(&self.words, other.words)
     }
 
     /// In-place XOR: `self ^= other`.
-    ///
-    /// Word-level over the raw storage; preserves the dead-bits-zero invariant
-    /// since `0 ^ 0 == 0`.
     #[inline]
-    pub fn xor_assign(&mut self, other: &Block) {
-        self.bits
-            .as_raw_mut_slice()
-            .iter_mut()
-            .zip(other.bits.as_raw_slice())
-            .for_each(|(a, &b)| *a ^= b);
+    pub fn xor_assign(&mut self, other: BlockRef) {
+        xor_assign_words(&mut self.words, other.words);
     }
 
     /// Return a new block equal to `self ^ other`.
     #[inline]
-    pub fn xor(&self, other: &Block) -> Block {
+    pub fn xor(&self, other: BlockRef) -> Block {
         let mut out = self.clone();
         out.xor_assign(other);
         out
     }
 
-    /// Swap the bits at position `i` between `self` and `other`.
-    ///
-    /// Used by the Clifford Hadamard kernel to exchange X and Z on a qubit.
-    #[inline]
-    pub fn swap_bit(&mut self, other: &mut Block, i: usize) {
-        let a = self.bits[i];
-        let b = other.bits[i];
-        self.bits.set(i, b);
-        other.bits.set(i, a);
-    }
-
     /// Build a block from a dense boolean array view (Python / test boundary).
     pub fn from_bool_view(view: ArrayView1<bool>) -> Self {
-        let mut bits = Store::repeat(false, view.len());
+        let mut block = Block::zeros(view.len());
         for (i, &b) in view.iter().enumerate() {
             if b {
-                bits.set(i, true);
+                block.set(i, true);
             }
         }
-        Self { bits }
+        block
     }
 
     /// Convert to a dense boolean array (Python / test boundary).
     pub fn to_bool_array(&self) -> Array1<bool> {
-        let mut out = Array1::from_elem(self.bits.len(), false);
-        for i in self.bits.iter_ones() {
-            out[i] = true;
-        }
-        out
+        self.as_ref().to_bool_array()
     }
 
-    /// Popcount of `self & bools` for a dense boolean array `bools`.
-    ///
-    /// Bridges the bitpacked operator against a `ZBasisState`, whose state is a
-    /// dense `Array1<bool>`.
+    /// Popcount of `self & bools` for a dense boolean array.
     #[inline]
     pub fn and_count_bools(&self, bools: &Array1<bool>) -> usize {
-        self.bits.iter_ones().filter(|&i| bools[i]).count()
+        self.as_ref().and_count_bools(bools)
     }
 
-    /// Toggle `bools` in place at every position where `self` is set
-    /// (i.e. `bools ^= self`), for a dense boolean array `bools`.
+    /// Toggle `bools` in place at every position where `self` is set.
     #[inline]
     pub fn xor_into_bools(&self, bools: &mut Array1<bool>) {
-        for i in self.bits.iter_ones() {
-            bools[i] = !bools[i];
-        }
+        self.as_ref().xor_into_bools(bools);
     }
 }
 
@@ -185,12 +326,9 @@ impl PartialOrd for Block {
         Some(self.cmp(other))
     }
 }
-
 impl Ord for Block {
-    /// Lexicographic order over the bits from index 0, matching the previous
-    /// `x_block.iter().cmp(...)` behaviour (`false < true`).
     fn cmp(&self, other: &Self) -> Ordering {
-        self.bits.iter().by_vals().cmp(other.bits.iter().by_vals())
+        cmp_bits(&self.words, self.n_bits, &other.words, other.n_bits)
     }
 }
 
@@ -212,6 +350,17 @@ mod tests {
     }
 
     #[test]
+    fn get_set_multiword() {
+        // 130 qubits spans three u64 words; exercise the padding tail.
+        let mut b = Block::zeros(130);
+        b.set(0, true);
+        b.set(64, true);
+        b.set(129, true);
+        assert_eq!(b.count_ones(), 3);
+        assert_eq!(b.iter_ones().collect::<Vec<_>>(), vec![0, 64, 129]);
+    }
+
+    #[test]
     fn bool_roundtrip() {
         let arr = arr1(&[true, false, true, true]);
         let b = Block::from_bool_view(arr.view());
@@ -222,15 +371,18 @@ mod tests {
     fn and_or_counts() {
         let x = Block::from_bool_view(arr1(&[true, true, false, false]).view());
         let z = Block::from_bool_view(arr1(&[false, true, true, false]).view());
-        assert_eq!(x.and_count_ones(&z), 1); // only position 1 set in both
-        assert_eq!(x.or_count_ones(&z), 3); // positions 0,1,2
+        assert_eq!(x.and_count_ones(z.as_ref()), 1); // only position 1 set in both
+        assert_eq!(x.or_count_ones(z.as_ref()), 3); // positions 0,1,2
     }
 
     #[test]
     fn xor_ops() {
         let a = Block::from_bool_view(arr1(&[true, false, true]).view());
         let b = Block::from_bool_view(arr1(&[true, true, false]).view());
-        assert_eq!(a.xor(&b).to_bool_array(), arr1(&[false, true, true]));
+        assert_eq!(
+            a.xor(b.as_ref()).to_bool_array(),
+            arr1(&[false, true, true])
+        );
     }
 
     #[test]
@@ -238,13 +390,15 @@ mod tests {
         let a = Block::from_bool_view(arr1(&[false, true]).view());
         let b = Block::from_bool_view(arr1(&[true, false]).view());
         assert!(a < b);
+        assert!(a.as_ref() < b.as_ref());
     }
 
     #[test]
-    fn swap_bit_exchanges() {
-        let mut a = Block::from_bool_view(arr1(&[true, false]).view());
-        let mut b = Block::from_bool_view(arr1(&[false, false]).view());
-        a.swap_bit(&mut b, 0);
-        assert!(!a.get(0) && b.get(0));
+    fn block_ref_eq() {
+        let a = Block::from_bool_view(arr1(&[true, false, true]).view());
+        let b = Block::from_bool_view(arr1(&[true, false, true]).view());
+        let c = Block::from_bool_view(arr1(&[true, true, false]).view());
+        assert_eq!(a.as_ref(), b.as_ref());
+        assert_ne!(a.as_ref(), c.as_ref());
     }
 }

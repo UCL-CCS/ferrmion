@@ -1,14 +1,11 @@
-"""Init Optimize Submodule."""
+"""Optimisation methods for encodings and Hamiltonians."""
 
 from ..core import topphatt
 from .bonsai import bonsai_algorithm
 from .cost_functions import (
-    coefficient_pauli_weight,
     distance_squared,
     minimise_mi_distance,
-    pauli_weight,
 )
-from .enumeration.anneal import anneal_coefficient_pauli_weight, anneal_pauli_weight
 from .enumeration.evolutionary import lambda_plus_mu
 from .hatt import hamiltonian_adaptive_ternary_tree
 from .huffman import huffman_ternary_tree

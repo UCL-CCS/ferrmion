@@ -75,10 +75,14 @@ pub fn symplectic_to_sparse(
         };
         match pauli {
             'I' => {}
-            _ => {
+            'Y' => {
                 pauli_string.push(pauli);
                 indices.push(index);
                 ipower += 3
+            }
+            _ => {
+                pauli_string.push(pauli);
+                indices.push(index);
             }
         };
         index += 1;
@@ -100,7 +104,7 @@ fn test_symplectic_to_sparse() {
         (
             "YXZ".to_string(),
             ndarray::arr1(&[0, 1, 2]),
-            Complex64::new(0., 1.)
+            Complex64::new(0., -1.)
         )
     );
 }

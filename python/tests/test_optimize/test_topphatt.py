@@ -1,7 +1,6 @@
 """Tests for TOPP-HATT Algorithm."""
 import json
 import ferrmion as fr
-from ferrmion.optimize.cost_functions import pauli_weight, coefficient_pauli_weight
 from ferrmion.encode.ternary_tree import TernaryTree
 import numpy as np
 import pytest
@@ -14,10 +13,10 @@ from scipy.sparse.linalg import eigsh
 @pytest.mark.parametrize(
     "encoding",
     [
-        TernaryTree.jordan_wigner,
-        TernaryTree.bravyi_kitaev,
-        TernaryTree.parity,
-        TernaryTree.jkmn,
+        TernaryTree.JordanWigner,
+        TernaryTree.BravyiKitaev,
+        TernaryTree.Parity,
+        TernaryTree.JKMN,
     ],
 )
 def test_topphatt_preserves_topology(encoding, water_data):
@@ -65,14 +64,14 @@ def test_topphatt_standard_h2_eigvals_equal_expected(encoding, parallelize, h2_m
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
     match encoding:
         case "JW":
-            tree = TernaryTree.jordan_wigner(fham.n_modes)
+            tree = TernaryTree.JordanWigner(fham.n_modes)
         case "BK":
-            tree = TernaryTree.bravyi_kitaev(fham.n_modes)
+            tree = TernaryTree.BravyiKitaev(fham.n_modes)
         case "PE":
-            tree = TernaryTree.parity(fham.n_modes)
+            tree = TernaryTree.Parity(fham.n_modes)
         case "JKMN":
-            tree = TernaryTree.jkmn(fham.n_modes)
-    qham, _ = tree.encode_topphatt(fham, parallelize)
+            tree = TernaryTree.JKMN(fham.n_modes)
+    qham= tree.encode_topphatt(fham, parallelize)
 
     ofop = QubitOperator()
     for k, v in qham.items():
@@ -98,22 +97,22 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, parallelize, wate
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
     match encoding:
         case "JW":
-            tree = TernaryTree.jordan_wigner(fham.n_modes)
+            tree = TernaryTree.JordanWigner(fham.n_modes)
         case "BK":
-            tree = TernaryTree.bravyi_kitaev(fham.n_modes)
+            tree = TernaryTree.BravyiKitaev(fham.n_modes)
         case "PE":
-            tree = TernaryTree.parity(fham.n_modes)
+            tree = TernaryTree.Parity(fham.n_modes)
         case "JKMN":
-            tree = TernaryTree.jkmn(fham.n_modes)
+            tree = TernaryTree.JKMN(fham.n_modes)
         case "HATT":
             tree = hamiltonian_adaptive_ternary_tree(fham, fham.n_modes)
         case "Huffman":
             tree = huffman_ternary_tree(ones, twos)
     qham_naive = tree.encode(fham)
-    qham, _ = tree.encode_topphatt(fham, parallelize)
+    qham = tree.encode_topphatt(fham, parallelize)
 
-    assert np.isclose(float(pauli_weight(qham)[0]/pauli_weight(qham_naive)[0]),topphatt_weight_snapshot[encoding]["pauli_weight"], atol=0.01)
-    assert np.isclose(float(coefficient_pauli_weight(qham)[0]/coefficient_pauli_weight(qham_naive)[0]), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"], atol=0.01)
+    assert np.isclose(float(qham.pauli_weight()/qham_naive.pauli_weight()),topphatt_weight_snapshot[encoding]["pauli_weight"], atol=0.01)
+    assert np.isclose(float(qham.coeff_pauli_weight()/qham_naive.coeff_pauli_weight()), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"], atol=0.01)
 
 
 @pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
@@ -134,24 +133,24 @@ def test_topphatt_dense_transpose_h2o_weights_match_snapshot(
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
     match encoding:
         case "JW":
-            tree = TernaryTree.jordan_wigner(fham.n_modes)
+            tree = TernaryTree.JordanWigner(fham.n_modes)
         case "BK":
-            tree = TernaryTree.bravyi_kitaev(fham.n_modes)
+            tree = TernaryTree.BravyiKitaev(fham.n_modes)
         case "PE":
-            tree = TernaryTree.parity(fham.n_modes)
+            tree = TernaryTree.Parity(fham.n_modes)
         case "JKMN":
-            tree = TernaryTree.jkmn(fham.n_modes)
+            tree = TernaryTree.JKMN(fham.n_modes)
     qham_naive = tree.encode(fham)
-    qham, _ = tree.encode_topphatt(fham, parallelize=False, backend="dense_transpose")
+    qham = tree.encode_topphatt(fham, parallelize=False, backend="dense_transpose")
 
     snapshot = topphatt_weight_snapshot[encoding]
     assert np.isclose(
-        float(pauli_weight(qham)[0] / pauli_weight(qham_naive)[0]),
+        float(qham.pauli_weight()/qham_naive.pauli_weight()),
         snapshot["pauli_weight"],
         atol=0.01,
     )
     assert np.isclose(
-        float(coefficient_pauli_weight(qham)[0] / coefficient_pauli_weight(qham_naive)[0]),
+        float(qham.coeff_pauli_weight()/qham_naive.coeff_pauli_weight()),
         snapshot["coefficient_pauli_weight"],
         atol=0.01,
     )
@@ -163,8 +162,8 @@ def test_topphatt_heuristics_run(heuristic, h2_mol_data_sets):
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
-    tree = TernaryTree.jkmn(fham.n_modes)
-    qham, _ = tree.encode_topphatt(fham, parallelize=False, heuristic=heuristic, seed=42)
+    tree = TernaryTree.JKMN(fham.n_modes)
+    qham = tree.encode_topphatt(fham, parallelize=False, heuristic=heuristic, seed=42)
     assert len(qham) > 0
 
 
@@ -174,10 +173,12 @@ def test_topphatt_random_seed_is_reproducible(h2_mol_data_sets):
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
 
-    qham_a, enc_a = TernaryTree.jkmn(fham.n_modes).encode_topphatt(
+    enc_a = TernaryTree.JKMN(fham.n_modes)
+    qham_a = enc_a.encode_topphatt(
         fham, parallelize=False, heuristic="random", seed=7
     )
-    qham_b, enc_b = TernaryTree.jkmn(fham.n_modes).encode_topphatt(
+    enc_b = TernaryTree.JKMN(fham.n_modes)
+    qham_b = enc_b.encode_topphatt(
         fham, parallelize=False, heuristic="random", seed=7
     )
     assert qham_a == qham_b
@@ -190,7 +191,7 @@ def test_topphatt_unknown_heuristic_raises(h2_mol_data_sets):
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
     with pytest.raises(ValueError):
-        TernaryTree.jkmn(fham.n_modes).encode_topphatt(fham, heuristic="not_a_strategy")
+        TernaryTree.JKMN(fham.n_modes).encode_topphatt(fham, heuristic="not_a_strategy")
 
 
 def test_topphatt_heuristic_distribution_h2o_jkmn(water_data):
@@ -208,10 +209,10 @@ def test_topphatt_heuristic_distribution_h2o_jkmn(water_data):
     n_modes = fham.n_modes
 
     def run(heuristic: str, seed: int | None = None) -> float:
-        qham, _ = TernaryTree.jkmn(n_modes).encode_topphatt(
+        qham = TernaryTree.JKMN(n_modes).encode_topphatt(
             fham, parallelize=False, heuristic=heuristic, seed=seed
         )
-        return float(pauli_weight(qham)[0])
+        return float(qham.pauli_weight())
 
     weight_min_weight = run("min_weight")
     weight_x_first = run("x_first")

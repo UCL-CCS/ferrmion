@@ -46,7 +46,7 @@ def test_batch_pauli_weights_matches_individual_encode(encoding_cls, h2_631g_dat
     twos = h2_631g_data["twos"]
     n_modes = ones.shape[0]
 
-    enc = encoding_cls(n_modes)
+    enc = encoding_cls(n_modes).build_encoding()
     fham = FermionHamiltonian(terms={"+-": ones, "++--": twos})
 
     rng = np.random.default_rng(seed=42)
@@ -69,7 +69,7 @@ def test_batch_pauli_weights_returns_correct_length(h2_631g_data):
     ones = h2_631g_data["ones"]
     twos = h2_631g_data["twos"]
     n_modes = ones.shape[0]
-    enc = JordanWigner(n_modes)
+    enc = JordanWigner(n_modes).build_encoding()
     fham = FermionHamiltonian(terms={"+-": ones, "++--": twos})
 
     rng = np.random.default_rng(0)
@@ -85,7 +85,7 @@ def test_batch_pauli_weights_coefficient_weighted_differs(h2_631g_data):
     ones = h2_631g_data["ones"]
     twos = h2_631g_data["twos"]
     n_modes = ones.shape[0]
-    enc = JordanWigner(n_modes)
+    enc = JordanWigner(n_modes).build_encoding()
     fham = FermionHamiltonian(terms={"+-": ones, "++--": twos})
     perms = np.array([np.arange(n_modes)], dtype=np.uintp)
 
@@ -97,7 +97,7 @@ def test_batch_pauli_weights_empty_permutations(h2_631g_data):
     ones = h2_631g_data["ones"]
     twos = h2_631g_data["twos"]
     n_modes = ones.shape[0]
-    enc = JordanWigner(n_modes)
+    enc = JordanWigner(n_modes).build_encoding()
     fham = FermionHamiltonian(terms={"+-": ones, "++--": twos})
     perms = np.empty((0, n_modes), dtype=np.uintp)
 
@@ -112,7 +112,7 @@ def test_benchmark_batch_pauli_weights(benchmark, encoding_cls, n_perms, water_d
     ones = water_data["ones"]
     twos = water_data["twos"]
     n_modes = ones.shape[0]
-    enc = encoding_cls(n_modes)
+    enc = encoding_cls(n_modes).build_encoding()
     fham = FermionHamiltonian(terms={"+-": ones, "++--": twos})
     rng = np.random.default_rng(seed=0)
     perms = np.array([rng.permutation(n_modes) for _ in range(n_perms)], dtype=np.uintp)

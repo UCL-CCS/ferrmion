@@ -3,9 +3,9 @@
 import numpy as np
 import numpy.typing as npt
 
+from ferrmion.core import pauli_to_symplectic, symplectic_product
 from ferrmion.encode import TernaryTree
 from ferrmion.encode.ternary_tree_node import TTNode
-from ferrmion.utils import find_pauli_weight, pauli_to_symplectic, symplectic_product
 
 
 def _majorana_op_frequency(
@@ -110,11 +110,12 @@ def _operator_pair_priority(huffman_tree):
         weights[index] = {}
         left, _ = pauli_to_symplectic(left, 0)
         right, _ = pauli_to_symplectic(right, 0)
-        pair_weight = find_pauli_weight(np.array([left])) + find_pauli_weight(
-            np.array([right])
-        )
+        lx, lz = np.hsplit(left, 2)
+        rx, rz = np.hsplit(right, 2)
+        pair_weight = np.sum((lx ^ rx) | (lz ^ rz))
         _, product = symplectic_product(left, right)
-        product_weight = find_pauli_weight(np.array([product]))
+        px, pz = np.hsplit(product, 2)
+        product_weight = np.sum(px ^ pz)
 
         weights[index]["pair_weight"] = pair_weight
         weights[index]["prod_weight"] = product_weight
@@ -159,9 +160,9 @@ def huffman_ternary_tree(
     sorted_modes = _mode_priority(two_e_frequencies)
     sorted_operators = _operator_pair_priority(huffman_ternary_tree)
 
-    mode_op_map = [0] * len(sorted_modes)
+    mode_enumeration = [0] * len(sorted_modes)
     for operator_index, mode_index in enumerate(sorted_modes):
-        mode_op_map[mode_index] = sorted_operators[operator_index]
+        mode_enumeration[mode_index] = sorted_operators[operator_index]
 
-    huffman_ternary_tree.default_mode_op_map = mode_op_map
+    huffman_ternary_tree.build_encoding(mode_enumeration)
     return huffman_ternary_tree

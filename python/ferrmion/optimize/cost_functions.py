@@ -6,8 +6,6 @@ from functools import partial
 import numpy as np
 from numpy.typing import NDArray
 
-from ferrmion import QubitHamiltonian
-
 from .enumeration.evolutionary import lambda_plus_mu
 
 logger = logging.getLogger(__name__)
@@ -92,57 +90,3 @@ def minimise_mi_distance(
         best = np.stack((2 * best, (2 * best) + 1)).T.flatten()
     logger.debug("Found best ordering %s", best)
     return best
-
-
-def coefficient_pauli_weight(
-    pauli_hamiltonian: dict[str, float] | QubitHamiltonian,
-) -> list[float]:
-    """The Pauli-weight of a qubit hamiltonian,scaled by the term coefficients.
-
-    Args:
-        pauli_hamiltonian (dict[bytes, float]): A filled template hamiltonian with byte-hashed keys.
-
-    Return:
-        list[float]: A single value in a list (needed for deap) giving the cost.
-
-    Example:
-        >>> from ferrmion.optimize.enumeration.cost_functions import pauli_weight
-        >>> from ferrmion.hamiltonians import molecular_hamiltonian
-        >>> ones = np.random.random((2,2))
-        >>> twos = np.random.random((2,2,2,2))
-        >>> nuclear_energy =  0.
-        >>> pauli_weight(molecular_hamiltonian(ones, twos, nuclear_energy))
-    """
-    logger.debug("Calculating Pauli-weighted Norm")
-    logger.debug(pauli_hamiltonian)
-
-    weighted_terms = [
-        (len(k) - k.count("I")) * np.abs(v) for k, v in pauli_hamiltonian.items()
-    ]
-    logger.debug(weighted_terms)
-    return [np.sum(weighted_terms)]
-
-
-def pauli_weight(pauli_hamiltonian: dict[str, float] | QubitHamiltonian) -> list[float]:
-    """The Pauli-weight of a qubit hamiltonianscaled by the term coefficients.
-
-    Args:
-        pauli_hamiltonian (dict[bytes, float]): A filled template hamiltonian with byte-hashed keys.
-
-    Return:
-        list[float]: A single value in a list (needed for deap) giving the cost.
-
-    Example:
-        >>> from ferrmion.optimize.enumeration.cost_functions import coefficient_pauli_weight
-        >>> from ferrmion.hamiltonians import molecular_hamiltonian
-        >>> ones = np.random.random((2,2))
-        >>> twos = np.random.random((2,2,2,2))
-        >>> nuclear_energy =  0.
-        >>> coefficient_pauli_weight(molecular_hamiltonian(ones, twos, nuclear_energy))
-    """
-    logger.debug("Calculating Pauli-weighted Norm")
-    logger.debug(pauli_hamiltonian)
-
-    weighted_terms = [(len(k) - k.count("I")) for k, v in pauli_hamiltonian.items()]
-    logger.debug(weighted_terms)
-    return [np.sum(weighted_terms)]

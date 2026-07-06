@@ -22,7 +22,6 @@ encode
 optimize
 hamiltonians
 core
-utils
 devices
 interop
 development

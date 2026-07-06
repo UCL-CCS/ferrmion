@@ -144,6 +144,6 @@ def test_ttnode_branch_majorana_map():
 
 
 def test_ttnode_to_rustworkx():
-    graph = TernaryTree.jkmn(6).root_node.to_rustworkx()
+    graph = TernaryTree.JKMN(6).root_node.to_rustworkx()
     assert graph.nodes() == ["", "x", "y", "z", "xx", "xy"]
     assert np.all([*graph.edge_list()] == [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5)])

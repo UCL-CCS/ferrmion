@@ -43,5 +43,6 @@ def hamiltonian_adaptive_ternary_tree(
     tree.enumeration_scheme = {
         p: (mode, tree.enumeration_scheme[p][1]) for mode, p in enumerate(sorted_paths)
     }
+    tree.build_encoding()
     tree.pauli_weight = weight
     return tree

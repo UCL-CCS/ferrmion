@@ -19,7 +19,7 @@ def get_water_data():
     enuc = data["constant_energy"]
     return ones, twos, enuc
 
-def pauli_weights(pauli_hamiltonian: dict[str, float]) -> tuple[float, float, int]:
+def pauli_weights(pauli_hamiltonian: dict[str, float] | fr.QubitHamiltonian) -> tuple[float, float, int]:
     unscaled_terms = []
     scaled_terms = []
     for k, v in pauli_hamiltonian.items():
@@ -80,7 +80,7 @@ def get_annealed_result(tree, fham, coef_weight, n_seeds=10):
         result = pauli_weights(
             encoding.encode_annealed(
                 fham, coefficient_weighted=coef_weight, seed=seed
-            )[0]
+            )
         )
         sdmeans_annealed["unscaled"].append(result[0])
         sdmeans_annealed["scaled"].append(result[1])
@@ -94,7 +94,7 @@ def get_topphatt_result(tree, fham, n_random=10):
     results = {}
     for heuristic in ("min_weight", "z_first", "x_first"):
         print(f"Getting rust TOPP-HATT result (heuristic={heuristic})...")
-        result = pauli_weights(tree.encode_topphatt(fham, heuristic=heuristic)[0])
+        result = pauli_weights(tree.encode_topphatt(fham, heuristic=heuristic))
         print(f"TOPP-HATT {heuristic} result:", result)
         results[heuristic] = {
             "unscaled": result[0],
@@ -106,7 +106,7 @@ def get_topphatt_result(tree, fham, n_random=10):
     random_results = {"unscaled": [], "scaled": [], "length": []}
     for seed in range(n_random):
         result = pauli_weights(
-            tree.encode_topphatt(fham, heuristic="random", seed=seed)[0]
+            tree.encode_topphatt(fham, heuristic="random", seed=seed)
         )
         random_results["unscaled"].append(result[0])
         random_results["scaled"].append(result[1])

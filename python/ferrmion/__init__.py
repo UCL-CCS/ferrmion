@@ -9,6 +9,10 @@ from .core import (
     MajoranaEncoding,
     QubitHamiltonian,
     symplectic_product,
+    pauli_to_symplectic,
+    symplectic_product,
+    symplectic_to_pauli,
+    symplectic_to_sparse,
 )
 from .encode import MaxNTO
 from .encode.ternary_tree_node import TTNode, node_sorter
@@ -17,30 +21,12 @@ from .encode.ternary_tree import(
     TernaryTree,
     JordanWigner,
     BravyiKitaev,
-    ParityEncoding,
+    Parity,
     JKMN,
-    jordan_wigner,
-    jordan_wigner_annealed,
-    jordan_wigner_topphatt,
-    parity,
-    parity_annealed,
-    parity_topphatt,
-    bravyi_kitaev,
-    bravyi_kitaev_annealed,
-    bravyi_kitaev_topphatt,
-    jkmn,
-    jkmn_annealed,
-    jkmn_topphatt,
 )
 from .hamiltonians import molecular_hamiltonian, hubbard_hamiltonian
 from .utils import (
-    icount_to_sign,
-    pauli_to_symplectic,
     setup_logs,
-    symplectic_hash,
-    symplectic_to_pauli,
-    symplectic_unhash,
-    two_operator_product,
 
 )
 
@@ -51,32 +37,16 @@ __all__ = [
     "node_sorter",
     "pauli_to_symplectic",
     "symplectic_to_pauli",
-    "symplectic_hash",
-    "symplectic_unhash",
     "symplectic_product",
-    "icount_to_sign",
-    "two_operator_product",
     "FermionHamiltonian",
     "QubitHamiltonian",
     "molecular_hamiltonian",
     "hubbard_hamiltonian",
     "JordanWigner",
     "BravyiKitaev",
-    "ParityEncoding",
+    "Parity",
     "JKMN",
     "MaxNTO",
-    "jordan_wigner",
-    "jordan_wigner_annealed",
-    "jordan_wigner_topphatt",
-    "parity",
-    "parity_annealed",
-    "parity_topphatt",
-    "bravyi_kitaev",
-    "bravyi_kitaev_annealed",
-    "bravyi_kitaev_topphatt",
-    "jkmn",
-    "jkmn_annealed",
-    "jkmn_topphatt",
 ]
 
 setup_logs()

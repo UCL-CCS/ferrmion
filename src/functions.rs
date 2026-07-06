@@ -62,6 +62,7 @@ pub(crate) fn simplified_majorana_terms(
 ///     (i.e. the overall phase is ``i**ipower``) and ``product`` is the symplectic
 ///     representation of the resulting operator.
 #[pyfunction]
+#[pyo3(signature = (left, right))]
 pub(crate) fn symplectic_product<'py>(
     py: Python<'py>,
     left: PyReadonlyArray1<bool>,
@@ -99,6 +100,7 @@ pub(crate) fn symplectic_product<'py>(
 ///     Tuple of ``(pauli_string, ipower)`` where ``pauli_string`` is a string
 ///     over ``{I, X, Y, Z}`` of length ``n``.
 #[pyfunction]
+#[pyo3(signature = (symplectic, ipower=0))]
 pub(crate) fn symplectic_to_pauli<'py>(
     py: Python<'py>,
     symplectic: PyReadonlyArray1<bool>,
@@ -125,6 +127,7 @@ pub(crate) fn symplectic_to_pauli<'py>(
 ///     Tuple of ``(symplectic, ipower)`` where ``symplectic`` is a 1D boolean
 ///     array of length ``2n``.
 #[pyfunction]
+#[pyo3(signature = (pauli, ipower=0))]
 pub(crate) fn pauli_to_symplectic(
     py: Python<'_>,
     pauli: String,

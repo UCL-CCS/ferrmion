@@ -38,6 +38,10 @@ harness = false
 name = "majorana_sparse_construction"
 harness = false
 
+[[bench]]
+name = "clifford_heuristic"
+harness = false
+
 [profile.profiling]
 inherits = "release"
 debug = true

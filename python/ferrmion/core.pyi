@@ -174,7 +174,7 @@ def symplectic_product(
     left: npt.NDArray[np.bool], right: npt.NDArray[np.bool]
 ) -> tuple[int, npt.NDArray[np.bool]]: ...
 def symplectic_to_pauli(
-    symplectic: npt.NDArray[np.bool], ipower: int
+    symplectic: npt.NDArray[np.bool], ipower: int = 0
 ) -> tuple[str, int]: ...
 def pauli_to_symplectic(
     pauli: str, ipower: int

@@ -1,4 +1,7 @@
-"""Init for encodings."""
+"""Tools for converting fermionic operators and Hamiltonians into Pauli representations.
+
+You can also `decode()` measurements in Z-basis back into Fock states.
+"""
 
 from ferrmion.core import MajoranaEncoding
 
@@ -6,20 +9,8 @@ from .ternary_tree import (
     JKMN,
     BravyiKitaev,
     JordanWigner,
-    ParityEncoding,
+    Parity,
     TernaryTree,
-    bravyi_kitaev,
-    bravyi_kitaev_annealed,
-    bravyi_kitaev_topphatt,
-    jkmn,
-    jkmn_annealed,
-    jkmn_topphatt,
-    jordan_wigner,
-    jordan_wigner_annealed,
-    jordan_wigner_topphatt,
-    parity,
-    parity_annealed,
-    parity_topphatt,
 )
 
 
@@ -35,20 +26,8 @@ __all__ = [
     "MajoranaEncoding",
     "TernaryTree",
     "MaxNTO",
-    "jordan_wigner",
-    "jordan_wigner_annealed",
-    "jordan_wigner_topphatt",
-    "parity",
-    "parity_annealed",
-    "parity_topphatt",
-    "bravyi_kitaev",
-    "bravyi_kitaev_annealed",
-    "bravyi_kitaev_topphatt",
-    "jkmn",
-    "jkmn_annealed",
-    "jkmn_topphatt",
     "JordanWigner",
     "BravyiKitaev",
-    "ParityEncoding",
+    "Parity",
     "JKMN",
 ]

@@ -8,7 +8,7 @@ from qiskit_nature.second_q.mappers.fermionic_mapper import FermionicMapper
 from qiskit_nature.second_q.operators import FermionicOp
 
 from ferrmion import MajoranaEncoding, TernaryTree
-from ferrmion.utils import symplectic_product, symplectic_to_sparse
+from ferrmion.core import symplectic_product, symplectic_to_sparse
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ class QiskitAdapter(FermionicMapper):
                 coeff *= 0.5 ** len(comb)
                 coeff *= sparse[2]
 
-                sparse_list.append((sparse[0], list(sparse[1]), coeff))
+                sparse_list.append((sparse[0], [int(s) for s in sparse[1]], coeff))
                 logger.debug(f"{sparse_list=}")
             term_ops.append(
                 SparsePauliOp.from_sparse_list(

@@ -106,4 +106,5 @@ def bonsai_algorithm(
         n_modes=n_nodes, n_qubits=graph.num_nodes(), root_node=nodes[root_index]
     )
     tree.enumeration_scheme = tree.default_enumeration_scheme()
+    tree.build_encoding()
     return tree

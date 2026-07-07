@@ -1,4 +1,4 @@
-"""Init for visualisation."""
+"""Visualisations for TernaryTrees and MajoranaEncodings."""
 
 try:
     from .graph import draw_tt

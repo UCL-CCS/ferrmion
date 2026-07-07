@@ -1,11 +1,12 @@
 """Tests for Simulated Annealing Optimisation."""
+from ferrmion.core import FermionHamiltonian
 from typing import Callable
 from ferrmion import TernaryTree, molecular_hamiltonian
 
 from ferrmion.encode.ternary_tree import (
     JordanWigner,
     BravyiKitaev,
-    ParityEncoding,
+    Parity,
     JKMN,
 )
 import numpy as np
@@ -15,7 +16,7 @@ from scipy.sparse.linalg import eigsh
 
 
 
-@pytest.mark.parametrize("encoding", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
+@pytest.mark.parametrize("encoding", [JordanWigner, Parity, BravyiKitaev, JKMN])
 @pytest.mark.parametrize("coeff_weight", [True, False])
 def test_core_anneal_standard_h2_eigvals_equal_expected(encoding, coeff_weight, h2_mol_data_sets: dict):
     ones = h2_mol_data_sets["ones"]
@@ -24,11 +25,10 @@ def test_core_anneal_standard_h2_eigvals_equal_expected(encoding, coeff_weight, 
     n_modes = ones.shape[0]
 
     enc = encoding(n_modes)
-    fham = molecular_hamiltonian(ones, twos, e_nuc)
-    _, annealed = enc.anneal_enumeration(
+    fham: FermionHamiltonian = molecular_hamiltonian(ones, twos, e_nuc)
+    qham = enc.encode_annealed(
         fham, temperature=n_modes, coefficient_weighted=coeff_weight
     )
-    qham = annealed.encode(fham)
 
 
     ofop = QubitOperator()
@@ -51,8 +51,10 @@ def test_anneal_seed_is_reproducible(h2_mol_data_sets):
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = molecular_hamiltonian(ones, twos, e_nuc)
-    qham_a, enc_a = JKMN(fham.n_modes).encode_annealed(fham, seed=42)
-    qham_b, enc_b = JKMN(fham.n_modes).encode_annealed(fham, seed=42)
+    enc_a = JKMN(fham.n_modes)
+    qham_a = enc_a.encode_annealed(fham, seed=42)
+    enc_b = JKMN(fham.n_modes)
+    qham_b = enc_b.encode_annealed(fham, seed=42)
     assert qham_a == qham_b
     assert enc_a == enc_b
 
@@ -69,7 +71,7 @@ def test_anneal_seed_varies_output(h2_mol_data_sets):
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = molecular_hamiltonian(ones, twos, e_nuc)
     qhams = [
-        JKMN(fham.n_modes).encode_annealed(fham, seed=s)[0]
+        JKMN(fham.n_modes).encode_annealed(fham, seed=s)
         for s in (0, 1, 7, 42, 99, 1234)
     ]
     if fham.n_modes <= 4:
@@ -82,7 +84,7 @@ def test_anneal_seed_varies_output(h2_mol_data_sets):
 
 @pytest.mark.skip(
     reason="Flaky under pytest-cov: the SimulatedAnnealing executor in "
-    "anneal_enumerations is non-deterministic under coverage instrumentation "
+    "encode_annealeds is non-deterministic under coverage instrumentation "
     "(~10% failure on main, worse on this branch). Tracked separately; "
     "re-enable once the underlying RNG/timing non-determinism is fixed."
 )
@@ -91,6 +93,6 @@ def test_anneal_default_seed_matches_explicit_1017(h2_mol_data_sets):
     twos = h2_mol_data_sets["twos"]
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = molecular_hamiltonian(ones, twos, e_nuc)
-    qham_default = JKMN(fham.n_modes).encode_annealed(fham)[0]
-    qham_1017 = JKMN(fham.n_modes).encode_annealed(fham, seed=1017)[0]
+    qham_default = JKMN(fham.n_modes).encode_annealed(fham)
+    qham_1017 = JKMN(fham.n_modes).encode_annealed(fham, seed=1017)
     assert qham_default == qham_1017

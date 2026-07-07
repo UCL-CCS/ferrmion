@@ -1,4 +1,4 @@
-"""Factory functions to easily build general Fermion Hamiltonians.
+"""Factory functions to easily build general Fermion and Qubit Hamiltonians.
 
 The :class:`QubitHamiltonian` and :class:`FermionHamiltonian` types are
 implemented in Rust and re-exported here from :mod:`ferrmion.core`.

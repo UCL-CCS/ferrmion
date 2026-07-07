@@ -3,7 +3,6 @@
 from ferrmion.optimize.cost_functions import (
     minimise_mi_distance,
     distance_squared,
-    coefficient_pauli_weight,
 )
 from ferrmion.hamiltonians import molecular_hamiltonian
 from ferrmion.encode import TernaryTree
@@ -169,18 +168,16 @@ def test_coefficient_pauli_weight(water_data):
     ones = water_data["ones"]
     twos = water_data["twos"]
 
-    jw = TernaryTree(14).JW()
+    jw = TernaryTree.JW(14)
     jw_qham = jw.encode(molecular_hamiltonian(ones, twos))
-    jw_norm = coefficient_pauli_weight(jw_qham)[0]
+    jw_norm = jw_qham.coeff_pauli_weight()
 
-    assert isinstance(jw_norm, np.float64)
     assert np.allclose(int(jw_norm), 191)
 
-    pe = TernaryTree(14).ParityEncoding()
+    pe = TernaryTree.Parity(14)
     pe_mol_ham = molecular_hamiltonian(ones, twos)
     pe_qham = pe.encode(pe_mol_ham)
-    pe_norm = coefficient_pauli_weight(pe_qham)[0]
+    pe_norm = pe_qham.coeff_pauli_weight()
 
-    assert isinstance(pe_norm, np.float64)
     assert pe_norm > jw_norm
     assert np.allclose(int(pe_norm), 256)

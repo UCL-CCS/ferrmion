@@ -4,14 +4,13 @@ from qiskit.primitives.containers.bit_array import _WEIGHT_LOOKUP
 import numpy as np
 import pytest
 from ferrmion import QubitHamiltonian, TernaryTree, molecular_hamiltonian
-from ferrmion.encode.ternary_tree import JordanWigner, BravyiKitaev, ParityEncoding, JKMN
-from ferrmion.optimize.cost_functions import coefficient_pauli_weight, pauli_weight
+from ferrmion.encode.ternary_tree import JordanWigner, BravyiKitaev, Parity, JKMN
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
 from ..conftest import ENERGY_TOLERANCE, WEIGHT_TOLERANCE
 
 
-def _qham_to_ofop(qham: dict) -> QubitOperator:
+def _qham_to_ofop(qham: QubitHamiltonian) -> QubitOperator:
     ofop = QubitOperator()
     for k, v in qham.items():
         string = " ".join(
@@ -22,7 +21,7 @@ def _qham_to_ofop(qham: dict) -> QubitOperator:
     return ofop
 
 
-@pytest.mark.parametrize("encoding_cls", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
+@pytest.mark.parametrize("encoding_cls", [JordanWigner, Parity, BravyiKitaev, JKMN])
 def test_clifford_heuristic_does_not_increase_pauli_weight(encoding_cls, h2_mol_data_sets):
     ones = h2_mol_data_sets["ones"]
     twos = h2_mol_data_sets["twos"]
@@ -30,20 +29,21 @@ def test_clifford_heuristic_does_not_increase_pauli_weight(encoding_cls, h2_mol_
     n_modes = ones.shape[0]
 
     fham = molecular_hamiltonian(ones, twos, e_nuc)
-    baseline_qham = encoding_cls(n_modes).encode(fham)
-    baseline_weight = pauli_weight(baseline_qham)[0]
+    tree: TernaryTree = encoding_cls(n_modes)
+    baseline_qham = tree.encode(fham)
+    baseline_weight = baseline_qham.pauli_weight()
 
     opt_qham = baseline_qham.clifford_heuristic(
         temperature=float(n_modes),
         coefficient_weighted=False,
         seed=42,
     )
-    opt_weight = pauli_weight(opt_qham)[0]
+    opt_weight = opt_qham.pauli_weight()
 
     assert opt_weight <= baseline_weight + WEIGHT_TOLERANCE
 
 
-@pytest.mark.parametrize("encoding_cls", [JordanWigner, ParityEncoding, BravyiKitaev, JKMN])
+@pytest.mark.parametrize("encoding_cls", [JordanWigner, Parity, BravyiKitaev, JKMN])
 def test_clifford_heuristic_does_not_increase_coeff_pauli_weight(encoding_cls, water_data):
     ones = water_data["ones"]
     twos = water_data["twos"]
@@ -51,15 +51,15 @@ def test_clifford_heuristic_does_not_increase_coeff_pauli_weight(encoding_cls, w
     n_modes = ones.shape[0]
 
     fham = molecular_hamiltonian(ones, twos, e_nuc)
-    baseline_qham = encoding_cls(n_modes).encode(fham)
-    baseline_weight = coefficient_pauli_weight(baseline_qham)[0]
+    baseline_qham: QubitHamiltonian = encoding_cls(n_modes).encode(fham)
+    baseline_weight = baseline_qham.coeff_pauli_weight()
 
     opt_qham = baseline_qham.clifford_heuristic(
         temperature=2 * float(n_modes),
         coefficient_weighted=True,
         seed=42,
     )
-    opt_weight = coefficient_pauli_weight(opt_qham)[0]
+    opt_weight = opt_qham.coeff_pauli_weight()
 
     assert opt_weight <= baseline_weight + WEIGHT_TOLERANCE
 
@@ -131,7 +131,7 @@ def test_randomised_subsystem_descent_does_not_increase_pauli_weight(h2_mol_data
 
     fham = molecular_hamiltonian(ones, twos, e_nuc)
     baseline_qham = JordanWigner(n_modes).encode(fham)
-    baseline_weight = pauli_weight(baseline_qham)[0]
+    baseline_weight = baseline_qham.pauli_weight()
 
     opt_qham = baseline_qham.randomised_subsystem_descent(
         iterations=4,
@@ -144,7 +144,7 @@ def test_randomised_subsystem_descent_does_not_increase_pauli_weight(h2_mol_data
 
     assert isinstance(opt_qham, QubitHamiltonian)
     assert opt_qham.n_qubits == baseline_qham.n_qubits
-    assert pauli_weight(opt_qham)[0] <= baseline_weight
+    assert opt_qham.pauli_weight() <= baseline_weight
 
 
 @pytest.mark.parametrize("sampler", ["full_system", "uniform", "hamming"])
@@ -189,7 +189,7 @@ def test_clifford_heuristic_vp_does_not_increase_pauli_weight(h2_mol_data_sets):
 
     fham = molecular_hamiltonian(ones, twos, e_nuc)
     baseline_qham = JKMN(n_modes).encode(fham)
-    baseline_weight = pauli_weight(baseline_qham)[0]
+    baseline_weight = baseline_qham.pauli_weight()
 
     opt_qham = baseline_qham.clifford_heuristic(
         temperature=float(n_modes),
@@ -198,7 +198,7 @@ def test_clifford_heuristic_vp_does_not_increase_pauli_weight(h2_mol_data_sets):
         clifford_subset="vp",
     )
 
-    assert pauli_weight(opt_qham)[0] <= baseline_weight
+    assert opt_qham.pauli_weight() <= baseline_weight
 
 
 def test_clifford_heuristic_vp_seed_is_reproducible(h2_mol_data_sets):

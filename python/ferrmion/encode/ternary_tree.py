@@ -73,10 +73,8 @@ class TernaryTree:
             root_node (TTNode): The root node of the tree.
         """
         self.n_modes = n_modes
-        self.n_qubits = n_modes if n_qubits is None else n_qubits
+        self.n_qubits: int = n_modes if n_qubits is None else n_qubits
         self.root_node = TTNode() if root_node is None else root_node
-        self._enumeration_scheme = {}
-        self.default_mode_op_map = [*range(self.n_modes)]
 
         if None not in self.root_node.child_qubit_labels.values():
             self.enumeration_scheme: dict[str, tuple[int, int]] = {
@@ -95,27 +93,6 @@ class TernaryTree:
                 and self.build_encoding() == other.build_encoding()
             )
         return NotImplemented
-
-    @property
-    def default_mode_op_map(self) -> NDArray[np.uint]:
-        """The default mode operator map for the tree."""
-        return self._default_mode_op_map
-
-    @default_mode_op_map.setter
-    def default_mode_op_map(self, permutation: list[int]):
-        """Set the default mode operator map.
-
-        Args:
-            permutation (list[int]): A list containing a permutation of mode indices.
-        """
-        logger.debug("Setting default mode operator map.")
-        if set(permutation) != {*range(self.n_modes)}:
-            error_string = "Default Mode op map does not cover all modes.\n"
-            logger.error(error_string)
-            logger.error(permutation)
-            raise ValueError(error_string)
-
-        self._default_mode_op_map = np.array(permutation, dtype=np.uint)
 
     @property
     def enumeration_scheme(self) -> dict[str, tuple[int, int]]:
@@ -160,10 +137,11 @@ class TernaryTree:
             logger.error(error_string)
             raise ValueError(error_string)
 
-        self.default_mode_op_map = [enum[0] for enum in enumeration_dict.values()]
         self._enumeration_scheme = enumeration_dict
 
-    def build_encoding(self) -> MajoranaEncoding:
+    def build_encoding(
+        self, mode_enumeration: list[int] | None = None
+    ) -> MajoranaEncoding:
         """Build the Rust-backed encoding for the tree.
 
         The tree's ``default_mode_op_map`` is applied, so mode ``i`` of the
@@ -173,16 +151,15 @@ class TernaryTree:
         Returns:
             MajoranaEncoding: The encoding represented by this tree.
         """
-        encoding = MajoranaEncoding.from_flatpack(self.flatpack(), self.n_qubits)
-        mode_op_map = [int(mode) for mode in self.default_mode_op_map]
-        if mode_op_map != [*range(self.n_modes)]:
-            encoding = encoding.apply_mode_enumeration(mode_op_map)
-        return encoding
+        self._encoding = MajoranaEncoding.from_flatpack(self.flatpack(), self.n_qubits)
+        if mode_enumeration is not None and mode_enumeration != [*range(self.n_modes)]:
+            self._encoding = self._encoding.apply_mode_enumeration(mode_enumeration)
+        return self._encoding
 
     @property
     def vacuum_state(self) -> NDArray[np.bool]:
         """The vacuum state of the encoding represented by this tree."""
-        return self.build_encoding().vacuum_state
+        return self._encoding.vacuum_state
 
     def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
         """Encode a fermionic Hamiltonian into a qubit Hamiltonian.
@@ -193,7 +170,9 @@ class TernaryTree:
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian.
         """
-        return self.build_encoding().encode(fham)
+        if not hasattr(self, "_encoding"):
+            self.build_encoding()
+        return self._encoding.encode(fham)
 
     def encode_annealed(
         self,
@@ -202,7 +181,7 @@ class TernaryTree:
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
         seed: int | None = None,
-    ) -> tuple[QubitHamiltonian, MajoranaEncoding]:
+    ) -> QubitHamiltonian:
         """Encode a Hamiltonian, optimising mode enumeration via simulated annealing.
 
         Args:
@@ -214,25 +193,26 @@ class TernaryTree:
                 Defaults to ``1017`` when omitted.
 
         Returns:
-            tuple[QubitHamiltonian, MajoranaEncoding]: The encoded qubit
-            Hamiltonian and the encoding with the optimised enumeration.
+            QubitHamiltonian: The encoded qubit Hamiltonian.
         """
-        return self.build_encoding().encode_annealed(
+        qham, enc = self._encoding.encode_annealed(
             fham,
             temperature=temperature,
             initial_guess=initial_guess,
             coefficient_weighted=coefficient_weighted,
             seed=seed,
         )
+        self._encoding = enc
+        return qham
 
-    def encode_topphatt(
+    def topphatt(
         self,
         fham: FermionHamiltonian,
         parallelize: bool = True,
         heuristic: str = "min_weight",
         seed: int | None = None,
         backend: str = "dense_transpose",
-    ) -> tuple[QubitHamiltonian, MajoranaEncoding]:
+    ) -> MajoranaEncoding:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
         Args:
@@ -253,10 +233,49 @@ class TernaryTree:
                 valid encoding; they are provided for performance comparison.
 
         Returns:
-            tuple[QubitHamiltonian, MajoranaEncoding]: The encoded qubit
-            Hamiltonian and the tree-optimised encoding.
+            QubitHamiltonian: The encoded qubit Hamiltonian.
         """
-        return core.encode_topphatt(
+        return core.topphatt(
+            flatpack=self.flatpack(),
+            n_qubits=self.n_qubits,
+            hamiltonian=fham.to_majorana_sparse(),
+            parallelize=parallelize,
+            heuristic=heuristic,
+            seed=seed,
+            backend=backend,
+        )
+
+    def encode_topphatt(
+        self,
+        fham: FermionHamiltonian,
+        parallelize: bool = True,
+        heuristic: str = "min_weight",
+        seed: int | None = None,
+        backend: str = "dense_transpose",
+    ) -> QubitHamiltonian:
+        """Encode a Hamiltonian, using TOPP-HATT optimisation.
+
+        Args:
+            fham: The FermionHamiltonian to encode.
+            parallelize: Whether to parallelize the encoding.
+            heuristic: Node-selection strategy. One of ``"min_weight"``
+                (evaluate every active node and keep the lowest Pauli weight),
+                ``"x_first"`` (lowest-indexed active node), ``"z_first"``
+                (highest-indexed active node), or ``"random"``
+                (uniformly random active node using ``seed``).
+            seed: RNG seed for ``heuristic="random"``. Ignored otherwise;
+                defaults to ``0`` when omitted.
+            backend: Term-store backend driving the optimisation,
+                ``"sparse"`` (default), ``"dense_transpose"`` (transposed
+                bit-vector layout) or ``"sparse_transpose"`` (sparse inverted index:
+                a sorted list of term indices per Majorana). The transposed
+                backends do no term deduplication and may produce a different but
+                valid encoding; they are provided for performance comparison.
+
+        Returns:
+            QubitHamiltonian: The encoded qubit Hamiltonian.
+        """
+        qham, enc = core.encode_topphatt(
             flatpack=self.flatpack(),
             n_qubits=self.n_qubits,
             fham=fham,
@@ -265,6 +284,8 @@ class TernaryTree:
             seed=seed,
             backend=backend,
         )
+        self._encoding = enc
+        return qham
 
     def decode(self, states: NDArray[np.bool]) -> NDArray[np.bool]:
         """Decode Z-basis states into fermionic occupation vectors.
@@ -278,7 +299,7 @@ class TernaryTree:
         Raises:
             ValueError: if any state cannot be decoded for this encoding.
         """
-        return self.build_encoding().decode(states)
+        return self._encoding.decode(states)
 
     def hartree_fock_state(
         self,
@@ -295,11 +316,11 @@ class TernaryTree:
             NDArray: The Hartree-Fock ground state in computational basis.
         """
         if mode_op_map is None:
-            mode_op_map = self.default_mode_op_map
+            mode_op_map = [*range(self.n_modes)]
 
         mode_op_map = np.asarray(mode_op_map, dtype=np.uintp)
 
-        return self.build_encoding().hartree_fock_state(
+        return self._encoding.hartree_fock_state(
             np.asarray(fermionic_hf_state, dtype=bool), mode_op_map
         )
 
@@ -307,7 +328,7 @@ class TernaryTree:
         self, mode: int, coeff: complex | float = 1.0
     ) -> QubitHamiltonian:
         """Return the number operator of a mode for this encoding."""
-        return self.build_encoding().number_operator(mode, complex(coeff))
+        return self._encoding.number_operator(mode, complex(coeff))
 
     def edge_operator(
         self,
@@ -316,7 +337,7 @@ class TernaryTree:
         with_conjugate: bool = False,
     ) -> QubitHamiltonian:
         """Return the edge operator of a pair of modes for this encoding."""
-        return self.build_encoding().edge_operator(
+        return self._encoding.edge_operator(
             tuple(edge_indices), complex(coeff), with_conjugate
         )
 
@@ -328,7 +349,7 @@ class TernaryTree:
         with_conjugate: bool = False,
     ) -> QubitHamiltonian:
         """Return an interaction operator of four modes for this encoding."""
-        return self.build_encoding().interaction_operator(
+        return self._encoding.interaction_operator(
             tuple(mode_indices), complex(coeff), physicist_notation, with_conjugate
         )
 
@@ -339,7 +360,7 @@ class TernaryTree:
             dict: Dictionary with ``"ipowers"``, ``"symplectics"`` and
             ``"vacuum_state"`` keys.
         """
-        return self.build_encoding().to_json()
+        return self._encoding.to_json()
 
     def flatpack(self) -> TTFlatpack:
         """Create a TTFlatpack from the tree, which can be saved or passed to rust functions.
@@ -602,7 +623,7 @@ class TernaryTree:
         return pairs
 
     @classmethod
-    def jordan_wigner(cls, n_modes: int) -> "TernaryTree":
+    def JordanWigner(cls, n_modes: int, n_qubits: int | None = None) -> "TernaryTree":
         """Create a Jordan-Wigner encoding tree.
 
         Example:
@@ -610,13 +631,14 @@ class TernaryTree:
             >>> jw_tree = TernaryTree.jordan_wigner(3)
         """
         logger.debug("Creating Jordan-Wigner encoding tree")
-        new_tree = cls(n_modes=n_modes)
+        new_tree = cls(n_modes=n_modes, n_qubits=n_qubits)
         new_tree.add_node("z" * (n_modes - 1))
         new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
+        new_tree.build_encoding()
         return new_tree
 
     @classmethod
-    def parity(cls, n_modes: int) -> "TernaryTree":
+    def Parity(cls, n_modes: int, n_qubits: int | None = None) -> "TernaryTree":
         """Create a parity encoding tree.
 
         Example:
@@ -624,13 +646,14 @@ class TernaryTree:
             >>> parity_tree = TernaryTree.parity(3)
         """
         logger.debug("Creating parity encoding tree")
-        new_tree = cls(n_modes=n_modes)
+        new_tree = cls(n_modes=n_modes, n_qubits=n_qubits)
         new_tree.add_node("x" * (n_modes - 1))
         new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
+        new_tree.build_encoding()
         return new_tree
 
     @classmethod
-    def bravyi_kitaev(cls, n_modes: int) -> "TernaryTree":
+    def BravyiKitaev(cls, n_modes: int, n_qubits: int | None = None) -> "TernaryTree":
         """Create a Bravyi-Kitaev encoding tree.
 
         Example:
@@ -638,7 +661,7 @@ class TernaryTree:
             >>> bk_tree = TernaryTree.bravyi_kitaev(3)
         """
         logger.debug("Creating Bravyi-Kitaev encoding tree")
-        new_tree = cls(n_modes=n_modes)
+        new_tree = cls(n_modes=n_modes, n_qubits=n_qubits)
         branches = ["x"]
         # one is used for root, which is defined
         remaining_qubits = n_modes - 1
@@ -655,10 +678,11 @@ class TernaryTree:
                 new_branches.add(item + "z")
             branches = sorted(list(new_branches), key=node_sorter)
         new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
+        new_tree.build_encoding()
         return new_tree
 
     @classmethod
-    def jkmn(cls, n_modes: int) -> "TernaryTree":
+    def JKMN(cls, n_modes: int, n_qubits: int | None = None) -> "TernaryTree":
         """Create a JKMN (minimum-height) encoding tree.
 
         Example:
@@ -666,7 +690,7 @@ class TernaryTree:
             >>> min_height_tree = TernaryTree.jkmn(3)
         """
         logger.debug("Creating JKMN encoding tree.")
-        new_tree = cls(n_modes=n_modes)
+        new_tree = cls(n_modes=n_modes, n_qubits=n_qubits)
         branches = ["x", "y", "z"]
         # one is used for root which is defined
         remaining_qubits = n_modes - 1
@@ -684,81 +708,26 @@ class TernaryTree:
                 new_branches.add(item + "z")
             branches = sorted(list(new_branches), key=node_sorter)
         new_tree.enumeration_scheme = new_tree.default_enumeration_scheme()
+        new_tree.build_encoding()
         return new_tree
 
-    def JordanWigner(self) -> MajoranaEncoding:
-        """Create a Jordan-Wigner encoding with this tree's number of modes."""
-        return JordanWigner(self.n_modes)
-
-    def JW(self) -> MajoranaEncoding:
+    @classmethod
+    def JW(cls, n_modes: int, n_qubits: int | None = None) -> "TernaryTree":
         """Alias for the Jordan-Wigner encoding."""
-        return JordanWigner(self.n_modes)
+        return cls.JordanWigner(n_modes, n_qubits)
 
-    def ParityEncoding(self) -> MajoranaEncoding:
+    @classmethod
+    def PE(cls, n_modes: int, n_qubits: int | None = None) -> "TernaryTree":
         """Create a parity encoding with this tree's number of modes."""
-        return ParityEncoding(self.n_modes)
+        return cls.Parity(n_modes, n_qubits)
 
-    def BravyiKitaev(self) -> MajoranaEncoding:
-        """Create a Bravyi-Kitaev encoding with this tree's number of modes."""
-        return BravyiKitaev(self.n_modes)
-
-    def BK(self) -> MajoranaEncoding:
+    @classmethod
+    def BK(cls, n_modes: int, n_qubits: int | None = None) -> "TernaryTree":
         """Alias for the Bravyi-Kitaev encoding."""
-        return BravyiKitaev(self.n_modes)
-
-    def JKMN(self) -> MajoranaEncoding:
-        """Create a JKMN encoding with this tree's number of modes."""
-        return JKMN(self.n_modes)
+        return cls.BravyiKitaev(n_modes, n_qubits)
 
 
-def string_pairing_algorithm(tree: TernaryTree):
-    """String-pairing algoritm.
-
-    This is used to produce a map from branches to majorana-indices
-    of the root node.
-
-    Args:
-        tree (TernaryTree): A Ternary-tree encoding.
-
-    Returns:
-        dict[str, int]: A map from branches to majorana mdoe indices.
-    """
-    logger.debug("Running the string-pairing algorithm.")
-    node_set = tree.root_node.child_strings
-
-    branch_majorana_map = {}
-    for node_string in node_set:
-        # We want to set the majorana indices according to the
-        # fermionic ones so that f_i -> (m_2i, m_2i+1)
-        fermion_mode = tree.enumeration_scheme[node_string][0]
-
-        x_string = node_string + "x"
-        y_string = node_string + "y"
-        while x_string in node_set:
-            x_string += "z"
-
-        while y_string in node_set:
-            y_string += "z"
-
-        if x_string.count("y") % 2 == 0:
-            branch_majorana_map[x_string] = 2 * fermion_mode
-            branch_majorana_map[y_string] = 2 * fermion_mode + 1
-        elif y_string.count("y") % 2 == 0:
-            branch_majorana_map[y_string] = 2 * fermion_mode
-            branch_majorana_map[x_string] = 2 * fermion_mode + 1
-
-    # We'll place the all-z string after all the required majorana modes
-    all_z = "z"
-    while all_z in node_set:
-        all_z += "z"
-    branch_majorana_map[all_z] = 2 * len(node_set) + 1
-
-    logger.debug("String-pairing algorithm complete.")
-    logger.debug(f"{branch_majorana_map=}")
-    return branch_majorana_map
-
-
-def JordanWigner(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
+def JordanWigner(n_modes: int, n_qubits: int | None = None) -> "TernaryTree":
     """The Jordan-Wigner encoding.
 
     Args:
@@ -766,21 +735,21 @@ def JordanWigner(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
         n_qubits (int | None): Optional number of qubits; defaults to ``n_modes``.
 
     Returns:
-        MajoranaEncoding: The Jordan-Wigner encoding.
+        TernaryTree: The Jordan-Wigner encoding.
 
     Example:
         >>> from ferrmion.encode.ternary_tree import JordanWigner
         >>> jw = JordanWigner(3)
     """
-    return MajoranaEncoding.jordan_wigner(n_modes, n_qubits)
+    return TernaryTree.JordanWigner(n_modes, n_qubits)
 
 
-def JW(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
+def JW(n_modes: int, n_qubits: int | None = None) -> TernaryTree:
     """Alias for the Jordan-Wigner encoding."""
     return JordanWigner(n_modes, n_qubits)
 
 
-def ParityEncoding(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
+def Parity(n_modes: int, n_qubits: int | None = None) -> TernaryTree:
     """The parity encoding.
 
     Args:
@@ -788,21 +757,21 @@ def ParityEncoding(n_modes: int, n_qubits: int | None = None) -> MajoranaEncodin
         n_qubits (int | None): Optional number of qubits; defaults to ``n_modes``.
 
     Returns:
-        MajoranaEncoding: The parity encoding.
+        TernaryTree: The parity encoding.
 
     Example:
-        >>> from ferrmion.encode.ternary_tree import ParityEncoding
-        >>> parity = ParityEncoding(3)
+        >>> from ferrmion.encode.ternary_tree import Parity
+        >>> parity = Parity(3)
     """
-    return MajoranaEncoding.parity(n_modes, n_qubits)
+    return TernaryTree.Parity(n_modes, n_qubits)
 
 
-def PE(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
-    """Alias for ParityEncoding."""
-    return ParityEncoding(n_modes, n_qubits)
+def PE(n_modes: int, n_qubits: int | None = None) -> TernaryTree:
+    """Alias for Parity."""
+    return Parity(n_modes, n_qubits)
 
 
-def BravyiKitaev(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
+def BravyiKitaev(n_modes: int, n_qubits: int | None = None) -> TernaryTree:
     """The Bravyi-Kitaev encoding.
 
     Args:
@@ -810,21 +779,21 @@ def BravyiKitaev(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
         n_qubits (int | None): Optional number of qubits; defaults to ``n_modes``.
 
     Returns:
-        MajoranaEncoding: The Bravyi-Kitaev encoding.
+        TernaryTree: The Bravyi-Kitaev encoding.
 
     Example:
         >>> from ferrmion.encode.ternary_tree import BravyiKitaev
         >>> bk = BravyiKitaev(3)
     """
-    return MajoranaEncoding.bravyi_kitaev(n_modes, n_qubits)
+    return TernaryTree.BravyiKitaev(n_modes, n_qubits)
 
 
-def BK(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
+def BK(n_modes: int, n_qubits: int | None = None) -> TernaryTree:
     """Alias for the Bravyi-Kitaev encoding."""
     return BravyiKitaev(n_modes, n_qubits)
 
 
-def JKMN(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
+def JKMN(n_modes: int, n_qubits: int | None = None) -> TernaryTree:
     """The JKMN encoding.
 
     The JKMN encoding gives a ternary tree with the minimum Pauli-weight.
@@ -834,206 +803,10 @@ def JKMN(n_modes: int, n_qubits: int | None = None) -> MajoranaEncoding:
         n_qubits (int | None): Optional number of qubits; defaults to ``n_modes``.
 
     Returns:
-        MajoranaEncoding: The JKMN encoding.
+        TernaryTree: The JKMN encoding.
 
     Example:
         >>> from ferrmion.encode.ternary_tree import JKMN
         >>> min_height = JKMN(3)
     """
-    return MajoranaEncoding.jkmn(n_modes, n_qubits)
-
-
-def jordan_wigner(fham: FermionHamiltonian) -> QubitHamiltonian:
-    """Naive Jordan-Wigner Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return JordanWigner(fham.n_modes).encode(fham)
-
-
-def bravyi_kitaev(fham: FermionHamiltonian) -> QubitHamiltonian:
-    """Naive Bravyi-Kitaev Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return BravyiKitaev(fham.n_modes).encode(fham)
-
-
-def parity(fham: FermionHamiltonian) -> QubitHamiltonian:
-    """Naive Parity Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return ParityEncoding(fham.n_modes).encode(fham)
-
-
-def jkmn(fham: FermionHamiltonian) -> QubitHamiltonian:
-    """Naive Jiang-Kalev-Mruczkiewicz-Neven Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return JKMN(fham.n_modes).encode(fham)
-
-
-def jordan_wigner_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
-    """TOPP-HATT optimised Jordan-Wigner Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return TernaryTree.jordan_wigner(fham.n_modes).encode_topphatt(fham)[0]
-
-
-def bravyi_kitaev_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
-    """TOPP-HATT optimised Bravyi-Kitaev Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return TernaryTree.bravyi_kitaev(fham.n_modes).encode_topphatt(fham)[0]
-
-
-def parity_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
-    """TOPP-HATT optimised Parity Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return TernaryTree.parity(fham.n_modes).encode_topphatt(fham)[0]
-
-
-def jkmn_topphatt(fham: FermionHamiltonian) -> QubitHamiltonian:
-    """TOPP-HATT optimised Jiang-Kalev-Mruczkiewicz-Neven Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return TernaryTree.jkmn(fham.n_modes).encode_topphatt(fham)[0]
-
-
-def jordan_wigner_annealed(
-    fham: FermionHamiltonian,
-    temperature: int | None = None,
-    initial_guess: list[int] | None = None,
-    coefficient_weighted: bool = True,
-    seed: int | None = None,
-) -> QubitHamiltonian:
-    """Annealing-optimised Jordan-Wigner Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-        temperature (Optional[int]): Initial annealing temperature.
-        initial_guess (Optional[list[int]]): Initial mode enumeration.
-        coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
-        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
-            when omitted, preserving prior behaviour.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return JordanWigner(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted, seed
-    )[0]
-
-
-def bravyi_kitaev_annealed(
-    fham: FermionHamiltonian,
-    temperature: int | None = None,
-    initial_guess: list[int] | None = None,
-    coefficient_weighted: bool = True,
-    seed: int | None = None,
-) -> QubitHamiltonian:
-    """Annealing-optimised Bravyi-Kitaev Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-        temperature (Optional[int]): Initial annealing temperature.
-        initial_guess (Optional[list[int]]): Initial mode enumeration.
-        coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
-        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
-            when omitted, preserving prior behaviour.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return BravyiKitaev(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted, seed
-    )[0]
-
-
-def parity_annealed(
-    fham: FermionHamiltonian,
-    temperature: int | None = None,
-    initial_guess: list[int] | None = None,
-    coefficient_weighted: bool = True,
-    seed: int | None = None,
-) -> QubitHamiltonian:
-    """Annealing-optimised Parity Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-        temperature (Optional[int]): Initial annealing temperature.
-        initial_guess (Optional[list[int]]): Initial mode enumeration.
-        coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
-        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
-            when omitted, preserving prior behaviour.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return ParityEncoding(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted, seed
-    )[0]
-
-
-def jkmn_annealed(
-    fham: FermionHamiltonian,
-    temperature: int | None = None,
-    initial_guess: list[int] | None = None,
-    coefficient_weighted: bool = True,
-    seed: int | None = None,
-) -> QubitHamiltonian:
-    """Annealing-optimised Jiang-Kalev-Mruczkiewicz-Neven Encoding.
-
-    Args:
-        fham (FermionHamiltonian): Hamiltonian to encode.
-        temperature (Optional[int]): Initial annealing temperature.
-        initial_guess (Optional[list[int]]): Initial mode enumeration.
-        coefficient_weighted (bool): True to minimise coefficient Pauli-weight.
-        seed (Optional[int]): Seed for the annealing RNG. Defaults to ``1017``
-            when omitted, preserving prior behaviour.
-
-    Returns:
-        QubitHamiltonian: Encoded Hamiltonian.
-    """
-    return JKMN(fham.n_modes).encode_annealed(
-        fham, temperature, initial_guess, coefficient_weighted, seed
-    )[0]
+    return TernaryTree.JKMN(n_modes, n_qubits)

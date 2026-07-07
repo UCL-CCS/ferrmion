@@ -2,28 +2,11 @@
 
 import numpy as np
 from ferrmion.core import FermionHamiltonian
-from ferrmion.utils import (
-    icount_to_sign,
+from ferrmion.core import (
     pauli_to_symplectic,
-    symplectic_hash,
     symplectic_to_pauli,
     symplectic_to_sparse,
-    symplectic_unhash,
 )
-
-
-def test_icount_to_sign() -> None:
-    assert icount_to_sign(0) == 1
-    assert icount_to_sign(1) == 1j
-    assert icount_to_sign(2) == -1
-    assert icount_to_sign(3) == -1j
-
-
-def test_symplectic_hashing() -> None:
-    symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=bool)
-    print(symplectic_hash(symplectic))
-    print(symplectic_unhash(symplectic_hash(symplectic), len(symplectic)))
-
 
 def test_symplectic_pauli_conversion() -> None:
     symplectic = np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=bool)

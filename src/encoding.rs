@@ -18,9 +18,7 @@ use std::collections::HashSet;
 /// A fermion-to-qubit encoding defined by its Majorana operator representations,
 /// backed by the Rust [`MajoranaEncoding`] type.
 ///
-/// Instances are immutable; operations like `apply_mode_enumeration` return a
-/// new encoding.
-#[pyclass(name = "MajoranaEncoding", module = "ferrmion.core", frozen)]
+#[pyclass(name = "MajoranaEncoding", module = "ferrmion.core")]
 #[derive(Clone, Debug)]
 pub struct PyMajoranaEncoding(pub MajoranaEncoding);
 
@@ -333,21 +331,21 @@ impl PyMajoranaEncoding {
     ///     Hamiltonian and the encoding with the optimised mode enumeration.
     #[pyo3(signature = (fham, temperature = None, initial_guess = None, coefficient_weighted = true, seed = None))]
     fn encode_annealed(
-        &self,
+        &mut self,
         py: Python<'_>,
         fham: PyRef<'_, PyFermionHamiltonian>,
         temperature: Option<f64>,
         initial_guess: Option<Vec<usize>>,
         coefficient_weighted: bool,
         seed: Option<usize>,
-    ) -> Result<(PyQubitHamiltonian, Self), CoreError> {
+    ) -> Result<PyQubitHamiltonian, CoreError> {
         let hamiltonian = fham.inner.to_majorana_sparse();
         let temperature = temperature.unwrap_or((fham.inner.n_modes() / 2) as f64);
         let initial_guess =
             Array1::from(initial_guess.unwrap_or_else(|| (0..self.0.n_modes).collect()));
         let params = AnnealingParameters::new(temperature, 1000, seed.unwrap_or(1017));
 
-        let (qham, encoding) = py.allow_threads(|| -> Result<_, CoreError> {
+        let qham = py.allow_threads(|| -> Result<_, CoreError> {
             let mut anneal_hamiltonian = hamiltonian.clone();
             anneal_hamiltonian.constant = 0.0;
             let (_, best_mode_enumeration) = anneal_enumerations(
@@ -358,13 +356,13 @@ impl PyMajoranaEncoding {
                 coefficient_weighted,
             )
             .map_err(|e| CoreError::Runtime(e.to_string()))?;
-            let encoding = self
+            self.0 = self
                 .0
                 .apply_mode_enumeration(best_mode_enumeration.to_vec());
-            let qham = encoding.encode(&hamiltonian);
-            Ok((qham, encoding))
+            let qham = self.0.encode(&hamiltonian);
+            Ok(qham)
         })?;
-        Ok((PyQubitHamiltonian(qham), Self(encoding)))
+        Ok(PyQubitHamiltonian(qham))
     }
 
     /// Optimise the mode enumeration via simulated annealing without encoding.
@@ -380,14 +378,14 @@ impl PyMajoranaEncoding {
     ///     Tuple of ``(best_cost, MajoranaEncoding)``.
     #[pyo3(signature = (fham, temperature = None, initial_guess = None, coefficient_weighted = false, seed = None))]
     fn anneal_enumeration(
-        &self,
+        &mut self,
         py: Python<'_>,
         fham: PyRef<'_, PyFermionHamiltonian>,
         temperature: Option<f64>,
         initial_guess: Option<Vec<usize>>,
         coefficient_weighted: bool,
         seed: Option<usize>,
-    ) -> Result<(f64, Self), CoreError> {
+    ) -> Result<f64, CoreError> {
         let mut hamiltonian = fham.inner.to_majorana_sparse();
         hamiltonian.constant = 0.0;
         let temperature = temperature.unwrap_or(fham.inner.n_modes() as f64);
@@ -395,7 +393,7 @@ impl PyMajoranaEncoding {
             Array1::from(initial_guess.unwrap_or_else(|| (0..self.0.n_modes).collect()));
         let params = AnnealingParameters::new(temperature, 1000, seed.unwrap_or(1017));
 
-        let (cost, encoding) = py.allow_threads(|| -> Result<_, CoreError> {
+        let cost = py.allow_threads(|| -> Result<_, CoreError> {
             let (cost, best_mode_enumeration) = anneal_enumerations(
                 hamiltonian,
                 self.0.clone(),
@@ -404,13 +402,12 @@ impl PyMajoranaEncoding {
                 coefficient_weighted,
             )
             .map_err(|e| CoreError::Runtime(e.to_string()))?;
-            Ok((
-                cost,
-                self.0
-                    .apply_mode_enumeration(best_mode_enumeration.to_vec()),
-            ))
+            self.0 = self
+                .0
+                .apply_mode_enumeration(best_mode_enumeration.to_vec());
+            Ok(cost)
         })?;
-        Ok((cost, Self(encoding)))
+        Ok(cost)
     }
 
     /// Decode an ensemble of Z-basis states into fermionic occupation vectors.
@@ -617,7 +614,7 @@ impl PyMajoranaEncoding {
         ),
     )> {
         let py = slf.py();
-        let this = slf.get();
+        let this = slf.borrow_mut();
         Ok((
             slf.get_type(),
             (

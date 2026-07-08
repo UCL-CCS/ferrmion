@@ -389,11 +389,11 @@ def test_encode_num_terms_equal_expected(encoding: Callable[[int], TernaryTree],
 
     match optimisation:
         case "naive":
-            qham = encoding(fham.n_modes).encode(fham)
+            qham = encoding(fham.n_modes).encode_naive(fham)
         case "anneal":
             qham = encoding(fham.n_modes).encode_annealed(fham)
         case "topphatt":
-            qham = encoding(fham.n_modes).encode_topphatt(fham)
+            qham = encoding(fham.n_modes).encode(fham)
 
     assert len(qham) == mol_data_sets["num_terms"]
 
@@ -418,11 +418,11 @@ def test_encode_h2_eigvals_equal_expected(encoding: Callable[[int], TernaryTree]
 
     match optimisation:
         case "naive":
-            qham = encoding(fham.n_modes).encode(fham)
+            qham = encoding(fham.n_modes).encode_naive(fham)
         case "anneal":
             qham = encoding(fham.n_modes).encode_annealed(fham)
         case "topphatt":
-            qham = encoding(fham.n_modes).encode_topphatt(fham)
+            qham = encoding(fham.n_modes).encode(fham)
     diag  = diagonalise_pauli_hamiltonian(qham, 2*n_modes)
 
     assert np.all(initial_ones == ones)
@@ -441,12 +441,12 @@ def test_encode_jw_water_eigvals_equal_expected(encoding: Callable[[int], Ternar
 
     match optimisation:
         case "naive":
-            qham = encoding(fham.n_modes).encode(fham)
+            qham = encoding(fham.n_modes).encode_naive(fham)
         # Takes too long for tests!
         # case "anneal":
             # qham = encoding(fham.n_modes).encode_annealed(fham)
         case "topphatt":
-            qham = encoding(fham.n_modes).encode_topphatt(fham)
+            qham = encoding(fham.n_modes).encode(fham)
     assert np.isclose(qham["I"*14], -46.465600781952176)
     diag = diagonalise_pauli_hamiltonian(qham, 2)
 
@@ -574,7 +574,7 @@ def test_benchmark_encode_topphatt(benchmark,encoding, mol_data_sets):
     e_nuc = mol_data_sets["constant_energy"]
     fham = FermionHamiltonian(terms={"+-": ones, "++--": twos}, constant_energy=e_nuc)
     encoding:TernaryTree= encoding(fham.n_modes)
-    benchmark(lambda: encoding.encode_topphatt(fham))
+    benchmark(lambda: encoding.encode(fham))
 
 
 

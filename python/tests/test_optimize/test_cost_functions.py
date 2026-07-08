@@ -169,14 +169,14 @@ def test_coefficient_pauli_weight(water_data):
     twos = water_data["twos"]
 
     jw = TernaryTree.JW(14)
-    jw_qham = jw.encode(molecular_hamiltonian(ones, twos))
+    jw_qham = jw.encode_naive(molecular_hamiltonian(ones, twos))
     jw_norm = jw_qham.coeff_pauli_weight()
 
     assert np.allclose(int(jw_norm), 191)
 
     pe = TernaryTree.Parity(14)
     pe_mol_ham = molecular_hamiltonian(ones, twos)
-    pe_qham = pe.encode(pe_mol_ham)
+    pe_qham = pe.encode_naive(pe_mol_ham)
     pe_norm = pe_qham.coeff_pauli_weight()
 
     assert pe_norm > jw_norm

@@ -161,7 +161,7 @@ class TernaryTree:
         """The vacuum state of the encoding represented by this tree."""
         return self._encoding.vacuum_state
 
-    def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian:
+    def encode_naive(self, fham: FermionHamiltonian) -> QubitHamiltonian:
         """Encode a fermionic Hamiltonian into a qubit Hamiltonian.
 
         Args:
@@ -195,14 +195,13 @@ class TernaryTree:
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian.
         """
-        qham, enc = self._encoding.encode_annealed(
+        qham = self._encoding.encode_annealed(
             fham,
             temperature=temperature,
             initial_guess=initial_guess,
             coefficient_weighted=coefficient_weighted,
             seed=seed,
         )
-        self._encoding = enc
         return qham
 
     def topphatt(
@@ -245,7 +244,7 @@ class TernaryTree:
             backend=backend,
         )
 
-    def encode_topphatt(
+    def encode(
         self,
         fham: FermionHamiltonian,
         parallelize: bool = True,

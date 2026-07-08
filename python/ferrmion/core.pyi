@@ -127,7 +127,7 @@ class MajoranaEncoding:
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
         seed: int | None = None,
-    ) -> tuple[QubitHamiltonian, "MajoranaEncoding"]: ...
+    ) -> QubitHamiltonian: ...
     def anneal_enumeration(
         self,
         fham: FermionHamiltonian,
@@ -135,7 +135,7 @@ class MajoranaEncoding:
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = False,
         seed: int | None = None,
-    ) -> tuple[float, "MajoranaEncoding"]: ...
+    ) -> float: ...
     def decode(self, states: npt.NDArray[np.bool]) -> npt.NDArray[np.bool]: ...
     def hartree_fock_state(
         self,

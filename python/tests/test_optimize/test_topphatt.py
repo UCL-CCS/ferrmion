@@ -26,7 +26,7 @@ def test_topphatt_preserves_topology(encoding, water_data):
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
     tree: TernaryTree = encoding(14)
     print(tree.flatpack())
-    _ = tree.encode_topphatt(fham)
+    _ = tree.encode(fham)
     assert tree.root_node.child_strings == encoding(14).root_node.child_strings
     assert tree.root_node.branch_strings == encoding(14).root_node.branch_strings
 
@@ -38,7 +38,7 @@ def test_topphatt_huffman(water_data):
     test_tree = huffman_ternary_tree(water_data["ones"], water_data["twos"])
     initial_children = test_tree.root_node.child_strings
     initial_branches = test_tree.root_node.branch_strings
-    _ = test_tree.encode_topphatt(fham)
+    _ = test_tree.encode(fham)
     assert test_tree.root_node.child_strings == initial_children
     assert test_tree.root_node.branch_strings == initial_branches
 
@@ -50,7 +50,7 @@ def test_topphatt_hatt(water_data):
     test_tree = hamiltonian_adaptive_ternary_tree(fham, n_modes=14)
     initial_children = test_tree.root_node.child_strings
     initial_branches = test_tree.root_node.branch_strings
-    _ = test_tree.encode_topphatt(fham)
+    _ = test_tree.encode(fham)
     assert test_tree.root_node.child_strings == initial_children
     assert test_tree.root_node.branch_strings == initial_branches
 
@@ -71,7 +71,7 @@ def test_topphatt_standard_h2_eigvals_equal_expected(encoding, parallelize, h2_m
             tree = TernaryTree.Parity(fham.n_modes)
         case "JKMN":
             tree = TernaryTree.JKMN(fham.n_modes)
-    qham= tree.encode_topphatt(fham, parallelize)
+    qham= tree.encode(fham, parallelize)
 
     ofop = QubitOperator()
     for k, v in qham.items():
@@ -108,8 +108,8 @@ def test_topphatt_standard_h2o_weights_not_increased(encoding, parallelize, wate
             tree = hamiltonian_adaptive_ternary_tree(fham, fham.n_modes)
         case "Huffman":
             tree = huffman_ternary_tree(ones, twos)
-    qham_naive = tree.encode(fham)
-    qham = tree.encode_topphatt(fham, parallelize)
+    qham_naive = tree.encode_naive(fham)
+    qham = tree.encode(fham, parallelize)
 
     assert np.isclose(float(qham.pauli_weight()/qham_naive.pauli_weight()),topphatt_weight_snapshot[encoding]["pauli_weight"], atol=0.01)
     assert np.isclose(float(qham.coeff_pauli_weight()/qham_naive.coeff_pauli_weight()), topphatt_weight_snapshot[encoding]["coefficient_pauli_weight"], atol=0.01)
@@ -140,8 +140,8 @@ def test_topphatt_dense_transpose_h2o_weights_match_snapshot(
             tree = TernaryTree.Parity(fham.n_modes)
         case "JKMN":
             tree = TernaryTree.JKMN(fham.n_modes)
-    qham_naive = tree.encode(fham)
-    qham = tree.encode_topphatt(fham, parallelize=False, backend="dense_transpose")
+    qham_naive = tree.encode_naive(fham)
+    qham = tree.encode(fham, parallelize=False, backend="dense_transpose")
 
     snapshot = topphatt_weight_snapshot[encoding]
     assert np.isclose(
@@ -163,7 +163,7 @@ def test_topphatt_heuristics_run(heuristic, h2_mol_data_sets):
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
     tree = TernaryTree.JKMN(fham.n_modes)
-    qham = tree.encode_topphatt(fham, parallelize=False, heuristic=heuristic, seed=42)
+    qham = tree.encode(fham, parallelize=False, heuristic=heuristic, seed=42)
     assert len(qham) > 0
 
 
@@ -174,11 +174,11 @@ def test_topphatt_random_seed_is_reproducible(h2_mol_data_sets):
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
 
     enc_a = TernaryTree.JKMN(fham.n_modes)
-    qham_a = enc_a.encode_topphatt(
+    qham_a = enc_a.encode(
         fham, parallelize=False, heuristic="random", seed=7
     )
     enc_b = TernaryTree.JKMN(fham.n_modes)
-    qham_b = enc_b.encode_topphatt(
+    qham_b = enc_b.encode(
         fham, parallelize=False, heuristic="random", seed=7
     )
     assert qham_a == qham_b
@@ -191,7 +191,7 @@ def test_topphatt_unknown_heuristic_raises(h2_mol_data_sets):
     e_nuc = h2_mol_data_sets["constant_energy"]
     fham = fr.molecular_hamiltonian(ones, twos, e_nuc)
     with pytest.raises(ValueError):
-        TernaryTree.JKMN(fham.n_modes).encode_topphatt(fham, heuristic="not_a_strategy")
+        TernaryTree.JKMN(fham.n_modes).encode(fham, heuristic="not_a_strategy")
 
 
 def test_topphatt_heuristic_distribution_h2o_jkmn(water_data):
@@ -209,7 +209,7 @@ def test_topphatt_heuristic_distribution_h2o_jkmn(water_data):
     n_modes = fham.n_modes
 
     def run(heuristic: str, seed: int | None = None) -> float:
-        qham = TernaryTree.JKMN(n_modes).encode_topphatt(
+        qham = TernaryTree.JKMN(n_modes).encode(
             fham, parallelize=False, heuristic=heuristic, seed=seed
         )
         return float(qham.pauli_weight())

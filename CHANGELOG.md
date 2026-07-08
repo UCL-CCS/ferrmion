@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+## [0.11.0] - 2026-08-01
 
+### Changed
+- `TernaryTree.encode` now runs topphatt, and `TernaryTree.encode_naive` can be used for the naive encoding.
+
+### Fixed
 - 32-bit release wheels (`armv7`, `i686`) failed to compile because
   `MajoranaHashMap::merge_into`'s stable shard hash used `usize` with 64-bit
   FNV-1a constants, which overflow `usize` on 32-bit targets. The hash is now

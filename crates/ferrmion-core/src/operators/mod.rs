@@ -1,11 +1,11 @@
 mod clifford;
+mod dense_block;
 mod fermion;
 mod ladder;
 mod pauli;
-mod symplectic_bits;
 
 pub use clifford::*;
+pub use dense_block::*;
 pub use fermion::*;
 pub use ladder::*;
 pub use pauli::*;
-pub use symplectic_bits::*;

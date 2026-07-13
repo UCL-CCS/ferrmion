@@ -32,59 +32,21 @@
 use ndarray::{Array1, ArrayView1};
 use std::cmp::Ordering;
 
-/// Number of `u64` words needed to hold `n_bits` bits.
-#[inline]
-pub(crate) fn words_for(n_bits: usize) -> usize {
-    n_bits.div_ceil(64)
-}
+/// A `DenseIndex` is a multi-dimensional index into a dense block of qubits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct DenseIndex<const WIDTH: usize>([usize; WIDTH]);
 
-/// Read bit `i` from a word slice.
-#[inline]
-pub(crate) fn bit_get(words: &[u64], i: usize) -> bool {
-    (words[i >> 6] >> (i & 63)) & 1 != 0
-}
-
-/// Write bit `i` of a word slice.
-#[inline]
-pub(crate) fn bit_set(words: &mut [u64], i: usize, value: bool) {
-    let mask = 1u64 << (i & 63);
-    let word = &mut words[i >> 6];
-    if value {
-        *word |= mask;
-    } else {
-        *word &= !mask;
+impl<const WIDTH: usize> DenseIndex<WIDTH> {
+    /// Number of `u64` words needed to hold `n_bits` bits.
+    #[inline]
+    pub(crate) fn words_for(n_bits: usize) -> usize {
+        n_bits.div_ceil(usize::BITS as usize)
     }
 }
 
-/// Popcount of `a & b` over matching word slices.
-#[inline]
-fn and_count(a: &[u64], b: &[u64]) -> usize {
-    a.iter()
-        .zip(b)
-        .map(|(x, y)| (x & y).count_ones() as usize)
-        .sum()
-}
-
-/// Popcount of `a | b` over matching word slices.
-#[inline]
-fn or_count(a: &[u64], b: &[u64]) -> usize {
-    a.iter()
-        .zip(b)
-        .map(|(x, y)| (x | y).count_ones() as usize)
-        .sum()
-}
-
-/// Popcount of a word slice.
-#[inline]
-fn popcount(a: &[u64]) -> usize {
-    a.iter().map(|x| x.count_ones() as usize).sum()
-}
-
-/// In-place `dst ^= src` over matching word slices.
-#[inline]
-fn xor_assign_words(dst: &mut [u64], src: &[u64]) {
-    for (d, s) in dst.iter_mut().zip(src) {
-        *d ^= s;
+impl<const WIDTH: usize> Default for DenseIndex<WIDTH> {
+    fn default() -> Self {
+        Self([0; WIDTH])
     }
 }
 
@@ -154,12 +116,12 @@ fn cmp_bits(a: &[u64], an: usize, b: &[u64], bn: usize) -> Ordering {
 /// A borrowed view over one symplectic block (`n_bits` qubits packed into a
 /// `&[u64]` word slice). Cheap to copy.
 #[derive(Clone, Copy, Debug)]
-pub struct BlockRef<'a> {
+pub struct DenseBlockRef<'a> {
     words: &'a [u64],
     n_bits: usize,
 }
 
-impl<'a> BlockRef<'a> {
+impl<'a> DenseBlockRef<'a> {
     /// Construct a view over `words`, interpreting the first `n_bits` bits.
     ///
     /// `words.len()` must equal `words_for(n_bits)`.
@@ -184,13 +146,13 @@ impl<'a> BlockRef<'a> {
     /// Read the bit at position `i`.
     #[inline]
     pub fn get(&self, i: usize) -> bool {
-        bit_get(self.words, i)
+        (self.words[i >> 6] >> (i & 63)) & 1 != 0
     }
 
     /// Number of set bits.
     #[inline]
     pub fn count_ones(&self) -> usize {
-        popcount(self.words)
+        self.words.iter().map(|x| x.count_ones() as usize).sum()
     }
 
     /// Iterator over the indices of set bits.
@@ -201,14 +163,22 @@ impl<'a> BlockRef<'a> {
 
     /// Popcount of `self & other` (the `z & x` phase term and the Y count).
     #[inline]
-    pub fn and_count_ones(&self, other: BlockRef) -> usize {
-        and_count(self.words, other.words)
+    pub fn and_count_ones(&self, other: DenseBlockRef) -> usize {
+        self.words
+            .iter()
+            .zip(other.words)
+            .map(|(x, y)| (x & y).count_ones() as usize)
+            .sum()
     }
 
     /// Popcount of `self | other` (Pauli weight of a row).
     #[inline]
-    pub fn or_count_ones(&self, other: BlockRef) -> usize {
-        or_count(self.words, other.words)
+    pub fn or_count_ones(&self, other: DenseBlockRef) -> usize {
+        self.words
+            .iter()
+            .zip(other.words)
+            .map(|(x, y)| (x | y).count_ones() as usize)
+            .sum()
     }
 
     /// Convert to a dense boolean array (Python / test boundary).
@@ -221,32 +191,34 @@ impl<'a> BlockRef<'a> {
     }
 }
 
-impl PartialEq for BlockRef<'_> {
+impl PartialEq for DenseBlockRef<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.n_bits == other.n_bits && self.words == other.words
     }
 }
-impl Eq for BlockRef<'_> {}
+impl Eq for DenseBlockRef<'_> {}
 
-impl PartialOrd for BlockRef<'_> {
+impl PartialOrd for DenseBlockRef<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
-impl Ord for BlockRef<'_> {
+impl Ord for DenseBlockRef<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
         cmp_bits(self.words, self.n_bits, other.words, other.n_bits)
     }
 }
 
+pub struct DenseProduct<const CHUNKS: usize>([usize; CHUNKS]);
+
 /// An owned symplectic block: `n_bits` qubits packed into `Vec<u64>` words.
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
-pub struct Block {
+pub struct DenseBlock {
     words: Vec<u64>,
     n_bits: usize,
 }
 
-impl Block {
+impl DenseBlock {
     /// Construct an all-`false` block of `n` bits.
     pub fn zeros(n: usize) -> Self {
         Self {
@@ -257,8 +229,8 @@ impl Block {
 
     /// Borrow this block as a [`BlockRef`].
     #[inline]
-    pub fn as_ref(&self) -> BlockRef<'_> {
-        BlockRef {
+    pub fn as_ref(&self) -> DenseBlockRef<'_> {
+        DenseBlockRef {
             words: &self.words,
             n_bits: self.n_bits,
         }
@@ -279,19 +251,25 @@ impl Block {
     /// Read the bit at position `i`.
     #[inline]
     pub fn get(&self, i: usize) -> bool {
-        bit_get(&self.words, i)
+        (self.words[i >> 6] >> (i & 63)) & 1 != 0
     }
 
     /// Set the bit at position `i`.
     #[inline]
     pub fn set(&mut self, i: usize, value: bool) {
-        bit_set(&mut self.words, i, value);
+        let mask = 1u64 << (i & 63);
+        let word = &mut self.words[i >> 6];
+        if value {
+            *word |= mask;
+        } else {
+            *word &= !mask;
+        }
     }
 
     /// Number of set bits.
     #[inline]
     pub fn count_ones(&self) -> usize {
-        popcount(&self.words)
+        self.words.iter().map(|x| x.count_ones() as usize).sum()
     }
 
     /// Iterator over the indices of set bits.
@@ -302,25 +280,35 @@ impl Block {
 
     /// Popcount of `self & other`.
     #[inline]
-    pub fn and_count_ones(&self, other: BlockRef) -> usize {
-        and_count(&self.words, other.words)
+    pub fn and_count_ones(&self, other: DenseBlockRef) -> usize {
+        self.words
+            .iter()
+            .zip(other.words)
+            .map(|(x, y)| (x & y).count_ones() as usize)
+            .sum()
     }
 
     /// Popcount of `self | other`.
     #[inline]
-    pub fn or_count_ones(&self, other: BlockRef) -> usize {
-        or_count(&self.words, other.words)
+    pub fn or_count_ones(&self, other: DenseBlockRef) -> usize {
+        self.words
+            .iter()
+            .zip(other.words)
+            .map(|(x, y)| (x | y).count_ones() as usize)
+            .sum()
     }
 
     /// In-place XOR: `self ^= other`.
     #[inline]
-    pub fn xor_assign(&mut self, other: BlockRef) {
-        xor_assign_words(&mut self.words, other.words);
+    pub fn xor_assign(&mut self, other: DenseBlockRef) {
+        for (d, s) in self.words.iter_mut().zip(other.words) {
+            *d ^= s;
+        }
     }
 
     /// Return a new block equal to `self ^ other`.
     #[inline]
-    pub fn xor(&self, other: BlockRef) -> Block {
+    pub fn xor(&self, other: DenseBlockRef) -> DenseBlock {
         let mut out = self.clone();
         out.xor_assign(other);
         out
@@ -328,7 +316,7 @@ impl Block {
 
     /// Build a block from a dense boolean array view (Python / test boundary).
     pub fn from_bool_view(view: ArrayView1<bool>) -> Self {
-        let mut block = Block::zeros(view.len());
+        let mut block = DenseBlock::zeros(view.len());
         for (i, &b) in view.iter().enumerate() {
             if b {
                 block.set(i, true);
@@ -343,12 +331,12 @@ impl Block {
     }
 }
 
-impl PartialOrd for Block {
+impl PartialOrd for DenseBlock {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
-impl Ord for Block {
+impl Ord for DenseBlock {
     fn cmp(&self, other: &Self) -> Ordering {
         cmp_bits(&self.words, self.n_bits, &other.words, other.n_bits)
     }
@@ -361,7 +349,7 @@ mod tests {
 
     #[test]
     fn get_set_roundtrip() {
-        let mut b = Block::zeros(4);
+        let mut b = DenseBlock::zeros(4);
         assert_eq!(b.len(), 4);
         b.set(1, true);
         b.set(3, true);
@@ -374,7 +362,7 @@ mod tests {
     #[test]
     fn get_set_multiword() {
         // 130 qubits spans three u64 words; exercise the padding tail.
-        let mut b = Block::zeros(130);
+        let mut b = DenseBlock::zeros(130);
         b.set(0, true);
         b.set(64, true);
         b.set(129, true);
@@ -385,22 +373,22 @@ mod tests {
     #[test]
     fn bool_roundtrip() {
         let arr = arr1(&[true, false, true, true]);
-        let b = Block::from_bool_view(arr.view());
+        let b = DenseBlock::from_bool_view(arr.view());
         assert_eq!(b.to_bool_array(), arr);
     }
 
     #[test]
     fn and_or_counts() {
-        let x = Block::from_bool_view(arr1(&[true, true, false, false]).view());
-        let z = Block::from_bool_view(arr1(&[false, true, true, false]).view());
+        let x = DenseBlock::from_bool_view(arr1(&[true, true, false, false]).view());
+        let z = DenseBlock::from_bool_view(arr1(&[false, true, true, false]).view());
         assert_eq!(x.and_count_ones(z.as_ref()), 1); // only position 1 set in both
         assert_eq!(x.or_count_ones(z.as_ref()), 3); // positions 0,1,2
     }
 
     #[test]
     fn xor_ops() {
-        let a = Block::from_bool_view(arr1(&[true, false, true]).view());
-        let b = Block::from_bool_view(arr1(&[true, true, false]).view());
+        let a = DenseBlock::from_bool_view(arr1(&[true, false, true]).view());
+        let b = DenseBlock::from_bool_view(arr1(&[true, true, false]).view());
         assert_eq!(
             a.xor(b.as_ref()).to_bool_array(),
             arr1(&[false, true, true])
@@ -409,8 +397,8 @@ mod tests {
 
     #[test]
     fn ordering_matches_bool_iter() {
-        let a = Block::from_bool_view(arr1(&[false, true]).view());
-        let b = Block::from_bool_view(arr1(&[true, false]).view());
+        let a = DenseBlock::from_bool_view(arr1(&[false, true]).view());
+        let b = DenseBlock::from_bool_view(arr1(&[true, false]).view());
         assert!(a < b);
         assert!(a.as_ref() < b.as_ref());
     }
@@ -419,7 +407,7 @@ mod tests {
     fn iter_ones_multiword_dense() {
         // A set bit in every word incl. the final partial (130 bits = 3 words),
         // and adjacent bits, to exercise the raw-u64 lowest-bit clearing.
-        let mut b = Block::zeros(130);
+        let mut b = DenseBlock::zeros(130);
         for &i in &[0usize, 1, 63, 64, 65, 127, 128, 129] {
             b.set(i, true);
         }
@@ -433,26 +421,26 @@ mod tests {
     fn ordering_multiword_and_unequal_length() {
         // Differ only in a high word (bit 70): the operand with 0 there is
         // smaller, matching LSB-first (bit 0 most significant) order.
-        let mut lo = Block::zeros(80);
+        let mut lo = DenseBlock::zeros(80);
         lo.set(3, true);
-        let mut hi = Block::zeros(80);
+        let mut hi = DenseBlock::zeros(80);
         hi.set(3, true);
         hi.set(70, true);
         assert!(lo < hi);
         assert!(lo.as_ref() < hi.as_ref());
 
         // Equal on all shared bits but different length: the shorter sorts first.
-        let short = Block::from_bool_view(arr1(&[true, false]).view());
-        let long = Block::from_bool_view(arr1(&[true, false, false]).view());
+        let short = DenseBlock::from_bool_view(arr1(&[true, false]).view());
+        let long = DenseBlock::from_bool_view(arr1(&[true, false, false]).view());
         assert!(short < long);
         assert!(short.as_ref() < long.as_ref());
     }
 
     #[test]
     fn block_ref_eq() {
-        let a = Block::from_bool_view(arr1(&[true, false, true]).view());
-        let b = Block::from_bool_view(arr1(&[true, false, true]).view());
-        let c = Block::from_bool_view(arr1(&[true, true, false]).view());
+        let a = DenseBlock::from_bool_view(arr1(&[true, false, true]).view());
+        let b = DenseBlock::from_bool_view(arr1(&[true, false, true]).view());
+        let c = DenseBlock::from_bool_view(arr1(&[true, true, false]).view());
         assert_eq!(a.as_ref(), b.as_ref());
         assert_ne!(a.as_ref(), c.as_ref());
     }

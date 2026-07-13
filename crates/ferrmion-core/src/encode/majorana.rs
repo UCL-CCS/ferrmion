@@ -4,8 +4,8 @@
 //! for transforming fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    Block, CoefficientPauliWeight, FermionProduct, MajoranaProduct, MajoranaSparse, PauliWeight,
-    SymplecticMatrix, SymplecticOperator,
+    CoefficientPauliWeight, DenseBlock, FermionProduct, MajoranaProduct, MajoranaSparse,
+    PauliWeight, SymplecticMatrix, SymplecticOperator,
 };
 use crate::spaces::{Fermion, Qubit};
 use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
@@ -619,7 +619,7 @@ impl MajoranaEncoding {
         // steps run as word-level bit ops, which stays fast even for dense
         // operators (Jordan-Wigner / parity Z-strings span every qubit) instead
         // of iterating each set bit.
-        let mut state_blocks: Vec<Block> = ensemble.states.clone();
+        let mut state_blocks: Vec<DenseBlock> = ensemble.states.clone();
         let mut current_coeffs = Array1::from_elem(n_states, Complex64::ONE);
         let mut occupations = Array2::<bool>::default((n_states, self.n_modes));
 

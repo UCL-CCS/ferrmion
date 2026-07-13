@@ -5,7 +5,7 @@ use num_complex::Complex64;
 use std::ops::Mul;
 use thiserror::Error;
 
-use crate::operators::{Block, BlockRef};
+use crate::operators::{DenseBlock, DenseBlockRef};
 use crate::spaces::{Fermion, Qubit};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +54,7 @@ pub enum StateError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZBasisState {
     /// Qubit occupation packed one bit per qubit into `u64` words.
-    pub(crate) state: Block,
+    pub(crate) state: DenseBlock,
     pub coefficient: Complex64,
     bra_ket: BraKet,
 }
@@ -75,13 +75,13 @@ impl ZBasisState {
     /// assert_eq!(s.coefficient.norm(), 1.0);
     /// ```
     pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
-        Self::from_block(Block::from_bool_view(state.view()), coefficient)
+        Self::from_block(DenseBlock::from_bool_view(state.view()), coefficient)
     }
 
     /// Construct a `ZBasisState` from an already-packed [`Block`].
     ///
     /// The coefficient is automatically normalised to unit norm.
-    pub fn from_block(state: Block, coefficient: Complex64) -> Self {
+    pub fn from_block(state: DenseBlock, coefficient: Complex64) -> Self {
         let mut out = Self {
             state,
             coefficient,
@@ -97,7 +97,7 @@ impl ZBasisState {
     }
 
     /// Borrow the packed qubit occupation.
-    pub fn state_block(&self) -> BlockRef<'_> {
+    pub fn state_block(&self) -> DenseBlockRef<'_> {
         self.state.as_ref()
     }
 
@@ -113,7 +113,7 @@ impl ZBasisState {
     /// assert!(s.state_bools().iter().all(|&b| !b));
     /// ```
     pub fn zeros(n_qubits: usize) -> Self {
-        Self::from_block(Block::zeros(n_qubits), Complex64::new(1., 0.))
+        Self::from_block(DenseBlock::zeros(n_qubits), Complex64::new(1., 0.))
     }
 }
 
@@ -132,7 +132,7 @@ impl State for ZBasisState {
 
     fn adjoint(self) -> Self {
         let n = self.state.len();
-        let mut reversed = Block::zeros(n);
+        let mut reversed = DenseBlock::zeros(n);
         for i in self.state.iter_ones() {
             reversed.set(n - 1 - i, true);
         }
@@ -147,7 +147,7 @@ impl State for ZBasisState {
     }
 
     fn reindex(&mut self, permutation: &[usize]) {
-        let mut new_state = Block::zeros(self.state.len());
+        let mut new_state = DenseBlock::zeros(self.state.len());
         for original in self.state.iter_ones() {
             new_state.set(permutation[original], true);
         }
@@ -264,7 +264,7 @@ mod zbasis_tests {
 #[derive(Debug, Clone)]
 pub struct ZBasisEnsemble {
     /// Each entry is a Z-basis state, packed one bit per qubit into `u64` words.
-    pub(crate) states: Vec<Block>,
+    pub(crate) states: Vec<DenseBlock>,
     /// Complex coefficient for each state.
     pub coefficients: Array1<Complex64>,
 }
@@ -285,7 +285,7 @@ impl ZBasisEnsemble {
         let states = states
             .rows()
             .into_iter()
-            .map(Block::from_bool_view)
+            .map(DenseBlock::from_bool_view)
             .collect();
         Self {
             states,

@@ -9,9 +9,9 @@
 //! - Sparse operators: Iterables containing product operator indices and coefficients.
 //! - Matrix operators: Matrices of coefficents, with operator indices given by the index of each coefficient.
 //!
-use crate::operators::symplectic_bits::words_for;
+use crate::operators::dense_block::words_for;
 use crate::operators::Clifford;
-use crate::operators::{Block, BlockRef};
+use crate::operators::{DenseBlock, DenseBlockRef};
 use crate::spaces::Qubit;
 use crate::states::ZBasisState;
 use ndarray::{arr2, Array1, Array2};
@@ -173,8 +173,8 @@ mod test_pauli {
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct SymplecticOperator {
     ipower: u8,
-    x: Block,
-    z: Block,
+    x: DenseBlock,
+    z: DenseBlock,
 }
 
 impl Qubit for SymplecticOperator {}
@@ -194,13 +194,13 @@ impl SymplecticOperator {
     pub fn new(ipower: u8, x_block: Array1<bool>, z_block: Array1<bool>) -> Self {
         Self {
             ipower,
-            x: Block::from_bool_view(x_block.view()),
-            z: Block::from_bool_view(z_block.view()),
+            x: DenseBlock::from_bool_view(x_block.view()),
+            z: DenseBlock::from_bool_view(z_block.view()),
         }
     }
 
     /// Construct a new [`SymplecticOperator`] directly from bitpacked [`Block`]s.
-    pub fn from_blocks(ipower: u8, x: Block, z: Block) -> Self {
+    pub fn from_blocks(ipower: u8, x: DenseBlock, z: DenseBlock) -> Self {
         Self { ipower, x, z }
     }
 
@@ -217,8 +217,8 @@ impl SymplecticOperator {
     pub fn identity(n_modes: usize) -> Self {
         Self {
             ipower: 0,
-            x: Block::zeros(n_modes),
-            z: Block::zeros(n_modes),
+            x: DenseBlock::zeros(n_modes),
+            z: DenseBlock::zeros(n_modes),
         }
     }
 
@@ -232,12 +232,12 @@ impl SymplecticOperator {
     }
 
     /// Return a borrowed view of the bitpacked X block.
-    pub fn x_bits(&self) -> BlockRef<'_> {
+    pub fn x_bits(&self) -> DenseBlockRef<'_> {
         self.x.as_ref()
     }
 
     /// Return a borrowed view of the bitpacked Z block.
-    pub fn z_bits(&self) -> BlockRef<'_> {
+    pub fn z_bits(&self) -> DenseBlockRef<'_> {
         self.z.as_ref()
     }
 
@@ -383,15 +383,15 @@ impl Mul<ZBasisState> for SymplecticOperator {
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct SymplecticOperatorView<'sym> {
     ipower: u8,
-    x: BlockRef<'sym>,
-    z: BlockRef<'sym>,
+    x: DenseBlockRef<'sym>,
+    z: DenseBlockRef<'sym>,
 }
 
 impl Qubit for SymplecticOperatorView<'_> {}
 
 impl<'sym> SymplecticOperatorView<'sym> {
     /// Construct a new [`SymplecticOperatorView`] from borrowed bitpacked blocks.
-    pub fn new(ipower: u8, x: BlockRef<'sym>, z: BlockRef<'sym>) -> Self {
+    pub fn new(ipower: u8, x: DenseBlockRef<'sym>, z: DenseBlockRef<'sym>) -> Self {
         Self { ipower, x, z }
     }
 
@@ -566,8 +566,8 @@ impl SymplecticMatrix {
         let mut ipowers = Array1::from_elem(n_rows, 0u8);
         for (r, ip) in ipowers.iter_mut().enumerate() {
             let base = r * words_per_row;
-            let xr = BlockRef::new(&x_words[base..base + words_per_row], n_qubits);
-            let zr = BlockRef::new(&z_words[base..base + words_per_row], n_qubits);
+            let xr = DenseBlockRef::new(&x_words[base..base + words_per_row], n_qubits);
+            let zr = DenseBlockRef::new(&z_words[base..base + words_per_row], n_qubits);
             *ip = (xr.and_count_ones(zr) % 4) as u8;
         }
         Self {
@@ -645,14 +645,14 @@ impl SymplecticMatrix {
 
     /// Borrow the bitpacked X block of the given row.
     #[inline]
-    pub fn row_x(&self, row: usize) -> BlockRef<'_> {
-        BlockRef::new(self.x_row(row), self.n_qubits)
+    pub fn row_x(&self, row: usize) -> DenseBlockRef<'_> {
+        DenseBlockRef::new(self.x_row(row), self.n_qubits)
     }
 
     /// Borrow the bitpacked Z block of the given row.
     #[inline]
-    pub fn row_z(&self, row: usize) -> BlockRef<'_> {
-        BlockRef::new(self.z_row(row), self.n_qubits)
+    pub fn row_z(&self, row: usize) -> DenseBlockRef<'_> {
+        DenseBlockRef::new(self.z_row(row), self.n_qubits)
     }
 
     /// Borrow all per-row `i`-powers.
@@ -1021,8 +1021,8 @@ impl SymplecticMatrixTranspose<'_> {
         let wpr = self.words_per_row;
         for r in 0..self.n_rows {
             let base = r * wpr;
-            let xr = BlockRef::new(&self.x_words[base..base + wpr], self.n_qubits);
-            let zr = BlockRef::new(&self.z_words[base..base + wpr], self.n_qubits);
+            let xr = DenseBlockRef::new(&self.x_words[base..base + wpr], self.n_qubits);
+            let zr = DenseBlockRef::new(&self.z_words[base..base + wpr], self.n_qubits);
             for i in xr.iter_ones() {
                 weights[i] += 1;
             }

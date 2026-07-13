@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Symplectic Pauli operators (`SymplecticOperator`, `SymplecticOperatorView`,
-  `SymplecticMatrix`) now store their X and Z blocks as bitpacked integers via
-  the `bitvec` crate (one bit per qubit) instead of dense `bool` arrays,
+  `SymplecticMatrix`) now store their X and Z blocks as bitpacked integers
+  (one bit per qubit, packed into `u64` words) instead of dense `bool` arrays,
   reducing memory ~8x and turning the symplectic product, Pauli weight and
   Clifford conjugation into word-level bit operations. `SymplecticMatrix`'s
   previously public `x_block` / `z_block` / `ipowers` fields are now private
@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JSON boundary is unchanged: symplectic data is still exchanged as the
   concatenated `[x_block | z_block]` boolean array with a `uint8` `ipowers`
   vector.
+- Z-basis state vectors (`ZBasisState`, `ZBasisEnsemble`, and encoding vacuum
+  states) are now bitpacked into the same `u64`-word blocks, so applying a Pauli
+  operator to a state (`SymplecticOperator * ZBasisState`) and decoding run as
+  whole-word AND/XOR/popcount instead of iterating individual set-bit indices.
+  The occupation is still available as a boolean array via
+  `ZBasisState::state_bools()`, and the Python boundary (vacuum state,
+  Hartree-Fock state, decoded occupations) is unchanged.
+- Removed the `bitvec` dependency: the last two uses (set-bit iteration and the
+  lexicographic block ordering) are now implemented directly on the `u64`
+  storage words, so the whole symplectic/state layer is plain `u64` internally
+  with `bool` only at the Python edge.
 
 ## [0.11.0] - 2026-08-01
 

@@ -576,12 +576,9 @@ impl TernaryTree {
             for (col_idx, &qi) in index.iter().enumerate() {
                 padded_x.column_mut(qi).assign(&x_block.column(col_idx));
                 padded_z.column_mut(qi).assign(&z_block.column(col_idx));
-                padded_vacuum_state.state.slice_mut(s![qi]).fill(
-                    *vacuum_state
-                        .state
-                        .get(col_idx)
-                        .expect("Vacuum state should have same dimension as encoding."),
-                );
+                padded_vacuum_state
+                    .state
+                    .set(qi, vacuum_state.state.get(col_idx));
             }
             debug!("Padded x_block {:?}", padded_x);
             x_block = padded_x;

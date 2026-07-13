@@ -339,7 +339,7 @@ impl MajoranaEncoding {
                 self.vacuum_state.state, self.n_qubits,
             );
             return Err(MajoranaEncodingError::InvalidVacuumStateError(
-                self.vacuum_state.state.clone(),
+                self.vacuum_state.state_bools(),
             ));
         }
         // Check each singly-occupied FockState can be encoded ( a_i†|Ω⟩ is well-defined).
@@ -349,7 +349,7 @@ impl MajoranaEncoding {
             let _: ZBasisState = self
                 .try_encode(FockState::new(occ, Complex64::ONE))
                 .map_err(|_| {
-                    MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone())
+                    MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state_bools())
                 })?;
         }
         // Check the fully-occupied FockState can also be encoded.
@@ -357,7 +357,7 @@ impl MajoranaEncoding {
         let _: ZBasisState = self
             .try_encode(FockState::new(all_occ, Complex64::ONE))
             .map_err(|_| {
-                MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state.clone())
+                MajoranaEncodingError::InvalidVacuumStateError(self.vacuum_state.state_bools())
             })?;
         Ok(())
     }
@@ -573,7 +573,7 @@ impl MajoranaEncoding {
 
             if ann_coeff.norm() > COEFFICIENT_TOLERANCE {
                 occupation[i] = true;
-                current = ZBasisState::new(left.state, ann_coeff);
+                current = ZBasisState::from_block(left.state, ann_coeff);
             }
         }
 
@@ -611,19 +611,15 @@ impl MajoranaEncoding {
     /// assert_eq!(decoded[0].as_ref().unwrap().state, fock.state);
     /// ```
     pub fn decode_zbasis_ensemble(&self, ensemble: &ZBasisEnsemble) -> Vec<Option<FockState>> {
-        let n_states = ensemble.states.nrows();
+        let n_states = ensemble.states.len();
 
         // Working state as one bitpacked `Block` per state, mutated in-place
-        // across modes. Coefficients start at ONE (input ignored). Packing once
-        // up front lets the parity and state-update steps run as word-level bit
-        // ops, which stays fast even for dense operators (Jordan-Wigner / parity
-        // Z-strings span every qubit) instead of iterating each set bit.
-        let mut state_blocks: Vec<Block> = ensemble
-            .states
-            .rows()
-            .into_iter()
-            .map(Block::from_bool_view)
-            .collect();
+        // across modes. Coefficients start at ONE (input ignored). The ensemble
+        // already stores each state as a `Block`, so the parity and state-update
+        // steps run as word-level bit ops, which stays fast even for dense
+        // operators (Jordan-Wigner / parity Z-strings span every qubit) instead
+        // of iterating each set bit.
+        let mut state_blocks: Vec<Block> = ensemble.states.clone();
         let mut current_coeffs = Array1::from_elem(n_states, Complex64::ONE);
         let mut occupations = Array2::<bool>::default((n_states, self.n_modes));
 
@@ -684,10 +680,10 @@ impl MajoranaEncoding {
         }
 
         // Validate final state matches encoding vacuum.
-        let vacuum_block = Block::from_bool_view(self.vacuum_state.state.view());
+        let vacuum_block = &self.vacuum_state.state;
         (0..n_states)
             .map(|j| {
-                if state_blocks[j] == vacuum_block {
+                if state_blocks[j] == *vacuum_block {
                     Some(FockState::new(
                         occupations.row(j).to_owned(),
                         Complex64::ONE,
@@ -713,7 +709,7 @@ impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
         // Working state as a bitpacked `Block`, mutated across occupied modes, so
         // each operator's parity is a word-level popcount of `z & state` rather
         // than iterating every set bit of a (possibly dense) Z-string.
-        let mut state_block = Block::from_bool_view(self.vacuum_state.state.view());
+        let mut state_block = self.vacuum_state.state.clone();
         let mut coefficient = self.vacuum_state.coefficient;
 
         // Applying in reverse order ensures JW maps to all +1 states
@@ -764,7 +760,7 @@ impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
                 coefficient = combined / combined.norm();
             }
         }
-        Ok(ZBasisState::new(state_block.to_bool_array(), coefficient))
+        Ok(ZBasisState::from_block(state_block, coefficient))
     }
 }
 
@@ -940,7 +936,7 @@ mod owned_tests {
         let encoding: MajoranaEncoding = tree.build_encoding(6).unwrap();
         let result = encoding.try_encode(fockstate);
         assert!(matches!(result, Ok(_)));
-        assert!(result.unwrap().state == arr1(&[true, true, true, false, false, false]));
+        assert!(result.unwrap().state_bools() == arr1(&[true, true, true, false, false, false]));
     }
 
     #[test]
@@ -952,13 +948,13 @@ mod owned_tests {
         let result = encoding
             .try_encode(FockState::new(state1, Complex64::ONE))
             .unwrap();
-        assert!(result.state == arr1(&[true, true, true, false, false, false]));
+        assert!(result.state_bools() == arr1(&[true, true, true, false, false, false]));
 
         let state2 = Array1::from(vec![true, true, true, true, false, false]);
         let result2 = encoding
             .try_encode(FockState::new(state2, Complex64::ONE))
             .unwrap();
-        assert!(result2.state == arr1(&[true, true, true, true, false, false]));
+        assert!(result2.state_bools() == arr1(&[true, true, true, true, false, false]));
     }
 
     use proptest::prelude::*;
@@ -969,7 +965,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state_bools();
             let expected: Array1<bool> = hf_state.into_iter().collect();
             prop_assert_eq!(qubit_hf, expected);
         }
@@ -979,7 +975,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_parity(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state_bools();
             // expected_parity = cumsum(reversed) % 2, then reverse back
             let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
             let mut cumsum: usize = 0;
@@ -998,11 +994,11 @@ mod owned_tests {
             hf_state.extend(vec![false; n - n_electrons]);
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
+            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state_bools();
             prop_assert_eq!(naive_qubit_hf, Array1::from(hf_state.clone()));
             let mut enumerated_fockstate = FockState::new(Array1::from(hf_state.clone()), Complex64::ONE);
             enumerated_fockstate.reindex(&mode_op_map);
-            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().state;
+            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().state_bools();
             let mut expected = vec![false; n];
             for &i in &mode_op_map[..n_electrons] {
                 if i < n {
@@ -1016,7 +1012,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state_bools();
             let expected: Array1<bool> = hf_state.into_iter().collect();
             prop_assert_eq!(qubit_hf, expected);
         }
@@ -1026,7 +1022,7 @@ mod owned_tests {
             let n = hf_state.len();
             let tree = TernaryTree::naive_parity(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
+            let qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state_bools();
             // expected_parity = cumsum(reversed) % 2, then reverse back
             let mut reversed: Vec<bool> = hf_state.into_iter().rev().collect();
             let mut cumsum:usize = 0;
@@ -1045,11 +1041,11 @@ mod owned_tests {
             hf_state.extend(vec![false; n - n_electrons]);
             let tree = TernaryTree::naive_jordan_wigner(n);
             let encoding = tree.build_encoding(n).unwrap();
-            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state;
+            let naive_qubit_hf = encoding.try_encode(FockState::new(Array1::from(hf_state.clone()), Complex64::ONE)).unwrap().state_bools();
             prop_assert_eq!(naive_qubit_hf, Array1::from(hf_state.clone()));
             let mut enumerated_fockstate = FockState::new(Array1::from(hf_state.clone()), Complex64::ONE);
             enumerated_fockstate.reindex(&mode_op_map);
-            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().state;
+            let enumerated_qubit_hf = encoding.try_encode(enumerated_fockstate).unwrap().state_bools();
             let mut expected = vec![false; n];
             for &i in &mode_op_map[..n_electrons] {
                 if i < n {
@@ -1075,7 +1071,7 @@ mod owned_tests {
             let enc = tree.build_encoding(n).expect("valid encoding");
             let vacuum = MajoranaEncoding::determine_vacuum_state(&enc.operators)
                 .expect("should determine vacuum state");
-            prop_assert!(vacuum.state.iter().all(|&b| !b));
+            prop_assert!(vacuum.state_bools().iter().all(|&b| !b));
         }
     }
 
@@ -1084,7 +1080,7 @@ mod owned_tests {
         let tree = TernaryTree::naive_jordan_wigner(2);
         let enc = tree.build_encoding(2).unwrap();
         let vacuum = MajoranaEncoding::determine_vacuum_state(&enc.operators).unwrap();
-        assert!(vacuum.state.iter().all(|&b| !b));
+        assert!(vacuum.state_bools().iter().all(|&b| !b));
     }
 
     #[test]

@@ -352,15 +352,16 @@ impl Mul<ZBasisState> for SymplecticOperator {
 
     fn mul(self, rhs: ZBasisState) -> Self::Output {
         let mut state = rhs.state;
-        let mut phase_factor = c64(-1., 0.).powi(((2 * self.z.and_count_bools(&state)) % 4) as i32);
+        let mut phase_factor =
+            c64(-1., 0.).powi(((2 * self.z.and_count_ones(state.as_ref())) % 4) as i32);
         let y_count: i32 = self.x.and_count_ones(self.z.as_ref()) as i32;
         phase_factor *= c64(0., 1.).powi(y_count);
 
         let coefficient = rhs.coefficient * phase_factor;
 
-        self.x.xor_into_bools(&mut state);
+        state.xor_assign(self.x.as_ref());
 
-        ZBasisState::new(state, coefficient)
+        ZBasisState::from_block(state, coefficient)
     }
 }
 
@@ -427,13 +428,13 @@ impl Mul<ZBasisState> for SymplecticOperatorView<'_> {
     fn mul(self, rhs: ZBasisState) -> Self::Output {
         let mut state = rhs.state;
         let phase_factor = c64(0., 1.)
-            .powi(((self.ipower as usize + 2 * self.z.and_count_bools(&state)) % 4) as i32);
+            .powi(((self.ipower as usize + 2 * self.z.and_count_ones(state.as_ref())) % 4) as i32);
 
         let coefficient = rhs.coefficient * phase_factor;
 
-        self.x.xor_into_bools(&mut state);
+        state.xor_assign(self.x);
 
-        ZBasisState::new(state, coefficient)
+        ZBasisState::from_block(state, coefficient)
     }
 }
 
@@ -442,11 +443,11 @@ impl Mul<&mut ZBasisState> for SymplecticOperatorView<'_> {
 
     fn mul(self, rhs: &mut ZBasisState) {
         let mut phase_factor =
-            c64(-1., 0.).powi(((2 * self.z.and_count_bools(&rhs.state)) % 4) as i32);
+            c64(-1., 0.).powi(((2 * self.z.and_count_ones(rhs.state.as_ref())) % 4) as i32);
         let y_count: i32 = self.x.and_count_ones(self.z) as i32;
         phase_factor *= c64(0., 1.).powi(y_count);
 
-        self.x.xor_into_bools(&mut rhs.state);
+        rhs.state.xor_assign(self.x);
         rhs.coefficient *= phase_factor;
     }
 }

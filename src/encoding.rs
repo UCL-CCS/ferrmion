@@ -270,7 +270,7 @@ impl PyMajoranaEncoding {
             .map(|row| row.to_vec())
             .collect();
         output.set_item("symplectics", symplectics)?;
-        output.set_item("vacuum_state", self.0.vacuum_state.state.to_vec())?;
+        output.set_item("vacuum_state", self.0.vacuum_state.state_bools().to_vec())?;
         Ok(output)
     }
 
@@ -302,7 +302,7 @@ impl PyMajoranaEncoding {
     /// The vacuum state in the Z basis.
     #[getter]
     fn vacuum_state<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<bool>> {
-        self.0.vacuum_state.state.to_owned().into_pyarray(py)
+        self.0.vacuum_state.state_bools().into_pyarray(py)
     }
 
     /// Encode a fermionic Hamiltonian into a qubit Hamiltonian.
@@ -471,7 +471,7 @@ impl PyMajoranaEncoding {
             fockstate.reindex(&mode_op_map);
         }
         let state = self.0.try_encode(fockstate)?;
-        Ok(state.state.into_pyarray(py))
+        Ok(state.state_bools().into_pyarray(py))
     }
 
     /// The encoded number operator of a mode.

@@ -29,7 +29,6 @@
 //! on this so they can operate on the raw `u64` words without masking the final
 //! partial word. Both operands of a binary op always share the same qubit count,
 //! hence the same word count.
-use bitvec::prelude::*;
 use ndarray::{Array1, ArrayView1};
 use std::cmp::Ordering;
 
@@ -89,18 +88,67 @@ fn xor_assign_words(dst: &mut [u64], src: &[u64]) {
     }
 }
 
-/// Iterate the indices of set bits in the first `n_bits` bits of `words`.
-fn iter_ones(words: &[u64], n_bits: usize) -> impl Iterator<Item = usize> + '_ {
-    words.view_bits::<Lsb0>()[..n_bits].iter_ones()
+/// Iterate the indices of set bits in `words`, lowest first.
+///
+/// The `n_bits` argument is unused: the padding bits above `n_bits` are always
+/// zero (see the module-level invariant), so they never yield an index and no
+/// bound is needed. It is kept for call-site symmetry with the other helpers.
+fn iter_ones(words: &[u64], _n_bits: usize) -> impl Iterator<Item = usize> + '_ {
+    words.iter().enumerate().flat_map(|(w, &word)| {
+        let mut bits = word;
+        std::iter::from_fn(move || {
+            if bits == 0 {
+                None
+            } else {
+                let i = bits.trailing_zeros() as usize;
+                bits &= bits - 1; // clear the lowest set bit
+                Some(w * 64 + i)
+            }
+        })
+    })
 }
 
-/// Lexicographic order over the first `n_bits`/`m_bits` bits (bit 0 first,
+/// Compare two words as LSB-first bit sequences: the operand whose lowest
+/// *differing* bit is `0` sorts first. Returns `None` when the words are equal.
+#[inline]
+fn cmp_word(a: u64, b: u64) -> Option<Ordering> {
+    let diff = a ^ b;
+    if diff == 0 {
+        None
+    } else {
+        // Isolate the lowest differing bit; whichever operand has `0` there is
+        // the smaller bit sequence (bit 0 is most significant for this order).
+        let bit = diff & diff.wrapping_neg();
+        if a & bit == 0 {
+            Some(Ordering::Less)
+        } else {
+            Some(Ordering::Greater)
+        }
+    }
+}
+
+/// Lexicographic order over the first `an`/`bn` bits (bit 0 first,
 /// `false < true`), matching the previous `x_block.iter().cmp(...)` behaviour.
+///
+/// Relies on the padding-zero invariant so it can compare whole `u64` words;
+/// only the partial word at the `min(an, bn)` boundary is masked.
 fn cmp_bits(a: &[u64], an: usize, b: &[u64], bn: usize) -> Ordering {
-    a.view_bits::<Lsb0>()[..an]
-        .iter()
-        .by_vals()
-        .cmp(b.view_bits::<Lsb0>()[..bn].iter().by_vals())
+    let l = an.min(bn);
+    let full = l / 64;
+    for i in 0..full {
+        if let Some(ord) = cmp_word(a[i], b[i]) {
+            return ord;
+        }
+    }
+    let rem = l % 64;
+    if rem != 0 {
+        let mask = (1u64 << rem) - 1;
+        if let Some(ord) = cmp_word(a[full] & mask, b[full] & mask) {
+            return ord;
+        }
+    }
+    // All shared bits equal; the shorter bit sequence sorts first.
+    an.cmp(&bn)
 }
 
 /// A borrowed view over one symplectic block (`n_bits` qubits packed into a
@@ -161,20 +209,6 @@ impl<'a> BlockRef<'a> {
     #[inline]
     pub fn or_count_ones(&self, other: BlockRef) -> usize {
         or_count(self.words, other.words)
-    }
-
-    /// Popcount of `self & bools` for a dense boolean array.
-    #[inline]
-    pub fn and_count_bools(&self, bools: &Array1<bool>) -> usize {
-        self.iter_ones().filter(|&i| bools[i]).count()
-    }
-
-    /// Toggle `bools` in place at every position where `self` is set.
-    #[inline]
-    pub fn xor_into_bools(&self, bools: &mut Array1<bool>) {
-        for i in self.iter_ones() {
-            bools[i] = !bools[i];
-        }
     }
 
     /// Convert to a dense boolean array (Python / test boundary).
@@ -307,18 +341,6 @@ impl Block {
     pub fn to_bool_array(&self) -> Array1<bool> {
         self.as_ref().to_bool_array()
     }
-
-    /// Popcount of `self & bools` for a dense boolean array.
-    #[inline]
-    pub fn and_count_bools(&self, bools: &Array1<bool>) -> usize {
-        self.as_ref().and_count_bools(bools)
-    }
-
-    /// Toggle `bools` in place at every position where `self` is set.
-    #[inline]
-    pub fn xor_into_bools(&self, bools: &mut Array1<bool>) {
-        self.as_ref().xor_into_bools(bools);
-    }
 }
 
 impl PartialOrd for Block {
@@ -391,6 +413,39 @@ mod tests {
         let b = Block::from_bool_view(arr1(&[true, false]).view());
         assert!(a < b);
         assert!(a.as_ref() < b.as_ref());
+    }
+
+    #[test]
+    fn iter_ones_multiword_dense() {
+        // A set bit in every word incl. the final partial (130 bits = 3 words),
+        // and adjacent bits, to exercise the raw-u64 lowest-bit clearing.
+        let mut b = Block::zeros(130);
+        for &i in &[0usize, 1, 63, 64, 65, 127, 128, 129] {
+            b.set(i, true);
+        }
+        assert_eq!(
+            b.iter_ones().collect::<Vec<_>>(),
+            vec![0, 1, 63, 64, 65, 127, 128, 129]
+        );
+    }
+
+    #[test]
+    fn ordering_multiword_and_unequal_length() {
+        // Differ only in a high word (bit 70): the operand with 0 there is
+        // smaller, matching LSB-first (bit 0 most significant) order.
+        let mut lo = Block::zeros(80);
+        lo.set(3, true);
+        let mut hi = Block::zeros(80);
+        hi.set(3, true);
+        hi.set(70, true);
+        assert!(lo < hi);
+        assert!(lo.as_ref() < hi.as_ref());
+
+        // Equal on all shared bits but different length: the shorter sorts first.
+        let short = Block::from_bool_view(arr1(&[true, false]).view());
+        let long = Block::from_bool_view(arr1(&[true, false, false]).view());
+        assert!(short < long);
+        assert!(short.as_ref() < long.as_ref());
     }
 
     #[test]

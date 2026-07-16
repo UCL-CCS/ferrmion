@@ -70,7 +70,9 @@ PYTEST_K="test_benchmark_encode_topphatt"
 CRITERION_EXTRA=()
 CRITERION_FILTER=""
 if (( SMOKE )); then
-    PYTEST_K="test_benchmark_encode_topphatt and JordanWigner and h2_6"
+    # h2o/sto-3g is the smallest dataset that still takes the parallel
+    # expand-and-merge path (a few thousand terms); h2_* stay serial.
+    PYTEST_K="test_benchmark_encode_topphatt and JordanWigner and h2o_sto"
     CRITERION_EXTRA=(--quick)
     CRITERION_FILTER="50000"
 fi
@@ -135,9 +137,11 @@ for s in "${STRATEGY_ARR[@]}"; do
 
         if (( TIMING )); then
             echo "-- phase-timing capture"
+            # -s disables pytest's output capture, which would otherwise
+            # swallow the timing lines the Rust library prints to stderr.
             RAYON_NUM_THREADS="$t" FERRMION_MERGE_STRATEGY="$s" FERRMION_MERGE_TIMING=1 \
                 uv run --group test pytest python/tests/test_ternary_tree.py \
-                -k "$PYTEST_K" -q --no-header --benchmark-disable \
+                -k "$PYTEST_K" -q --no-header -s --benchmark-disable \
                 2> "$OUT/timing_${s}_t${t}.log" || {
                     echo "timing capture failed for $s/t$t (see $OUT/timing_${s}_t${t}.log)" >&2
                 }

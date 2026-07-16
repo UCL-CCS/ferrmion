@@ -11,23 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Symplectic Pauli operators (`SymplecticOperator`, `SymplecticOperatorView`,
   `SymplecticMatrix`) now store their X and Z blocks as bitpacked integers
-  (one bit per qubit, packed into machine words) instead of dense `bool` arrays,
-  reducing memory ~8x and turning the symplectic product, Pauli weight and
-  Clifford conjugation into word-level bit operations. The packed block is
-  `DenseBlock`, generic over its word backing (`DenseBlock<Vec<DenseIndex>>`
+  (one bit per qubit, packed into machine words) instead of dense `bool` arrays.
+- The packed block is `DenseBlock`, generic over its word backing (`DenseBlock<Vec<DenseIndex>>`
   owned, `DenseBlock<&[DenseIndex]>` borrowed), where `DenseIndex` is the packed
-  storage word. `SymplecticMatrix`'s previously public `x_block` / `z_block` /
-  `ipowers` fields are now private behind accessor methods. Internally
-  `SymplecticMatrix` stores each block as a single contiguous `Vec<DenseIndex>`
-  with rows padded to whole words, so cloning a matrix is a pair of contiguous
-  copies rather than one heap allocation per operator row; this removes a large
-  regression in `SymplecticHamiltonian::clone` (hot inside the Clifford-heuristic
-  and randomised-subsystem-descent annealers). Consumers route through accessor
-  methods (`row_x`, `row_z`, `ipowers`, `x_bools`, `z_bools`, `view_row`,
-  `select_rows`, `set_x`, `set_z`, `set_ipower`, …). The Python /
-  JSON boundary is unchanged: symplectic data is still exchanged as the
-  concatenated `[x_block | z_block]` boolean array with a `uint8` `ipowers`
-  vector.
+  storage word.
 - Z-basis state vectors (`ZBasisState`, `ZBasisEnsemble`, and encoding vacuum
   states) are now bitpacked into the same packed-word blocks, so applying a Pauli
   operator to a state (`SymplecticOperator * ZBasisState`) and decoding run as
@@ -35,10 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The occupation is still available as a boolean array via
   `ZBasisState::state_bools()`, and the Python boundary (vacuum state,
   Hartree-Fock state, decoded occupations) is unchanged.
-- Removed the `bitvec` dependency: the last two uses (set-bit iteration and the
-  lexicographic block ordering) are now implemented directly on the packed
-  storage words, so the whole symplectic/state layer is plain integer words
-  internally with `bool` only at the Python edge.
 
 ## [0.11.0] - 2026-08-01
 

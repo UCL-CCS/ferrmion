@@ -22,7 +22,6 @@ encode
 optimize
 hamiltonians
 core
-devices
 interop
 development
 rust_internals

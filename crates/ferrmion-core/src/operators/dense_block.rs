@@ -150,22 +150,6 @@ impl<const WIDTH: usize> DenseIndex<WIDTH> {
     }
 }
 
-/// Lexicographic order over the first `an`/`bn` bits (bit 0 first,
-/// `false < true`), matching the previous `x_block.iter().cmp(...)` behaviour.
-///
-/// Relies on the padding-zero invariant so it can compare whole words: the
-/// padding bits of the shorter operand are zero, so comparing the shared words
-/// and then falling back to the bit-length tiebreak reproduces the lexicographic
-/// "shorter sequence sorts first" rule.
-fn cmp_bits(a: &[DenseIndex], an: usize, b: &[DenseIndex], bn: usize) -> Ordering {
-    for (x, y) in a.iter().zip(b.iter()) {
-        if let Some(ord) = x.cmp_bits(*y) {
-            return ord;
-        }
-    }
-    an.cmp(&bn)
-}
-
 /// A symplectic block: `dim` qubits packed into [`DenseIndex`] words.
 ///
 /// Generic over the word backing `S`: `Vec<DenseIndex>` for an owned block or
@@ -320,8 +304,20 @@ impl<S: AsRef<[DenseIndex]> + Eq> PartialOrd for DenseBlock<S> {
     }
 }
 impl<S: AsRef<[DenseIndex]> + Eq> Ord for DenseBlock<S> {
+    /// Lexicographic order over the first `an`/`bn` bits (bit 0 first,
+    /// `false < true`), matching the previous `x_block.iter().cmp(...)` behaviour.
+    ///
+    /// Relies on the padding-zero invariant so it can compare whole words: the
+    /// padding bits of the shorter operand are zero, so comparing the shared words
+    /// and then falling back to the bit-length tiebreak reproduces the lexicographic
+    /// "shorter sequence sorts first" rule.
     fn cmp(&self, other: &Self) -> Ordering {
-        cmp_bits(self.words(), self.dim, other.words(), other.dim)
+        for (x, y) in self.words().iter().zip(other.words().iter()) {
+            if let Some(ord) = x.cmp_bits(*y) {
+                return ord;
+            }
+        }
+        self.dim.cmp(&other.dim)
     }
 }
 

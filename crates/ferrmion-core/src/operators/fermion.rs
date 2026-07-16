@@ -1,5 +1,6 @@
 //! Fermionic Operators
 use crate::operators::ladder::LadderOperator;
+use crate::operators::merge;
 use crate::spaces::Fermion;
 use crate::utils::COEFFICIENT_TOLERANCE;
 use ahash::{HashMap, HashMapExt};
@@ -8,22 +9,19 @@ use ndarray::{arr0, s, Dimension};
 use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis, IntoDimension};
 use num_complex::Complex64;
 use num_complex::{c64, ComplexFloat};
-use rayon::prelude::*;
 use std::result::Result;
 use tinyvec::ArrayVec;
 
 /// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
-const MAX_MAJORANAS: usize = 7;
+pub(super) const MAX_MAJORANAS: usize = 7;
+
+/// A canonicalized product of Majorana operators, identified by its sorted indices.
+pub(super) type MajoranaKey = ArrayVec<[u16; MAX_MAJORANAS]>;
 
 /// Minimum number of independent terms in a [`FermionSparse`] before
 /// `append_fermion_sparse` expands them across rayon worker threads. Below this,
 /// the serial path is used, avoiding rayon's scheduling overhead on small inputs.
 const PARALLEL_TERM_THRESHOLD: usize = 256;
-
-/// Minimum number of terms a single rayon task expands in the parallel path
-/// (`with_min_len`), so tiny per-term work is batched rather than scheduled
-/// individually.
-const PARALLEL_CHUNK: usize = 64;
 
 /*
 Fermion
@@ -431,71 +429,59 @@ fn cannonicalize<T: Ord + Default>(indices: &mut [T]) -> f64 {
     }
 }
 
+/// Expands one fermionic term (action, mode indices, coefficient) into its 2^n
+/// canonicalized Majorana components, passing each `(key, value)` pair to `emit`.
+///
+/// This is the shared expansion kernel: the serial path accumulates straight into
+/// a [`MajoranaHashMap`], while the parallel merge strategies in
+/// [`super::merge`] emit into their own containers.
+pub(super) fn expand_term<F: FnMut(MajoranaKey, Complex64)>(
+    action: &[LadderOperator],
+    indices: &[usize],
+    coeff: Complex64,
+    mut emit: F,
+) {
+    let term_length = action.len();
+    for mask in 0u32..(1u32 << term_length) {
+        let mut scaler = c64(1., 0.);
+        let mut key: MajoranaKey = ArrayVec::new();
+        for (j, (op, &idx)) in action.iter().zip(indices).enumerate() {
+            let o = ((mask >> j) & 1) as usize;
+            scaler *= op.majorana_coefficients()[o];
+            key.push((2 * idx + o) as u16);
+        }
+        let sign = cannonicalize(&mut key);
+        emit(key, coeff * scaler * sign);
+    }
+}
+
 /// Map from majorana indices to complex coefficients, used to accumulate and combine like terms.
 #[derive(Debug)]
 pub(super) struct MajoranaHashMap {
-    operators: HashMap<ArrayVec<[u16; MAX_MAJORANAS]>, Complex64>,
+    pub(super) operators: HashMap<MajoranaKey, Complex64>,
 }
 
 impl Fermion for MajoranaHashMap {}
 
 impl MajoranaHashMap {
     /// Default constructor, allocating an empty [`MajoranaHashMap`].
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             operators: HashMap::new(),
         }
     }
 
-    /// Return a new [`MajoranaHashMap`] with the given capacity.
-    fn with_capacity(capacity: usize) -> Self {
-        Self {
-            operators: HashMap::with_capacity(capacity),
-        }
-    }
-
-    /// Merge the operators from a set of [`MajoranaHashMap`] partials into this map,
-    /// distributing them across `n_shards` using a stable hash function.
-    fn merge_into(&mut self, partials: &[MajoranaHashMap], shard: usize, n_shards: usize) {
-        for local in partials {
-            for (key, &value) in local.operators.iter() {
-                if n_shards == 1 {
-                    *self.operators.entry(*key).or_insert(Complex64::ZERO) += value;
-                } else {
-                    // Stable (run-independent) hash of a Majorana key used to assign it to a merge
-                    // shard. FNV-1a over the `u16` indices — cheap and well-spread. Uses `u64`
-                    // (not `usize`) so the 64-bit FNV constants are valid on 32-bit targets too.
-                    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-                    for &index in key.iter() {
-                        hash = (hash ^ index as u64).wrapping_mul(0x0100_0000_01b3);
-                    }
-                    if (hash % n_shards as u64) as usize == shard {
-                        *self.operators.entry(*key).or_insert(Complex64::ZERO) += value;
-                    }
-                }
-            }
-        }
-    }
-
     /// Core accumulation: expand one fermionic term (given by its action, mode indices, and
     /// coefficient) into its 2^n majorana components and insert into the map.
-    fn append_term(&mut self, action: &[LadderOperator], indices: &[usize], coeff: Complex64) {
-        let term_length = action.len();
-        (0u32..(1u32 << term_length))
-            .map(move |mask| {
-                let mut scaler = c64(1., 0.);
-                let mut key: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-                for (j, (op, &idx)) in action.iter().zip(indices).enumerate() {
-                    let o = ((mask >> j) & 1) as usize;
-                    scaler *= op.majorana_coefficients()[o];
-                    key.push((2 * idx + o) as u16);
-                }
-                let sign = cannonicalize(&mut key);
-                (key, coeff * scaler * sign)
-            })
-            .for_each(|(key, value)| {
-                *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
-            });
+    pub(super) fn append_term(
+        &mut self,
+        action: &[LadderOperator],
+        indices: &[usize],
+        coeff: Complex64,
+    ) {
+        expand_term(action, indices, coeff, |key, value| {
+            *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
+        });
     }
 
     /// Append a single product of Fermionic operators to the [`MajoranaHashMap`].
@@ -529,46 +515,17 @@ impl MajoranaHashMap {
             debug!("MBTree {:?}\n", &self);
             return;
         }
-        // Phase 1 — expand chunks of independent terms into thread-local maps in
-        // parallel. Each chunk dedups its own contributions (aHash), so the
-        // intermediate stays small.
-        let partials: Vec<MajoranaHashMap> = (0..n_terms)
-            .into_par_iter()
-            .chunks(PARALLEL_CHUNK)
-            .map(|rows| {
-                let mut local = MajoranaHashMap::with_capacity(PARALLEL_CHUNK);
-                for r in rows {
-                    let row: ArrayVec<[usize; MAX_MAJORANAS]> =
-                        indices.row(r).iter().copied().collect();
-                    local.append_term(action, &row, coefficients[r]);
-                }
-                local
-            })
-            .collect();
-
-        // Phase 2 — merge the per-chunk maps. The key space is partitioned into
-        // shards so the merge itself runs in parallel; each shard scans the chunk
-        // maps in chunk order and owns a disjoint set of keys, so a key's value is
-        // summed in chunk order regardless of the shard count — the result is
-        // deterministic and independent of how rayon schedules the work.
-        let n_shards = rayon::current_num_threads().max(1);
-        if n_shards == 1 {
-            self.merge_into(&partials, 0, 1);
-        } else {
-            let shards: Vec<MajoranaHashMap> = (0..n_shards)
-                .into_par_iter()
-                .map(|shard| {
-                    let mut out = MajoranaHashMap::new();
-                    out.merge_into(&partials, shard, n_shards);
-                    out
-                })
-                .collect();
-            for shard in shards {
-                for (key, value) in shard.operators {
-                    *self.operators.entry(key).or_insert(Complex64::ZERO) += value;
-                }
-            }
-        }
+        // Parallel path: expand chunks of independent terms into thread-local
+        // containers and merge them into this map. The expansion/merge algorithm
+        // is selected at runtime (see [`super::merge`] for the strategies and the
+        // environment variables that pick between them).
+        merge::expand_and_merge(
+            self,
+            action,
+            indices,
+            coefficients,
+            merge::MergeConfig::get(),
+        );
         debug!("MBTree {:?}\n", &self);
     }
 }

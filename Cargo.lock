@@ -301,6 +301,7 @@ dependencies = [
  "rand_xoshiro 0.6.0",
  "rand_xoshiro 0.7.0",
  "rayon",
+ "rustc-hash",
  "thiserror 2.0.18",
  "tinyvec",
 ]

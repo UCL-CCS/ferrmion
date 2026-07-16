@@ -23,6 +23,7 @@ rand_xoshiro = "0.7.0"
 rand_xoshiro_legacy = { package = "rand_xoshiro", version = "0.6.0" }
 rand_core_legacy = { package = "rand_core", version = "0.6.4" }
 ahash = "0.8.12"
+rustc-hash = "2.1"
 tinyvec = "1.10.0"
 thiserror = "2.0.17"
 

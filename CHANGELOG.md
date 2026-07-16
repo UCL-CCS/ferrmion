@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Runtime-selectable merge strategies for the parallel path of
+  `MajoranaSparse` construction (`append_fermion_sparse`), chosen via
+  `FERRMION_MERGE_STRATEGY` with tuning knobs `FERRMION_MERGE_SHARDS`,
+  `FERRMION_PARALLEL_CHUNK`, `FERRMION_MERGE_SERIAL_THRESHOLD`,
+  `FERRMION_MERGE_PRESIZE` and phase-timing output via
+  `FERRMION_MERGE_TIMING`. The default (`baseline`) is the pre-existing
+  sharded merge; alternatives (`hash_cache`, `fx_hash`, `shard_phase1`,
+  `tree_reduce`, `sort_scan`, `radix_partition`, `kway_merge`) are
+  benchmarking candidates validated against the serial reference.
+- `merge_strategies` criterion benchmark with low- and high-collision
+  workloads, and a portable sweep/report harness
+  (`scripts/bench_merge_sweep.sh`, `scripts/bench_merge_report.py`)
+  measuring end-to-end `encode_topphatt` runtime and thread scaling per
+  strategy.
+
 ## [0.11.0] - 2026-08-01
 
 ### Changed

@@ -289,8 +289,8 @@ impl MajoranaEncoding {
         for i in 0..n_ops {
             for j in i + 1..n_ops {
                 // Symplectic inner product ⟨op_i, op_j⟩ = |x_i & z_j| + |z_i & x_j| (mod 2).
-                let inner_product = operators.row_x(i).and_count_ones(operators.row_z(j))
-                    + operators.row_z(i).and_count_ones(operators.row_x(j));
+                let inner_product = operators.row_x(i).and_count_ones(&operators.row_z(j))
+                    + operators.row_z(i).and_count_ones(&operators.row_x(j));
                 if inner_product.is_multiple_of(2) {
                     return Err(MajoranaEncodingError::InvalidOperatorsError);
                 }
@@ -613,9 +613,9 @@ impl MajoranaEncoding {
     pub fn decode_zbasis_ensemble(&self, ensemble: &ZBasisEnsemble) -> Vec<Option<FockState>> {
         let n_states = ensemble.states.len();
 
-        // Working state as one bitpacked `Block` per state, mutated in-place
+        // Working state as one bitpacked `DenseBlock` per state, mutated in-place
         // across modes. Coefficients start at ONE (input ignored). The ensemble
-        // already stores each state as a `Block`, so the parity and state-update
+        // already stores each state as a `DenseBlock`, so the parity and state-update
         // steps run as word-level bit ops, which stays fast even for dense
         // operators (Jordan-Wigner / parity Z-strings span every qubit) instead
         // of iterating each set bit.
@@ -654,8 +654,8 @@ impl MajoranaEncoding {
                 .map(|j| {
                     let state = state_blocks[j].as_ref();
                     let coeff = current_coeffs[j];
-                    let par_l = z_l.and_count_ones(state) % 2;
-                    let par_r = z_r.and_count_ones(state) % 2;
+                    let par_l = z_l.and_count_ones(&state) % 2;
+                    let par_r = z_r.and_count_ones(&state) % 2;
                     let lc = coeff * phase_l[par_l];
                     let rc = coeff * phase_r[par_r];
                     lc + Complex64::new(0., 1.) * rc
@@ -674,7 +674,7 @@ impl MajoranaEncoding {
                 if occ {
                     occupations[[j, i]] = true;
                     current_coeffs[j] = ann;
-                    state_blocks[j].xor_assign(x_l);
+                    state_blocks[j].xor_assign(&x_l);
                 }
             }
         }
@@ -706,7 +706,7 @@ impl MajoranaEncoding {
 impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
     fn try_encode(&self, input: FockState) -> Result<ZBasisState, MajoranaEncodingError> {
         debug!("\nFock state: {input:?}");
-        // Working state as a bitpacked `Block`, mutated across occupied modes, so
+        // Working state as a bitpacked `DenseBlock`, mutated across occupied modes, so
         // each operator's parity is a word-level popcount of `z & state` rather
         // than iterating every set bit of a (possibly dense) Z-string.
         let mut state_block = self.vacuum_state.state.clone();
@@ -735,16 +735,14 @@ impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
             // factors are unit-norm, so multiplying the (unit-norm) running
             // coefficient needs no rescale.
             let left_coefficient = coefficient
-                * c64(0., 1.).powi(
-                    ((ip_l as usize + 2 * z_l.and_count_ones(state_block.as_ref())) % 4) as i32,
-                );
+                * c64(0., 1.)
+                    .powi(((ip_l as usize + 2 * z_l.and_count_ones(&state_block)) % 4) as i32);
             let right_coefficient = coefficient
-                * c64(0., 1.).powi(
-                    ((ip_r as usize + 2 * z_r.and_count_ones(state_block.as_ref())) % 4) as i32,
-                );
+                * c64(0., 1.)
+                    .powi(((ip_r as usize + 2 * z_r.and_count_ones(&state_block)) % 4) as i32);
 
             // Apply the shared X flip to the working state (word-level XOR).
-            state_block.xor_assign(x_l);
+            state_block.xor_assign(&x_l);
 
             if left_coefficient == Complex64::new(0., -1.) * right_coefficient {
                 // Real-eigenvalued encodings.

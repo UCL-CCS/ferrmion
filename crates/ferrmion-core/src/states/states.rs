@@ -5,7 +5,7 @@ use num_complex::Complex64;
 use std::ops::Mul;
 use thiserror::Error;
 
-use crate::operators::{DenseBlock, DenseBlockRef};
+use crate::operators::{DenseBlock, DenseIndex};
 use crate::spaces::{Fermion, Qubit};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +78,7 @@ impl ZBasisState {
         Self::from_block(DenseBlock::from_bool_view(state.view()), coefficient)
     }
 
-    /// Construct a `ZBasisState` from an already-packed [`Block`].
+    /// Construct a `ZBasisState` from an already-packed [`DenseBlock`].
     ///
     /// The coefficient is automatically normalised to unit norm.
     pub fn from_block(state: DenseBlock, coefficient: Complex64) -> Self {
@@ -97,7 +97,7 @@ impl ZBasisState {
     }
 
     /// Borrow the packed qubit occupation.
-    pub fn state_block(&self) -> DenseBlockRef<'_> {
+    pub fn state_block(&self) -> DenseBlock<&[DenseIndex]> {
         self.state.as_ref()
     }
 
@@ -271,7 +271,7 @@ pub struct ZBasisEnsemble {
 
 impl ZBasisEnsemble {
     /// Construct a [`ZBasisEnsemble`] from a dense states matrix and coefficient
-    /// vector, packing each row into a [`Block`].
+    /// vector, packing each row into a [`DenseBlock`].
     ///
     /// # Panics
     ///

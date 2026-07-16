@@ -1,19 +1,22 @@
 //! Bitpacked storage for symplectic Pauli operators.
 //!
 //! A symplectic block stores one bit per qubit for a single X or Z part of a
-//! Pauli operator, packed into 64-bit machine words. This replaces the previous
-//! dense `Array1<bool>` / `Array2<bool>` representation, shrinking memory ~8x
-//! and letting the hot paths (symplectic product, Pauli weight, phase
-//! accumulation) run as word-level bit operations instead of per-`bool` loops.
+//! Pauli operator, packed into machine words. This replaces the previous dense
+//! `Array1<bool>` / `Array2<bool>` representation, shrinking memory ~8x and
+//! letting the hot paths (symplectic product, Pauli weight, phase accumulation)
+//! run as word-level bit operations instead of per-`bool` loops.
 //!
-//! Two block flavours are provided:
-//! - [`Block`] — owned (`Vec<u64>`), used for a single `SymplecticOperator` and
-//!   for the mutable working state in `decode`/`try_encode`.
-//! - [`BlockRef`] — a borrowed view over a `&[u64]` slice. `SymplecticMatrix`
-//!   stores all rows in one contiguous buffer (rows padded to whole `u64`
-//!   words), so a row is just a sub-slice viewed as a `BlockRef`. Cloning the
-//!   matrix is then a single contiguous copy rather than one heap allocation
-//!   per row.
+//! The packed word is the [`DenseIndex`] newtype (one `usize` lane by default);
+//! a block is a sequence of `DenseIndex` words. [`DenseBlock`] is generic over
+//! its backing:
+//! - [`DenseBlock<Vec<DenseIndex>>`] — owned, used for a single
+//!   `SymplecticOperator` and for the mutable working state in
+//!   `decode`/`try_encode`.
+//! - [`DenseBlock<&[DenseIndex]>`] — a borrowed view over a slice. `SymplecticMatrix`
+//!   stores all rows in one contiguous `Vec<DenseIndex>` buffer (rows padded to
+//!   whole words), so a row is just a sub-slice wrapped as a borrowed `DenseBlock`.
+//!   Cloning the matrix is then a single contiguous copy rather than one heap
+//!   allocation per row.
 //!
 //! The symplectic convention is unchanged: a qubit's Pauli is read from the
 //! `(x, z)` bit pair — `(false, false) = I`, `(true, false) = X`,
@@ -21,28 +24,22 @@
 //!
 //! # Invariant: padding bits are zero
 //!
-//! A block of `n_bits` qubits is stored in `words_for(n_bits)` words; the unused
-//! ("padding") bits above `n_bits` in the final word are always zero. Every
-//! constructor zero-fills, and every mutator (`set`, `xor_assign`, the Clifford
-//! kernels) only ever writes bit indices `< n_bits`, so XOR/AND/OR of two
-//! padding-zero blocks stays padding-zero. The word-level popcounts and XOR rely
-//! on this so they can operate on the raw `u64` words without masking the final
+//! A block of `n_bits` qubits is stored in `DenseIndex::<1>::words_for(n_bits)` words;
+//! the unused ("padding") bits above `n_bits` in the final word are always zero.
+//! Every constructor zero-fills, and every mutator (`set`, `xor_assign`, the
+//! Clifford kernels) only ever writes bit indices `< n_bits`, so XOR/AND/OR of
+//! two padding-zero blocks stays padding-zero. The word-level popcounts and XOR
+//! rely on this so they can operate on whole words without masking the final
 //! partial word. Both operands of a binary op always share the same qubit count,
 //! hence the same word count.
 use ndarray::{Array1, ArrayView1};
 use std::cmp::Ordering;
 
-/// A `DenseIndex` is a multi-dimensional index into a dense block of qubits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct DenseIndex<const WIDTH: usize>([usize; WIDTH]);
-
-impl<const WIDTH: usize> DenseIndex<WIDTH> {
-    /// Number of `u64` words needed to hold `n_bits` bits.
-    #[inline]
-    pub(crate) fn words_for(n_bits: usize) -> usize {
-        n_bits.div_ceil(usize::BITS as usize)
-    }
-}
+/// A packed word of a dense block: `WIDTH` `usize` lanes holding `WIDTH *
+/// usize::BITS` bits. `WIDTH` defaults to 1 (a single machine word), which is
+/// what [`DenseBlock`] stores.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DenseIndex<const WIDTH: usize = 1>([usize; WIDTH]);
 
 impl<const WIDTH: usize> Default for DenseIndex<WIDTH> {
     fn default() -> Self {
@@ -50,85 +47,148 @@ impl<const WIDTH: usize> Default for DenseIndex<WIDTH> {
     }
 }
 
-/// Iterate the indices of set bits in `words`, lowest first.
-///
-/// The `n_bits` argument is unused: the padding bits above `n_bits` are always
-/// zero (see the module-level invariant), so they never yield an index and no
-/// bound is needed. It is kept for call-site symmetry with the other helpers.
-fn iter_ones(words: &[u64], _n_bits: usize) -> impl Iterator<Item = usize> + '_ {
-    words.iter().enumerate().flat_map(|(w, &word)| {
-        let mut bits = word;
-        std::iter::from_fn(move || {
-            if bits == 0 {
-                None
-            } else {
-                let i = bits.trailing_zeros() as usize;
-                bits &= bits - 1; // clear the lowest set bit
-                Some(w * 64 + i)
-            }
-        })
-    })
-}
+impl<const WIDTH: usize> DenseIndex<WIDTH> {
+    /// Number of bits in a single lane (`usize::BITS`).
+    pub(crate) const LANE_BITS: usize = usize::BITS as usize;
 
-/// Compare two words as LSB-first bit sequences: the operand whose lowest
-/// *differing* bit is `0` sorts first. Returns `None` when the words are equal.
-#[inline]
-fn cmp_word(a: u64, b: u64) -> Option<Ordering> {
-    let diff = a ^ b;
-    if diff == 0 {
-        None
-    } else {
-        // Isolate the lowest differing bit; whichever operand has `0` there is
-        // the smaller bit sequence (bit 0 is most significant for this order).
-        let bit = diff & diff.wrapping_neg();
-        if a & bit == 0 {
-            Some(Ordering::Less)
+    /// Number of bits held by one `DenseIndex` word.
+    pub(crate) const BITS: usize = WIDTH * Self::LANE_BITS;
+
+    /// Number of `DenseIndex` words needed to hold `n_bits` bits.
+    #[inline]
+    pub(crate) fn words_for(n_bits: usize) -> usize {
+        n_bits.div_ceil(Self::BITS)
+    }
+
+    /// Read the bit at local position `local` (`0 <= local < BITS`).
+    #[inline]
+    pub(crate) fn get(self, local: usize) -> bool {
+        (self.0[local / Self::LANE_BITS] >> (local % Self::LANE_BITS)) & 1 != 0
+    }
+
+    /// Set the bit at local position `local` (`0 <= local < BITS`).
+    #[inline]
+    pub(crate) fn set(&mut self, local: usize, value: bool) {
+        let mask = 1usize << (local % Self::LANE_BITS);
+        let lane = &mut self.0[local / Self::LANE_BITS];
+        if value {
+            *lane |= mask;
         } else {
-            Some(Ordering::Greater)
+            *lane &= !mask;
         }
+    }
+
+    /// Flip the bit at local position `local` (`0 <= local < BITS`).
+    #[inline]
+    pub(crate) fn toggle(&mut self, local: usize) {
+        self.0[local / Self::LANE_BITS] ^= 1usize << (local % Self::LANE_BITS);
+    }
+
+    /// Lane-wise `self & other`.
+    #[inline]
+    pub(crate) fn and(self, other: Self) -> Self {
+        let mut out = [0usize; WIDTH];
+        for (o, (a, b)) in out.iter_mut().zip(self.0.iter().zip(other.0.iter())) {
+            *o = a & b;
+        }
+        Self(out)
+    }
+
+    /// Lane-wise `self | other`.
+    #[inline]
+    pub(crate) fn or(self, other: Self) -> Self {
+        let mut out = [0usize; WIDTH];
+        for (o, (a, b)) in out.iter_mut().zip(self.0.iter().zip(other.0.iter())) {
+            *o = a | b;
+        }
+        Self(out)
+    }
+
+    /// Lane-wise `self ^ other`.
+    #[inline]
+    pub(crate) fn xor(self, other: Self) -> Self {
+        let mut out = [0usize; WIDTH];
+        for (o, (a, b)) in out.iter_mut().zip(self.0.iter().zip(other.0.iter())) {
+            *o = a ^ b;
+        }
+        Self(out)
+    }
+
+    /// Number of set bits across all lanes.
+    #[inline]
+    pub(crate) fn count_ones(self) -> usize {
+        self.0.iter().map(|w| w.count_ones() as usize).sum()
+    }
+
+    /// Iterate the local positions of set bits, lowest first.
+    #[inline]
+    pub(crate) fn iter_ones(self) -> impl Iterator<Item = usize> {
+        (0..WIDTH).flat_map(move |lane| {
+            let base = lane * Self::LANE_BITS;
+            let mut bits = self.0[lane];
+            std::iter::from_fn(move || {
+                if bits == 0 {
+                    None
+                } else {
+                    let i = bits.trailing_zeros() as usize;
+                    bits &= bits - 1; // clear the lowest set bit
+                    Some(base + i)
+                }
+            })
+        })
+    }
+
+    /// Compare two words as LSB-first bit sequences (bit 0 most significant):
+    /// the operand whose lowest *differing* bit is `0` sorts first. `None` when
+    /// the words are equal.
+    #[inline]
+    pub(crate) fn cmp_bits(self, other: Self) -> Option<Ordering> {
+        for (a, b) in self.0.iter().zip(other.0.iter()) {
+            let diff = a ^ b;
+            if diff != 0 {
+                let bit = diff & diff.wrapping_neg();
+                return Some(if a & bit == 0 {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                });
+            }
+        }
+        None
     }
 }
 
 /// Lexicographic order over the first `an`/`bn` bits (bit 0 first,
 /// `false < true`), matching the previous `x_block.iter().cmp(...)` behaviour.
 ///
-/// Relies on the padding-zero invariant so it can compare whole `u64` words;
-/// only the partial word at the `min(an, bn)` boundary is masked.
-fn cmp_bits(a: &[u64], an: usize, b: &[u64], bn: usize) -> Ordering {
-    let l = an.min(bn);
-    let full = l / 64;
-    for i in 0..full {
-        if let Some(ord) = cmp_word(a[i], b[i]) {
+/// Relies on the padding-zero invariant so it can compare whole words: the
+/// padding bits of the shorter operand are zero, so comparing the shared words
+/// and then falling back to the bit-length tiebreak reproduces the lexicographic
+/// "shorter sequence sorts first" rule.
+fn cmp_bits(a: &[DenseIndex], an: usize, b: &[DenseIndex], bn: usize) -> Ordering {
+    for (x, y) in a.iter().zip(b.iter()) {
+        if let Some(ord) = x.cmp_bits(*y) {
             return ord;
         }
     }
-    let rem = l % 64;
-    if rem != 0 {
-        let mask = (1u64 << rem) - 1;
-        if let Some(ord) = cmp_word(a[full] & mask, b[full] & mask) {
-            return ord;
-        }
-    }
-    // All shared bits equal; the shorter bit sequence sorts first.
     an.cmp(&bn)
 }
 
-/// A borrowed view over one symplectic block (`n_bits` qubits packed into a
-/// `&[u64]` word slice). Cheap to copy.
-#[derive(Clone, Copy, Debug)]
-pub struct DenseBlockRef<'a> {
-    words: &'a [u64],
+/// A symplectic block: `n_bits` qubits packed into [`DenseIndex`] words.
+///
+/// Generic over the word backing `S`: `Vec<DenseIndex>` for an owned block or
+/// `&[DenseIndex]` for a borrowed view (which is `Copy`, replacing the former
+/// `DenseBlockRef`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash)]
+pub struct DenseBlock<S = Vec<DenseIndex>> {
+    words: S,
     n_bits: usize,
 }
 
-impl<'a> DenseBlockRef<'a> {
-    /// Construct a view over `words`, interpreting the first `n_bits` bits.
-    ///
-    /// `words.len()` must equal `words_for(n_bits)`.
+impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     #[inline]
-    pub(crate) fn new(words: &'a [u64], n_bits: usize) -> Self {
-        debug_assert_eq!(words.len(), words_for(n_bits));
-        Self { words, n_bits }
+    fn words(&self) -> &[DenseIndex] {
+        self.words.as_ref()
     }
 
     /// Number of qubits (bits) in this block.
@@ -143,41 +203,53 @@ impl<'a> DenseBlockRef<'a> {
         self.n_bits == 0
     }
 
+    /// Borrow this block as a `DenseBlock<&[DenseIndex]>`.
+    #[inline]
+    pub fn as_ref(&self) -> DenseBlock<&[DenseIndex]> {
+        DenseBlock {
+            words: self.words(),
+            n_bits: self.n_bits,
+        }
+    }
+
     /// Read the bit at position `i`.
     #[inline]
     pub fn get(&self, i: usize) -> bool {
-        (self.words[i >> 6] >> (i & 63)) & 1 != 0
+        self.words()[i / DenseIndex::<1>::BITS].get(i % DenseIndex::<1>::BITS)
     }
 
     /// Number of set bits.
     #[inline]
     pub fn count_ones(&self) -> usize {
-        self.words.iter().map(|x| x.count_ones() as usize).sum()
+        self.words().iter().map(|w| w.count_ones()).sum()
     }
 
-    /// Iterator over the indices of set bits.
+    /// Iterator over the indices of set bits, lowest first.
     #[inline]
-    pub fn iter_ones(&self) -> impl Iterator<Item = usize> + 'a {
-        iter_ones(self.words, self.n_bits)
+    pub fn iter_ones(&self) -> impl Iterator<Item = usize> + '_ {
+        self.words().iter().enumerate().flat_map(|(e, w)| {
+            w.iter_ones()
+                .map(move |local| e * DenseIndex::<1>::BITS + local)
+        })
     }
 
     /// Popcount of `self & other` (the `z & x` phase term and the Y count).
     #[inline]
-    pub fn and_count_ones(&self, other: DenseBlockRef) -> usize {
-        self.words
+    pub fn and_count_ones<T: AsRef<[DenseIndex]>>(&self, other: &DenseBlock<T>) -> usize {
+        self.words()
             .iter()
-            .zip(other.words)
-            .map(|(x, y)| (x & y).count_ones() as usize)
+            .zip(other.words())
+            .map(|(a, b)| a.and(*b).count_ones())
             .sum()
     }
 
     /// Popcount of `self | other` (Pauli weight of a row).
     #[inline]
-    pub fn or_count_ones(&self, other: DenseBlockRef) -> usize {
-        self.words
+    pub fn or_count_ones<T: AsRef<[DenseIndex]>>(&self, other: &DenseBlock<T>) -> usize {
+        self.words()
             .iter()
-            .zip(other.words)
-            .map(|(x, y)| (x | y).count_ones() as usize)
+            .zip(other.words())
+            .map(|(a, b)| a.or(*b).count_ones())
             .sum()
     }
 
@@ -191,127 +263,29 @@ impl<'a> DenseBlockRef<'a> {
     }
 }
 
-impl PartialEq for DenseBlockRef<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.n_bits == other.n_bits && self.words == other.words
-    }
-}
-impl Eq for DenseBlockRef<'_> {}
-
-impl PartialOrd for DenseBlockRef<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for DenseBlockRef<'_> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        cmp_bits(self.words, self.n_bits, other.words, other.n_bits)
-    }
-}
-
-pub struct DenseProduct<const CHUNKS: usize>([usize; CHUNKS]);
-
-/// An owned symplectic block: `n_bits` qubits packed into `Vec<u64>` words.
-#[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
-pub struct DenseBlock {
-    words: Vec<u64>,
-    n_bits: usize,
-}
-
-impl DenseBlock {
-    /// Construct an all-`false` block of `n` bits.
-    pub fn zeros(n: usize) -> Self {
-        Self {
-            words: vec![0u64; words_for(n)],
-            n_bits: n,
-        }
-    }
-
-    /// Borrow this block as a [`BlockRef`].
-    #[inline]
-    pub fn as_ref(&self) -> DenseBlockRef<'_> {
-        DenseBlockRef {
-            words: &self.words,
-            n_bits: self.n_bits,
-        }
-    }
-
-    /// Number of qubits (bits) in this block.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.n_bits
-    }
-
-    /// Whether the block has zero qubits.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.n_bits == 0
-    }
-
-    /// Read the bit at position `i`.
-    #[inline]
-    pub fn get(&self, i: usize) -> bool {
-        (self.words[i >> 6] >> (i & 63)) & 1 != 0
-    }
-
+impl<S: AsRef<[DenseIndex]> + AsMut<[DenseIndex]>> DenseBlock<S> {
     /// Set the bit at position `i`.
     #[inline]
     pub fn set(&mut self, i: usize, value: bool) {
-        let mask = 1u64 << (i & 63);
-        let word = &mut self.words[i >> 6];
-        if value {
-            *word |= mask;
-        } else {
-            *word &= !mask;
-        }
-    }
-
-    /// Number of set bits.
-    #[inline]
-    pub fn count_ones(&self) -> usize {
-        self.words.iter().map(|x| x.count_ones() as usize).sum()
-    }
-
-    /// Iterator over the indices of set bits.
-    #[inline]
-    pub fn iter_ones(&self) -> impl Iterator<Item = usize> + '_ {
-        iter_ones(&self.words, self.n_bits)
-    }
-
-    /// Popcount of `self & other`.
-    #[inline]
-    pub fn and_count_ones(&self, other: DenseBlockRef) -> usize {
-        self.words
-            .iter()
-            .zip(other.words)
-            .map(|(x, y)| (x & y).count_ones() as usize)
-            .sum()
-    }
-
-    /// Popcount of `self | other`.
-    #[inline]
-    pub fn or_count_ones(&self, other: DenseBlockRef) -> usize {
-        self.words
-            .iter()
-            .zip(other.words)
-            .map(|(x, y)| (x | y).count_ones() as usize)
-            .sum()
+        self.words.as_mut()[i / DenseIndex::<1>::BITS].set(i % DenseIndex::<1>::BITS, value);
     }
 
     /// In-place XOR: `self ^= other`.
     #[inline]
-    pub fn xor_assign(&mut self, other: DenseBlockRef) {
-        for (d, s) in self.words.iter_mut().zip(other.words) {
-            *d ^= s;
+    pub fn xor_assign<T: AsRef<[DenseIndex]>>(&mut self, other: &DenseBlock<T>) {
+        for (d, s) in self.words.as_mut().iter_mut().zip(other.words()) {
+            *d = d.xor(*s);
         }
     }
+}
 
-    /// Return a new block equal to `self ^ other`.
-    #[inline]
-    pub fn xor(&self, other: DenseBlockRef) -> DenseBlock {
-        let mut out = self.clone();
-        out.xor_assign(other);
-        out
+impl DenseBlock<Vec<DenseIndex>> {
+    /// Construct an all-`false` block of `n` bits.
+    pub fn zeros(n: usize) -> Self {
+        Self {
+            words: vec![DenseIndex::default(); DenseIndex::<1>::words_for(n)],
+            n_bits: n,
+        }
     }
 
     /// Build a block from a dense boolean array view (Python / test boundary).
@@ -325,20 +299,37 @@ impl DenseBlock {
         block
     }
 
-    /// Convert to a dense boolean array (Python / test boundary).
-    pub fn to_bool_array(&self) -> Array1<bool> {
-        self.as_ref().to_bool_array()
+    /// Return a new block equal to `self ^ other`.
+    #[inline]
+    pub fn xor<T: AsRef<[DenseIndex]>>(
+        &self,
+        other: &DenseBlock<T>,
+    ) -> DenseBlock<Vec<DenseIndex>> {
+        let mut out = self.clone();
+        out.xor_assign(other);
+        out
     }
 }
 
-impl PartialOrd for DenseBlock {
+impl<'a> DenseBlock<&'a [DenseIndex]> {
+    /// Wrap a word slice as a borrowed block interpreting the first `n_bits` bits.
+    ///
+    /// `words.len()` must equal `DenseIndex::<1>::words_for(n_bits)`.
+    #[inline]
+    pub(crate) fn from_words(words: &'a [DenseIndex], n_bits: usize) -> Self {
+        debug_assert_eq!(words.len(), DenseIndex::<1>::words_for(n_bits));
+        Self { words, n_bits }
+    }
+}
+
+impl<S: AsRef<[DenseIndex]> + Eq> PartialOrd for DenseBlock<S> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
-impl Ord for DenseBlock {
+impl<S: AsRef<[DenseIndex]> + Eq> Ord for DenseBlock<S> {
     fn cmp(&self, other: &Self) -> Ordering {
-        cmp_bits(&self.words, self.n_bits, &other.words, other.n_bits)
+        cmp_bits(self.words(), self.n_bits, other.words(), other.n_bits)
     }
 }
 
@@ -346,6 +337,28 @@ impl Ord for DenseBlock {
 mod tests {
     use super::*;
     use ndarray::arr1;
+
+    #[test]
+    fn dense_index_word_primitives() {
+        let mut w = DenseIndex::<1>::default();
+        w.set(0, true);
+        w.set(5, true);
+        assert!(w.get(0) && w.get(5) && !w.get(1));
+        assert_eq!(w.count_ones(), 2);
+        assert_eq!(w.iter_ones().collect::<Vec<_>>(), vec![0, 5]);
+
+        let mut v = DenseIndex::<1>::default();
+        v.set(5, true);
+        v.set(7, true);
+        assert_eq!(w.and(v).iter_ones().collect::<Vec<_>>(), vec![5]);
+        assert_eq!(w.or(v).iter_ones().collect::<Vec<_>>(), vec![0, 5, 7]);
+        assert_eq!(w.xor(v).iter_ones().collect::<Vec<_>>(), vec![0, 7]);
+
+        assert_eq!(DenseIndex::<1>::words_for(0), 0);
+        assert_eq!(DenseIndex::<1>::words_for(1), 1);
+        assert_eq!(DenseIndex::<1>::words_for(DenseIndex::<1>::BITS), 1);
+        assert_eq!(DenseIndex::<1>::words_for(DenseIndex::<1>::BITS + 1), 2);
+    }
 
     #[test]
     fn get_set_roundtrip() {
@@ -361,7 +374,7 @@ mod tests {
 
     #[test]
     fn get_set_multiword() {
-        // 130 qubits spans three u64 words; exercise the padding tail.
+        // 130 qubits spans three words; exercise the padding tail.
         let mut b = DenseBlock::zeros(130);
         b.set(0, true);
         b.set(64, true);
@@ -381,18 +394,15 @@ mod tests {
     fn and_or_counts() {
         let x = DenseBlock::from_bool_view(arr1(&[true, true, false, false]).view());
         let z = DenseBlock::from_bool_view(arr1(&[false, true, true, false]).view());
-        assert_eq!(x.and_count_ones(z.as_ref()), 1); // only position 1 set in both
-        assert_eq!(x.or_count_ones(z.as_ref()), 3); // positions 0,1,2
+        assert_eq!(x.and_count_ones(&z), 1); // only position 1 set in both
+        assert_eq!(x.or_count_ones(&z), 3); // positions 0,1,2
     }
 
     #[test]
     fn xor_ops() {
         let a = DenseBlock::from_bool_view(arr1(&[true, false, true]).view());
         let b = DenseBlock::from_bool_view(arr1(&[true, true, false]).view());
-        assert_eq!(
-            a.xor(b.as_ref()).to_bool_array(),
-            arr1(&[false, true, true])
-        );
+        assert_eq!(a.xor(&b).to_bool_array(), arr1(&[false, true, true]));
     }
 
     #[test]
@@ -406,7 +416,7 @@ mod tests {
     #[test]
     fn iter_ones_multiword_dense() {
         // A set bit in every word incl. the final partial (130 bits = 3 words),
-        // and adjacent bits, to exercise the raw-u64 lowest-bit clearing.
+        // and adjacent bits, to exercise the raw-word lowest-bit clearing.
         let mut b = DenseBlock::zeros(130);
         for &i in &[0usize, 1, 63, 64, 65, 127, 128, 129] {
             b.set(i, true);

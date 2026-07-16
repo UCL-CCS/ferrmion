@@ -39,8 +39,7 @@ impl PyMajoranaSparse {
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
         other
             .extract::<PyRef<'_, Self>>()
-            .map(|o| self.0 == o.0)
-            .unwrap_or(false)
+            .is_ok_and(|o| self.0 == o.0)
     }
 
     fn __repr__(&self) -> String {

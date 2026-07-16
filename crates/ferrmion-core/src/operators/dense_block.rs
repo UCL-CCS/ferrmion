@@ -1,10 +1,5 @@
-//! Bitpacked storage for symplectic Pauli operators.
+//! Bitpacked storage for dense operators including symplectic Pauli operators.
 //!
-//! A symplectic block stores one bit per qubit for a single X or Z part of a
-//! Pauli operator, packed into machine words. This replaces the previous dense
-//! `Array1<bool>` / `Array2<bool>` representation, shrinking memory ~8x and
-//! letting the hot paths (symplectic product, Pauli weight, phase accumulation)
-//! run as word-level bit operations instead of per-`bool` loops.
 //!
 //! The packed word is the [`DenseIndex`] newtype (one `usize` lane by default);
 //! a block is a sequence of `DenseIndex` words. [`DenseBlock`] is generic over
@@ -143,7 +138,7 @@ impl<const WIDTH: usize> DenseIndex<WIDTH> {
         for (a, b) in self.0.iter().zip(other.0.iter()) {
             let diff = a ^ b;
             if diff != 0 {
-                let bit = diff.isolate_lowest_one();
+                let bit = diff & diff.wrapping_neg();
                 return Some(if a & bit == 0 {
                     Ordering::Less
                 } else {

@@ -469,7 +469,7 @@ impl Encode<MajoranaProduct, QubitHamiltonian> for MajoranaEncoding {
                 acc * self.operators.view_row(ind)
             });
         debug!("{:#?}", operator);
-        debug!("{:#?}", &operator.to_pauli_string());
+        debug!("{:#?}", operator.to_pauli_string());
         let (pauli, ipower) = operator.to_pauli_string();
 
         qham.insert(

@@ -51,7 +51,7 @@ impl From<&Edge> for Pauli {
 
 impl fmt::Display for Edge {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.as_char())
+        write!(f, "{}", self.as_char())
     }
 }
 
@@ -292,7 +292,7 @@ impl TernaryTree {
                 qubit_node_map.insert(qubit_index, node);
             });
 
-        debug!("Flatpack nodes have qubit indices {:?}", &qubit_node_map);
+        debug!("Flatpack nodes have qubit indices {:?}", qubit_node_map);
 
         // Leaf values are encoded as Majorana_index + max_node_index + 1.
         // The +1 ensures that even Majorana index 0 maps to a value strictly greater
@@ -560,7 +560,7 @@ impl TernaryTree {
             debug!("x_block {:?}", x_block);
         }
         if let Some(index) = &self.qubit_index_of {
-            debug!("Qubit indices {:?}", &self.qubit_index_of);
+            debug!("Qubit indices {:?}", self.qubit_index_of);
             if let Some(&max_qi) = index.iter().max() {
                 if max_qi >= n_qubits {
                     error!("Cannot build encoding with {n_qubits} qubits");

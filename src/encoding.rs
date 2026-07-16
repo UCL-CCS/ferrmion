@@ -61,10 +61,10 @@ pub(crate) fn tree_from_flatpack(flatpack: &TTFlatpack) -> Result<(TernaryTree, 
         .ok_or_else(|| CoreError::Value("Flatpack must be non-empty".to_string()))?;
 
     let mut empty_leaves: usize = 0;
-    for (_, children) in flatpack.iter() {
-        empty_leaves += children.0.is_none() as usize
-            + children.1.is_none() as usize
-            + children.2.is_none() as usize
+    for (_, children) in flatpack {
+        empty_leaves += usize::from(children.0.is_none())
+            + usize::from(children.1.is_none())
+            + usize::from(children.2.is_none());
     }
     let tree = match empty_leaves {
         1 => TernaryTree::from_flatpack(flatpack)?,
@@ -129,7 +129,7 @@ impl PyMajoranaEncoding {
     ///     ipowers: 1D uint8 array of phase exponents (taken mod 4).
     ///     symplectics: 2D boolean array of shape ``(2*n_modes, 2*n_qubits)``,
     ///         left half X-block, right half Z-block.
-    ///     vacuum_state: Optional 1D boolean array of length ``n_qubits``.
+    ///     `vacuum_state`: Optional 1D boolean array of length ``n_qubits``.
     ///         When omitted, the vacuum is determined automatically.
     #[new]
     #[pyo3(signature = (ipowers, symplectics, vacuum_state = None))]
@@ -141,7 +141,7 @@ impl PyMajoranaEncoding {
         Ok(Self(encoding_from_parts(
             ipowers.as_array(),
             symplectics.as_array(),
-            vacuum_state.as_ref().map(|v| v.as_array()),
+            vacuum_state.as_ref().map(numpy::PyReadonlyArray::as_array),
         )?))
     }
 
@@ -183,7 +183,7 @@ impl PyMajoranaEncoding {
         ))
     }
 
-    /// The MaxNTO k-NTO encoding for ``n_modes`` fermionic modes.
+    /// The `MaxNTO` k-NTO encoding for ``n_modes`` fermionic modes.
     ///
     /// Requires ``n_modes - 1`` to be odd.
     #[staticmethod]
@@ -201,7 +201,7 @@ impl PyMajoranaEncoding {
     ///
     /// Args:
     ///     flatpack: List of ``(qubit_index, (x_child, y_child, z_child))`` tuples.
-    ///     n_qubits: Optional number of qubits; defaults to the number of tree nodes.
+    ///     `n_qubits`: Optional number of qubits; defaults to the number of tree nodes.
     #[staticmethod]
     #[pyo3(signature = (flatpack, n_qubits = None))]
     fn from_flatpack(flatpack: TTFlatpack, n_qubits: Option<usize>) -> Result<Self, CoreError> {
@@ -232,7 +232,7 @@ impl PyMajoranaEncoding {
             .transpose()?;
 
         let nrows = symplectics.len();
-        let ncols = symplectics.first().map(Vec::len).unwrap_or(0);
+        let ncols = symplectics.first().map_or(0, Vec::len);
         if symplectics.iter().any(|row| row.len() != ncols) {
             return Err(CoreError::Value(
                 "All symplectic rows must have equal length.".to_string(),
@@ -244,7 +244,10 @@ impl PyMajoranaEncoding {
         Ok(Self(encoding_from_parts(
             Array1::from(ipowers).view(),
             symplectics.view(),
-            vacuum_state.map(Array1::from).as_ref().map(|v| v.view()),
+            vacuum_state
+                .map(Array1::from)
+                .as_ref()
+                .map(ndarray::ArrayBase::view),
         )?))
     }
 
@@ -259,7 +262,7 @@ impl PyMajoranaEncoding {
             .operators
             .ipowers()
             .iter()
-            .map(|&v| v as u32)
+            .map(|&v| u32::from(v))
             .collect();
         output.set_item("ipowers", ipowers)?;
         let symplectics: Vec<Vec<bool>> = self
@@ -328,8 +331,8 @@ impl PyMajoranaEncoding {
     /// Args:
     ///     fham: The fermionic Hamiltonian to encode.
     ///     temperature: Initial annealing temperature. Defaults to ``n_modes // 2``.
-    ///     initial_guess: Starting permutation. Defaults to identity.
-    ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
+    ///     `initial_guess`: Starting permutation. Defaults to identity.
+    ///     `coefficient_weighted`: If ``True``, minimise coefficient-weighted Pauli weight.
     ///     seed: Seed for the RNG driving permutation moves. Defaults to ``1017``.
     ///
     /// Returns:
@@ -376,8 +379,8 @@ impl PyMajoranaEncoding {
     /// Args:
     ///     fham: The fermionic Hamiltonian whose Pauli weight drives the search.
     ///     temperature: Initial annealing temperature. Defaults to ``n_modes``.
-    ///     initial_guess: Starting permutation. Defaults to identity.
-    ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
+    ///     `initial_guess`: Starting permutation. Defaults to identity.
+    ///     `coefficient_weighted`: If ``True``, minimise coefficient-weighted Pauli weight.
     ///     seed: Seed for the RNG driving permutation moves. Defaults to ``1017``.
     ///
     /// Returns:
@@ -425,7 +428,7 @@ impl PyMajoranaEncoding {
     ///     2D boolean array of shape ``(n_states, n_modes)``.
     ///
     /// Raises:
-    ///     ValueError: if any state cannot be decoded for this encoding.
+    ///     `ValueError`: if any state cannot be decoded for this encoding.
     fn decode<'py>(
         &self,
         py: Python<'py>,
@@ -452,8 +455,8 @@ impl PyMajoranaEncoding {
     /// Compute the Hartree-Fock state in the encoded basis.
     ///
     /// Args:
-    ///     fermionic_hf_state: 1D boolean array of mode occupations.
-    ///     mode_op_map: Optional permutation mapping modes to operator pairs.
+    ///     `fermionic_hf_state`: 1D boolean array of mode occupations.
+    ///     `mode_op_map`: Optional permutation mapping modes to operator pairs.
     ///
     /// Returns:
     ///     1D boolean array — the qubit Hartree-Fock state in the Z basis.
@@ -532,9 +535,9 @@ impl PyMajoranaEncoding {
     ///
     /// Args:
     ///     signature: The fermionic operator signature, composed of "+" and "-".
-    ///     mode_indices: The mode index for each ladder operator.
+    ///     `mode_indices`: The mode index for each ladder operator.
     ///     coeff: The operator coefficient.
-    ///     with_conjugate: Also add the reversed-index hermitian conjugate.
+    ///     `with_conjugate`: Also add the reversed-index hermitian conjugate.
     #[pyo3(signature = (signature, mode_indices, coeff = Complex64::new(1.0, 0.0), with_conjugate = false))]
     fn encode_fermion_product(
         &self,
@@ -597,8 +600,7 @@ impl PyMajoranaEncoding {
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
         other
             .extract::<PyRef<'_, Self>>()
-            .map(|o| self.0 == o.0)
-            .unwrap_or(false)
+            .is_ok_and(|o| self.0 == o.0)
     }
 
     fn __repr__(&self) -> String {

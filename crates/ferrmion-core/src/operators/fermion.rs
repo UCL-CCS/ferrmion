@@ -526,7 +526,7 @@ impl MajoranaHashMap {
                     coefficients[r],
                 );
             }
-            debug!("MBTree {:?}\n", &self);
+            debug!("MBTree {:?}\n", self);
             return;
         }
         // Phase 1 — expand chunks of independent terms into thread-local maps in
@@ -569,7 +569,7 @@ impl MajoranaHashMap {
                 }
             }
         }
-        debug!("MBTree {:?}\n", &self);
+        debug!("MBTree {:?}\n", self);
     }
 }
 
@@ -728,8 +728,8 @@ impl From<MajoranaHashMap> for MajoranaSparse {
         // Restore deterministic ordering (equivalent to the prior BTreeMap key order).
         pairs.sort_unstable_by_key(|(a, _)| *a);
         let (sparse_indices, sparse_values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
-        debug!("Sparse Majorana Indices {:?}", &sparse_indices);
-        debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
+        debug!("Sparse Majorana Indices {:?}", sparse_indices);
+        debug!("Sparse Majorana Coefficients {:?}", sparse_values);
         MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
             .expect("Indices and coefficients should be same length.")
     }

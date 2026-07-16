@@ -148,13 +148,13 @@ impl PyQubitHamiltonian {
     ///
     /// Args:
     ///     temperature: Initial annealing temperature. Defaults to ``n_qubits``.
-    ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
+    ///     `coefficient_weighted`: If ``True``, minimise coefficient-weighted Pauli weight.
     ///     seed: Seed for the RNG. Defaults to ``1017`` when omitted.
-    ///     clifford_subset: Gate families to sample from. One of ``"all"``, ``"c"``,
+    ///     `clifford_subset`: Gate families to sample from. One of ``"all"``, ``"c"``,
     ///         ``"ch"``, ``"cs"``, ``"chs"`` (default), or ``"vp"``.
     ///
     /// Returns:
-    ///     QubitHamiltonian: The optimised Hamiltonian.
+    ///     `QubitHamiltonian`: The optimised Hamiltonian.
     #[pyo3(signature = (temperature = None, coefficient_weighted = false, seed = None, clifford_subset = "chs".to_string()))]
     fn clifford_heuristic(
         &self,
@@ -190,16 +190,16 @@ impl PyQubitHamiltonian {
     ///
     /// Args:
     ///     iterations: Number of subsystem-local Clifford descents to perform.
-    ///     subsystem_dimension: Number of qubits in each sampled subsystem.
+    ///     `subsystem_dimension`: Number of qubits in each sampled subsystem.
     ///     temperature: Annealing temperature for each descent. Defaults to ``n_qubits``.
-    ///     coefficient_weighted: If ``True``, minimise coefficient-weighted Pauli weight.
+    ///     `coefficient_weighted`: If ``True``, minimise coefficient-weighted Pauli weight.
     ///     sampler: Subsystem sampling strategy: ``"full_system"``, ``"uniform"``,
     ///         or ``"hamming"`` (default).
     ///     seed: Seed for the RNG. Defaults to ``1017`` when omitted.
-    ///     clifford_subset: Gate families to sample from.
+    ///     `clifford_subset`: Gate families to sample from.
     ///
     /// Returns:
-    ///     QubitHamiltonian: The optimised Hamiltonian.
+    ///     `QubitHamiltonian`: The optimised Hamiltonian.
     #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (iterations, subsystem_dimension, temperature = None, coefficient_weighted = false, sampler = "hamming".to_string(), seed = None, clifford_subset = "chs".to_string()))]
     fn randomised_subsystem_descent(
@@ -397,7 +397,7 @@ impl PyFermionHamiltonian {
     /// Convert to a sparse Majorana representation.
     ///
     /// Returns:
-    ///     MajoranaSparse: The sparse Majorana representation of this Hamiltonian.
+    ///     `MajoranaSparse`: The sparse Majorana representation of this Hamiltonian.
     fn to_majorana_sparse(&self) -> PyMajoranaSparse {
         PyMajoranaSparse(self.inner.to_majorana_sparse())
     }
@@ -405,8 +405,7 @@ impl PyFermionHamiltonian {
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
         other
             .extract::<PyRef<'_, Self>>()
-            .map(|o| self.inner == o.inner)
-            .unwrap_or(false)
+            .is_ok_and(|o| self.inner == o.inner)
     }
 
     fn __repr__(&self) -> String {

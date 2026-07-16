@@ -4,7 +4,7 @@
 //! it is necessary to encode the fermionic operators to qubit operators
 //! which obey fermionic commutation relations.
 //!
-//! This crate contains the PyO3 interop layer which exposes the
+//! This crate contains the `PyO3` interop layer which exposes the
 //! `ferrmion-core` types and algorithms to Python. The core Hamiltonian and
 //! encoding types are exposed directly as Python classes
 //! ([`PyQubitHamiltonian`], [`PyFermionHamiltonian`], [`PyMajoranaEncoding`]),

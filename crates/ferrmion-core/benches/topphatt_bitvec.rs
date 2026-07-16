@@ -12,9 +12,9 @@
 //! Three backends are compared:
 //! - `sparse`: the production `MajoranaSparse` (one index-list per term).
 //! - `dense_transpose`: one `u64` bit-vector per Majorana index, bits indexing
-//!   terms (via [`DenseTransposeTarget`]).
+//!   terms (via [`DenseTransposeBackend`]).
 //! - `sparse_transpose`: one sorted `Vec<u32>` of term indices per Majorana index
-//!   (via [`SparseTransposeTarget`]); a selection's weight is a 3-way list merge.
+//!   (via [`SparseTransposeBackend`]); a selection's weight is a 3-way list merge.
 //!
 //! All three deduplicate whole terms identically, so they produce identical
 //! encodings; only the representation and performance differ.
@@ -25,7 +25,7 @@ use criterion::{black_box, criterion_group, criterion_main, BatchSize, Benchmark
 use ferrmion_core::encode::ternarytree::TernaryTree;
 use ferrmion_core::operators::MajoranaSparse;
 use ferrmion_core::optimise::{
-    topphatt, DenseTransposeTarget, NodeOrderHeuristic, SparseTransposeTarget,
+    topphatt, DenseTransposeBackend, NodeOrderHeuristic, SparseTransposeBackend,
 };
 use num_complex::Complex64;
 use rand::{Rng, SeedableRng};
@@ -86,7 +86,7 @@ fn bench_topphatt_backends(c: &mut Criterion) {
                 |b, &n| {
                     b.iter_batched(
                         || {
-                            let store = DenseTransposeTarget::from_arrayvecs(&terms, n);
+                            let store = DenseTransposeBackend::from_arrayvecs(&terms, n);
                             (store, TernaryTree::naive_jkmn(n))
                         },
                         |(store, tree)| {
@@ -103,7 +103,7 @@ fn bench_topphatt_backends(c: &mut Criterion) {
                 |b, &n| {
                     b.iter_batched(
                         || {
-                            let store = SparseTransposeTarget::from_arrayvecs(&terms, n);
+                            let store = SparseTransposeBackend::from_arrayvecs(&terms, n);
                             (store, TernaryTree::naive_jkmn(n))
                         },
                         |(store, tree)| {
@@ -149,7 +149,7 @@ fn bench_topphatt_large_modes(c: &mut Criterion) {
             |b, &n| {
                 b.iter_batched(
                     || {
-                        let store = DenseTransposeTarget::from_arrayvecs(&terms, n);
+                        let store = DenseTransposeBackend::from_arrayvecs(&terms, n);
                         (store, TernaryTree::naive_jkmn(n))
                     },
                     |(store, tree)| {
@@ -166,7 +166,7 @@ fn bench_topphatt_large_modes(c: &mut Criterion) {
             |b, &n| {
                 b.iter_batched(
                     || {
-                        let store = SparseTransposeTarget::from_arrayvecs(&terms, n);
+                        let store = SparseTransposeBackend::from_arrayvecs(&terms, n);
                         (store, TernaryTree::naive_jkmn(n))
                     },
                     |(store, tree)| {
@@ -210,7 +210,7 @@ fn bench_term_store_build(c: &mut Criterion) {
                 &n_modes,
                 |b, &n| {
                     b.iter(|| {
-                        black_box(DenseTransposeTarget::from_arrayvecs(black_box(&terms), n))
+                        black_box(DenseTransposeBackend::from_arrayvecs(black_box(&terms), n))
                     });
                 },
             );
@@ -220,7 +220,7 @@ fn bench_term_store_build(c: &mut Criterion) {
                 &n_modes,
                 |b, &n| {
                     b.iter(|| {
-                        black_box(SparseTransposeTarget::from_arrayvecs(black_box(&terms), n))
+                        black_box(SparseTransposeBackend::from_arrayvecs(black_box(&terms), n))
                     });
                 },
             );
@@ -263,7 +263,7 @@ fn bench_topphatt_end_to_end(c: &mut Criterion) {
                     b.iter_batched(
                         || TernaryTree::naive_jkmn(n),
                         |tree| {
-                            let store = DenseTransposeTarget::from_arrayvecs(&terms, n);
+                            let store = DenseTransposeBackend::from_arrayvecs(&terms, n);
                             topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                         },
                         BatchSize::SmallInput,
@@ -278,7 +278,7 @@ fn bench_topphatt_end_to_end(c: &mut Criterion) {
                     b.iter_batched(
                         || TernaryTree::naive_jkmn(n),
                         |tree| {
-                            let store = SparseTransposeTarget::from_arrayvecs(&terms, n);
+                            let store = SparseTransposeBackend::from_arrayvecs(&terms, n);
                             topphatt(store, tree, false, NodeOrderHeuristic::MinWeight).unwrap()
                         },
                         BatchSize::SmallInput,

@@ -509,7 +509,7 @@ impl MajoranaHashMap {
     /// large operators (at least [`PARALLEL_TERM_THRESHOLD`] rows) the expansion
     /// runs across rayon worker threads.
     fn append_fermion_sparse(&mut self, fsparse: &FermionSparse) {
-        debug!("FSparse Indices {:?}", &fsparse.indices);
+        debug!("FSparse Indices {:?}", fsparse.indices);
         let action = fsparse.action.as_slice();
         let indices = &fsparse.indices;
         let coefficients = &fsparse.coefficients;

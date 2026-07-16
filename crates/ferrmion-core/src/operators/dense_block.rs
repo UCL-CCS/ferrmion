@@ -18,9 +18,6 @@
 //!   Cloning the matrix is then a single contiguous copy rather than one heap
 //!   allocation per row.
 //!
-//! The symplectic convention is unchanged: a qubit's Pauli is read from the
-//! `(x, z)` bit pair — `(false, false) = I`, `(true, false) = X`,
-//! `(false, true) = Z`, `(true, true) = Y`.
 //!
 //! # Invariant: padding bits are zero
 //!
@@ -146,7 +143,7 @@ impl<const WIDTH: usize> DenseIndex<WIDTH> {
         for (a, b) in self.0.iter().zip(other.0.iter()) {
             let diff = a ^ b;
             if diff != 0 {
-                let bit = diff & diff.wrapping_neg();
+                let bit = diff.isolate_lowest_one();
                 return Some(if a & bit == 0 {
                     Ordering::Less
                 } else {
@@ -174,7 +171,7 @@ fn cmp_bits(a: &[DenseIndex], an: usize, b: &[DenseIndex], bn: usize) -> Orderin
     an.cmp(&bn)
 }
 
-/// A symplectic block: `n_bits` qubits packed into [`DenseIndex`] words.
+/// A symplectic block: `dim` qubits packed into [`DenseIndex`] words.
 ///
 /// Generic over the word backing `S`: `Vec<DenseIndex>` for an owned block or
 /// `&[DenseIndex]` for a borrowed view (which is `Copy`, replacing the former
@@ -182,7 +179,7 @@ fn cmp_bits(a: &[DenseIndex], an: usize, b: &[DenseIndex], bn: usize) -> Orderin
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash)]
 pub struct DenseBlock<S = Vec<DenseIndex>> {
     words: S,
-    n_bits: usize,
+    dim: usize,
 }
 
 impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
@@ -194,13 +191,13 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     /// Number of qubits (bits) in this block.
     #[inline]
     pub fn len(&self) -> usize {
-        self.n_bits
+        self.dim
     }
 
     /// Whether the block has zero qubits.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.n_bits == 0
+        self.dim == 0
     }
 
     /// Borrow this block as a `DenseBlock<&[DenseIndex]>`.
@@ -208,7 +205,7 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     pub fn as_ref(&self) -> DenseBlock<&[DenseIndex]> {
         DenseBlock {
             words: self.words(),
-            n_bits: self.n_bits,
+            dim: self.dim,
         }
     }
 
@@ -255,7 +252,7 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
 
     /// Convert to a dense boolean array (Python / test boundary).
     pub fn to_bool_array(&self) -> Array1<bool> {
-        let mut out = Array1::from_elem(self.n_bits, false);
+        let mut out = Array1::from_elem(self.dim, false);
         for i in self.iter_ones() {
             out[i] = true;
         }
@@ -284,7 +281,7 @@ impl DenseBlock<Vec<DenseIndex>> {
     pub fn zeros(n: usize) -> Self {
         Self {
             words: vec![DenseIndex::default(); DenseIndex::<1>::words_for(n)],
-            n_bits: n,
+            dim: n,
         }
     }
 
@@ -316,9 +313,9 @@ impl<'a> DenseBlock<&'a [DenseIndex]> {
     ///
     /// `words.len()` must equal `DenseIndex::<1>::words_for(n_bits)`.
     #[inline]
-    pub(crate) fn from_words(words: &'a [DenseIndex], n_bits: usize) -> Self {
-        debug_assert_eq!(words.len(), DenseIndex::<1>::words_for(n_bits));
-        Self { words, n_bits }
+    pub(crate) fn from_words(words: &'a [DenseIndex], dim: usize) -> Self {
+        debug_assert_eq!(words.len(), DenseIndex::<1>::words_for(dim));
+        Self { words, dim }
     }
 }
 
@@ -329,7 +326,7 @@ impl<S: AsRef<[DenseIndex]> + Eq> PartialOrd for DenseBlock<S> {
 }
 impl<S: AsRef<[DenseIndex]> + Eq> Ord for DenseBlock<S> {
     fn cmp(&self, other: &Self) -> Ordering {
-        cmp_bits(self.words(), self.n_bits, other.words(), other.n_bits)
+        cmp_bits(self.words(), self.dim, other.words(), other.dim)
     }
 }
 

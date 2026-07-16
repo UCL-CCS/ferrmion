@@ -824,30 +824,30 @@ impl TreeRestrictions {
                 .iter()
                 .enumerate()
                 .for_each(|(parent_index, &child)| {
-                    let leaf_index: usize;
                     let y_parity: YParity;
+                    let pair: &mut LeafPair;
                     match child {
                         Some(Child::XLeaf(ind)) => {
-                            leaf_index = ind as usize;
+                            let leaf_index = ind as usize;
                             y_parity = tree.y_parity_of[leaf_index];
+                            pair = &mut leaf_pairs[leaf_index];
                         }
                         Some(Child::YLeaf(ind)) => {
-                            leaf_index = ind as usize;
+                            let leaf_index = ind as usize;
                             y_parity = !tree.y_parity_of[leaf_index];
+                            pair = &mut leaf_pairs[leaf_index];
                         }
                         _ => {
                             // If  the child is a Node, we continue.
                             return;
                         }
-                    }
+                    };
                     match y_parity {
                         YParity::Even => {
-                            let pair = &mut leaf_pairs[leaf_index];
-                            pair.x = LeafLocation(parent_index, edge)
+                            pair.x = LeafLocation(parent_index, edge);
                         }
                         YParity::Odd => {
-                            let pair = &mut leaf_pairs[leaf_index];
-                            pair.y = LeafLocation(parent_index, edge)
+                            pair.y = LeafLocation(parent_index, edge);
                         }
                     }
                 });

@@ -181,3 +181,6 @@ development/
 
 #Demos
 *notebooks/data/saved_ecoding.json
+
+# Generated benchmark sweep results (scripts/bench_merge_sweep.sh)
+bench_results/

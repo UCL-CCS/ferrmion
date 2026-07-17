@@ -52,6 +52,15 @@ uv run python scripts/bench_merge_report.py \
 - **Ranking**: geometric-mean runtime ratio vs the `baseline` strategy at the
   highest thread count, across workloads. Below 1.0 is faster than baseline.
 
+## macOS notes
+
+- The sweep script is portable shell: it runs under macOS's stock bash 3.2 and
+  detects the core count via `sysctl` when `nproc` is unavailable.
+- On Apple Silicon, `hw.ncpu` counts performance **and** efficiency cores
+  together, which muddies scaling curves once rayon spills onto E-cores. For a
+  clean efficiency measurement, pass an explicit list capped at the P-core
+  count, e.g. `--threads 1,2,4,$(sysctl -n hw.perflevel0.logicalcpu)`.
+
 ## Notes
 
 - Strategy and thread count are read **once per process**, so the sweep runs

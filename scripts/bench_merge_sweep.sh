@@ -29,6 +29,33 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Portable core count: Linux (nproc), macOS/BSD (sysctl), POSIX fallback.
+detect_nproc() {
+    if command -v nproc >/dev/null 2>&1; then
+        nproc
+    elif sysctl -n hw.ncpu >/dev/null 2>&1; then
+        sysctl -n hw.ncpu
+    else
+        getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+    fi
+}
+
+# Portable CPU-model string for meta.json.
+detect_cpu() {
+    if [[ -r /proc/cpuinfo ]]; then
+        grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ //'
+    elif sysctl -n machdep.cpu.brand_string >/dev/null 2>&1; then
+        sysctl -n machdep.cpu.brand_string
+    else
+        echo unknown
+    fi
+}
+
+# Print the leading comment block (after the shebang) as --help text.
+print_help() {
+    awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+}
+
 ALL_STRATEGIES="baseline,hash_cache,fx_hash,shard_phase1,tree_reduce,sort_scan,radix_partition,kway_merge"
 
 SMOKE=0
@@ -48,13 +75,13 @@ while [[ $# -gt 0 ]]; do
         --skip-rust) SKIP_RUST=1 ;;
         --skip-python) SKIP_PYTHON=1 ;;
         --timing) TIMING=1 ;;
-        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) print_help; exit 0 ;;
         *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
     esac
     shift
 done
 
-NPROC="$(nproc)"
+NPROC="$(detect_nproc)"
 if [[ -z "$THREADS" ]]; then
     THREADS="1"
     t=2
@@ -66,14 +93,17 @@ OUT="${OUT:-bench_results/merge_sweep_$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$OUT"
 
 # Pytest selection: the decision metric is test_benchmark_encode_topphatt.
+# CRITERION_EXTRA/CRITERION_FILTER hold whitespace-free flags and are expanded
+# unquoted; a plain string (not an array) keeps bash 3.2's `set -u` happy on
+# macOS, where empty-array expansion counts as an unbound variable.
 PYTEST_K="test_benchmark_encode_topphatt"
-CRITERION_EXTRA=()
+CRITERION_EXTRA=""
 CRITERION_FILTER=""
 if (( SMOKE )); then
     # h2o/sto-3g is the smallest dataset that still takes the parallel
     # expand-and-merge path (a few thousand terms); h2_* stay serial.
     PYTEST_K="test_benchmark_encode_topphatt and JordanWigner and h2o_sto"
-    CRITERION_EXTRA=(--quick)
+    CRITERION_EXTRA="--quick"
     CRITERION_FILTER="50000"
 fi
 
@@ -89,7 +119,7 @@ echo "results:    $OUT"
     echo "  \"date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
     echo "  \"host\": \"$(hostname)\","
     echo "  \"nproc\": $NPROC,"
-    echo "  \"cpu\": \"$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //' || sysctl -n machdep.cpu.brand_string 2>/dev/null || echo unknown)\","
+    echo "  \"cpu\": \"$(detect_cpu)\","
     echo "  \"git_rev\": \"$(git rev-parse HEAD 2>/dev/null || echo unknown)\","
     echo "  \"strategies\": \"$STRATEGIES\","
     echo "  \"threads\": \"$THREADS\","
@@ -124,7 +154,7 @@ for s in "${STRATEGY_ARR[@]}"; do
             echo "-- criterion micro-bench"
             RAYON_NUM_THREADS="$t" FERRMION_MERGE_STRATEGY="$s" \
                 cargo bench --bench merge_strategies -- --noplot \
-                --save-baseline "${s}_t${t}" "${CRITERION_EXTRA[@]}" $CRITERION_FILTER
+                --save-baseline "${s}_t${t}" $CRITERION_EXTRA $CRITERION_FILTER
         fi
 
         if (( ! SKIP_PYTHON )); then

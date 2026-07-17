@@ -216,8 +216,8 @@ impl SymplecticOperator {
     pub fn identity(n_modes: usize) -> Self {
         Self {
             ipower: 0,
-            x: DenseBlock::zeros(n_modes),
-            z: DenseBlock::zeros(n_modes),
+            x: DenseBlock::zeros(1, n_modes),
+            z: DenseBlock::zeros(1, n_modes),
         }
     }
 
@@ -269,11 +269,11 @@ impl SymplecticOperator {
     /// assert_eq!(ipower, 0);
     /// ```
     pub fn to_pauli_string(&self) -> (String, u8) {
-        let mut pauli_string = String::with_capacity(self.x.len());
+        let mut pauli_string = String::with_capacity(self.x.n_indices());
         let mut ipower = self.ipower;
-        for i in 0..self.x.len() {
-            let x = self.x.get(i);
-            let z = self.z.get(i);
+        for i in 0..self.x.n_indices() {
+            let x = self.x.get_index(0, i);
+            let z = self.z.get_index(0, i);
             if x && z {
                 ipower += 3;
             };
@@ -399,11 +399,11 @@ impl<'sym> SymplecticOperatorView<'sym> {
 
     /// Convert to a Pauli string representation and its associated `i`-power.
     pub fn to_pauli_string(self) -> (String, u8) {
-        let mut pauli_string = String::with_capacity(self.x.len());
+        let mut pauli_string = String::with_capacity(self.x.n_terms());
         let mut ipower = self.ipower;
-        for i in 0..self.x.len() {
-            let x = self.x.get(i);
-            let z = self.z.get(i);
+        for i in 0..self.x.n_indices() {
+            let x = self.x.get_index(0, i);
+            let z = self.z.get_index(0, i);
             if x && z {
                 ipower += 3;
             };
@@ -520,7 +520,7 @@ impl SymplecticMatrix {
     /// Pack the rows of a dense boolean matrix into one contiguous word buffer,
     /// `words_per_row` words per row.
     fn pack(matrix: &Array2<bool>, words_per_row: usize) -> Vec<DenseIndex> {
-        let bits = DenseIndex::<1>::BITS;
+        let bits = DenseIndex::BITS;
         let mut words = vec![DenseIndex::default(); matrix.nrows() * words_per_row];
         for (r, row) in matrix.rows().into_iter().enumerate() {
             let base = r * words_per_row;
@@ -563,7 +563,7 @@ impl SymplecticMatrix {
     pub fn new(x_block: Array2<bool>, z_block: Array2<bool>) -> Self {
         let n_qubits = x_block.ncols();
         let n_rows = x_block.nrows();
-        let words_per_row = DenseIndex::<1>::words_for(n_qubits);
+        let words_per_row = DenseIndex::words_for(n_qubits);
         let x_words = Self::pack(&x_block, words_per_row);
         let z_words = Self::pack(&z_block, words_per_row);
         let mut ipowers = Array1::from_elem(n_rows, 0u8);
@@ -601,7 +601,7 @@ impl SymplecticMatrix {
     pub fn with_ipowers(x_block: Array2<bool>, z_block: Array2<bool>, ipowers: Array1<u8>) -> Self {
         let n_qubits = x_block.ncols();
         let n_rows = x_block.nrows();
-        let words_per_row = DenseIndex::<1>::words_for(n_qubits);
+        let words_per_row = DenseIndex::words_for(n_qubits);
         Self {
             x_words: Self::pack(&x_block, words_per_row),
             z_words: Self::pack(&z_block, words_per_row),
@@ -623,7 +623,7 @@ impl SymplecticMatrix {
     /// assert_eq!(id.pauli_weight(), 0);
     /// ```
     pub fn identity(n_modes: usize, n_qubits: usize) -> Self {
-        let words_per_row = DenseIndex::<1>::words_for(n_qubits);
+        let words_per_row = DenseIndex::words_for(n_qubits);
         Self {
             ipowers: Array1::from_elem(n_modes, 0),
             x_words: vec![DenseIndex::default(); n_modes * words_per_row],
@@ -673,7 +673,7 @@ impl SymplecticMatrix {
     /// Set the X bit at `(row, qubit)`.
     #[inline]
     pub fn set_x(&mut self, row: usize, qubit: usize, value: bool) {
-        let bits = DenseIndex::<1>::BITS;
+        let bits = DenseIndex::BITS;
         let word = row * self.words_per_row + qubit / bits;
         self.x_words[word].set(qubit % bits, value);
     }
@@ -681,7 +681,7 @@ impl SymplecticMatrix {
     /// Set the Z bit at `(row, qubit)`.
     #[inline]
     pub fn set_z(&mut self, row: usize, qubit: usize, value: bool) {
-        let bits = DenseIndex::<1>::BITS;
+        let bits = DenseIndex::BITS;
         let word = row * self.words_per_row + qubit / bits;
         self.z_words[word].set(qubit % bits, value);
     }
@@ -950,8 +950,8 @@ impl SymplecticMatrixTranspose<'_> {
     /// -1 for each Y
     /// Z -> X and X -> Z
     pub(crate) fn haddamard(&mut self, qubit: usize) {
-        let word_off = qubit / DenseIndex::<1>::BITS;
-        let local = qubit % DenseIndex::<1>::BITS;
+        let word_off = qubit / DenseIndex::BITS;
+        let local = qubit % DenseIndex::BITS;
         for r in 0..self.n_rows {
             let w = r * self.words_per_row + word_off;
             let x_set = self.x_words[w].get(local);
@@ -970,8 +970,8 @@ impl SymplecticMatrixTranspose<'_> {
     /// -1 for each X
     /// Z -> Z ^ X
     pub(crate) fn phasegate(&mut self, qubit: usize) {
-        let word_off = qubit / DenseIndex::<1>::BITS;
-        let local = qubit % DenseIndex::<1>::BITS;
+        let word_off = qubit / DenseIndex::BITS;
+        let local = qubit % DenseIndex::BITS;
         for r in 0..self.n_rows {
             let w = r * self.words_per_row + word_off;
             if self.x_words[w].get(local) {
@@ -986,7 +986,7 @@ impl SymplecticMatrixTranspose<'_> {
     // Transform a [`Pauli`] operator by this Clifford operator.
     // $P \to CX P CX$
     pub(crate) fn cnot(&mut self, control: usize, target: usize) {
-        let bits = DenseIndex::<1>::BITS;
+        let bits = DenseIndex::BITS;
         let (control_off, control_local) = (control / bits, control % bits);
         let (target_off, target_local) = (target / bits, target % bits);
         for r in 0..self.n_rows {
@@ -1015,7 +1015,7 @@ impl SymplecticMatrixTranspose<'_> {
                 weights[i] += 1;
             }
             for i in zr.iter_ones() {
-                if !xr.get(i) {
+                if !xr.get_index(0, i) {
                     weights[i] += 1;
                 }
             }

@@ -12,7 +12,7 @@ use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
 use crate::utils::COEFFICIENT_TOLERANCE;
 use crate::utils::{self, icount_to_sign};
 use log::{debug, error};
-use ndarray::{Array1, Array2, Axis};
+use ndarray::{Array1, Array2, Axis, Zip};
 use num_complex::{c64, Complex64};
 use rayon::prelude::*;
 use thiserror::Error;
@@ -195,8 +195,8 @@ impl MajoranaEncoding {
         let mut mat: Vec<Vec<bool>> = Vec::with_capacity(n_modes);
 
         for i in 0..n_modes {
-            let x0 = operators.row_x(2 * i);
-            let x1 = operators.row_x(2 * i + 1);
+            let x0 = operators.x_block.get_term(2 * i);
+            let x1 = operators.x_block.get_term(2 * i + 1);
 
             // Structural check: both γ operators for mode i must flip the same qubits,
             // otherwise no Z-basis state can serve as the vacuum for this mode.
@@ -204,8 +204,8 @@ impl MajoranaEncoding {
                 return Err(MajoranaEncodingError::NoVacuumStateError);
             }
 
-            let z0 = operators.row_z(2 * i);
-            let z1 = operators.row_z(2 * i + 1);
+            let mut z0 = operators.z_block.get_term(2 * i);
+            let z1 = operators.z_block.get_term(2 * i + 1);
             let ip0 = operators.ipower(2 * i) as i32;
             let ip1 = operators.ipower(2 * i + 1) as i32;
 
@@ -220,7 +220,12 @@ impl MajoranaEncoding {
             }
             let b = (diff / 2) != 0;
 
-            let constraint: Vec<bool> = (0..n_qubits).map(|q| z0.get(q) ^ z1.get(q)).collect();
+            let constraint: Vec<bool> = z0
+                .to_bool_array()
+                .iter()
+                .zip(&z1.to_bool_array())
+                .map(|(a, b)| a ^ b)
+                .collect();
 
             // Zero constraint with b=true is immediately inconsistent (0 ≠ 1).
             if constraint.iter().all(|&x| !x) && b {
@@ -272,7 +277,7 @@ impl MajoranaEncoding {
     }
 
     fn validate_operator_shape(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
-        if operators.x_bools().dim() != operators.z_bools().dim() {
+        if operators.x_block.to_bool_array().dim() != operators.z_block.to_bool_array().dim() {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
         if !operators.n_rows().is_multiple_of(2) {
@@ -289,8 +294,14 @@ impl MajoranaEncoding {
         for i in 0..n_ops {
             for j in i + 1..n_ops {
                 // Symplectic inner product ⟨op_i, op_j⟩ = |x_i & z_j| + |z_i & x_j| (mod 2).
-                let inner_product = operators.row_x(i).and_count_ones(&operators.row_z(j))
-                    + operators.row_z(i).and_count_ones(&operators.row_x(j));
+                let inner_product = operators
+                    .x_block
+                    .get_term(i)
+                    .and_count_ones(&operators.z_block.get_term(j))
+                    + operators
+                        .z_block
+                        .get_term(i)
+                        .and_count_ones(&operators.x_block.get_term(j));
                 if inner_product.is_multiple_of(2) {
                     return Err(MajoranaEncodingError::InvalidOperatorsError);
                 }
@@ -333,7 +344,7 @@ impl MajoranaEncoding {
     }
 
     fn validate_vacuum_state(&self) -> Result<(), MajoranaEncodingError> {
-        if self.vacuum_state.state.len() != self.n_qubits {
+        if self.vacuum_state.state.n_indices() != self.n_qubits {
             error!(
                 "Vacuum state length {0:?} not same as n_qubits {1:?}",
                 self.vacuum_state.state, self.n_qubits,
@@ -624,11 +635,11 @@ impl MajoranaEncoding {
         let mut occupations = Array2::<bool>::default((n_states, self.n_modes));
 
         for i in (0..self.n_modes).rev() {
-            let x_l = self.operators.row_x(2 * i);
-            let z_l = self.operators.row_z(2 * i);
+            let x_l = self.operators.x_block.get_term(2 * i);
+            let z_l = self.operators.z_block.get_term(2 * i);
             let ip_l = self.operators.ipower(2 * i);
-            let x_r = self.operators.row_x(2 * i + 1);
-            let z_r = self.operators.row_z(2 * i + 1);
+            let x_r = self.operators.x_block.get_term(2 * i + 1);
+            let z_r = self.operators.z_block.get_term(2 * i + 1);
             let ip_r = self.operators.ipower(2 * i + 1);
 
             // Validity: left and right new states must agree; this is an encoding
@@ -718,11 +729,11 @@ impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
             if !input.state[idx] {
                 continue;
             }
-            let x_l = self.operators.row_x(2 * idx);
-            let z_l = self.operators.row_z(2 * idx);
+            let x_l = self.operators.x_block.get_term(2 * idx);
+            let z_l = self.operators.z_block.get_term(2 * idx);
             let ip_l = self.operators.ipower(2 * idx);
-            let x_r = self.operators.row_x(2 * idx + 1);
-            let z_r = self.operators.row_z(2 * idx + 1);
+            let x_r = self.operators.x_block.get_term(2 * idx + 1);
+            let z_r = self.operators.z_block.get_term(2 * idx + 1);
             let ip_r = self.operators.ipower(2 * idx + 1);
 
             // Both Majorana operators of a mode flip the same qubits (x_l == x_r);
@@ -811,7 +822,7 @@ mod owned_tests {
             [true, true, false],
         ]);
         let n_qubits = x_block.len_of(Axis(1));
-        let sym = SymplecticMatrix::new(x_block, z_block);
+        let sym = SymplecticMatrix::from_arrays(x_block, z_block);
         let encoding: MajoranaEncoding =
             MajoranaEncoding::with_vacuum(sym, ZBasisState::zeros(n_qubits)).unwrap();
 
@@ -846,7 +857,7 @@ mod owned_tests {
         let x_block = ndarray::arr2(&[[true, false, false], [true, false, false]]);
         let z_block = ndarray::arr2(&[[false, false, false], [true, false, false]]);
         let encoding: MajoranaEncoding = MajoranaEncoding::with_vacuum(
-            SymplecticMatrix::new(x_block, z_block),
+            SymplecticMatrix::from_arrays(x_block, z_block),
             ZBasisState::zeros(3),
         )
         .unwrap();
@@ -865,7 +876,7 @@ mod owned_tests {
         let x_block = ndarray::arr2(&[[true, false, false], [true, false, false]]);
         let z_block = ndarray::arr2(&[[false, false, false], [true, false, false]]);
         let encoding: MajoranaEncoding = MajoranaEncoding::with_vacuum(
-            SymplecticMatrix::new(x_block, z_block),
+            SymplecticMatrix::from_arrays(x_block, z_block),
             ZBasisState::zeros(3),
         )
         .unwrap();
@@ -895,7 +906,7 @@ mod owned_tests {
             [true, true, false],
         ]);
         let encoding: MajoranaEncoding = MajoranaEncoding::with_vacuum(
-            SymplecticMatrix::new(x_block, z_block),
+            SymplecticMatrix::from_arrays(x_block, z_block),
             ZBasisState::zeros(3),
         )
         .unwrap();
@@ -1093,7 +1104,7 @@ mod owned_tests {
     fn test_determine_vacuum_state_mismatched_x_blocks_rejected() {
         let x_block = ndarray::arr2(&[[true, false], [false, true]]);
         let z_block = ndarray::arr2(&[[false, false], [false, false]]);
-        let sym = SymplecticMatrix::new(x_block, z_block);
+        let sym = SymplecticMatrix::from_arrays(x_block, z_block);
         assert!(matches!(
             MajoranaEncoding::determine_vacuum_state(&sym),
             Err(MajoranaEncodingError::NoVacuumStateError)
@@ -1105,7 +1116,7 @@ mod owned_tests {
         // Row 2 = Row 0 XOR Row 1, so these are linearly dependent over GF(2)
         let x_block = ndarray::arr2(&[[true, false], [false, true], [true, true], [true, true]]);
         let z_block = ndarray::arr2(&[[false, true], [true, false], [true, true], [true, true]]);
-        let sym = SymplecticMatrix::new(x_block, z_block);
+        let sym = SymplecticMatrix::from_arrays(x_block, z_block);
         assert!(MajoranaEncoding::with_vacuum(sym, ZBasisState::zeros(2)).is_err());
     }
 

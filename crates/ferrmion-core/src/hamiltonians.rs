@@ -234,7 +234,7 @@ impl SymplecticHamiltonian {
         let x_block = Array2::from_shape_vec((n, n_qubits), x_data).unwrap();
         let z_block = Array2::from_shape_vec((n, n_qubits), z_data).unwrap();
         Self::new(
-            SymplecticMatrix::with_ipowers(x_block, z_block, ipowers),
+            SymplecticMatrix::from_arrays_with_ipowers(x_block, z_block, ipowers),
             coeffs,
         )
     }

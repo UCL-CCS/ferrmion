@@ -576,9 +576,11 @@ impl TernaryTree {
             for (col_idx, &qi) in index.iter().enumerate() {
                 padded_x.column_mut(qi).assign(&x_block.column(col_idx));
                 padded_z.column_mut(qi).assign(&z_block.column(col_idx));
-                padded_vacuum_state
-                    .state
-                    .set(qi, vacuum_state.state.get(col_idx));
+                padded_vacuum_state.state.set_index(
+                    0,
+                    qi,
+                    vacuum_state.state.get_index(0, col_idx),
+                );
             }
             debug!("Padded x_block {:?}", padded_x);
             x_block = padded_x;
@@ -586,7 +588,7 @@ impl TernaryTree {
             vacuum_state = padded_vacuum_state;
         }
         Ok(MajoranaEncoding::with_vacuum(
-            SymplecticMatrix::new(x_block, z_block),
+            SymplecticMatrix::from_arrays(x_block, z_block),
             vacuum_state,
         )?)
     }
@@ -1105,7 +1107,7 @@ mod tt_tests {
             [false, false, true],
             [false, false, true],
         ]);
-        assert_eq!(encoding.operators.x_bools(), x_expected);
+        assert_eq!(encoding.operators.x_block.to_bool_matrix(), x_expected);
         let z_expected = arr2(&[
             [false, false, false],
             [true, false, false],
@@ -1114,7 +1116,7 @@ mod tt_tests {
             [true, true, false],
             [true, true, true],
         ]);
-        assert_eq!(encoding.operators.z_bools(), z_expected);
+        assert_eq!(encoding.operators.z_block.to_bool_matrix(), z_expected);
     }
 
     #[test]
@@ -1138,7 +1140,7 @@ mod tt_tests {
             [false, false, true],
             [false, false, true],
         ]);
-        assert_eq!(encoding.operators.x_bools(), x_expected);
+        assert_eq!(encoding.operators.x_block.to_bool_matrix(), x_expected);
         let z_expected = arr2(&[
             [false, false, false],
             [true, false, false],
@@ -1147,7 +1149,7 @@ mod tt_tests {
             [true, true, false],
             [true, true, true],
         ]);
-        assert_eq!(encoding.operators.z_bools(), z_expected);
+        assert_eq!(encoding.operators.z_block.to_bool_matrix(), z_expected);
     }
 
     #[test]
@@ -1164,7 +1166,7 @@ mod tt_tests {
             [false, false, true],
             [false, false, true],
         ]);
-        assert_eq!(encoding.operators.x_bools(), x_expected);
+        assert_eq!(encoding.operators.x_block.to_bool_matrix(), x_expected);
         let z_expected = arr2(&[
             [false, false, false],
             [true, false, false],
@@ -1173,7 +1175,7 @@ mod tt_tests {
             [true, true, false],
             [true, true, true],
         ]);
-        assert_eq!(encoding.operators.z_bools(), z_expected);
+        assert_eq!(encoding.operators.z_block.to_bool_matrix(), z_expected);
     }
 
     #[test]
@@ -1353,7 +1355,6 @@ mod integration_tests {
     use crate::encode::majorana::Encode;
     use crate::hamiltonians::QubitHamiltonian;
     use crate::operators::{FermionMatrix, FermionSparse, LadderOperator, MajoranaSparse};
-    use ahash::HashMapExt;
     use ndarray::arr2;
     use num_complex::c64;
 

@@ -108,12 +108,12 @@ impl ZBasisState {
     /// ```
     /// use ferrmion_core::states::{State, ZBasisState};
     ///
-    /// let s = ZBasisState::zeros(4);
+    /// let s = ZBasisState::zeros(1, 4);
     /// assert_eq!(s.dimension(), 4);
     /// assert!(s.state_bools().iter().all(|&b| !b));
     /// ```
     pub fn zeros(n_qubits: usize) -> Self {
-        Self::from_block(DenseBlock::zeros(n_qubits), Complex64::new(1., 0.))
+        Self::from_block(DenseBlock::zeros(1, n_qubits), Complex64::new(1., 0.))
     }
 }
 
@@ -127,17 +127,12 @@ impl State for ZBasisState {
         }
     }
     fn dimension(&self) -> usize {
-        self.state.len()
+        self.state.n_indices()
     }
 
     fn adjoint(self) -> Self {
-        let n = self.state.len();
-        let mut reversed = DenseBlock::zeros(n);
-        for i in self.state.iter_ones() {
-            reversed.set(n - 1 - i, true);
-        }
         Self {
-            state: reversed,
+            state: self.state,
             coefficient: self.coefficient.conj(),
             bra_ket: match self.bra_ket {
                 BraKet::Bra => BraKet::Ket,
@@ -147,9 +142,9 @@ impl State for ZBasisState {
     }
 
     fn reindex(&mut self, permutation: &[usize]) {
-        let mut new_state = DenseBlock::zeros(self.state.len());
+        let mut new_state = DenseBlock::zeros(self.state.n_indices(), 1);
         for original in self.state.iter_ones() {
-            new_state.set(permutation[original], true);
+            new_state.set_index(0, permutation[original], true);
         }
         self.state = new_state;
     }
@@ -323,7 +318,7 @@ impl From<Vec<ZBasisState>> for ZBasisEnsemble {
 /// use num_complex::Complex64;
 ///
 /// let fs = FockState::new(arr1(&[true, false, true]), Complex64::new(1.0, 0.0));
-/// assert_eq!(fs.state.len(), 3);
+/// assert_eq!(fs.state.n_indices(), 3);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FockState {
@@ -379,7 +374,7 @@ impl State for FockState {
     }
 
     fn reindex(&mut self, permutation: &[usize]) {
-        let mut new_state = Array1::from_elem(self.state.len(), false);
+        let mut new_state = Array1::from_elem(self.dimension(), false);
         for (original, &new) in permutation.iter().enumerate() {
             new_state[new] = self.state[original];
         }

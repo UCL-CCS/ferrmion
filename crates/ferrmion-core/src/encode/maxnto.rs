@@ -164,7 +164,7 @@ mod tests {
             let (ipowers, output) = maxnto_symplectic_matrix(n_modes).unwrap();
             let x_block = output.slice(s![.., ..n_modes]).to_owned();
             let z_block = output.slice(s![.., n_modes..]).to_owned();
-            let sym = SymplecticMatrix::with_ipowers(x_block, z_block, ipowers);
+            let sym = SymplecticMatrix::from_arrays_with_ipowers(x_block, z_block, ipowers);
             let enc = MajoranaEncoding::new(sym)
                 .unwrap_or_else(|e| panic!("MaxNTO n_modes={n_modes} failed: {e}"));
             assert_eq!(enc.n_modes, n_modes);

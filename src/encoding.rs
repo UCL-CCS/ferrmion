@@ -40,7 +40,7 @@ fn encoding_from_parts(
     let x_block = symplectics.slice(s![.., ..n_qubits]).to_owned();
     let z_block = symplectics.slice(s![.., n_qubits..]).to_owned();
     let ipowers = ipowers.mapv(|v| v % 4);
-    let matrix = SymplecticMatrix::with_ipowers(x_block, z_block, ipowers);
+    let matrix = SymplecticMatrix::from_arrays_with_ipowers(x_block, z_block, ipowers);
     let encoding = match vacuum_state {
         Some(vacuum) => MajoranaEncoding::with_vacuum(
             matrix,
@@ -192,7 +192,7 @@ impl PyMajoranaEncoding {
         let n_qubits = output.ncols() / 2;
         let x_block = output.slice(s![.., ..n_qubits]).to_owned();
         let z_block = output.slice(s![.., n_qubits..]).to_owned();
-        Ok(Self(MajoranaEncoding::new(SymplecticMatrix::new(
+        Ok(Self(MajoranaEncoding::new(SymplecticMatrix::from_arrays(
             x_block, z_block,
         ))?))
     }

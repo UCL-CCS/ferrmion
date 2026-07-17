@@ -24,6 +24,11 @@
 #   --skip-python        Skip the pytest end-to-end benchmarks.
 #   --timing             Also capture FERRMION_MERGE_TIMING=1 phase-attribution
 #                        logs (one single-shot pytest run per combination).
+#   --presize            Run every combination with FERRMION_MERGE_PRESIZE=1;
+#                        results are labelled <strategy>_p1 so they can be
+#                        compared against a default-knob sweep in one report.
+#   --shards N           Run every combination with FERRMION_MERGE_SHARDS=N;
+#                        results are labelled <strategy>_sN.
 #   -h, --help           Show this help.
 set -euo pipefail
 
@@ -65,6 +70,8 @@ OUT=""
 SKIP_RUST=0
 SKIP_PYTHON=0
 TIMING=0
+PRESIZE=0
+SHARDS=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -75,11 +82,26 @@ while [[ $# -gt 0 ]]; do
         --skip-rust) SKIP_RUST=1 ;;
         --skip-python) SKIP_PYTHON=1 ;;
         --timing) TIMING=1 ;;
+        --presize) PRESIZE=1 ;;
+        --shards) SHARDS="$2"; shift ;;
         -h|--help) print_help; exit 0 ;;
         *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
     esac
     shift
 done
+
+# Knob env vars are constant across the whole sweep (the per-combination env
+# only varies strategy and thread count); the result labels carry a suffix so
+# knobbed and default runs stay distinguishable in a merged report.
+KNOB_LABEL=""
+if (( PRESIZE )); then
+    export FERRMION_MERGE_PRESIZE=1
+    KNOB_LABEL="${KNOB_LABEL}_p1"
+fi
+if [[ -n "$SHARDS" ]]; then
+    export FERRMION_MERGE_SHARDS="$SHARDS"
+    KNOB_LABEL="${KNOB_LABEL}_s${SHARDS}"
+fi
 
 NPROC="$(detect_nproc)"
 if [[ -z "$THREADS" ]]; then
@@ -123,6 +145,7 @@ echo "results:    $OUT"
     echo "  \"git_rev\": \"$(git rev-parse HEAD 2>/dev/null || echo unknown)\","
     echo "  \"strategies\": \"$STRATEGIES\","
     echo "  \"threads\": \"$THREADS\","
+    echo "  \"knobs\": \"${KNOB_LABEL:-default}\","
     echo "  \"smoke\": $SMOKE"
     echo "}"
 } > "$OUT/meta.json"
@@ -147,14 +170,15 @@ IFS=',' read -r -a STRATEGY_ARR <<< "$STRATEGIES"
 IFS=',' read -r -a THREAD_ARR <<< "$THREADS"
 
 for s in "${STRATEGY_ARR[@]}"; do
+    label="${s}${KNOB_LABEL}"
     for t in "${THREAD_ARR[@]}"; do
-        echo "== strategy=$s threads=$t =="
+        echo "== strategy=$s threads=$t knobs=${KNOB_LABEL:-default} =="
 
         if (( ! SKIP_RUST )); then
             echo "-- criterion micro-bench"
             RAYON_NUM_THREADS="$t" FERRMION_MERGE_STRATEGY="$s" \
                 cargo bench --bench merge_strategies -- --noplot \
-                --save-baseline "${s}_t${t}" $CRITERION_EXTRA $CRITERION_FILTER
+                --save-baseline "${label}_t${t}" $CRITERION_EXTRA $CRITERION_FILTER
         fi
 
         if (( ! SKIP_PYTHON )); then
@@ -162,7 +186,7 @@ for s in "${STRATEGY_ARR[@]}"; do
             RAYON_NUM_THREADS="$t" FERRMION_MERGE_STRATEGY="$s" \
                 uv run --group test pytest python/tests/test_ternary_tree.py \
                 -k "$PYTEST_K" -q --no-header \
-                --benchmark-json="$OUT/pytest_${s}_t${t}.json"
+                --benchmark-json="$OUT/pytest_${label}_t${t}.json"
         fi
 
         if (( TIMING )); then
@@ -172,8 +196,8 @@ for s in "${STRATEGY_ARR[@]}"; do
             RAYON_NUM_THREADS="$t" FERRMION_MERGE_STRATEGY="$s" FERRMION_MERGE_TIMING=1 \
                 uv run --group test pytest python/tests/test_ternary_tree.py \
                 -k "$PYTEST_K" -q --no-header -s --benchmark-disable \
-                2> "$OUT/timing_${s}_t${t}.log" || {
-                    echo "timing capture failed for $s/t$t (see $OUT/timing_${s}_t${t}.log)" >&2
+                2> "$OUT/timing_${label}_t${t}.log" || {
+                    echo "timing capture failed for $s/t$t (see $OUT/timing_${label}_t${t}.log)" >&2
                 }
         fi
     done

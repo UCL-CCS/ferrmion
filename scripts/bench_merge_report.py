@@ -43,7 +43,9 @@ def load_pytest_results(results_dir: Path, results: Results) -> None:
             continue
         for bench in data.get("benchmarks", []):
             name = bench.get("name", "")
-            workload = name[name.find("[") + 1 : name.rfind("]")] if "[" in name else name
+            workload = (
+                name[name.find("[") + 1 : name.rfind("]")] if "[" in name else name
+            )
             median = bench.get("stats", {}).get("median")
             if median is None:
                 continue
@@ -89,7 +91,9 @@ def strategy_order(strategies: set[str]) -> list[str]:
     return sorted(strategies, key=lambda s: (s != "baseline", s))
 
 
-def runtime_table(per_strategy: dict[str, dict[int, float]], threads: list[int]) -> list[str]:
+def runtime_table(
+    per_strategy: dict[str, dict[int, float]], threads: list[int]
+) -> list[str]:
     lines = [
         "| strategy | " + " | ".join(f"t={t}" for t in threads) + " |",
         "|---" * (len(threads) + 1) + "|",
@@ -103,7 +107,9 @@ def runtime_table(per_strategy: dict[str, dict[int, float]], threads: list[int])
     return lines
 
 
-def scaling_table(per_strategy: dict[str, dict[int, float]], threads: list[int]) -> list[str]:
+def scaling_table(
+    per_strategy: dict[str, dict[int, float]], threads: list[int]
+) -> list[str]:
     """Speedup S(p) = T(ref)/T(p) and efficiency E(p) = S(p)*ref/p per strategy.
 
     The reference is the smallest measured thread count for that strategy
@@ -136,12 +142,37 @@ def scaling_table(per_strategy: dict[str, dict[int, float]], threads: list[int])
     return lines
 
 
-def ranking(workloads: dict[str, dict[str, dict[int, float]]]) -> list[str]:
-    """Rank strategies by geometric-mean runtime ratio vs `baseline` at the
-    highest thread count measured for both."""
+def ranking(
+    workloads: dict[str, dict[str, dict[int, float]]], min_runtime: float
+) -> list[str]:
+    """Rank strategies by geometric-mean runtime ratio vs the baseline strategy
+    at the highest thread count measured for both.
+
+    Workloads whose reference runtime is below `min_runtime` are excluded: they
+    never reach the parallel merge path (e.g. the h2_* pytest datasets), so
+    their ratios are noise that would dilute the ranking.
+    """
     ratios: dict[str, list[float]] = defaultdict(list)
-    for per_strategy in workloads.values():
-        base = per_strategy.get("baseline", {})
+    excluded: list[str] = []
+    for workload, per_strategy in workloads.items():
+        # Prefer the exact default-knob baseline; fall back to a knob-labelled
+        # one (e.g. `baseline_p1`) so knob-only sweeps still rank.
+        base_key = (
+            "baseline"
+            if "baseline" in per_strategy
+            else next(
+                (
+                    s
+                    for s in strategy_order(set(per_strategy))
+                    if s.startswith("baseline")
+                ),
+                None,
+            )
+        )
+        base = per_strategy.get(base_key, {}) if base_key else {}
+        if base and max(base.values()) < min_runtime:
+            excluded.append(workload)
+            continue
         for strategy, measured in per_strategy.items():
             common = set(measured) & set(base)
             if not common:
@@ -149,9 +180,18 @@ def ranking(workloads: dict[str, dict[str, dict[int, float]]]) -> list[str]:
             top = max(common)
             if base[top] > 0:
                 ratios[strategy].append(measured[top] / base[top])
+    lines: list[str] = []
+    if excluded:
+        lines += [
+            "_excluded from ranking (runtime below "
+            f"{fmt_time(min_runtime)}, i.e. serial-path noise): "
+            + ", ".join(sorted(excluded))
+            + "_",
+            "",
+        ]
     if not ratios:
-        return ["_no overlapping measurements to rank_"]
-    lines = [
+        return lines + ["_no overlapping measurements to rank_"]
+    lines += [
         "| rank | strategy | runtime vs baseline (geomean, max threads) |",
         "|---|---|---|",
     ]
@@ -166,14 +206,26 @@ def ranking(workloads: dict[str, dict[str, dict[int, float]]]) -> list[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--results", type=Path, required=True, help="sweep results directory")
+    parser.add_argument(
+        "--results", type=Path, required=True, help="sweep results directory"
+    )
     parser.add_argument(
         "--criterion",
         type=Path,
         default=Path("target/criterion"),
         help="criterion output directory (default: target/criterion)",
     )
-    parser.add_argument("--output", type=Path, required=True, help="markdown report path")
+    parser.add_argument(
+        "--output", type=Path, required=True, help="markdown report path"
+    )
+    parser.add_argument(
+        "--min-ranking-runtime",
+        type=float,
+        default=1e-3,
+        help="exclude workloads whose baseline runtime (seconds) is below this "
+        "from the ranking; such workloads never reach the parallel merge path "
+        "(default: 1e-3)",
+    )
     args = parser.parse_args()
 
     results: Results = defaultdict(dict)
@@ -199,11 +251,15 @@ def main() -> None:
         for workload, per_strategy in sorted(workloads.items()):
             lines += [f"### {workload}", "", "**Median runtime**", ""]
             lines += runtime_table(per_strategy, threads)
-            lines += ["", "**Speedup (parallel efficiency)** — ⚠ marks non-monotone scaling", ""]
+            lines += [
+                "",
+                "**Speedup (parallel efficiency)** — ⚠ marks non-monotone scaling",
+                "",
+            ]
             lines += scaling_table(per_strategy, threads)
             lines.append("")
         lines += [f"### Ranking — {source}", ""]
-        lines += ranking(workloads)
+        lines += ranking(workloads, args.min_ranking_runtime)
         lines.append("")
 
     args.output.write_text("\n".join(lines) + "\n")

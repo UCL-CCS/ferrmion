@@ -17,6 +17,12 @@ scripts/bench_merge_sweep.sh
 # Subset: two strategies, explicit thread counts, phase-timing capture.
 scripts/bench_merge_sweep.sh --strategies baseline,shard_phase1 \
     --threads 1,4,16,64 --timing
+
+# Knob sweep: rerun survivors with pre-sized maps and a doubled shard count,
+# into the SAME results directory as a default run so the report compares
+# them side by side (results are labelled e.g. radix_partition_p1_s22).
+scripts/bench_merge_sweep.sh --strategies hash_cache,radix_partition \
+    --presize --shards 22 --out bench_results/round2
 ```
 
 Each run writes a results directory (default `bench_results/<timestamp>/`)
@@ -51,6 +57,9 @@ uv run python scripts/bench_merge_report.py \
   linear scaling). ⚠ flags thread counts where runtime *increased*.
 - **Ranking**: geometric-mean runtime ratio vs the `baseline` strategy at the
   highest thread count, across workloads. Below 1.0 is faster than baseline.
+  Workloads whose baseline runtime is under 1 ms are excluded from the ranking
+  (they never reach the parallel merge path — e.g. the `h2_*` pytest datasets —
+  so their ratios are noise); their tables are still printed.
 
 ## macOS notes
 

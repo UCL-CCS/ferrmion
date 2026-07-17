@@ -13,11 +13,11 @@
 //!
 //! | Variable | Meaning | Default |
 //! |---|---|---|
-//! | `FERRMION_MERGE_STRATEGY` | one of the strategy names below | `baseline` |
+//! | `FERRMION_MERGE_STRATEGY` | one of the strategy names below | `radix_partition` |
 //! | `FERRMION_MERGE_SHARDS` | shard/bin count for sharded strategies | rayon thread count |
 //! | `FERRMION_PARALLEL_CHUNK` | terms expanded per phase-1 task | `64` |
 //! | `FERRMION_MERGE_SERIAL_THRESHOLD` | total intermediate entries at or below which the merge runs serially | `0` (off) |
-//! | `FERRMION_MERGE_PRESIZE` | `1`/`true` to pre-size hash maps from entry-count estimates | off |
+//! | `FERRMION_MERGE_PRESIZE` | pre-size hash maps from entry-count estimates | on |
 //! | `FERRMION_MERGE_TIMING` | `1`/`true` to print per-call phase timings to stderr | off |
 //!
 //! The configuration is read once on first use and cached for the lifetime of
@@ -28,52 +28,50 @@
 //!
 //! # Strategies
 //!
-//! * `baseline` — the original algorithm: expand chunks into thread-local
-//!   maps, then merge with one task per shard where every shard re-scans every
-//!   entry of every partial map and re-hashes it (FNV-1a) to test ownership.
-//!   Deterministic (each key is summed in chunk order).
+//! All strategies fix the floating-point summation order of every key to chunk
+//! order, so results are bit-for-bit deterministic and independent of the
+//! thread count.
+//!
+//! * `radix_partition` — **the default**: locally deduplicated `u128`-packed
+//!   entries are partitioned into disjoint bins by a multiplicative hash; each
+//!   bin is reduced into its own map in parallel. Adopted after a benchmark
+//!   campaign (M3 Pro 11-core and 4-core x86): with pre-sizing it was ~15%
+//!   faster end-to-end and ~1.6-1.8x faster than `baseline` in merge-dominated
+//!   micro-benchmarks at high thread counts, with no material single-thread
+//!   regression.
+//! * `baseline` — the original algorithm, kept as the reference for regression
+//!   comparisons: expand chunks into thread-local maps, then merge with one
+//!   task per shard where every shard re-scans every entry of every partial
+//!   map and re-hashes it (FNV-1a) to test ownership. Combined with
+//!   `FERRMION_MERGE_PRESIZE=0` this reproduces the pre-campaign behaviour
+//!   exactly.
 //! * `hash_cache` — as `baseline`, but each partial is first flattened to a
 //!   vector with the shard id computed **once** per entry, so the per-shard
-//!   scans are cheap sequential passes with no re-hashing. Deterministic.
-//! * `fx_hash` — as `baseline`, but the phase-1 partial maps use the
-//!   `rustc-hash` (Fx) hasher instead of aHash, isolating the cost of the hash
-//!   function itself. Deterministic.
+//!   scans are cheap sequential passes with no re-hashing. The closest
+//!   runner-up in the campaign.
 //! * `shard_phase1` — phase-1 workers route each expanded term directly into
 //!   one of `n_shards` local buckets, so phase 2 only concatenates same-shard
-//!   buckets: every entry is visited once and never re-hashed for ownership.
-//!   Deterministic.
-//! * `tree_reduce` — rayon `reduce`: per-task maps are merged pairwise up a
-//!   scheduling-dependent tree. Expansion and merging are fused, so the timing
-//!   output reports a single duration. **Not deterministic** in floating-point
-//!   summation order (results agree to rounding).
-//! * `sort_scan` — terms are packed into `u128` keys, locally deduplicated,
-//!   concatenated, sorted with rayon's **stable** parallel sort and summed in
-//!   a single linear scan. Deterministic (stable sort preserves chunk order).
-//! * `radix_partition` — locally deduplicated `u128` entries are partitioned
-//!   into disjoint bins by a multiplicative hash; each bin is reduced into its
-//!   own map in parallel. Deterministic (bins scan chunks in order).
-//! * `kway_merge` — per-chunk entries are locally deduplicated, sorted, and
-//!   combined with a serial binary-heap k-way merge that sums equal keys as
-//!   they stream past. Deterministic (ties broken by chunk index).
+//!   buckets. Best parallel efficiency in merge-dominated micro-benchmarks,
+//!   but pays a 15-20% single-thread penalty; kept for future re-evaluation on
+//!   higher-core hardware.
+//!
+//! Four further candidates (`fx_hash`, `tree_reduce`, `sort_scan`,
+//! `kway_merge`) were benchmarked and removed after being dominated on both
+//! runtime and scaling; see the repository history for their implementations
+//! and `scripts/README.md` for the measurement method.
 use super::fermion::{expand_term, MajoranaHashMap, MajoranaKey, MAX_MAJORANAS};
 use super::ladder::LadderOperator;
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
 use rayon::prelude::*;
-use rustc_hash::FxBuildHasher;
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
 use std::collections::HashMap as StdHashMap;
-use std::hash::BuildHasher;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tinyvec::ArrayVec;
 
-/// Hash map from Majorana keys to coefficients with a pluggable hasher.
-type GMap<S> = StdHashMap<MajoranaKey, Complex64, S>;
-/// The default (aHash) keyed map, matching `MajoranaHashMap`'s storage.
-type AMap = GMap<ahash::RandomState>;
-/// Map keyed by packed `u128` Majorana keys, used by the sort-based strategies.
+/// Map from Majorana keys to coefficients, matching `MajoranaHashMap`'s storage.
+type AMap = StdHashMap<MajoranaKey, Complex64, ahash::RandomState>;
+/// Map keyed by packed `u128` Majorana keys, used by `radix_partition`.
 type PackedMap = StdHashMap<u128, Complex64, ahash::RandomState>;
 
 /// Default number of terms a single phase-1 task expands, so tiny per-term
@@ -86,26 +84,18 @@ const DEFAULT_PARALLEL_CHUNK: usize = 64;
 pub(crate) enum MergeStrategy {
     Baseline,
     HashCache,
-    FxHash,
     ShardPhase1,
-    TreeReduce,
-    SortScan,
     RadixPartition,
-    KwayMerge,
 }
 
 impl MergeStrategy {
     /// Every strategy, in the order they are documented. Used by the
     /// correctness sweep tests and kept in sync with [`Self::parse`].
-    pub(crate) const ALL: [MergeStrategy; 8] = [
+    pub(crate) const ALL: [MergeStrategy; 4] = [
         MergeStrategy::Baseline,
         MergeStrategy::HashCache,
-        MergeStrategy::FxHash,
         MergeStrategy::ShardPhase1,
-        MergeStrategy::TreeReduce,
-        MergeStrategy::SortScan,
         MergeStrategy::RadixPartition,
-        MergeStrategy::KwayMerge,
     ];
 
     /// The environment-variable spelling of this strategy.
@@ -113,12 +103,8 @@ impl MergeStrategy {
         match self {
             MergeStrategy::Baseline => "baseline",
             MergeStrategy::HashCache => "hash_cache",
-            MergeStrategy::FxHash => "fx_hash",
             MergeStrategy::ShardPhase1 => "shard_phase1",
-            MergeStrategy::TreeReduce => "tree_reduce",
-            MergeStrategy::SortScan => "sort_scan",
             MergeStrategy::RadixPartition => "radix_partition",
-            MergeStrategy::KwayMerge => "kway_merge",
         }
     }
 
@@ -152,11 +138,13 @@ pub(crate) struct MergeConfig {
 impl Default for MergeConfig {
     fn default() -> Self {
         Self {
-            strategy: MergeStrategy::Baseline,
+            strategy: MergeStrategy::RadixPartition,
             n_shards: None,
             parallel_chunk: DEFAULT_PARALLEL_CHUNK,
             serial_merge_threshold: 0,
-            presize: false,
+            // Pre-sizing was a measured win for every strategy in the
+            // benchmark campaign; `FERRMION_MERGE_PRESIZE=0` turns it off.
+            presize: true,
             timing: false,
         }
     }
@@ -195,8 +183,8 @@ impl MergeConfig {
             parallel_chunk,
             serial_merge_threshold: env_usize("FERRMION_MERGE_SERIAL_THRESHOLD")
                 .unwrap_or(defaults.serial_merge_threshold),
-            presize: env_bool("FERRMION_MERGE_PRESIZE"),
-            timing: env_bool("FERRMION_MERGE_TIMING"),
+            presize: env_bool("FERRMION_MERGE_PRESIZE").unwrap_or(defaults.presize),
+            timing: env_bool("FERRMION_MERGE_TIMING").unwrap_or(defaults.timing),
         }
     }
 
@@ -222,20 +210,20 @@ fn env_usize(name: &str) -> Option<usize> {
 }
 
 /// Read a boolean environment variable (`1`/`true`/`yes` vs `0`/`false`/`no`),
-/// panicking on anything else.
-fn env_bool(name: &str) -> bool {
+/// panicking on anything else. Returns `None` when the variable is unset so
+/// callers can apply their own default.
+fn env_bool(name: &str) -> Option<bool> {
     match std::env::var(name) {
         Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
-            "1" | "true" | "yes" => true,
-            "" | "0" | "false" | "no" => false,
+            "1" | "true" | "yes" => Some(true),
+            "" | "0" | "false" | "no" => Some(false),
             _ => panic!("{name}={value:?} is not a valid boolean (use 1/true/yes or 0/false/no)"),
         },
-        Err(_) => false,
+        Err(_) => None,
     }
 }
 
-/// Wall-clock durations of the two phases of a parallel merge. Strategies that
-/// fuse expansion and merging (`tree_reduce`) report everything under `merge`.
+/// Wall-clock durations of the two phases of a parallel merge.
 struct PhaseTimes {
     expand: Duration,
     merge: Duration,
@@ -245,9 +233,9 @@ struct PhaseTimes {
 /// `indices` and `coefficients`) into Majorana terms and merge them into
 /// `dest`, using the algorithm selected by `cfg`.
 ///
-/// Every strategy produces the same multiset of (key, coefficient-sum) pairs;
-/// see the module docs for which strategies fix the floating-point summation
-/// order and are therefore bit-for-bit deterministic.
+/// Every strategy produces the same map, summing each key's contributions in
+/// chunk order, so the result is bit-for-bit deterministic and independent of
+/// the strategy, the thread count, and rayon's scheduling.
 pub(super) fn expand_and_merge(
     dest: &mut MajoranaHashMap,
     action: &[LadderOperator],
@@ -257,18 +245,10 @@ pub(super) fn expand_and_merge(
 ) {
     let n_terms = indices.nrows();
     let times = match cfg.strategy {
-        MergeStrategy::Baseline => {
-            rescan_strategy::<ahash::RandomState>(dest, action, indices, coefficients, cfg)
-        }
-        MergeStrategy::FxHash => {
-            rescan_strategy::<FxBuildHasher>(dest, action, indices, coefficients, cfg)
-        }
+        MergeStrategy::Baseline => rescan_strategy(dest, action, indices, coefficients, cfg),
         MergeStrategy::HashCache => hash_cache(dest, action, indices, coefficients, cfg),
         MergeStrategy::ShardPhase1 => shard_phase1(dest, action, indices, coefficients, cfg),
-        MergeStrategy::TreeReduce => tree_reduce(dest, action, indices, coefficients, cfg),
-        MergeStrategy::SortScan => sort_scan(dest, action, indices, coefficients, cfg),
         MergeStrategy::RadixPartition => radix_partition(dest, action, indices, coefficients, cfg),
-        MergeStrategy::KwayMerge => kway_merge(dest, action, indices, coefficients, cfg),
     };
     if cfg.timing {
         eprintln!(
@@ -327,12 +307,12 @@ fn unpack_key(mut packed: u128) -> MajoranaKey {
 
 /// Phase 1 shared by the rescan-style strategies: expand chunks of rows into
 /// thread-local maps, deduplicating within each chunk.
-fn expand_partials<S: BuildHasher + Default + Send>(
+fn expand_partials(
     action: &[LadderOperator],
     indices: &Array2<usize>,
     coefficients: &Array1<Complex64>,
     cfg: &MergeConfig,
-) -> Vec<GMap<S>> {
+) -> Vec<AMap> {
     let per_row = 1usize << action.len();
     (0..indices.nrows())
         .into_par_iter()
@@ -343,7 +323,7 @@ fn expand_partials<S: BuildHasher + Default + Send>(
             } else {
                 cfg.parallel_chunk
             };
-            let mut local = GMap::with_capacity_and_hasher(capacity, S::default());
+            let mut local = AMap::with_capacity_and_hasher(capacity, Default::default());
             for r in rows {
                 let row: ArrayVec<[usize; MAX_MAJORANAS]> =
                     indices.row(r).iter().copied().collect();
@@ -358,11 +338,7 @@ fn expand_partials<S: BuildHasher + Default + Send>(
 
 /// Serially fold a sequence of merged maps into the destination, optionally
 /// reserving the exact entry count first.
-fn fold_maps_into_dest<S: BuildHasher>(
-    dest: &mut MajoranaHashMap,
-    maps: Vec<GMap<S>>,
-    presize: bool,
-) {
+fn fold_maps_into_dest(dest: &mut MajoranaHashMap, maps: Vec<AMap>, presize: bool) {
     if presize {
         dest.operators
             .reserve(maps.iter().map(StdHashMap::len).sum());
@@ -374,10 +350,9 @@ fn fold_maps_into_dest<S: BuildHasher>(
     }
 }
 
-/// `baseline` / `fx_hash` (ideas as-shipped, #9, plus knobs #11-#14): the
-/// original sharded merge where each shard re-scans every partial and
-/// re-hashes each key to test ownership. Generic over the phase-1 hasher.
-fn rescan_strategy<S: BuildHasher + Default + Send + Sync>(
+/// `baseline`: the original sharded merge where each shard re-scans every
+/// partial and re-hashes each key to test ownership.
+fn rescan_strategy(
     dest: &mut MajoranaHashMap,
     action: &[LadderOperator],
     indices: &Array2<usize>,
@@ -385,7 +360,7 @@ fn rescan_strategy<S: BuildHasher + Default + Send + Sync>(
     cfg: &MergeConfig,
 ) -> PhaseTimes {
     let start = Instant::now();
-    let partials: Vec<GMap<S>> = expand_partials(action, indices, coefficients, cfg);
+    let partials: Vec<AMap> = expand_partials(action, indices, coefficients, cfg);
     let expanded = Instant::now();
 
     let total_entries: usize = partials.iter().map(StdHashMap::len).sum();
@@ -560,134 +535,6 @@ fn shard_phase1(
     }
 }
 
-/// `tree_reduce` (idea #2): rayon `fold` accumulates per-task maps and
-/// `reduce` merges them pairwise up a tree, always draining the smaller map
-/// into the larger. Expansion and merging interleave, so the phases cannot be
-/// timed separately. Floating-point summation order depends on the scheduling
-/// tree, so results are only reproducible to rounding.
-fn tree_reduce(
-    dest: &mut MajoranaHashMap,
-    action: &[LadderOperator],
-    indices: &Array2<usize>,
-    coefficients: &Array1<Complex64>,
-    cfg: &MergeConfig,
-) -> PhaseTimes {
-    let per_row = 1usize << action.len();
-    let start = Instant::now();
-    let merged: AMap = (0..indices.nrows())
-        .into_par_iter()
-        .chunks(cfg.parallel_chunk)
-        .map(|rows| {
-            let capacity = if cfg.presize {
-                rows.len() * per_row
-            } else {
-                cfg.parallel_chunk
-            };
-            let mut local = AMap::with_capacity_and_hasher(capacity, Default::default());
-            for r in rows {
-                let row: ArrayVec<[usize; MAX_MAJORANAS]> =
-                    indices.row(r).iter().copied().collect();
-                expand_term(action, &row, coefficients[r], |key, value| {
-                    *local.entry(key).or_insert(Complex64::ZERO) += value;
-                });
-            }
-            local
-        })
-        .reduce(AMap::default, |mut a, mut b| {
-            if b.len() > a.len() {
-                std::mem::swap(&mut a, &mut b);
-            }
-            for (key, value) in b {
-                *a.entry(key).or_insert(Complex64::ZERO) += value;
-            }
-            a
-        });
-    if dest.operators.is_empty() {
-        dest.operators = merged;
-    } else {
-        for (key, value) in merged {
-            *dest.operators.entry(key).or_insert(Complex64::ZERO) += value;
-        }
-    }
-    PhaseTimes {
-        expand: Duration::ZERO,
-        merge: start.elapsed(),
-    }
-}
-
-/// Phase 1 shared by the sort-based strategies: expand chunks into locally
-/// deduplicated vectors of `(packed_key, coefficient)` pairs.
-fn expand_packed_partials(
-    action: &[LadderOperator],
-    indices: &Array2<usize>,
-    coefficients: &Array1<Complex64>,
-    cfg: &MergeConfig,
-) -> Vec<Vec<(u128, Complex64)>> {
-    let per_row = 1usize << action.len();
-    (0..indices.nrows())
-        .into_par_iter()
-        .chunks(cfg.parallel_chunk)
-        .map(|rows| {
-            let capacity = if cfg.presize {
-                rows.len() * per_row
-            } else {
-                cfg.parallel_chunk
-            };
-            let mut local = PackedMap::with_capacity_and_hasher(capacity, Default::default());
-            for r in rows {
-                let row: ArrayVec<[usize; MAX_MAJORANAS]> =
-                    indices.row(r).iter().copied().collect();
-                expand_term(action, &row, coefficients[r], |key, value| {
-                    *local.entry(pack_key(&key)).or_insert(Complex64::ZERO) += value;
-                });
-            }
-            local.into_iter().collect()
-        })
-        .collect()
-}
-
-/// `sort_scan` (ideas #6 + #8): concatenate the packed partials, sort them by
-/// key with rayon's stable parallel sort, and sum runs of equal keys in one
-/// linear scan. The stable sort preserves chunk order among equal keys, so
-/// summation order — and hence the result — is deterministic.
-fn sort_scan(
-    dest: &mut MajoranaHashMap,
-    action: &[LadderOperator],
-    indices: &Array2<usize>,
-    coefficients: &Array1<Complex64>,
-    cfg: &MergeConfig,
-) -> PhaseTimes {
-    let start = Instant::now();
-    let partials = expand_packed_partials(action, indices, coefficients, cfg);
-    let expanded = Instant::now();
-
-    let total: usize = partials.iter().map(Vec::len).sum();
-    let mut flat: Vec<(u128, Complex64)> = Vec::with_capacity(total);
-    for partial in partials {
-        flat.extend(partial);
-    }
-    flat.par_sort_by_key(|&(key, _)| key);
-
-    let mut i = 0;
-    while i < flat.len() {
-        let (key, mut sum) = flat[i];
-        let mut j = i + 1;
-        while j < flat.len() && flat[j].0 == key {
-            sum += flat[j].1;
-            j += 1;
-        }
-        *dest
-            .operators
-            .entry(unpack_key(key))
-            .or_insert(Complex64::ZERO) += sum;
-        i = j;
-    }
-    PhaseTimes {
-        expand: expanded - start,
-        merge: expanded.elapsed(),
-    }
-}
-
 /// `radix_partition` (idea #7): partition the packed partials into disjoint
 /// bins by a cheap multiplicative hash, then reduce each bin into its own map
 /// in parallel. Bins scan chunks in order, so results are deterministic.
@@ -761,62 +608,6 @@ fn radix_partition(
                 .entry(unpack_key(key))
                 .or_insert(Complex64::ZERO) += value;
         }
-    }
-    PhaseTimes {
-        expand: expanded - start,
-        merge: expanded.elapsed(),
-    }
-}
-
-/// `kway_merge` (idea #10): sort each packed partial locally (keys within a
-/// chunk are unique after deduplication), then combine them with a serial
-/// binary-heap k-way merge, summing equal keys as they stream past. The heap
-/// orders ties by chunk index, so summation order is deterministic.
-fn kway_merge(
-    dest: &mut MajoranaHashMap,
-    action: &[LadderOperator],
-    indices: &Array2<usize>,
-    coefficients: &Array1<Complex64>,
-    cfg: &MergeConfig,
-) -> PhaseTimes {
-    let start = Instant::now();
-    let mut runs = expand_packed_partials(action, indices, coefficients, cfg);
-    runs.par_iter_mut()
-        .for_each(|run| run.sort_unstable_by_key(|&(key, _)| key));
-    let expanded = Instant::now();
-
-    let mut cursors = vec![0usize; runs.len()];
-    let mut heap: BinaryHeap<Reverse<(u128, usize)>> = runs
-        .iter()
-        .enumerate()
-        .filter(|(_, run)| !run.is_empty())
-        .map(|(i, run)| Reverse((run[0].0, i)))
-        .collect();
-
-    let mut current: Option<(u128, Complex64)> = None;
-    while let Some(Reverse((key, run_idx))) = heap.pop() {
-        let value = runs[run_idx][cursors[run_idx]].1;
-        cursors[run_idx] += 1;
-        if cursors[run_idx] < runs[run_idx].len() {
-            heap.push(Reverse((runs[run_idx][cursors[run_idx]].0, run_idx)));
-        }
-        current = match current {
-            Some((current_key, sum)) if current_key == key => Some((key, sum + value)),
-            Some((current_key, sum)) => {
-                *dest
-                    .operators
-                    .entry(unpack_key(current_key))
-                    .or_insert(Complex64::ZERO) += sum;
-                Some((key, value))
-            }
-            None => Some((key, value)),
-        };
-    }
-    if let Some((current_key, sum)) = current {
-        *dest
-            .operators
-            .entry(unpack_key(current_key))
-            .or_insert(Complex64::ZERO) += sum;
     }
     PhaseTimes {
         expand: expanded - start,
@@ -949,8 +740,7 @@ mod tests {
     /// Every strategy, under every knob combination, must reproduce the serial
     /// reference **exactly**. Coefficients are small dyadic rationals, so all
     /// sums are exact in `f64` and the comparison is bit-for-bit regardless of
-    /// accumulation order — this validates even the strategies that do not fix
-    /// the floating-point summation order.
+    /// accumulation order.
     #[test]
     fn every_strategy_matches_serial_exactly_on_dyadic_input() {
         let (action, indices, coefficients) =
@@ -998,9 +788,9 @@ mod tests {
         }
     }
 
-    /// With non-dyadic coefficients the summation order matters at the level of
-    /// rounding, so order-nondeterministic strategies may differ from the
-    /// serial reference in the last ulps: compare within a tolerance.
+    /// With non-dyadic coefficients the summation order matters at the level
+    /// of rounding. All current strategies sum in chunk order (which differs
+    /// from the serial term order), so compare within a tolerance.
     #[test]
     fn every_strategy_matches_serial_within_tolerance_on_general_input() {
         let (action, indices, coefficients) = two_body_fixture(1500, 6, |t| {

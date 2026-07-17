@@ -72,6 +72,14 @@ uv run python scripts/bench_merge_report.py \
 
 ## Notes
 
+- **The production default is `radix_partition` with pre-sizing on**, adopted
+  after the benchmark campaign recorded in the repository history (M3 Pro
+  11-core and 4-core x86: ~15% faster end-to-end, ~1.6-1.8x faster
+  merge-dominated micro-benchmarks at high thread counts than the original
+  algorithm). `FERRMION_MERGE_STRATEGY=baseline FERRMION_MERGE_PRESIZE=0`
+  reproduces the pre-campaign behaviour exactly. Four dominated candidates
+  (`fx_hash`, `tree_reduce`, `sort_scan`, `kway_merge`) were removed; their
+  implementations live in the git history.
 - Strategy and thread count are read **once per process**, so the sweep runs
   each combination as a fresh process; do not try to switch strategies from
   within Python after `ferrmion` has built its first operator.
@@ -79,6 +87,5 @@ uv run python scripts/bench_merge_report.py \
   `cargo test -p ferrmion-core merge`; run this before benchmarking modified
   strategies.
 - The wheel is rebuilt in release mode once per sweep (not per combination).
-- `tree_reduce` does not fix the floating-point summation order, so its
-  results can differ from the deterministic strategies within rounding
-  (~1e-15 relative); all other strategies are bit-for-bit deterministic.
+- All strategies sum every key's contributions in chunk order, so results are
+  bit-for-bit deterministic and independent of strategy and thread count.

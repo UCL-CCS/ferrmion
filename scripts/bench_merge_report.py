@@ -94,6 +94,7 @@ def strategy_order(strategies: set[str]) -> list[str]:
 def runtime_table(
     per_strategy: dict[str, dict[int, float]], threads: list[int]
 ) -> list[str]:
+    """Render a strategy x threads markdown table of median runtimes."""
     lines = [
         "| strategy | " + " | ".join(f"t={t}" for t in threads) + " |",
         "|---" * (len(threads) + 1) + "|",
@@ -145,8 +146,7 @@ def scaling_table(
 def ranking(
     workloads: dict[str, dict[str, dict[int, float]]], min_runtime: float
 ) -> list[str]:
-    """Rank strategies by geometric-mean runtime ratio vs the baseline strategy
-    at the highest thread count measured for both.
+    """Rank strategies by geomean runtime ratio vs baseline at max threads.
 
     Workloads whose reference runtime is below `min_runtime` are excluded: they
     never reach the parallel merge path (e.g. the h2_* pytest datasets), so
@@ -205,6 +205,7 @@ def ranking(
 
 
 def main() -> None:
+    """Parse arguments, aggregate sweep results and write the report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--results", type=Path, required=True, help="sweep results directory"

@@ -61,7 +61,7 @@ print_help() {
     awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
 }
 
-ALL_STRATEGIES="baseline,hash_cache,fx_hash,shard_phase1,tree_reduce,sort_scan,radix_partition,kway_merge"
+ALL_STRATEGIES="baseline,hash_cache,shard_phase1,radix_partition"
 
 SMOKE=0
 STRATEGIES="$ALL_STRATEGIES"

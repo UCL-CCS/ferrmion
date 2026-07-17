@@ -7,16 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Parallel `MajoranaSparse` construction (`append_fermion_sparse`) now merges
+  its per-chunk hash maps with a radix-partition algorithm over pre-sized,
+  `u128`-packed keys instead of the sharded re-scan merge. In a benchmark
+  campaign (Apple M3 Pro 11-core and 4-core x86) this was ~15% faster
+  end-to-end on `encode_topphatt` and 1.6-1.8x faster in merge-dominated
+  micro-benchmarks at high thread counts, with no material single-thread
+  regression. Results are unchanged and remain bit-for-bit deterministic and
+  independent of the thread count.
+
 ### Added
 - Runtime-selectable merge strategies for the parallel path of
-  `MajoranaSparse` construction (`append_fermion_sparse`), chosen via
-  `FERRMION_MERGE_STRATEGY` with tuning knobs `FERRMION_MERGE_SHARDS`,
-  `FERRMION_PARALLEL_CHUNK`, `FERRMION_MERGE_SERIAL_THRESHOLD`,
-  `FERRMION_MERGE_PRESIZE` and phase-timing output via
-  `FERRMION_MERGE_TIMING`. The default (`baseline`) is the pre-existing
-  sharded merge; alternatives (`hash_cache`, `fx_hash`, `shard_phase1`,
-  `tree_reduce`, `sort_scan`, `radix_partition`, `kway_merge`) are
-  benchmarking candidates validated against the serial reference.
+  `MajoranaSparse` construction, chosen via `FERRMION_MERGE_STRATEGY`
+  (`radix_partition` default, `baseline`, `hash_cache`, `shard_phase1`) with
+  tuning knobs `FERRMION_MERGE_SHARDS`, `FERRMION_PARALLEL_CHUNK`,
+  `FERRMION_MERGE_SERIAL_THRESHOLD`, `FERRMION_MERGE_PRESIZE` (on by
+  default) and phase-timing output via `FERRMION_MERGE_TIMING`.
+  `FERRMION_MERGE_STRATEGY=baseline FERRMION_MERGE_PRESIZE=0` reproduces the
+  previous behaviour exactly. Dominated candidates (`fx_hash`, `tree_reduce`,
+  `sort_scan`, `kway_merge`) were benchmarked and removed.
 - `merge_strategies` criterion benchmark with low- and high-collision
   workloads, and a portable sweep/report harness
   (`scripts/bench_merge_sweep.sh`, `scripts/bench_merge_report.py`)

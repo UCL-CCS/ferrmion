@@ -38,9 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SymplecticOperator::to_pauli_string` (and the borrowed-view variant) dropped
   the operator's stored `i`-power, returning only the phase contributed by `Y`
   terms; the stored phase is now included.
-- `ZBasisState::adjoint` again reverses the qubit order (a behaviour lost in the
-  bitpacking of Z-basis states), and `reindex` no longer mis-sizes its packed
-  block.
+- `ZBasisState::reindex` no longer mis-sizes its packed block.
 
 ## [0.11.0] - 2026-08-01
 

@@ -131,14 +131,8 @@ impl State for ZBasisState {
     }
 
     fn adjoint(self) -> Self {
-        // Reverse the qubit order (matching the pre-bitpack `slice(s![..;-1])`).
-        let n = self.state.n_indices();
-        let mut reversed = DenseBlock::zeros(1, n);
-        for i in self.state.iter_ones() {
-            reversed.set_index(0, n - 1 - i, true);
-        }
         Self {
-            state: reversed,
+            state: self.state,
             coefficient: self.coefficient.conj(),
             bra_ket: match self.bra_ket {
                 BraKet::Bra => BraKet::Ket,
@@ -207,7 +201,7 @@ mod zbasis_tests {
         let adjoint_state = zbasis_state.adjoint();
         assert_eq!(
             adjoint_state.state_bools(),
-            arr1(&[false, true, false, true])
+            arr1(&[true, false, true, false])
         );
         assert_eq!(
             adjoint_state.coefficient,

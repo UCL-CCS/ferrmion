@@ -276,7 +276,7 @@ impl SymplecticHamiltonian {
     ///
     /// // Row 0 is "XI" (coefficient 1.0), row 1 is "IX" (coefficient 2.0).
     /// // After sorting, "IX" < "XI" so the rows swap.
-    /// let ops = SymplecticMatrix::new(
+    /// let ops = SymplecticMatrix::from_arrays(
     ///     arr2(&[[true, false], [false, true]]),
     ///     arr2(&[[false, false], [false, false]]),
     /// );
@@ -306,7 +306,7 @@ impl SymplecticHamiltonian {
     /// use ferrmion_core::hamiltonians::SymplecticHamiltonian;
     /// use ndarray::{arr1, arr2};
     ///
-    /// let ops = SymplecticMatrix::new(
+    /// let ops = SymplecticMatrix::from_arrays(
     ///     arr2(&[[true, false], [true, false], [false, true]]),
     ///     arr2(&[[false, false], [false, false], [false, false]]),
     /// );

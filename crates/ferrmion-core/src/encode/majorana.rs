@@ -144,7 +144,7 @@ impl MajoranaEncoding {
     /// use ferrmion_core::states::ZBasisState;
     /// use ndarray::arr2;
     ///
-    /// let sym = SymplecticMatrix::new(
+    /// let sym = SymplecticMatrix::from_arrays(
     ///     arr2(&[[true, false], [true, false]]),
     ///     arr2(&[[false, false], [true, false]]),
     /// );
@@ -277,7 +277,9 @@ impl MajoranaEncoding {
     }
 
     fn validate_operator_shape(operators: &SymplecticMatrix) -> Result<(), MajoranaEncodingError> {
-        if operators.x_block.to_bool_array().dim() != operators.z_block.to_bool_array().dim() {
+        if (operators.x_block.n_terms(), operators.x_block.n_indices())
+            != (operators.z_block.n_terms(), operators.z_block.n_indices())
+        {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
         if !operators.n_rows().is_multiple_of(2) {

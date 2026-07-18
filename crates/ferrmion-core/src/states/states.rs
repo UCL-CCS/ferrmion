@@ -108,7 +108,7 @@ impl ZBasisState {
     /// ```
     /// use ferrmion_core::states::{State, ZBasisState};
     ///
-    /// let s = ZBasisState::zeros(1, 4);
+    /// let s = ZBasisState::zeros(4);
     /// assert_eq!(s.dimension(), 4);
     /// assert!(s.state_bools().iter().all(|&b| !b));
     /// ```
@@ -131,8 +131,14 @@ impl State for ZBasisState {
     }
 
     fn adjoint(self) -> Self {
+        // Reverse the qubit order (matching the pre-bitpack `slice(s![..;-1])`).
+        let n = self.state.n_indices();
+        let mut reversed = DenseBlock::zeros(1, n);
+        for i in self.state.iter_ones() {
+            reversed.set_index(0, n - 1 - i, true);
+        }
         Self {
-            state: self.state,
+            state: reversed,
             coefficient: self.coefficient.conj(),
             bra_ket: match self.bra_ket {
                 BraKet::Bra => BraKet::Ket,
@@ -142,7 +148,7 @@ impl State for ZBasisState {
     }
 
     fn reindex(&mut self, permutation: &[usize]) {
-        let mut new_state = DenseBlock::zeros(self.state.n_indices(), 1);
+        let mut new_state = DenseBlock::zeros(1, self.state.n_indices());
         for original in self.state.iter_ones() {
             new_state.set_index(0, permutation[original], true);
         }
@@ -318,7 +324,7 @@ impl From<Vec<ZBasisState>> for ZBasisEnsemble {
 /// use num_complex::Complex64;
 ///
 /// let fs = FockState::new(arr1(&[true, false, true]), Complex64::new(1.0, 0.0));
-/// assert_eq!(fs.state.n_indices(), 3);
+/// assert_eq!(fs.state.len(), 3);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FockState {

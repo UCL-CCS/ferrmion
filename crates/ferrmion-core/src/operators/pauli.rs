@@ -275,16 +275,14 @@ impl SymplecticOperator {
     /// ```
     pub fn to_pauli_string(&self) -> (String, u8) {
         let mut pauli_string = String::with_capacity(self.x.n_indices());
-        let mut ipower = self.ipower;
         for i in 0..self.x.n_indices() {
             let x = self.x.get_index(0, i);
             let z = self.z.get_index(0, i);
-            if x && z {
-                ipower += 3;
-            };
             pauli_string.push(Pauli::from((x, z)).into());
         }
-        let ipower = (3 * self.x.and_count_ones(&self.z)) % 4;
+        // Total i-power: the stored phase plus 3 (≡ -1 mod 4) for each Y, since
+        // `X·Z = -i·Y` on every qubit carrying both an X and a Z.
+        let ipower = (self.ipower as usize + 3 * self.x.and_count_ones(&self.z)) % 4;
         (pauli_string, ipower as u8)
     }
 }
@@ -410,13 +408,14 @@ impl<'sym> SymplecticOperatorView<'sym> {
     /// Convert to a Pauli string representation and its associated `i`-power.
     pub fn to_pauli_string(self) -> (String, u8) {
         let mut pauli_string = String::with_capacity(self.x.n_indices());
-        let mut ipower = self.ipower;
         for i in 0..self.x.n_indices() {
             let x = self.x.get_index(0, i);
             let z = self.z.get_index(0, i);
             pauli_string.push(Pauli::from((x, z)).into());
         }
-        let ipower = (3 * self.x.and_count_ones(&self.z)) % 4;
+        // Total i-power: the stored phase plus 3 (≡ -1 mod 4) for each Y, since
+        // `X·Z = -i·Y` on every qubit carrying both an X and a Z.
+        let ipower = (self.ipower as usize + 3 * self.x.and_count_ones(&self.z)) % 4;
         (pauli_string, ipower as u8)
     }
 }
@@ -500,7 +499,7 @@ impl Ord for SymplecticOperatorView<'_> {
 ///
 /// let x = arr2(&[[true, false], [false, true]]);
 /// let z = arr2(&[[false, true], [true, false]]);
-/// let mat = SymplecticMatrix::new(x, z);
+/// let mat = SymplecticMatrix::from_arrays(x, z);
 /// assert_eq!(mat.pauli_weight(), 4);
 /// ```
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -523,22 +522,6 @@ pub struct SymplecticMatrix {
 impl Qubit for SymplecticMatrix {}
 
 impl SymplecticMatrix {
-    /// Pack the rows of a dense boolean matrix into one contiguous word buffer,
-    /// `words_per_row` words per row.
-    fn pack(matrix: &Array2<bool>, words_per_row: usize) -> Vec<DenseIndex> {
-        let bits = DenseIndex::BITS;
-        let mut words = vec![DenseIndex::default(); matrix.nrows() * words_per_row];
-        for (r, row) in matrix.rows().into_iter().enumerate() {
-            let base = r * words_per_row;
-            for (i, &b) in row.iter().enumerate() {
-                if b {
-                    words[base + i / bits].set(i % bits, true);
-                }
-            }
-        }
-        words
-    }
-
     /// Construct a new [`SymplecticMatrix`], automatically computing `i`-powers from the X and Z blocks.
     ///
     /// # Examples
@@ -557,7 +540,6 @@ impl SymplecticMatrix {
     pub fn from_arrays(x_block: Array2<bool>, z_block: Array2<bool>) -> Self {
         let n_qubits = x_block.ncols();
         let n_rows = x_block.nrows();
-        let words_per_row = DenseIndex::words_for(n_qubits);
         let x_block: DenseBlock = x_block.into();
         let z_block: DenseBlock = z_block.into();
         let mut ipowers = Array1::from_elem(n_rows, 0u8);
@@ -583,7 +565,7 @@ impl SymplecticMatrix {
     /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ndarray::{arr1, arr2};
     ///
-    /// let mat = SymplecticMatrix::with_ipowers(
+    /// let mat = SymplecticMatrix::from_arrays_with_ipowers(
     ///     arr2(&[[true, true]]),
     ///     arr2(&[[true, true]]),
     ///     arr1(&[2u8]),
@@ -597,7 +579,6 @@ impl SymplecticMatrix {
     ) -> Self {
         let n_qubits = x_block.ncols();
         let n_rows = x_block.nrows();
-        let words_per_row = DenseIndex::words_for(n_qubits);
         Self {
             x_block: x_block.into(),
             z_block: z_block.into(),
@@ -620,8 +601,8 @@ impl SymplecticMatrix {
     pub fn identity(n_modes: usize, n_qubits: usize) -> Self {
         Self {
             ipowers: Array1::from_elem(n_modes, 0),
-            x_block: DenseBlock::zeros(2 * n_modes, n_qubits),
-            z_block: DenseBlock::zeros(2 * n_modes, n_qubits),
+            x_block: DenseBlock::zeros(n_modes, n_qubits),
+            z_block: DenseBlock::zeros(n_modes, n_qubits),
             n_qubits,
             n_rows: n_modes,
         }
@@ -667,7 +648,7 @@ impl SymplecticMatrix {
     /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ndarray::arr2;
     ///
-    /// let mat = SymplecticMatrix::new(
+    /// let mat = SymplecticMatrix::from_arrays(
     ///     arr2(&[[true, false]]),
     ///     arr2(&[[false, true]]),
     /// );
@@ -682,6 +663,16 @@ impl SymplecticMatrix {
         ]
     }
 
+    /// The X block as a dense boolean matrix (`n_rows` × `n_qubits`).
+    pub fn x_bools(&self) -> Array2<bool> {
+        self.x_block.to_bool_matrix()
+    }
+
+    /// The Z block as a dense boolean matrix (`n_rows` × `n_qubits`).
+    pub fn z_bools(&self) -> Array2<bool> {
+        self.z_block.to_bool_matrix()
+    }
+
     /// Return a [`SymplecticOperatorView`] for the given row index.
     ///
     /// # Examples
@@ -690,7 +681,7 @@ impl SymplecticMatrix {
     /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ndarray::arr2;
     ///
-    /// let mat = SymplecticMatrix::new(
+    /// let mat = SymplecticMatrix::from_arrays(
     ///     arr2(&[[true, false], [false, true]]),
     ///     arr2(&[[false, false], [true, true]]),
     /// );
@@ -733,13 +724,15 @@ impl SymplecticMatrix {
     /// Used for optimisation routines which use conjugations with
     /// [`Clifford`] gates to update an encoding.
     pub(crate) fn transpose(&mut self) -> SymplecticMatrixTranspose<'_> {
+        // Work in qubit-major layout: each column (qubit) becomes a contiguous
+        // run of `words_for(n_rows)` words, so Clifford gates are whole-word ops.
+        let x_t = self.x_block.clone().transpose();
+        let z_t = self.z_block.clone().transpose();
         SymplecticMatrixTranspose {
-            x_block: &mut self.x_block,
-            z_block: &mut self.z_block,
-            ipowers: &mut self.ipowers,
-            n_qubits: self.n_qubits,
-            words_per_row: self.words_per_row,
-            n_rows: self.n_rows,
+            matrix: self,
+            x_t,
+            z_t,
+            dirty: false,
         }
     }
 
@@ -765,7 +758,7 @@ impl SymplecticMatrix {
     /// use ferrmion_core::operators::SymplecticMatrix;
     /// use ndarray::arr2;
     ///
-    /// let mut mat = SymplecticMatrix::new(
+    /// let mut mat = SymplecticMatrix::from_arrays(
     ///     arr2(&[[false, true], [true, false]]),
     ///     arr2(&[[false, false], [false, false]]),
     /// );
@@ -865,12 +858,24 @@ mod symplectic_tests {
 /// the matrix's contiguous X/Z word buffers mutably and applies each gate by
 /// touching the relevant qubit bit in every row.
 pub(crate) struct SymplecticMatrixTranspose<'inner> {
-    x_block: &'inner mut Vec<DenseIndex>,
-    z_block: &'inner mut Vec<DenseIndex>,
-    ipowers: &'inner mut Array1<u8>,
-    n_qubits: usize,
-    words_per_row: usize,
-    n_rows: usize,
+    /// Row-major source matrix. Its `ipowers` are updated in place; its X/Z
+    /// blocks are rewritten from the transposed working buffers on drop.
+    matrix: &'inner mut SymplecticMatrix,
+    /// Qubit-major X block: one term per qubit, `words_for(n_rows)` words wide.
+    x_t: DenseBlock,
+    /// Qubit-major Z block, same layout.
+    z_t: DenseBlock,
+    /// Whether a mutating gate has been applied and the source needs rewriting.
+    dirty: bool,
+}
+
+impl Drop for SymplecticMatrixTranspose<'_> {
+    fn drop(&mut self) {
+        if self.dirty {
+            self.matrix.x_block = std::mem::take(&mut self.x_t).transpose();
+            self.matrix.z_block = std::mem::take(&mut self.z_t).transpose();
+        }
+    }
 }
 
 // Clifford conjugation functions
@@ -887,75 +892,54 @@ impl SymplecticMatrixTranspose<'_> {
     /// -1 for each Y
     /// Z -> X and X -> Z
     pub(crate) fn haddamard(&mut self, qubit: usize) {
-        let word_off = qubit / DenseIndex::BITS;
-        let local = qubit % DenseIndex::BITS;
-        for r in 0..self.n_rows {
-            let w = r * self.words_per_row + word_off;
-            let x_set = self.x_block[w].get(local);
-            let z_set = self.z_block[w].get(local);
-            if x_set && z_set {
-                // -1 for each Y
-                self.ipowers[r] = self.ipowers[r].wrapping_add(2);
-            }
-            // Z -> X and X -> Z (swap the two bits).
-            self.x_block[w].set(local, z_set);
-            self.z_block[w].set(local, x_set);
+        // -1 (i.e. +2 to the i-power) for each row carrying a Y on this qubit,
+        // i.e. every row where the x and z columns are both set. Whole-word AND.
+        let y = self.x_t.get_term(qubit).and(&self.z_t.get_term(qubit));
+        for r in y.iter_ones() {
+            self.matrix.ipowers[r] = self.matrix.ipowers[r].wrapping_add(2);
         }
+        // Z -> X and X -> Z: swap the two whole column word-runs.
+        let x_col = self.x_t.get_term(qubit).to_owned_block();
+        self.x_t.set_term(qubit, self.z_t.get_term(qubit));
+        self.z_t.set_term(qubit, x_col.as_ref());
+        self.dirty = true;
     }
     /// Apply the Clifford S operator.
     // $P \to S P S$
     /// -1 for each X
     /// Z -> Z ^ X
     pub(crate) fn phasegate(&mut self, qubit: usize) {
-        let word_off = qubit / DenseIndex::BITS;
-        let local = qubit % DenseIndex::BITS;
-        for r in 0..self.n_rows {
-            let w = r * self.words_per_row + word_off;
-            if self.x_block[w].get(local) {
-                // -1 for each X
-                self.ipowers[r] = self.ipowers[r].wrapping_add(3);
-                // Z -> Z ^ X (X is set here, so toggle Z).
-                self.z_block[w].toggle(local);
-            }
+        // -1 (i.e. +3 to the i-power) for each row with an X on this qubit.
+        for r in self.x_t.get_term(qubit).iter_ones() {
+            self.matrix.ipowers[r] = self.matrix.ipowers[r].wrapping_add(3);
         }
+        // Z -> Z ^ X: whole-column XOR.
+        let zn = self.z_t.get_term(qubit).xor(&self.x_t.get_term(qubit));
+        self.z_t.set_term(qubit, zn.as_ref());
+        self.dirty = true;
     }
 
     // Transform a [`Pauli`] operator by this Clifford operator.
     // $P \to CX P CX$
     pub(crate) fn cnot(&mut self, control: usize, target: usize) {
-        let bits = DenseIndex::BITS;
-        let (control_off, control_local) = (control / bits, control % bits);
-        let (target_off, target_local) = (target / bits, target % bits);
-        for r in 0..self.n_rows {
-            let base = r * self.words_per_row;
-            // X: target ^= control
-            if self.x_block[base + control_off].get(control_local) {
-                self.x_block[base + target_off].toggle(target_local);
-            }
-            // Z: control ^= target
-            if self.z_block[base + target_off].get(target_local) {
-                self.z_block[base + control_off].toggle(control_local);
-            }
-        }
+        // X: target ^= control (whole-column XOR across all rows).
+        let x_new = self.x_t.get_term(target).xor(&self.x_t.get_term(control));
+        self.x_t.set_term(target, x_new.as_ref());
+        // Z: control ^= target.
+        let z_new = self.z_t.get_term(control).xor(&self.z_t.get_term(target));
+        self.z_t.set_term(control, z_new.as_ref());
+        self.dirty = true;
     }
 
     pub(crate) fn hamming_weights(&self) -> Array1<usize> {
         // One Hamming weight per qubit: the count of non-identity Paulis
-        // (x | z set) touching that qubit across all operators.
-        let mut weights = Array1::from_elem(self.n_qubits, 0usize);
-        let wpr = self.words_per_row;
-        for r in 0..self.n_rows {
-            let base = r * wpr;
-            let xr = DenseBlock::from_words(&self.x_block[base..base + wpr], self.n_qubits);
-            let zr = DenseBlock::from_words(&self.z_block[base..base + wpr], self.n_qubits);
-            for i in xr.iter_ones() {
-                weights[i] += 1;
-            }
-            for i in zr.iter_ones() {
-                if !xr.get_index(0, i) {
-                    weights[i] += 1;
-                }
-            }
+        // (x | z set) touching that qubit across all operators. In qubit-major
+        // layout each qubit is one term, so this is a whole-word popcount of
+        // `x_col | z_col`. Read-only: does not dirty the transpose.
+        let n_qubits = self.matrix.n_qubits;
+        let mut weights = Array1::from_elem(n_qubits, 0usize);
+        for (q, w) in weights.iter_mut().enumerate() {
+            *w = self.x_t.get_term(q).or_count_ones(&self.z_t.get_term(q));
         }
         weights
     }
@@ -963,15 +947,111 @@ impl SymplecticMatrixTranspose<'_> {
 
 #[cfg(test)]
 mod symplictic_transpose_tests {
-    use proptest::proptest;
+    use super::{Clifford, SymplecticMatrix};
+    use ndarray::{Array1, Array2};
 
-    use super::SymplecticMatrix;
+    /// Apply a Clifford chain to dense bool `(x, z)` blocks and per-row i-powers,
+    /// bit by bit — the reference the word-level kernels must agree with.
+    fn reference_chain(
+        x: &mut Array2<bool>,
+        z: &mut Array2<bool>,
+        ipowers: &mut Array1<u8>,
+        chain: &[Clifford],
+    ) {
+        let n_rows = x.nrows();
+        for op in chain {
+            match *op {
+                Clifford::H(q) => {
+                    for r in 0..n_rows {
+                        if x[[r, q]] && z[[r, q]] {
+                            ipowers[r] = ipowers[r].wrapping_add(2);
+                        }
+                        let (xr, zr) = (x[[r, q]], z[[r, q]]);
+                        x[[r, q]] = zr;
+                        z[[r, q]] = xr;
+                    }
+                }
+                Clifford::S(q) => {
+                    for r in 0..n_rows {
+                        if x[[r, q]] {
+                            ipowers[r] = ipowers[r].wrapping_add(3);
+                            z[[r, q]] ^= true;
+                        }
+                    }
+                }
+                Clifford::CNOT { control, target } => {
+                    for r in 0..n_rows {
+                        x[[r, target]] ^= x[[r, control]];
+                        z[[r, control]] ^= z[[r, target]];
+                    }
+                }
+            }
+        }
+    }
+
+    /// Exercises the word-level H/S/CNOT kernels at sizes that span several
+    /// `usize` words in both the qubit (columns) and operator (rows) axes,
+    /// comparing against `reference_chain`.
+    #[test]
+    fn clifford_chain_matches_reference_multiword() {
+        // Deterministic xorshift so the test needs no rng dependency.
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        // n_rows and n_qubits both cross 64 to exercise multi-word columns/rows.
+        for &(n_rows, n_qubits) in &[(70usize, 80usize), (130, 65), (64, 64), (3, 200)] {
+            let mut x = Array2::from_elem((n_rows, n_qubits), false);
+            let mut z = Array2::from_elem((n_rows, n_qubits), false);
+            for r in 0..n_rows {
+                for c in 0..n_qubits {
+                    x[[r, c]] = next() & 1 == 1;
+                    z[[r, c]] = next() & 1 == 1;
+                }
+            }
+            let mut ipowers = Array1::from_elem(n_rows, 0u8);
+
+            let mut chain = Vec::new();
+            for _ in 0..40 {
+                chain.push(match next() % 3 {
+                    0 => Clifford::H((next() as usize) % n_qubits),
+                    1 => Clifford::S((next() as usize) % n_qubits),
+                    _ => {
+                        let control = (next() as usize) % n_qubits;
+                        let mut target = (next() as usize) % n_qubits;
+                        if target == control {
+                            target = (target + 1) % n_qubits;
+                        }
+                        Clifford::CNOT { control, target }
+                    }
+                });
+            }
+
+            let mut mat =
+                SymplecticMatrix::from_arrays_with_ipowers(x.clone(), z.clone(), ipowers.clone());
+            mat.apply_clifford_chain(&chain);
+
+            reference_chain(&mut x, &mut z, &mut ipowers, &chain);
+
+            assert_eq!(mat.x_bools(), x, "x blocks for ({n_rows},{n_qubits})");
+            assert_eq!(mat.z_bools(), z, "z blocks for ({n_rows},{n_qubits})");
+            for r in 0..n_rows {
+                assert_eq!(
+                    mat.ipower(r) % 4,
+                    ipowers[r] % 4,
+                    "ipower row {r} for ({n_rows},{n_qubits})"
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_HIH() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
-        let mut transpose = sym.transpose();
-        transpose.haddamard(0);
+        sym.transpose().haddamard(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("I".to_string(), 0));
         assert_eq!(sym.view_row(1).to_pauli_string(), ("I".to_string(), 0));
         assert_eq!(*sym.ipowers(), *SymplecticMatrix::identity(2, 1).ipowers());
@@ -981,8 +1061,7 @@ mod symplictic_transpose_tests {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.x_block.set_index(0, 0, true);
         sym.x_block.set_index(1, 0, true);
-        let mut transpose = sym.transpose();
-        transpose.haddamard(0);
+        sym.transpose().haddamard(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("Z".to_string(), 0));
         assert_eq!(sym.view_row(1).to_pauli_string(), ("Z".to_string(), 0));
     }
@@ -997,8 +1076,7 @@ mod symplictic_transpose_tests {
         sym.z_block.set_index(1, 0, true);
         sym.ipowers[1] = 1;
 
-        let mut transpose = sym.transpose();
-        transpose.haddamard(0);
+        sym.transpose().haddamard(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("Y".to_string(), 2));
         assert_eq!(sym.view_row(1).to_pauli_string(), ("Y".to_string(), 2));
     }
@@ -1008,8 +1086,7 @@ mod symplictic_transpose_tests {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.z_block.set_index(0, 0, true);
         sym.z_block.set_index(1, 0, true);
-        let mut transpose = sym.transpose();
-        transpose.haddamard(0);
+        sym.transpose().haddamard(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("X".to_string(), 0));
         assert_eq!(sym.view_row(1).to_pauli_string(), ("X".to_string(), 0));
     }
@@ -1017,8 +1094,7 @@ mod symplictic_transpose_tests {
     #[test]
     fn test_SIS() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 1);
-        let mut transpose = sym.transpose();
-        transpose.phasegate(0);
+        sym.transpose().phasegate(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("I".to_string(), 0));
         assert_eq!(*sym.ipowers(), *SymplecticMatrix::identity(1, 1).ipowers());
     }
@@ -1028,8 +1104,7 @@ mod symplictic_transpose_tests {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.x_block.set_index(0, 0, true);
         sym.x_block.set_index(1, 0, true);
-        let mut transpose = sym.transpose();
-        transpose.phasegate(0);
+        sym.transpose().phasegate(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("Y".to_string(), 2));
         assert_eq!(sym.view_row(1).to_pauli_string(), ("Y".to_string(), 2));
     }
@@ -1044,8 +1119,7 @@ mod symplictic_transpose_tests {
         sym.x_block.set_index(1, 0, true);
         sym.z_block.set_index(1, 0, true);
         sym.ipowers[1] = 1;
-        let mut transpose = sym.transpose();
-        transpose.phasegate(0);
+        sym.transpose().phasegate(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("X".to_string(), 0));
         assert_eq!(sym.view_row(1).to_pauli_string(), ("X".to_string(), 0));
     }
@@ -1055,8 +1129,7 @@ mod symplictic_transpose_tests {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.z_block.set_index(0, 0, true);
         sym.z_block.set_index(1, 0, true);
-        let mut transpose = sym.transpose();
-        transpose.phasegate(0);
+        sym.transpose().phasegate(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("Z".to_string(), 0));
         assert_eq!(sym.view_row(1).to_pauli_string(), ("Z".to_string(), 0));
     }
@@ -1064,8 +1137,7 @@ mod symplictic_transpose_tests {
     #[test]
     fn test_CX_II_CX() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 2);
-        let mut transpose = sym.transpose();
-        transpose.cnot(0, 1);
+        sym.transpose().cnot(0, 1);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("II".to_string(), 0));
         assert_eq!(sym.view_row(1).to_pauli_string(), ("II".to_string(), 0));
         assert_eq!(*sym.ipowers(), *SymplecticMatrix::identity(2, 2).ipowers());
@@ -1075,8 +1147,7 @@ mod symplictic_transpose_tests {
     fn test_CX_XI_CX() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
         sym.x_block.set_index(0, 0, true);
-        let mut transpose = sym.transpose();
-        transpose.cnot(0, 1);
+        sym.transpose().cnot(0, 1);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("XX".to_string(), 0));
         assert_eq!(*sym.ipowers(), *SymplecticMatrix::identity(1, 2).ipowers());
     }
@@ -1085,10 +1156,7 @@ mod symplictic_transpose_tests {
     fn test_CX_IX_CX() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
         sym.x_block.set_index(0, 1, true);
-        {
-            let mut transpose = sym.transpose();
-            transpose.cnot(0, 1);
-        }
+        sym.transpose().cnot(0, 1);
         // Dimensions are preserved: 1 operator row acting on 2 qubits.
         assert_eq!(sym.n_rows(), 1);
         assert_eq!(sym.n_qubits(), 2);
@@ -1100,8 +1168,7 @@ mod symplictic_transpose_tests {
     fn test_CX_ZI_CX() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
         sym.z_block.set_index(0, 0, true);
-        let mut transpose = sym.transpose();
-        transpose.cnot(0, 1);
+        sym.transpose().cnot(0, 1);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("ZI".to_string(), 0));
         assert_eq!(*sym.ipowers(), *SymplecticMatrix::identity(1, 2).ipowers());
     }
@@ -1110,8 +1177,7 @@ mod symplictic_transpose_tests {
     fn test_CX_IZ_CX() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
         sym.z_block.set_index(0, 1, true);
-        let mut transpose = sym.transpose();
-        transpose.cnot(0, 1);
+        sym.transpose().cnot(0, 1);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("ZZ".to_string(), 0));
         assert_eq!(*sym.ipowers(), *SymplecticMatrix::identity(1, 2).ipowers());
     }

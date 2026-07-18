@@ -67,12 +67,6 @@ impl DenseIndex {
         }
     }
 
-    /// Flip the bit at local position `local` (`0 <= local < BITS`).
-    #[inline]
-    pub(crate) fn toggle(&mut self, local: usize) {
-        self.0 ^= 1usize << (local % Self::BITS);
-    }
-
     /// Lane-wise `self & other`.
     #[inline]
     pub(crate) fn and(self, other: Self) -> Self {
@@ -100,7 +94,6 @@ impl DenseIndex {
     /// Iterate the local positions of set bits, lowest first.
     #[inline]
     pub(crate) fn iter_ones(self) -> impl Iterator<Item = usize> {
-        let base = Self::BITS;
         let mut bits = self.0;
         std::iter::from_fn(move || {
             if bits == 0 {
@@ -108,7 +101,7 @@ impl DenseIndex {
             } else {
                 let i = bits.trailing_zeros() as usize;
                 bits &= bits - 1; // clear the lowest set bit
-                Some(base + i)
+                Some(i)
             }
         })
     }
@@ -151,7 +144,7 @@ impl From<Array2<bool>> for DenseBlock<Vec<DenseIndex>> {
             let base = r * words_per_row;
             for (i, &b) in row.iter().enumerate() {
                 if b {
-                    words[base + i].set(i % DenseIndex::BITS, true);
+                    words[base + i / DenseIndex::BITS].set(i % DenseIndex::BITS, true);
                 }
             }
         }
@@ -202,7 +195,8 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     /// Panics if `term` is out of bounds.
     #[inline]
     pub fn get_index(&self, term: usize, index: usize) -> bool {
-        self.words()[term].get(index % DenseIndex::BITS)
+        let width = DenseIndex::words_for(self.n_indices);
+        self.words()[term * width + index / DenseIndex::BITS].get(index % DenseIndex::BITS)
     }
 
     /// Read the term at position `term`.
@@ -253,6 +247,49 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
             .map(|(a, b)| a.or(*b).count_ones())
             .sum()
     }
+
+    /// Return a new owned block equal to `self ^ other` (whole-word XOR).
+    #[inline]
+    pub fn xor<T: AsRef<[DenseIndex]>>(
+        &self,
+        other: &DenseBlock<T>,
+    ) -> DenseBlock<Vec<DenseIndex>> {
+        DenseBlock {
+            terms: self
+                .words()
+                .iter()
+                .zip(other.words())
+                .map(|(a, b)| a.xor(*b))
+                .collect(),
+            n_indices: self.n_indices,
+        }
+    }
+
+    /// Return a new owned block equal to `self & other` (whole-word AND).
+    #[inline]
+    pub fn and<T: AsRef<[DenseIndex]>>(
+        &self,
+        other: &DenseBlock<T>,
+    ) -> DenseBlock<Vec<DenseIndex>> {
+        DenseBlock {
+            terms: self
+                .words()
+                .iter()
+                .zip(other.words())
+                .map(|(a, b)| a.and(*b))
+                .collect(),
+            n_indices: self.n_indices,
+        }
+    }
+
+    /// Clone this (possibly borrowed) block into an owned `DenseBlock<Vec<DenseIndex>>`.
+    #[inline]
+    pub fn to_owned_block(&self) -> DenseBlock<Vec<DenseIndex>> {
+        DenseBlock {
+            terms: self.words().to_vec(),
+            n_indices: self.n_indices,
+        }
+    }
     /// Convert to a dense boolean array (Python / test boundary).
     pub fn to_bool_array(&self) -> Array1<bool> {
         let mut out = Array1::from_elem(self.n_indices(), false);
@@ -262,11 +299,17 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
         out
     }
 
-    /// Convert to a dense boolean array (Python / test boundary).
+    /// Convert to a dense boolean matrix, one row per term (Python / test boundary).
     pub fn to_bool_matrix(&self) -> Array2<bool> {
-        self.to_bool_array()
-            .into_shape_with_order((self.n_terms(), self.n_indices()))
-            .expect("Should be able to reshape bool array.")
+        let n_terms = self.n_terms();
+        let n_indices = self.n_indices();
+        let mut out = Array2::from_elem((n_terms, n_indices), false);
+        for t in 0..n_terms {
+            for j in self.get_term(t).iter_ones() {
+                out[[t, j]] = true;
+            }
+        }
+        out
     }
 }
 
@@ -278,13 +321,16 @@ impl<S: AsRef<[DenseIndex]> + AsMut<[DenseIndex]>> DenseBlock<S> {
     /// Panics if `term` is out of bounds.
     #[inline]
     pub fn set_index(&mut self, term: usize, index: usize, value: bool) {
-        self.terms.as_mut()[term + index / DenseIndex::BITS].set(index % DenseIndex::BITS, value);
+        let width = DenseIndex::words_for(self.n_indices);
+        self.terms.as_mut()[term * width + index / DenseIndex::BITS]
+            .set(index % DenseIndex::BITS, value);
     }
 
     #[inline]
     pub fn set_term(&mut self, term: usize, value: DenseBlock<&[DenseIndex]>) {
         let width = self.term_width();
-        self.terms.as_mut()[term..term + width].copy_from_slice(value.terms.as_ref());
+        let base = term * width;
+        self.terms.as_mut()[base..base + width].copy_from_slice(value.terms.as_ref());
     }
 
     /// In-place XOR: `self ^= other`.
@@ -327,35 +373,80 @@ impl DenseBlock<Vec<DenseIndex>> {
         }
     }
 
+    /// Transpose the bit matrix: a block of `T = n_terms()` terms of
+    /// `N = n_indices()` bits becomes a block of `N` terms of `T` bits with
+    /// `out[i][t] == self[t][i]`.
+    ///
+    /// Implemented as a 64×64 blocked bit transpose so it only ever touches
+    /// whole `usize` words (mask/shift/XOR), never individual bits.
     pub fn transpose(self) -> Self {
-        let mut transposed = Self::zeros(self.n_terms(), self.n_indices());
-        for (old_term, old_index) in (0..self.n_terms()).zip(0..self.n_indices()) {
-            todo!();
-            // transposed.set_index(old_index, old_term, self.get_index(old_term, old_index));
-        }
-        transposed
-    }
+        let t = self.n_terms();
+        let n = self.n_indices();
+        let src_width = DenseIndex::words_for(n); // words per source term
+        let dst_width = DenseIndex::words_for(t); // words per output term
+        let bits = DenseIndex::BITS;
+        let src = self.words();
+        let mut out = vec![DenseIndex::default(); n * dst_width];
 
-    /// Return a new block equal to `self ^ other`.
-    #[inline]
-    pub fn xor<T: AsRef<[DenseIndex]>>(
-        &self,
-        other: &DenseBlock<T>,
-    ) -> DenseBlock<Vec<DenseIndex>> {
-        let mut out = self.clone();
-        out.xor_assign(other);
-        out
+        // Walk 64×64 tiles: `tr` = first source term (output index) in the tile,
+        // `ti` = first source index (output term) in the tile.
+        let mut tr = 0;
+        while tr < t {
+            let rows = (t - tr).min(bits);
+            let mut ti = 0;
+            while ti < n {
+                let cols = (n - ti).min(bits);
+                // Load one word per source term for this index-word column.
+                let src_word_col = ti / bits;
+                let mut tile = [0usize; 64];
+                for (r, slot) in tile.iter_mut().enumerate().take(rows) {
+                    *slot = src[(tr + r) * src_width + src_word_col].0;
+                }
+                transpose_bit_tile(&mut tile);
+                // After transpose, `tile[c]` holds the bits for output term
+                // `ti + c`, with source term `tr + r` at local bit `r`.
+                let dst_word_col = tr / bits;
+                for (c, &word) in tile.iter().enumerate().take(cols) {
+                    out[(ti + c) * dst_width + dst_word_col] = DenseIndex(word);
+                }
+                ti += bits;
+            }
+            tr += bits;
+        }
+
+        Self {
+            terms: out,
+            n_indices: t,
+        }
     }
 }
 
-impl<'a> DenseBlock<&'a [DenseIndex]> {
-    /// Wrap a word slice as a borrowed block interpreting the first `n_bits` bits.
-    ///
-    /// `words.len()` must equal `DenseIndex::words_for(n_bits)`.
-    #[inline]
-    pub(crate) fn from_words(terms: &'a [DenseIndex], n_indices: usize) -> Self {
-        debug_assert_eq!(terms.len(), DenseIndex::words_for(n_indices));
-        Self { terms, n_indices }
+/// In-place transpose of a 64×64 bit matrix packed one row per `usize`
+/// (bit `c` of `tile[r]` moves to bit `r` of `tile[c]`). Divide-and-conquer
+/// word-level transpose: at each level `j` the low `j` bits of every `2j`-bit
+/// group in `tile[i]` are delta-swapped with `tile[i + j]`, working only on
+/// whole words (mask/shift/XOR), never individual bits.
+#[inline]
+fn transpose_bit_tile(tile: &mut [usize; 64]) {
+    // `mask` selects the low `j` bits of each `2j`-bit group.
+    const STEPS: [(usize, usize); 6] = [
+        (32, 0x0000_0000_FFFF_FFFF),
+        (16, 0x0000_FFFF_0000_FFFF),
+        (8, 0x00FF_00FF_00FF_00FF),
+        (4, 0x0F0F_0F0F_0F0F_0F0F),
+        (2, 0x3333_3333_3333_3333),
+        (1, 0x5555_5555_5555_5555),
+    ];
+    for (j, mask) in STEPS {
+        let mut i = 0;
+        while i < 64 {
+            if i & j == 0 {
+                let d = ((tile[i] >> j) ^ tile[i + j]) & mask;
+                tile[i] ^= d << j;
+                tile[i + j] ^= d;
+            }
+            i += 1;
+        }
     }
 }
 
@@ -493,6 +584,62 @@ mod tests {
         let long = DenseBlock::from_bool_view(arr1(&[true, false, false]).view());
         assert!(short < long);
         assert!(short.as_ref() < long.as_ref());
+    }
+
+    /// Straightforward bit-by-bit transpose, used only as a test oracle for the
+    /// word-level blocked `DenseBlock::transpose`.
+    fn transpose_reference(block: &DenseBlock<Vec<DenseIndex>>) -> DenseBlock<Vec<DenseIndex>> {
+        let t = block.n_terms();
+        let n = block.n_indices();
+        let mut out = DenseBlock::zeros(n, t);
+        for term in 0..t {
+            for index in 0..n {
+                if block.get_index(term, index) {
+                    out.set_index(index, term, true);
+                }
+            }
+        }
+        out
+    }
+
+    fn random_block(seed: u64, n_terms: usize, n_indices: usize) -> DenseBlock<Vec<DenseIndex>> {
+        // Cheap deterministic xorshift so the test needs no rng dependency.
+        let mut state = seed | 1;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut b = DenseBlock::zeros(n_terms, n_indices);
+        for term in 0..n_terms {
+            for index in 0..n_indices {
+                if next() & 1 == 1 {
+                    b.set_index(term, index, true);
+                }
+            }
+        }
+        b
+    }
+
+    #[test]
+    fn transpose_matches_reference_and_roundtrips() {
+        for (t, n) in [
+            (1, 1),
+            (3, 5),
+            (64, 64),
+            (65, 3),
+            (3, 65),
+            (130, 70),
+            (70, 130),
+        ] {
+            let b = random_block(0x9E37_79B9_7F4A_7C15 ^ (t as u64) << 8 ^ n as u64, t, n);
+            let bt = b.clone().transpose();
+            assert_eq!(bt.n_terms(), n, "transpose n_terms for ({t},{n})");
+            assert_eq!(bt.n_indices(), t, "transpose n_indices for ({t},{n})");
+            assert_eq!(bt, transpose_reference(&b), "transpose bits for ({t},{n})");
+            assert_eq!(bt.transpose(), b, "roundtrip for ({t},{n})");
+        }
     }
 
     #[test]

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Symplectic Pauli operators (`SymplecticOperator`, `SymplecticOperatorView`,
+  `SymplecticMatrix`) now store their X and Z blocks as bitpacked integers
+  (one bit per qubit, packed into machine words) instead of dense `bool` arrays.
+- The packed block is `DenseBlock`, generic over its word backing (`DenseBlock<Vec<DenseIndex>>`
+  owned, `DenseBlock<&[DenseIndex]>` borrowed), where `DenseIndex` is the packed
+  storage word.
+- Z-basis state vectors (`ZBasisState`, `ZBasisEnsemble`, and encoding vacuum
+  states) are now bitpacked into the same packed-word blocks, so applying a Pauli
+  operator to a state (`SymplecticOperator * ZBasisState`) and decoding run as
+  whole-word AND/XOR/popcount instead of iterating individual set-bit indices.
+  The occupation is still available as a boolean array via
+  `ZBasisState::state_bools()`, and the Python boundary (vacuum state,
+  Hartree-Fock state, decoded occupations) is unchanged.
+- Clifford conjugation of a `SymplecticMatrix` (`apply_clifford_chain`, used by
+  the Clifford-heuristic optimisation) now transposes the matrix into a
+  qubit-major layout so each gate (`H`/`S`/`CNOT`) updates whole packed words
+  across all operators at once, instead of touching one bit per operator row.
+
+### Fixed
+
+- `DenseBlock` multi-word addressing: `get_index`/`set_index`/`set_term` and the
+  `From<Array2<bool>>` conversion computed word offsets that were only correct
+  for blocks of at most one word (≤ 64 qubits/rows), corrupting or panicking on
+  larger systems; `DenseIndex::iter_ones` also returned set-bit positions offset
+  by a full word. Bitpacked symplectic matrices and states now behave correctly
+  beyond 64 qubits/operators.
+- `SymplecticOperator::to_pauli_string` (and the borrowed-view variant) dropped
+  the operator's stored `i`-power, returning only the phase contributed by `Y`
+  terms; the stored phase is now included.
+- `ZBasisState::reindex` no longer mis-sizes its packed block.
+
 ## [0.11.0] - 2026-08-01
 
 ### Changed

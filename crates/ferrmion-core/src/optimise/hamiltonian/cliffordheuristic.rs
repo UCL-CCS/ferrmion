@@ -336,7 +336,7 @@ mod tests {
         let x_block = array![[true, false, false], [false, true, false]];
         let z_block = array![[false, true, true], [true, false, true]];
         let mut sym_ham = SymplecticHamiltonian::new(
-            SymplecticMatrix::new(x_block, z_block),
+            SymplecticMatrix::from_arrays(x_block, z_block),
             ndarray::array![1.0, 0.5],
         );
 

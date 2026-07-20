@@ -42,10 +42,14 @@ def as_encoding(tree: fr.MajoranaEncoding | fr.TernaryTree) -> fr.MajoranaEncodi
     return tree
 
 
-def get_naive_result(tree: fr.TernaryTree, fham: fr.FermionHamiltonian):
+def get_naive_result(tree: fr.MajoranaEncoding | fr.TernaryTree, fham: fr.FermionHamiltonian):
     print("Getting Naive result...")
     sdmeans_naive = {}
-    result = pauli_weights(tree.encode_naive(fham))
+    if isinstance(tree, fr.TernaryTree):
+        encoding = tree.build_encoding()
+    else:
+        encoding = tree
+    result = pauli_weights(encoding.encode(fham))
     print("Naive result:", result)
 
     sdmeans_naive = {}

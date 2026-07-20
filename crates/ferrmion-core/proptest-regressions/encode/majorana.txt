@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 96777f02d071487a2e9673a32ac3636ba6d8bfd392b422a8227b882faf78ab78 # shrinks to n_modes = 2, n_perms = 0
+cc 97467a5b8f2e26be8f7aa887aa57022868641a27bbaeadee0b21f6564b5350f1 # shrinks to n = 1, encoding_idx = 0
+cc 8c1226355ed3fa2b6426386e68ee77f1ce4cf2443c802952c4f2c1e5ba25c455 # shrinks to hf_states = [[false]], encoding_idx = 0
+cc b6d5b4cad3c47d9cceae9919d267dba347e3e654d6e262bc3c3f318a74c05148 # shrinks to (n_modes, perms, ms) = (2, [[0, 1]], MajoranaSparse { indices: [[0, 1]], coefficients: [Complex { re: 1.0, im: 0.0 }], constant: 0.0 })

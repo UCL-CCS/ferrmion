@@ -824,30 +824,30 @@ impl TreeRestrictions {
                 .iter()
                 .enumerate()
                 .for_each(|(parent_index, &child)| {
-                    let leaf_index: usize;
                     let y_parity: YParity;
+                    let pair: &mut LeafPair;
                     match child {
                         Some(Child::XLeaf(ind)) => {
-                            leaf_index = ind as usize;
+                            let leaf_index = ind as usize;
                             y_parity = tree.y_parity_of[leaf_index];
+                            pair = &mut leaf_pairs[leaf_index];
                         }
                         Some(Child::YLeaf(ind)) => {
-                            leaf_index = ind as usize;
+                            let leaf_index = ind as usize;
                             y_parity = !tree.y_parity_of[leaf_index];
+                            pair = &mut leaf_pairs[leaf_index];
                         }
                         _ => {
                             // If  the child is a Node, we continue.
                             return;
                         }
-                    }
+                    };
                     match y_parity {
                         YParity::Even => {
-                            let pair = &mut leaf_pairs[leaf_index];
-                            pair.x = LeafLocation(parent_index, edge)
+                            pair.x = LeafLocation(parent_index, edge);
                         }
                         YParity::Odd => {
-                            let pair = &mut leaf_pairs[leaf_index];
-                            pair.y = LeafLocation(parent_index, edge)
+                            pair.y = LeafLocation(parent_index, edge);
                         }
                     }
                 });
@@ -1861,7 +1861,8 @@ mod test_topphatt {
         // The two heuristics walk active_nodes from opposite ends, so on a
         // branched tree the resulting symplectic matrix should differ.
         assert_ne!(
-            x_enc.operators.x_block, z_enc.operators.x_block,
+            x_enc.operators.x_block.to_bool_matrix(),
+            z_enc.operators.x_block.to_bool_matrix(),
             "XFirst and ZFirst should produce distinct encodings on JKMN(7)"
         );
     }
@@ -1880,8 +1881,14 @@ mod test_topphatt {
         let enc_second = tree_second.build_encoding(7).unwrap();
 
         assert_eq!(enc_first.operators.ipowers, enc_second.operators.ipowers);
-        assert_eq!(enc_first.operators.x_block, enc_second.operators.x_block);
-        assert_eq!(enc_first.operators.z_block, enc_second.operators.z_block);
+        assert_eq!(
+            enc_first.operators.x_block.to_bool_matrix(),
+            enc_second.operators.x_block.to_bool_matrix()
+        );
+        assert_eq!(
+            enc_first.operators.z_block.to_bool_matrix(),
+            enc_second.operators.z_block.to_bool_matrix()
+        );
     }
 
     #[test]
@@ -1905,7 +1912,9 @@ mod test_topphatt {
             let (h, tree) = multi_active_fixture();
             let other = topphatt(h, tree, false, NodeOrderHeuristic::Random { seed }).unwrap();
             let other_enc = other.build_encoding(7).unwrap();
-            if other_enc.operators.x_block != ref_enc.operators.x_block {
+            if other_enc.operators.x_block.to_bool_matrix()
+                != ref_enc.operators.x_block.to_bool_matrix()
+            {
                 found_difference = true;
                 break;
             }
@@ -1953,11 +1962,13 @@ mod test_topphatt {
         let bs = sliced_tree.build_encoding(n_modes).unwrap();
 
         assert_eq!(
-            av.operators.x_block, bs.operators.x_block,
+            av.operators.x_block.to_bool_matrix(),
+            bs.operators.x_block.to_bool_matrix(),
             "x_block differs"
         );
         assert_eq!(
-            av.operators.z_block, bs.operators.z_block,
+            av.operators.z_block.to_bool_matrix(),
+            bs.operators.z_block.to_bool_matrix(),
             "z_block differs"
         );
         assert_eq!(av.operators.ipowers, bs.operators.ipowers, "ipowers differ");
@@ -2049,11 +2060,23 @@ mod test_topphatt {
                 // The transposed backends now deduplicate whole terms on the same
                 // multiset rule as the index-list backend, so all three produce
                 // identical encodings.
-                assert_eq!(e_sliced.operators.x_block, av.operators.x_block);
-                assert_eq!(e_sliced.operators.z_block, av.operators.z_block);
+                assert_eq!(
+                    e_sliced.operators.x_block.to_bool_matrix(),
+                    av.operators.x_block.to_bool_matrix()
+                );
+                assert_eq!(
+                    e_sliced.operators.z_block.to_bool_matrix(),
+                    av.operators.z_block.to_bool_matrix()
+                );
                 assert_eq!(e_sliced.operators.ipowers, av.operators.ipowers);
-                assert_eq!(e_sparse.operators.x_block, av.operators.x_block);
-                assert_eq!(e_sparse.operators.z_block, av.operators.z_block);
+                assert_eq!(
+                    e_sparse.operators.x_block.to_bool_matrix(),
+                    av.operators.x_block.to_bool_matrix()
+                );
+                assert_eq!(
+                    e_sparse.operators.z_block.to_bool_matrix(),
+                    av.operators.z_block.to_bool_matrix()
+                );
                 assert_eq!(e_sparse.operators.ipowers, av.operators.ipowers);
             }
         }
@@ -2101,11 +2124,13 @@ mod test_topphatt {
                 // Multiset dedup makes dense_transpose match index_list exactly on
                 // every topology.
                 assert_eq!(
-                    sliced.operators.x_block, il.operators.x_block,
+                    sliced.operators.x_block.to_bool_matrix(),
+                    il.operators.x_block.to_bool_matrix(),
                     "dense_transpose vs index_list x {name} seed {seed}"
                 );
                 assert_eq!(
-                    sliced.operators.z_block, il.operators.z_block,
+                    sliced.operators.z_block.to_bool_matrix(),
+                    il.operators.z_block.to_bool_matrix(),
                     "dense_transpose vs index_list z {name} seed {seed}"
                 );
 
@@ -2122,11 +2147,13 @@ mod test_topphatt {
                 .build_encoding(n_modes)
                 .unwrap();
                 assert_eq!(
-                    sparse.operators.x_block, il.operators.x_block,
+                    sparse.operators.x_block.to_bool_matrix(),
+                    il.operators.x_block.to_bool_matrix(),
                     "sparse vs index_list x {name} seed {seed}"
                 );
                 assert_eq!(
-                    sparse.operators.z_block, il.operators.z_block,
+                    sparse.operators.z_block.to_bool_matrix(),
+                    il.operators.z_block.to_bool_matrix(),
                     "sparse vs index_list z {name} seed {seed}"
                 );
             }

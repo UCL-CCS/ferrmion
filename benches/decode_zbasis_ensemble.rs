@@ -5,7 +5,10 @@ use ferrmion_core::states::{FockState, ZBasisEnsemble, ZBasisState};
 use ndarray::Array1;
 use num_complex::Complex64;
 
-fn make_ensemble(encoding: &MajoranaEncoding, n_states: usize) -> ZBasisEnsemble {
+fn make_ensemble(
+    encoding: &MajoranaEncoding,
+    n_states: usize,
+) -> (ZBasisEnsemble, Vec<ZBasisState>) {
     let n_modes = encoding.n_modes;
     let total_states = 1 << n_modes;
     let states: Vec<ZBasisState> = (0..n_states)
@@ -16,7 +19,7 @@ fn make_ensemble(encoding: &MajoranaEncoding, n_states: usize) -> ZBasisEnsemble
             encoding.try_encode(fock).unwrap()
         })
         .collect();
-    ZBasisEnsemble::from(states)
+    (ZBasisEnsemble::from(states.clone()), states)
 }
 
 fn bench_decode_ensemble(c: &mut Criterion) {
@@ -27,7 +30,7 @@ fn bench_decode_ensemble(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode_zbasis_ensemble");
 
     for n_states in [10usize, 100, 1000] {
-        let ensemble = make_ensemble(&encoding, n_states);
+        let (ensemble, states) = make_ensemble(&encoding, n_states);
 
         group.bench_with_input(
             BenchmarkId::new("batch_parallel", n_states),
@@ -42,13 +45,9 @@ fn bench_decode_ensemble(c: &mut Criterion) {
             &n_states,
             |b, _| {
                 b.iter(|| {
-                    ensemble
-                        .states
-                        .axis_iter(ndarray::Axis(0))
-                        .zip(ensemble.coefficients.iter())
-                        .map(|(row, &coeff)| {
-                            encoding.decode_zbasis_state(ZBasisState::new(row.to_owned(), coeff))
-                        })
+                    states
+                        .iter()
+                        .map(|s| encoding.decode_zbasis_state(s.clone()))
                         .collect::<Vec<_>>()
                 });
             },

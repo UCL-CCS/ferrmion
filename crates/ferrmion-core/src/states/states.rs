@@ -5,6 +5,7 @@ use num_complex::Complex64;
 use std::ops::Mul;
 use thiserror::Error;
 
+use crate::operators::{DenseBlock, DenseIndex};
 use crate::spaces::{Fermion, Qubit};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +53,8 @@ pub enum StateError {
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZBasisState {
-    pub state: Array1<bool>,
+    /// Qubit occupation packed one bit per qubit into `u64` words.
+    pub(crate) state: DenseBlock,
     pub coefficient: Complex64,
     bra_ket: BraKet,
 }
@@ -73,6 +75,13 @@ impl ZBasisState {
     /// assert_eq!(s.coefficient.norm(), 1.0);
     /// ```
     pub fn new(state: Array1<bool>, coefficient: Complex64) -> Self {
+        Self::from_block(DenseBlock::from_bool_view(state.view()), coefficient)
+    }
+
+    /// Construct a `ZBasisState` from an already-packed [`DenseBlock`].
+    ///
+    /// The coefficient is automatically normalised to unit norm.
+    pub fn from_block(state: DenseBlock, coefficient: Complex64) -> Self {
         let mut out = Self {
             state,
             coefficient,
@@ -82,19 +91,29 @@ impl ZBasisState {
         out
     }
 
+    /// The qubit occupation as a dense boolean array (Python / test boundary).
+    pub fn state_bools(&self) -> Array1<bool> {
+        self.state.to_bool_array()
+    }
+
+    /// Borrow the packed qubit occupation.
+    pub fn state_block(&self) -> DenseBlock<&[DenseIndex]> {
+        self.state.as_ref()
+    }
+
     /// Construct a new `ZBasisState` with all qubits set to zero and a unit coefficient.
     ///
     /// # Examples
     ///
     /// ```
-    /// use ferrmion_core::states::ZBasisState;
+    /// use ferrmion_core::states::{State, ZBasisState};
     ///
     /// let s = ZBasisState::zeros(4);
-    /// assert_eq!(s.state.len(), 4);
-    /// assert!(s.state.iter().all(|&b| !b));
+    /// assert_eq!(s.dimension(), 4);
+    /// assert!(s.state_bools().iter().all(|&b| !b));
     /// ```
     pub fn zeros(n_qubits: usize) -> Self {
-        Self::new(Array1::from_elem(n_qubits, false), Complex64::new(1., 0.))
+        Self::from_block(DenseBlock::zeros(1, n_qubits), Complex64::new(1., 0.))
     }
 }
 
@@ -108,12 +127,12 @@ impl State for ZBasisState {
         }
     }
     fn dimension(&self) -> usize {
-        self.state.len()
+        self.state.n_indices()
     }
 
     fn adjoint(self) -> Self {
         Self {
-            state: self.state.slice(s![..;-1]).to_owned(),
+            state: self.state,
             coefficient: self.coefficient.conj(),
             bra_ket: match self.bra_ket {
                 BraKet::Bra => BraKet::Ket,
@@ -123,9 +142,9 @@ impl State for ZBasisState {
     }
 
     fn reindex(&mut self, permutation: &[usize]) {
-        let mut new_state = Array1::from_elem(self.state.len(), false);
-        for (original, &new) in permutation.iter().enumerate() {
-            new_state[new] = self.state[original];
+        let mut new_state = DenseBlock::zeros(1, self.state.n_indices());
+        for original in self.state.iter_ones() {
+            new_state.set_index(0, permutation[original], true);
         }
         self.state = new_state;
     }
@@ -180,7 +199,10 @@ mod zbasis_tests {
         let coefficient = Complex64::new(1., 2.);
         let zbasis_state = ZBasisState::new(state_vec, coefficient);
         let adjoint_state = zbasis_state.adjoint();
-        assert_eq!(adjoint_state.state, arr1(&[false, true, false, true]));
+        assert_eq!(
+            adjoint_state.state_bools(),
+            arr1(&[true, false, true, false])
+        );
         assert_eq!(
             adjoint_state.coefficient,
             coefficient.conj() / coefficient.norm()
@@ -205,7 +227,7 @@ mod zbasis_tests {
         let coefficient = Complex64::new(1., 0.);
         let zbasis_state = ZBasisState::new(state, coefficient);
         let adjoint_state = zbasis_state.clone().adjoint();
-        assert_eq!(adjoint_state.state, Array1::from_elem(3, false));
+        assert_eq!(adjoint_state.state_bools(), Array1::from_elem(3, false));
         assert_eq!(adjoint_state.coefficient, Complex64::new(1., 0.));
     }
 
@@ -236,14 +258,15 @@ mod zbasis_tests {
 /// Intended for efficient batch decoding via [`crate::encode::majorana::MajoranaEncoding::decode_zbasis_ensemble`].
 #[derive(Debug, Clone)]
 pub struct ZBasisEnsemble {
-    /// Each row is a Z-basis state (qubit occupation vector).
-    pub states: Array2<bool>,
+    /// Each entry is a Z-basis state, packed one bit per qubit into `u64` words.
+    pub(crate) states: DenseBlock,
     /// Complex coefficient for each state.
     pub coefficients: Array1<Complex64>,
 }
 
 impl ZBasisEnsemble {
-    /// Construct a [`ZBasisEnsemble`] from a states matrix and coefficient vector.
+    /// Construct a [`ZBasisEnsemble`] from a dense states matrix and coefficient
+    /// vector, packing each row into a [`DenseBlock`].
     ///
     /// # Panics
     ///
@@ -254,6 +277,15 @@ impl ZBasisEnsemble {
             coefficients.len(),
             "states and coefficients must have the same length"
         );
+        let states = states
+            .rows()
+            .into_iter()
+            .map(DenseBlock::from_bool_view)
+            .reduce(|mut acc, row| {
+                acc.concat(row).unwrap();
+                acc
+            })
+            .unwrap();
         Self {
             states,
             coefficients,
@@ -264,18 +296,16 @@ impl ZBasisEnsemble {
 impl From<Vec<ZBasisState>> for ZBasisEnsemble {
     fn from(zbasis_states: Vec<ZBasisState>) -> Self {
         let n = zbasis_states.len();
-        if n == 0 {
-            return Self {
-                states: Array2::default((0, 0)),
-                coefficients: Array1::default(0),
-            };
-        }
-        let n_qubits = zbasis_states[0].state.len();
-        let mut states = Array2::default((n, n_qubits));
+        let n_indices = zbasis_states
+            .iter()
+            .map(|s| s.state.n_indices())
+            .max()
+            .unwrap_or(0);
+        let mut states = DenseBlock::zeros(n, n_indices);
         let mut coefficients = Array1::zeros(n);
-        for (i, s) in zbasis_states.iter().enumerate() {
-            states.row_mut(i).assign(&s.state);
+        for (i, s) in zbasis_states.into_iter().enumerate() {
             coefficients[i] = s.coefficient;
+            states.set_term(i, s.state_block());
         }
         Self {
             states,
@@ -353,7 +383,7 @@ impl State for FockState {
     }
 
     fn reindex(&mut self, permutation: &[usize]) {
-        let mut new_state = Array1::from_elem(self.state.len(), false);
+        let mut new_state = Array1::from_elem(self.dimension(), false);
         for (original, &new) in permutation.iter().enumerate() {
             new_state[new] = self.state[original];
         }

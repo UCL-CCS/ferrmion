@@ -18,12 +18,12 @@ const MAX_MAJORANAS: usize = 7;
 /// Minimum number of independent terms in a [`FermionSparse`] before
 /// `append_fermion_sparse` expands them across rayon worker threads. Below this,
 /// the serial path is used, avoiding rayon's scheduling overhead on small inputs.
-const PARALLEL_TERM_THRESHOLD: usize = 256;
+const PARALLEL_TERM_THRESHOLD: usize = PARALLEL_CHUNK * 4;
 
 /// Minimum number of terms a single rayon task expands in the parallel path
 /// (`with_min_len`), so tiny per-term work is batched rather than scheduled
 /// individually.
-const PARALLEL_CHUNK: usize = 64;
+const PARALLEL_CHUNK: usize = 6400;
 
 /*
 Fermion
@@ -509,7 +509,7 @@ impl MajoranaHashMap {
     /// large operators (at least [`PARALLEL_TERM_THRESHOLD`] rows) the expansion
     /// runs across rayon worker threads.
     fn append_fermion_sparse(&mut self, fsparse: &FermionSparse) {
-        debug!("FSparse Indices {:?}", &fsparse.indices);
+        debug!("FSparse Indices {:?}", fsparse.indices);
         let action = fsparse.action.as_slice();
         let indices = &fsparse.indices;
         let coefficients = &fsparse.coefficients;
@@ -526,7 +526,7 @@ impl MajoranaHashMap {
                     coefficients[r],
                 );
             }
-            debug!("MBTree {:?}\n", &self);
+            debug!("MBTree {:?}\n", self);
             return;
         }
         // Phase 1 — expand chunks of independent terms into thread-local maps in
@@ -569,7 +569,7 @@ impl MajoranaHashMap {
                 }
             }
         }
-        debug!("MBTree {:?}\n", &self);
+        debug!("MBTree {:?}\n", self);
     }
 }
 
@@ -728,8 +728,8 @@ impl From<MajoranaHashMap> for MajoranaSparse {
         // Restore deterministic ordering (equivalent to the prior BTreeMap key order).
         pairs.sort_unstable_by_key(|(a, _)| *a);
         let (sparse_indices, sparse_values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
-        debug!("Sparse Majorana Indices {:?}", &sparse_indices);
-        debug!("Sparse Majorana Coefficients {:?}", &sparse_values);
+        debug!("Sparse Majorana Indices {:?}", sparse_indices);
+        debug!("Sparse Majorana Coefficients {:?}", sparse_values);
         MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
             .expect("Indices and coefficients should be same length.")
     }

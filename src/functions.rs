@@ -82,10 +82,12 @@ pub(crate) fn symplectic_product<'py>(
         right.slice(ndarray::s![n..]).to_owned(),
     );
     let result = left_op * right_op.view();
-    let combined = ndarray::concatenate(ndarray::Axis(0), &[result.x_block(), result.z_block()])
+    let x = result.x.to_bool_array();
+    let z = result.z.to_bool_array();
+    let combined = ndarray::concatenate(ndarray::Axis(0), &[x.view(), z.view()])
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
     Ok((
-        result.ipower() as usize,
+        result.ipower as usize,
         PyArray1::from_owned_array(py, combined),
     ))
 }
@@ -182,7 +184,7 @@ pub(crate) fn symplectic_to_sparse<'py>(
 ///
 /// Args:
 ///     fham: The fermionic Hamiltonian whose terms drive the greedy search.
-///     n_modes: Number of fermionic modes. Defaults to ``fham.n_modes``.
+///     `n_modes`: Number of fermionic modes. Defaults to ``fham.n_modes``.
 ///
 /// Returns:
 ///     Tuple of ``(flatpack, total_pauli_weight)`` where ``flatpack`` is
@@ -261,7 +263,7 @@ fn run_topphatt(
 ///
 /// Args:
 ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples — initial tree.
-///     n_qubits: Total number of qubits in the system.
+///     `n_qubits`: Total number of qubits in the system.
 ///     hamiltonian: The Majorana sparse Hamiltonian driving the optimisation.
 ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
@@ -271,7 +273,7 @@ fn run_topphatt(
 ///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
 ///
 /// Returns:
-///     MajoranaEncoding: The optimised encoding.
+///     `MajoranaEncoding`: The optimised encoding.
 #[pyfunction(name = "topphatt")]
 #[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
@@ -309,7 +311,7 @@ pub(crate) fn topphatt_py(
 ///
 /// Args:
 ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples — initial tree.
-///     n_qubits: Total number of qubits in the system.
+///     `n_qubits`: Total number of qubits in the system.
 ///     fham: The fermionic Hamiltonian to optimise for and encode.
 ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``

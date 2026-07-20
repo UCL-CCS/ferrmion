@@ -13,7 +13,7 @@
 //!   where B is the previous generation hamiltonian
 //!   and G is the sampled clifford operator.
 use crate::hamiltonians::SymplecticHamiltonian;
-use crate::operators::{Clifford, CoefficientPauliWeight, PauliWeight, SymplecticMatrixTranspose};
+use crate::operators::{Clifford, DenseBlock, SymplecticMatrixTranspose};
 use crate::optimise::encoding::AnnealingParameters;
 use argmin::{
     core::{CostFunction, Error, Executor},
@@ -28,6 +28,7 @@ use rand_core_legacy::SeedableRng as LegacySeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rand_xoshiro_legacy::Xoshiro256PlusPlus as LegacyXoshiro256PlusPlus;
 use std::clone::Clone;
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -109,12 +110,106 @@ impl FromStr for CliffordSubset {
     }
 }
 
+/// Qubit-major transpose restricted to a subsystem's qubit columns.
+///
+/// [`CliffordHeuristic::anneal`] only ever samples `control`/`target` qubits
+/// from the subsystem, so a candidate chain never touches any other qubit.
+/// That means the rest of the Hamiltonian's Pauli weight is an additive
+/// constant across every candidate in one optimisation run and can be
+/// dropped from the cost entirely — this type holds only the subsystem's
+/// columns, transposed once up front, so `cost()` can clone and mutate a
+/// small buffer instead of re-transposing (and writing back) the whole
+/// Hamiltonian on every evaluation.
+#[derive(Clone)]
+struct SubsystemTranspose {
+    /// One term per subsystem qubit (in `local_index` order), each
+    /// `words_for(n_rows)` words wide.
+    x_transpose: DenseBlock,
+    /// Same layout as `x_transpose`.
+    z_transpose: DenseBlock,
+}
+
+impl SubsystemTranspose {
+    /// Restrict `x_block`/`z_block` to `subsystem_qubits`' columns and
+    /// transpose once into qubit-major form.
+    fn new(x_block: &DenseBlock, z_block: &DenseBlock, subsystem_qubits: &[usize]) -> Self {
+        Self {
+            x_transpose: x_block.select_indices(subsystem_qubits).transpose(),
+            z_transpose: z_block.select_indices(subsystem_qubits).transpose(),
+        }
+    }
+
+    // Same bit-level identities as `SymplecticMatrixTranspose`
+    // (`crate::operators::pauli`), minus i-power bookkeeping: `pauli_weight`/
+    // `coeff_pauli_weight` never depend on phase, only on which qubits carry
+    // a non-identity Pauli.
+    fn haddamard(&mut self, qubit: usize) {
+        let x_col = self.x_transpose.get_term(qubit).to_owned_block();
+        self.x_transpose
+            .set_term(qubit, self.z_transpose.get_term(qubit));
+        self.z_transpose.set_term(qubit, x_col.as_ref());
+    }
+
+    fn phasegate(&mut self, qubit: usize) {
+        let z_new = self
+            .z_transpose
+            .get_term(qubit)
+            .xor(&self.x_transpose.get_term(qubit));
+        self.z_transpose.set_term(qubit, z_new.as_ref());
+    }
+
+    fn cnot(&mut self, control: usize, target: usize) {
+        let x_new = self
+            .x_transpose
+            .get_term(target)
+            .xor(&self.x_transpose.get_term(control));
+        self.x_transpose.set_term(target, x_new.as_ref());
+        let z_new = self
+            .z_transpose
+            .get_term(control)
+            .xor(&self.z_transpose.get_term(target));
+        self.z_transpose.set_term(control, z_new.as_ref());
+    }
+
+    /// Total Pauli weight contributed by the subsystem's qubits alone.
+    fn pauli_weight(&self) -> usize {
+        (0..self.x_transpose.n_terms())
+            .map(|q| {
+                self.x_transpose
+                    .get_term(q)
+                    .or_count_ones(&self.z_transpose.get_term(q))
+            })
+            .sum()
+    }
+
+    /// Per-Hamiltonian-term Pauli weight contributed by the subsystem's
+    /// qubits alone, indexed the same as `SymplecticHamiltonian::coefficients`.
+    fn per_row_weight(&self) -> Vec<usize> {
+        let mut weights = vec![0usize; self.x_transpose.n_indices()];
+        for q in 0..self.x_transpose.n_terms() {
+            let combined = self
+                .x_transpose
+                .get_term(q)
+                .or(&self.z_transpose.get_term(q));
+            for row in combined.iter_ones() {
+                weights[row] += 1;
+            }
+        }
+        weights
+    }
+}
+
 struct CliffordHeuristic<'ham> {
     hamiltonian: &'ham mut SymplecticHamiltonian,
     coefficient_weighted: bool,
     rng: Arc<Mutex<Xoshiro256PlusPlus>>,
     subsystem: Vec<usize>,
     clifford_subset: CliffordSubset,
+    /// Physical qubit index -> local column index into `base_transpose`.
+    local_index: HashMap<usize, usize>,
+    /// Subsystem-restricted qubit-major transpose, computed once and cloned
+    /// per `cost()` evaluation. See [`SubsystemTranspose`].
+    base_transpose: SubsystemTranspose,
 }
 
 impl<'ham> CliffordHeuristic<'ham> {
@@ -125,12 +220,34 @@ impl<'ham> CliffordHeuristic<'ham> {
         subsystem: Vec<usize>,
         clifford_subset: Option<CliffordSubset>,
     ) -> Self {
+        // `subsystem` may repeat physical qubits (samplers like `Uniform`/
+        // `Hamming` draw with replacement to bias `anneal`'s control/target
+        // sampling), but the restricted transpose only needs each physical
+        // qubit's column once.
+        let mut subsystem_qubits = subsystem.clone();
+        subsystem_qubits.sort_unstable();
+        subsystem_qubits.dedup();
+
+        let local_index: HashMap<usize, usize> = subsystem_qubits
+            .iter()
+            .enumerate()
+            .map(|(local, &qubit)| (qubit, local))
+            .collect();
+
+        let base_transpose = SubsystemTranspose::new(
+            &hamiltonian.operators.x_block,
+            &hamiltonian.operators.z_block,
+            &subsystem_qubits,
+        );
+
         CliffordHeuristic {
             hamiltonian,
             coefficient_weighted,
             rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(seed))),
             subsystem,
             clifford_subset: clifford_subset.unwrap_or(CliffordSubset::CHS),
+            local_index,
+            base_transpose,
         }
     }
 }
@@ -140,15 +257,35 @@ impl<'ham> CostFunction for CliffordHeuristic<'ham> {
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
-        // Cloning is fine for now but it would be better
-        // to apply the chain and then uncompute it if the cost
-        // is not improved.
-        let mut ham = self.hamiltonian.clone();
-        ham.operators.apply_clifford_chain(param.as_slice());
+        // Reuse the pre-transposed subsystem buffer: clone (cheap — it only
+        // spans the subsystem's qubits) and replay the chain on it directly,
+        // rather than cloning the whole Hamiltonian and transposing it (and
+        // transposing back) on every evaluation.
+        let mut state = self.base_transpose.clone();
+        for op in param {
+            match op {
+                Clifford::H(idx) => state.haddamard(self.local_index[idx]),
+                Clifford::S(idx) => state.phasegate(self.local_index[idx]),
+                Clifford::CNOT { control, target } => {
+                    state.cnot(self.local_index[control], self.local_index[target])
+                }
+            }
+        }
 
-        let weight = match self.coefficient_weighted {
-            true => ham.coeff_pauli_weight(),
-            false => ham.pauli_weight() as f64,
+        // This is the subsystem's contribution to the (coefficient-weighted)
+        // Pauli weight, not the whole Hamiltonian's — the rest is an additive
+        // constant across every candidate in this run (see
+        // `SubsystemTranspose`), so minimising this is equivalent to
+        // maximising the reduction in the subsystem's own weight.
+        let weight = if self.coefficient_weighted {
+            state
+                .per_row_weight()
+                .iter()
+                .zip(&self.hamiltonian.coefficients)
+                .map(|(&w, coeff)| coeff.abs() * w as f64)
+                .sum()
+        } else {
+            state.pauli_weight() as f64
         };
         Ok(weight)
     }
@@ -327,8 +464,83 @@ pub fn randomised_subsystem_descent(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operators::SymplecticMatrix;
+    use crate::operators::{CoefficientPauliWeight, PauliWeight, SymplecticMatrix};
     use ndarray::array;
+
+    /// The subsystem-restricted `cost()` must agree with the full Hamiltonian's
+    /// weight *delta* exactly — not just up to a constant — since the constant
+    /// (the Pauli weight contributed by qubits outside the subsystem) is what
+    /// the subsystem-only formulation is designed to skip computing at all.
+    #[test]
+    fn subsystem_cost_matches_full_weight_delta() {
+        // 6 qubits, a handful of terms with mixed X/Z/Y content so H/S/CNOT
+        // all have something to do on the sampled subsystem qubits.
+        let x_block = array![
+            [true, false, false, true, false, true],
+            [false, true, true, false, false, false],
+            [true, true, false, false, true, false],
+        ];
+        let z_block = array![
+            [false, true, false, true, true, false],
+            [true, false, true, false, false, true],
+            [false, false, true, true, false, true],
+        ];
+        let coefficients = array![1.0, -2.5, 0.5];
+        let hamiltonian = SymplecticHamiltonian::new(
+            SymplecticMatrix::from_arrays(x_block, z_block),
+            coefficients,
+        );
+
+        // Includes a duplicate (qubit 1 twice), matching what `Uniform`/`Hamming`
+        // samplers can actually produce.
+        let subsystem = vec![1, 3, 4, 1];
+        let chain = vec![
+            Clifford::H(1),
+            Clifford::CNOT {
+                control: 1,
+                target: 3,
+            },
+            Clifford::S(4),
+            Clifford::CNOT {
+                control: 4,
+                target: 1,
+            },
+        ];
+
+        for coefficient_weighted in [false, true] {
+            let mut ham_for_operator = hamiltonian.clone();
+            let operator = CliffordHeuristic::new(
+                &mut ham_for_operator,
+                coefficient_weighted,
+                7,
+                subsystem.clone(),
+                None,
+            );
+
+            let subsystem_baseline = operator.cost(&Vec::new()).unwrap();
+            let subsystem_after = operator.cost(&chain).unwrap();
+
+            let full_baseline = if coefficient_weighted {
+                hamiltonian.coeff_pauli_weight()
+            } else {
+                hamiltonian.pauli_weight() as f64
+            };
+            let mut full_after_ham = hamiltonian.clone();
+            full_after_ham.operators.apply_clifford_chain(&chain);
+            let full_after = if coefficient_weighted {
+                full_after_ham.coeff_pauli_weight()
+            } else {
+                full_after_ham.pauli_weight() as f64
+            };
+
+            let subsystem_delta = subsystem_after - subsystem_baseline;
+            let full_delta = full_after - full_baseline;
+            assert!(
+                (subsystem_delta - full_delta).abs() < 1e-9,
+                "coefficient_weighted={coefficient_weighted}: subsystem delta {subsystem_delta} != full delta {full_delta}"
+            );
+        }
+    }
 
     #[test]
     fn vp_subset_emits_only_s_and_cnot() {

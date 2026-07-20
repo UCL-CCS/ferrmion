@@ -253,6 +253,38 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
             .sum()
     }
 
+    /// Return a new owned block equal to `self | other` (whole-word OR).
+    #[inline]
+    pub fn or<T: AsRef<[DenseIndex]>>(&self, other: &DenseBlock<T>) -> DenseBlock<Vec<DenseIndex>> {
+        DenseBlock {
+            terms: self
+                .terms
+                .as_ref()
+                .iter()
+                .zip(other.terms.as_ref())
+                .map(|(a, b)| a.or(*b))
+                .collect(),
+            n_indices: self.n_indices,
+        }
+    }
+
+    /// Return a new owned block containing only the given index (qubit)
+    /// positions, in the given order: `out.get_index(t, local) ==
+    /// self.get_index(t, indices[local])`. `indices` need not be sorted or
+    /// unique.
+    pub fn select_indices(&self, indices: &[usize]) -> DenseBlock<Vec<DenseIndex>> {
+        let n_terms = self.n_terms();
+        let mut out = DenseBlock::zeros(n_terms, indices.len());
+        for term in 0..n_terms {
+            for (local, &global) in indices.iter().enumerate() {
+                if self.get_index(term, global) {
+                    out.set_index(term, local, true);
+                }
+            }
+        }
+        out
+    }
+
     /// Return a new owned block equal to `self ^ other` (whole-word XOR).
     #[inline]
     pub fn xor<T: AsRef<[DenseIndex]>>(
@@ -561,6 +593,36 @@ mod tests {
         let a = DenseBlock::from_bool_view(arr1(&[true, false, true]).view());
         let b = DenseBlock::from_bool_view(arr1(&[true, true, false]).view());
         assert_eq!(a.xor(&b).to_bool_array(), arr1(&[false, true, true]));
+    }
+
+    #[test]
+    fn or_ops() {
+        let a = DenseBlock::from_bool_view(arr1(&[true, false, true, false]).view());
+        let b = DenseBlock::from_bool_view(arr1(&[false, true, true, false]).view());
+        assert_eq!(a.or(&b).to_bool_array(), arr1(&[true, true, true, false]));
+    }
+
+    #[test]
+    fn select_indices_reorders_and_subsets() {
+        let mut b = DenseBlock::zeros(2, 5);
+        // Row 0: 1 0 1 0 0, Row 1: 0 1 1 1 0
+        for (t, idx) in [(0, 0), (0, 2), (1, 1), (1, 2), (1, 3)] {
+            b.set_index(t, idx, true);
+        }
+        let selected = b.select_indices(&[3, 0, 2]);
+        assert_eq!(selected.n_indices(), 3);
+        assert_eq!(selected.n_terms(), 2);
+        assert_eq!(
+            selected.to_bool_matrix(),
+            ndarray::arr2(&[[false, true, true], [true, false, true]])
+        );
+    }
+
+    #[test]
+    fn select_indices_allows_duplicates() {
+        let b = DenseBlock::from_bool_view(arr1(&[true, false, true]).view());
+        let selected = b.select_indices(&[0, 0, 2]);
+        assert_eq!(selected.to_bool_array(), arr1(&[true, true, true]));
     }
 
     #[test]

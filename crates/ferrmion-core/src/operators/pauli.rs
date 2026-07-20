@@ -1028,7 +1028,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_HIH() {
+    fn test_hih() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.transpose().haddamard(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("I".to_string(), 0));
@@ -1036,7 +1036,7 @@ mod symplictic_transpose_tests {
         assert_eq!(sym.ipowers, SymplecticMatrix::identity(2, 1).ipowers);
     }
     #[test]
-    fn test_HXH() {
+    fn test_hxh() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.x_block.set_index(0, 0, true);
         sym.x_block.set_index(1, 0, true);
@@ -1045,7 +1045,7 @@ mod symplictic_transpose_tests {
         assert_eq!(sym.view_row(1).to_pauli_string(), ("Z".to_string(), 0));
     }
     #[test]
-    fn test_HYH() {
+    fn test_hyh() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.x_block.set_index(0, 0, true);
         sym.z_block.set_index(0, 0, true);
@@ -1061,7 +1061,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_HZH() {
+    fn test_hzh() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.z_block.set_index(0, 0, true);
         sym.z_block.set_index(1, 0, true);
@@ -1071,7 +1071,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_SIS() {
+    fn test_sis() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 1);
         sym.transpose().phasegate(0);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("I".to_string(), 0));
@@ -1079,7 +1079,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_SXS() {
+    fn test_sxs() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.x_block.set_index(0, 0, true);
         sym.x_block.set_index(1, 0, true);
@@ -1089,7 +1089,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_SYS() {
+    fn test_sys() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.x_block.set_index(0, 0, true);
         sym.z_block.set_index(0, 0, true);
@@ -1104,7 +1104,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_SZS() {
+    fn test_szs() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 1);
         sym.z_block.set_index(0, 0, true);
         sym.z_block.set_index(1, 0, true);
@@ -1114,7 +1114,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_CX_II_CX() {
+    fn test_cx_ii_cx() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(2, 2);
         sym.transpose().cnot(0, 1);
         assert_eq!(sym.view_row(0).to_pauli_string(), ("II".to_string(), 0));
@@ -1123,7 +1123,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_CX_XI_CX() {
+    fn test_cx_xi_cx() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
         sym.x_block.set_index(0, 0, true);
         sym.transpose().cnot(0, 1);
@@ -1132,7 +1132,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_CX_IX_CX() {
+    fn test_cx_ix_cx() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
         sym.x_block.set_index(0, 1, true);
         sym.transpose().cnot(0, 1);
@@ -1144,7 +1144,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_CX_ZI_CX() {
+    fn test_cx_zi_cx() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
         sym.z_block.set_index(0, 0, true);
         sym.transpose().cnot(0, 1);
@@ -1153,7 +1153,7 @@ mod symplictic_transpose_tests {
     }
 
     #[test]
-    fn test_CX_IZ_CX() {
+    fn test_cx_iz_cx() {
         let mut sym: SymplecticMatrix = SymplecticMatrix::identity(1, 2);
         sym.z_block.set_index(0, 1, true);
         sym.transpose().cnot(0, 1);

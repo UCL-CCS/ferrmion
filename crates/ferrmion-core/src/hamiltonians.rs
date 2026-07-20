@@ -205,7 +205,7 @@ impl SymplecticHamiltonian {
     }
 
     pub fn n_qubits(&self) -> usize {
-        self.operators.n_qubits()
+        self.operators.n_qubits
     }
 
     /// Build a [`SymplecticHamiltonian`] from an encoded [`QubitHamiltonian`].
@@ -287,7 +287,7 @@ impl SymplecticHamiltonian {
     /// assert_eq!(ham.coefficients[0], 2.0);
     /// ```
     pub fn sort_rows(&mut self) {
-        let n = self.operators.n_rows();
+        let n = self.operators.n_rows;
         let mut indices: Vec<usize> = (0..n).collect();
         indices
             .sort_unstable_by(|&a, &b| self.operators.view_row(a).cmp(&self.operators.view_row(b)));
@@ -318,7 +318,7 @@ impl SymplecticHamiltonian {
     /// assert_eq!(ham.coefficients[1], 3.0);
     /// ```
     pub fn dedup(&mut self) {
-        let n = self.operators.n_rows();
+        let n = self.operators.n_rows;
         if n == 0 {
             return;
         }

@@ -12,7 +12,7 @@ use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
 use crate::utils::COEFFICIENT_TOLERANCE;
 use crate::utils::{self, icount_to_sign};
 use log::{debug, error};
-use ndarray::{Array1, Array2, Axis, Zip};
+use ndarray::{Array1, Array2, Axis};
 use num_complex::{c64, Complex64};
 use rayon::prelude::*;
 use thiserror::Error;
@@ -163,8 +163,8 @@ impl MajoranaEncoding {
         // Linear independence
         Self::validate_linear_independence(&operators)?;
 
-        let n_modes = operators.n_rows() / 2;
-        let n_qubits = operators.n_qubits();
+        let n_modes = operators.n_rows / 2;
+        let n_qubits = operators.n_qubits;
         let encoding = Self {
             operators,
             n_modes,
@@ -188,8 +188,8 @@ impl MajoranaEncoding {
     pub fn determine_vacuum_state(
         operators: &SymplecticMatrix,
     ) -> Result<ZBasisState, MajoranaEncodingError> {
-        let n_modes = operators.n_rows() / 2;
-        let n_qubits = operators.n_qubits();
+        let n_modes = operators.n_rows / 2;
+        let n_qubits = operators.n_qubits;
 
         // Build GF(2) augmented matrix [A | b] of shape [n_modes, n_qubits + 1].
         let mut mat: Vec<Vec<bool>> = Vec::with_capacity(n_modes);
@@ -204,10 +204,10 @@ impl MajoranaEncoding {
                 return Err(MajoranaEncodingError::NoVacuumStateError);
             }
 
-            let mut z0 = operators.z_block.get_term(2 * i);
+            let z0 = operators.z_block.get_term(2 * i);
             let z1 = operators.z_block.get_term(2 * i + 1);
-            let ip0 = operators.ipower(2 * i) as i32;
-            let ip1 = operators.ipower(2 * i + 1) as i32;
+            let ip0 = operators.ipowers[2 * i] as i32;
+            let ip1 = operators.ipowers[2 * i + 1] as i32;
 
             // Vacuum condition from try_encode:
             //   γ_{2i}|v⟩ coefficient == -i * γ_{2i+1}|v⟩ coefficient
@@ -282,7 +282,7 @@ impl MajoranaEncoding {
         {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
-        if !operators.n_rows().is_multiple_of(2) {
+        if !operators.n_rows.is_multiple_of(2) {
             return Err(MajoranaEncodingError::InvalidOperatorsError);
         }
         Ok(())
@@ -292,7 +292,7 @@ impl MajoranaEncoding {
     ) -> Result<(), MajoranaEncodingError> {
         // Check all distinct pairs anticommute via the symplectic inner product.
         // Two Pauli operators anticommute iff Σ_q (x_i[q]·z_j[q] ⊕ z_i[q]·x_j[q]) is odd.
-        let n_ops = operators.n_rows();
+        let n_ops = operators.n_rows;
         for i in 0..n_ops {
             for j in i + 1..n_ops {
                 // Symplectic inner product ⟨op_i, op_j⟩ = |x_i & z_j| + |z_i & x_j| (mod 2).
@@ -396,11 +396,11 @@ impl MajoranaEncoding {
     pub fn apply_mode_enumeration(&self, mode_op_map: Vec<usize>) -> MajoranaEncoding {
         assert_eq!(
             2 * mode_op_map.len(),
-            self.operators.n_rows(),
+            self.operators.n_rows,
             "{}",
             format_args!(
                 "Mode op map not same length as ipowers {0:?}",
-                self.operators.n_rows()
+                self.operators.n_rows
             )
         );
         let majorana_rows: Vec<usize> = mode_op_map
@@ -624,7 +624,7 @@ impl MajoranaEncoding {
     /// assert_eq!(decoded[0].as_ref().unwrap().state, fock.state);
     /// ```
     pub fn decode_zbasis_ensemble(&self, ensemble: &ZBasisEnsemble) -> Vec<Option<FockState>> {
-        let n_states = ensemble.states.len();
+        let n_states = ensemble.states.n_terms();
 
         // Working state as one bitpacked `DenseBlock` per state, mutated in-place
         // across modes. Coefficients start at ONE (input ignored). The ensemble
@@ -632,17 +632,17 @@ impl MajoranaEncoding {
         // steps run as word-level bit ops, which stays fast even for dense
         // operators (Jordan-Wigner / parity Z-strings span every qubit) instead
         // of iterating each set bit.
-        let mut state_blocks: Vec<DenseBlock> = ensemble.states.clone();
+        let mut state_blocks: DenseBlock = ensemble.states.clone();
         let mut current_coeffs = Array1::from_elem(n_states, Complex64::ONE);
         let mut occupations = Array2::<bool>::default((n_states, self.n_modes));
 
         for i in (0..self.n_modes).rev() {
             let x_l = self.operators.x_block.get_term(2 * i);
             let z_l = self.operators.z_block.get_term(2 * i);
-            let ip_l = self.operators.ipower(2 * i);
+            let ip_l = self.operators.ipowers[2 * i];
             let x_r = self.operators.x_block.get_term(2 * i + 1);
             let z_r = self.operators.z_block.get_term(2 * i + 1);
-            let ip_r = self.operators.ipower(2 * i + 1);
+            let ip_r = self.operators.ipowers[2 * i + 1];
 
             // Validity: left and right new states must agree; this is an encoding
             // property (x_l == x_r), not per-state.
@@ -665,7 +665,7 @@ impl MajoranaEncoding {
             let ann_coeffs: Vec<Complex64> = (0..n_states)
                 .into_par_iter()
                 .map(|j| {
-                    let state = state_blocks[j].as_ref();
+                    let state = state_blocks.get_term(j);
                     let coeff = current_coeffs[j];
                     let par_l = z_l.and_count_ones(&state) % 2;
                     let par_r = z_r.and_count_ones(&state) % 2;
@@ -687,16 +687,16 @@ impl MajoranaEncoding {
                 if occ {
                     occupations[[j, i]] = true;
                     current_coeffs[j] = ann;
-                    state_blocks[j].xor_assign(&x_l);
+                    state_blocks.set_term(j, state_blocks.get_term(j).xor(&x_l).as_ref());
                 }
             }
         }
 
         // Validate final state matches encoding vacuum.
-        let vacuum_block = &self.vacuum_state.state;
+        let vacuum_block = &self.vacuum_state.state.as_ref();
         (0..n_states)
             .map(|j| {
-                if state_blocks[j] == *vacuum_block {
+                if state_blocks.get_term(j) == *vacuum_block {
                     Some(FockState::new(
                         occupations.row(j).to_owned(),
                         Complex64::ONE,
@@ -733,10 +733,10 @@ impl TryEncode<FockState, ZBasisState> for MajoranaEncoding {
             }
             let x_l = self.operators.x_block.get_term(2 * idx);
             let z_l = self.operators.z_block.get_term(2 * idx);
-            let ip_l = self.operators.ipower(2 * idx);
+            let ip_l = self.operators.ipowers[2 * idx];
             let x_r = self.operators.x_block.get_term(2 * idx + 1);
             let z_r = self.operators.z_block.get_term(2 * idx + 1);
-            let ip_r = self.operators.ipower(2 * idx + 1);
+            let ip_r = self.operators.ipowers[2 * idx + 1];
 
             // Both Majorana operators of a mode flip the same qubits (x_l == x_r);
             // otherwise the two candidate states disagree and there is no Z-basis image.

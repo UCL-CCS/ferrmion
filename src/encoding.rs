@@ -260,7 +260,7 @@ impl PyMajoranaEncoding {
         let ipowers: Vec<u32> = self
             .0
             .operators
-            .ipowers()
+            .ipowers
             .iter()
             .map(|&v| u32::from(v))
             .collect();
@@ -292,7 +292,7 @@ impl PyMajoranaEncoding {
     /// Phase exponents (mod 4) for each Majorana operator row.
     #[getter]
     fn ipowers<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<u8>> {
-        self.0.operators.ipowers().to_owned().into_pyarray(py)
+        self.0.operators.ipowers.to_owned().into_pyarray(py)
     }
 
     /// The symplectic matrix in ``[x_block | z_block]`` layout, of shape

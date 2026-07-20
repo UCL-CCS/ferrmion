@@ -51,13 +51,13 @@ impl DenseIndex {
 
     /// Read the bit at local position `local` (`0 <= local < BITS`).
     #[inline]
-    pub(crate) fn get(self, local: usize) -> bool {
+    pub(crate) fn get_bit(self, local: usize) -> bool {
         (self.0 >> (local % Self::BITS)) & 1 != 0
     }
 
     /// Set the bit at local position `local` (`0 <= local < BITS`).
     #[inline]
-    pub(crate) fn set(&mut self, local: usize, value: bool) {
+    pub(crate) fn set_bit(&mut self, local: usize, value: bool) {
         let mask = 1usize << (local % Self::BITS);
         let lane = &mut self.0;
         if value {
@@ -136,6 +136,12 @@ pub struct DenseBlock<S = Vec<DenseIndex>> {
     n_indices: usize,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum DenseBlockError {
+    #[error("mismatched number of indices: self={self_n} other={other_n}")]
+    MismatchedNumberOfIndices { self_n: usize, other_n: usize },
+}
+
 impl From<Array2<bool>> for DenseBlock<Vec<DenseIndex>> {
     fn from(matrix: Array2<bool>) -> Self {
         let words_per_row = (matrix.ncols() + DenseIndex::BITS - 1) / DenseIndex::BITS;
@@ -144,7 +150,7 @@ impl From<Array2<bool>> for DenseBlock<Vec<DenseIndex>> {
             let base = r * words_per_row;
             for (i, &b) in row.iter().enumerate() {
                 if b {
-                    words[base + i / DenseIndex::BITS].set(i % DenseIndex::BITS, true);
+                    words[base + i / DenseIndex::BITS].set_bit(i % DenseIndex::BITS, true);
                 }
             }
         }
@@ -161,16 +167,11 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     }
 
     pub fn n_terms(&self) -> usize {
-        self.words().len() / DenseIndex::words_for(self.n_indices())
+        self.terms.as_ref().len() / DenseIndex::words_for(self.n_indices())
     }
 
     pub fn term_width(&self) -> usize {
         DenseIndex::words_for(self.n_indices())
-    }
-
-    #[inline]
-    fn words(&self) -> &[DenseIndex] {
-        self.terms.as_ref()
     }
 
     /// Whether the block has zero qubits.
@@ -183,7 +184,7 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     #[inline]
     pub fn as_ref(&self) -> DenseBlock<&[DenseIndex]> {
         DenseBlock {
-            terms: self.words(),
+            terms: &self.terms.as_ref(),
             n_indices: self.n_indices,
         }
     }
@@ -196,7 +197,8 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     #[inline]
     pub fn get_index(&self, term: usize, index: usize) -> bool {
         let width = DenseIndex::words_for(self.n_indices);
-        self.words()[term * width + index / DenseIndex::BITS].get(index % DenseIndex::BITS)
+        self.terms.as_ref()[term * width + index / DenseIndex::BITS]
+            .get_bit(index % DenseIndex::BITS)
     }
 
     /// Read the term at position `term`.
@@ -208,7 +210,7 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     pub fn get_term(&self, term: usize) -> DenseBlock<&[DenseIndex]> {
         let width = DenseIndex::words_for(self.n_indices);
         DenseBlock {
-            terms: &self.words()[term * width..(term + 1) * width],
+            terms: &self.terms.as_ref()[term * width..(term + 1) * width],
             n_indices: self.n_indices,
         }
     }
@@ -216,13 +218,14 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     /// Number of set bits.
     #[inline]
     pub fn count_ones(&self) -> usize {
-        self.words().iter().map(|w| w.count_ones()).sum()
+        self.terms.as_ref().iter().map(|w| w.count_ones()).sum()
     }
 
     /// Iterator over the indices of set bits, lowest first.
     #[inline]
     pub fn iter_ones(&self) -> impl Iterator<Item = usize> + '_ {
-        self.words()
+        self.terms
+            .as_ref()
             .iter()
             .enumerate()
             .flat_map(|(e, w)| w.iter_ones().map(move |local| e * DenseIndex::BITS + local))
@@ -231,9 +234,10 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     /// Popcount of `self & other` (the `z & x` phase term and the Y count).
     #[inline]
     pub fn and_count_ones<T: AsRef<[DenseIndex]>>(&self, other: &DenseBlock<T>) -> usize {
-        self.words()
+        self.terms
+            .as_ref()
             .iter()
-            .zip(other.words())
+            .zip(other.terms.as_ref())
             .map(|(a, b)| a.and(*b).count_ones())
             .sum()
     }
@@ -241,9 +245,10 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     /// Popcount of `self | other` (Pauli weight of a row).
     #[inline]
     pub fn or_count_ones<T: AsRef<[DenseIndex]>>(&self, other: &DenseBlock<T>) -> usize {
-        self.words()
+        self.terms
+            .as_ref()
             .iter()
-            .zip(other.words())
+            .zip(other.terms.as_ref())
             .map(|(a, b)| a.or(*b).count_ones())
             .sum()
     }
@@ -256,9 +261,10 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     ) -> DenseBlock<Vec<DenseIndex>> {
         DenseBlock {
             terms: self
-                .words()
+                .terms
+                .as_ref()
                 .iter()
-                .zip(other.words())
+                .zip(other.terms.as_ref())
                 .map(|(a, b)| a.xor(*b))
                 .collect(),
             n_indices: self.n_indices,
@@ -273,9 +279,10 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     ) -> DenseBlock<Vec<DenseIndex>> {
         DenseBlock {
             terms: self
-                .words()
+                .terms
+                .as_ref()
                 .iter()
-                .zip(other.words())
+                .zip(other.terms.as_ref())
                 .map(|(a, b)| a.and(*b))
                 .collect(),
             n_indices: self.n_indices,
@@ -286,7 +293,7 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
     #[inline]
     pub fn to_owned_block(&self) -> DenseBlock<Vec<DenseIndex>> {
         DenseBlock {
-            terms: self.words().to_vec(),
+            terms: self.terms.as_ref().to_vec(),
             n_indices: self.n_indices,
         }
     }
@@ -323,7 +330,7 @@ impl<S: AsRef<[DenseIndex]> + AsMut<[DenseIndex]>> DenseBlock<S> {
     pub fn set_index(&mut self, term: usize, index: usize, value: bool) {
         let width = DenseIndex::words_for(self.n_indices);
         self.terms.as_mut()[term * width + index / DenseIndex::BITS]
-            .set(index % DenseIndex::BITS, value);
+            .set_bit(index % DenseIndex::BITS, value);
     }
 
     #[inline]
@@ -336,7 +343,7 @@ impl<S: AsRef<[DenseIndex]> + AsMut<[DenseIndex]>> DenseBlock<S> {
     /// In-place XOR: `self ^= other`.
     #[inline]
     pub fn xor_assign<T: AsRef<[DenseIndex]>>(&mut self, other: &DenseBlock<T>) {
-        for (d, s) in self.terms.as_mut().iter_mut().zip(other.words()) {
+        for (d, s) in self.terms.as_mut().iter_mut().zip(other.terms.as_ref()) {
             *d = d.xor(*s);
         }
     }
@@ -373,6 +380,17 @@ impl DenseBlock<Vec<DenseIndex>> {
         }
     }
 
+    pub fn concat(&mut self, other: Self) -> Result<(), DenseBlockError> {
+        if self.n_indices != other.n_indices {
+            return Err(DenseBlockError::MismatchedNumberOfIndices {
+                self_n: self.n_indices,
+                other_n: other.n_indices,
+            });
+        }
+        self.terms.extend(other.terms);
+        Ok(())
+    }
+
     /// Transpose the bit matrix: a block of `T = n_terms()` terms of
     /// `N = n_indices()` bits becomes a block of `N` terms of `T` bits with
     /// `out[i][t] == self[t][i]`.
@@ -385,7 +403,7 @@ impl DenseBlock<Vec<DenseIndex>> {
         let src_width = DenseIndex::words_for(n); // words per source term
         let dst_width = DenseIndex::words_for(t); // words per output term
         let bits = DenseIndex::BITS;
-        let src = self.words();
+        let src: &[DenseIndex] = self.terms.as_ref();
         let mut out = vec![DenseIndex::default(); n * dst_width];
 
         // Walk 64×64 tiles: `tr` = first source term (output index) in the tile,
@@ -464,7 +482,7 @@ impl<S: AsRef<[DenseIndex]> + Eq> Ord for DenseBlock<S> {
     /// and then falling back to the bit-length tiebreak reproduces the lexicographic
     /// "shorter sequence sorts first" rule.
     fn cmp(&self, other: &Self) -> Ordering {
-        for (x, y) in self.words().iter().zip(other.words().iter()) {
+        for (x, y) in self.terms.as_ref().iter().zip(other.terms.as_ref().iter()) {
             if let Some(ord) = x.cmp_bits(*y) {
                 return ord;
             }
@@ -481,15 +499,15 @@ mod tests {
     #[test]
     fn dense_index_word_primitives() {
         let mut w = DenseIndex::default();
-        w.set(0, true);
-        w.set(5, true);
-        assert!(w.get(0) && w.get(5) && !w.get(1));
+        w.set_bit(0, true);
+        w.set_bit(5, true);
+        assert!(w.get_bit(0) && w.get_bit(5) && !w.get_bit(1));
         assert_eq!(w.count_ones(), 2);
         assert_eq!(w.iter_ones().collect::<Vec<_>>(), vec![0, 5]);
 
         let mut v = DenseIndex::default();
-        v.set(5, true);
-        v.set(7, true);
+        v.set_bit(5, true);
+        v.set_bit(7, true);
         assert_eq!(w.and(v).iter_ones().collect::<Vec<_>>(), vec![5]);
         assert_eq!(w.or(v).iter_ones().collect::<Vec<_>>(), vec![0, 5, 7]);
         assert_eq!(w.xor(v).iter_ones().collect::<Vec<_>>(), vec![0, 7]);

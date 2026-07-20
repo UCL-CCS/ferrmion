@@ -18,12 +18,12 @@ const MAX_MAJORANAS: usize = 7;
 /// Minimum number of independent terms in a [`FermionSparse`] before
 /// `append_fermion_sparse` expands them across rayon worker threads. Below this,
 /// the serial path is used, avoiding rayon's scheduling overhead on small inputs.
-const PARALLEL_TERM_THRESHOLD: usize = 256;
+const PARALLEL_TERM_THRESHOLD: usize = PARALLEL_CHUNK * 4;
 
 /// Minimum number of terms a single rayon task expands in the parallel path
 /// (`with_min_len`), so tiny per-term work is batched rather than scheduled
 /// individually.
-const PARALLEL_CHUNK: usize = 64;
+const PARALLEL_CHUNK: usize = 6400;
 
 /*
 Fermion

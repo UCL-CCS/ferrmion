@@ -82,12 +82,12 @@ pub(crate) fn symplectic_product<'py>(
         right.slice(ndarray::s![n..]).to_owned(),
     );
     let result = left_op * right_op.view();
-    let x = result.x_bools();
-    let z = result.z_bools();
+    let x = result.x.to_bool_array();
+    let z = result.z.to_bool_array();
     let combined = ndarray::concatenate(ndarray::Axis(0), &[x.view(), z.view()])
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
     Ok((
-        result.ipower() as usize,
+        result.ipower as usize,
         PyArray1::from_owned_array(py, combined),
     ))
 }

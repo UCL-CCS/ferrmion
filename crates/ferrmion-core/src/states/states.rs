@@ -259,7 +259,7 @@ mod zbasis_tests {
 #[derive(Debug, Clone)]
 pub struct ZBasisEnsemble {
     /// Each entry is a Z-basis state, packed one bit per qubit into `u64` words.
-    pub(crate) states: Vec<DenseBlock>,
+    pub(crate) states: DenseBlock,
     /// Complex coefficient for each state.
     pub coefficients: Array1<Complex64>,
 }
@@ -281,7 +281,11 @@ impl ZBasisEnsemble {
             .rows()
             .into_iter()
             .map(DenseBlock::from_bool_view)
-            .collect();
+            .reduce(|mut acc, row| {
+                acc.concat(row).unwrap();
+                acc
+            })
+            .unwrap();
         Self {
             states,
             coefficients,
@@ -292,11 +296,16 @@ impl ZBasisEnsemble {
 impl From<Vec<ZBasisState>> for ZBasisEnsemble {
     fn from(zbasis_states: Vec<ZBasisState>) -> Self {
         let n = zbasis_states.len();
-        let mut states = Vec::with_capacity(n);
+        let n_indices = zbasis_states
+            .iter()
+            .map(|s| s.state.n_indices())
+            .max()
+            .unwrap_or(0);
+        let mut states = DenseBlock::zeros(n, n_indices);
         let mut coefficients = Array1::zeros(n);
         for (i, s) in zbasis_states.into_iter().enumerate() {
             coefficients[i] = s.coefficient;
-            states.push(s.state);
+            states.set_term(i, s.state_block());
         }
         Self {
             states,

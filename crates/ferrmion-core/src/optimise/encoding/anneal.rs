@@ -129,7 +129,7 @@ pub fn anneal_enumerations(
 ) -> Result<(f64, Array1<usize>), Error> {
     assert_eq!(
         initial_guess.len(),
-        encoding.operators.n_rows() / 2,
+        encoding.operators.n_rows / 2,
         "Initial enumeration length is not n_modes"
     );
 

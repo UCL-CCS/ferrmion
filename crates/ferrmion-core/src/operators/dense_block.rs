@@ -406,8 +406,8 @@ impl DenseBlock<Vec<DenseIndex>> {
         let src: &[DenseIndex] = self.terms.as_ref();
         let mut out = vec![DenseIndex::default(); n * dst_width];
 
-        // Walk 64×64 tiles: `tr` = first source term (output index) in the tile,
-        // `ti` = first source index (output term) in the tile.
+        // Walk word-sized (`bits`×`bits`) tiles: `tr` = first source term
+        // (output index) in the tile, `ti` = first source index (output term).
         let mut tr = 0;
         while tr < t {
             let rows = (t - tr).min(bits);
@@ -416,7 +416,7 @@ impl DenseBlock<Vec<DenseIndex>> {
                 let cols = (n - ti).min(bits);
                 // Load one word per source term for this index-word column.
                 let src_word_col = ti / bits;
-                let mut tile = [0usize; 64];
+                let mut tile = [0usize; DenseIndex::BITS];
                 for (r, slot) in tile.iter_mut().enumerate().take(rows) {
                     *slot = src[(tr + r) * src_width + src_word_col].0;
                 }
@@ -439,25 +439,27 @@ impl DenseBlock<Vec<DenseIndex>> {
     }
 }
 
-/// In-place transpose of a 64×64 bit matrix packed one row per `usize`
-/// (bit `c` of `tile[r]` moves to bit `r` of `tile[c]`). Divide-and-conquer
-/// word-level transpose: at each level `j` the low `j` bits of every `2j`-bit
-/// group in `tile[i]` are delta-swapped with `tile[i + j]`, working only on
-/// whole words (mask/shift/XOR), never individual bits.
+/// In-place transpose of a `W`×`W` bit matrix packed one row per `usize`
+/// (bit `c` of `tile[r]` moves to bit `r` of `tile[c]`), where `W` is the
+/// native word width. Divide-and-conquer word-level transpose: at each level
+/// `j` the low `j` bits of every `2j`-bit group in `tile[i]` are delta-swapped
+/// with `tile[i + j]`, working only on whole words (mask/shift/XOR), never
+/// individual bits. The masks are derived from `W` so they always fit in
+/// `usize` — as 64-bit literals they would overflow a 32-bit `usize`.
 #[inline]
-fn transpose_bit_tile(tile: &mut [usize; 64]) {
-    // `mask` selects the low `j` bits of each `2j`-bit group.
-    const STEPS: [(usize, usize); 6] = [
-        (32, 0x0000_0000_FFFF_FFFF),
-        (16, 0x0000_FFFF_0000_FFFF),
-        (8, 0x00FF_00FF_00FF_00FF),
-        (4, 0x0F0F_0F0F_0F0F_0F0F),
-        (2, 0x3333_3333_3333_3333),
-        (1, 0x5555_5555_5555_5555),
-    ];
-    for (j, mask) in STEPS {
+fn transpose_bit_tile<const W: usize>(tile: &mut [usize; W]) {
+    let mut j = W / 2;
+    while j >= 1 {
+        // `mask` selects the low `j` bits of each `2j`-bit group, built by
+        // doubling the "j ones, j zeros" pattern up to the word width.
+        let mut mask = (1usize << j) - 1;
+        let mut period = 2 * j;
+        while period < W {
+            mask |= mask << period;
+            period <<= 1;
+        }
         let mut i = 0;
-        while i < 64 {
+        while i < W {
             if i & j == 0 {
                 let d = ((tile[i] >> j) ^ tile[i + j]) & mask;
                 tile[i] ^= d << j;
@@ -465,6 +467,7 @@ fn transpose_bit_tile(tile: &mut [usize; 64]) {
             }
             i += 1;
         }
+        j >>= 1;
     }
 }
 

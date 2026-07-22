@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 32-bit build: `DenseBlock::transpose`'s bit-transpose kernel
+  (`transpose_bit_tile`) used a hardcoded 64-bit mask table, whose constants
+  overflow a 32-bit `usize` and failed to compile on `armv7` (and other 32-bit
+  targets). The kernel is now const-generic over the native word width and
+  derives its masks from it.
 - `DenseBlock` multi-word addressing: `get_index`/`set_index`/`set_term` and the
   `From<Array2<bool>>` conversion computed word offsets that were only correct
   for blocks of at most one word (≤ 64 qubits/rows), corrupting or panicking on

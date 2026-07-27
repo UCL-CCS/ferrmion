@@ -18,7 +18,7 @@
 project = 'ferrmion'
 copyright = '2025, Michael Williams de la Bastida'
 author = 'Michael Williams de la Bastida'
-version = "0.11.0"
+version = "0.12.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -44,6 +44,7 @@ myst_enable_extensions = [
 ]
 
 nb_scroll_outputs = True
+nb_execution_mode = "off"
 nb_execution_timeout = 600
 nb_execution_raise_on_error = True
 

@@ -16,7 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `encode_fermion_product`. Majorana operators are hermitian, so the product is
   described by its indices alone with no ladder signature. Operators are
   multiplied in the order given, and indices outside `[0, 2 * n_modes)` raise
-  `ValueError`.
+  `ValueError`. Such a product is always a single Pauli term, so the result is
+  returned as a `(pauli_string, coefficient)` tuple rather than a
+  `QubitHamiltonian`.
+- `TernaryTree.encode_majorana_product` exposes the same operation from a tree,
+  building the encoding on demand, so callers no longer reach into the private
+  `_encoding` attribute.
 - `MajoranaEncoding.encode` now accepts a `MajoranaSparse` as well as a
   `FermionHamiltonian`. The Majorana representation was already the internal
   encoding path, so callers holding a `MajoranaSparse` (from

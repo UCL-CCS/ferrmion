@@ -169,7 +169,7 @@ class MajoranaEncoding:
         self,
         majorana_indices: list[int],
         coeff: complex = 1.0,
-    ) -> QubitHamiltonian: ...
+    ) -> tuple[str, complex]: ...
     def batch_pauli_weights(
         self,
         fham: FermionHamiltonian,

@@ -739,3 +739,28 @@ def test_core_python_symplectics_from_flatpack_equal(flatpack):
     assert np.array_equal(
         tree_encoding.symplectic_matrix, direct_encoding.symplectic_matrix
     )
+
+
+def test_encode_majorana_product_delegates_to_encoding():
+    """The helper matches the underlying encoding, without touching _encoding."""
+    tree = JKMN(4)
+    encoding = tree.build_encoding()
+    for indices in ([0], [0, 1], [1, 0], [2, 5], [0, 1, 2, 3], []):
+        assert tree.encode_majorana_product(indices) == (
+            encoding.encode_majorana_product(indices)
+        )
+
+
+def test_encode_majorana_product_builds_encoding_on_demand():
+    """Calling the helper before build_encoding() must not raise."""
+    tree = TernaryTree.from_flatpack(JW(4).flatpack())
+    assert not hasattr(tree, "_encoding")
+    pauli, coeff = tree.encode_majorana_product([0, 1], 2.0)
+    assert len(pauli) == tree.n_qubits
+    assert coeff == pytest.approx(2j)
+
+
+def test_encode_majorana_product_rejects_out_of_range():
+    tree = JW(4)
+    with pytest.raises(ValueError):
+        tree.encode_majorana_product([8])

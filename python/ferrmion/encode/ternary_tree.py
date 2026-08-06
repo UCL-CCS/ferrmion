@@ -332,6 +332,33 @@ class TernaryTree:
             np.asarray(fermionic_hf_state, dtype=bool), mode_op_map
         )
 
+    def encode_majorana_product(
+        self,
+        majorana_indices: list[int],
+        coeff: complex | float = 1.0,
+    ) -> tuple[str, complex]:
+        """Encode a single product of Majorana operators for this encoding.
+
+        Majorana operators are hermitian, so the product is described by its
+        indices alone. Operators are multiplied in the order given.
+
+        Args:
+            majorana_indices (list[int]): The index of each Majorana operator in
+                the product, each in ``[0, 2 * n_modes)``.
+            coeff (complex | float): The operator coefficient.
+
+        Returns:
+            tuple[str, complex]: The Pauli string and its coefficient.
+
+        Raises:
+            ValueError: If any index is negative or beyond ``2 * n_modes``.
+        """
+        if not hasattr(self, "_encoding"):
+            self.build_encoding()
+        return self._encoding.encode_majorana_product(
+            list(majorana_indices), complex(coeff)
+        )
+
     def number_operator(
         self, mode: int, coeff: complex | float = 1.0
     ) -> QubitHamiltonian:

@@ -633,7 +633,9 @@ impl PyMajoranaEncoding {
     ///     coeff: The operator coefficient.
     ///
     /// Returns:
-    ///     The encoded ``QubitHamiltonian``, a single Pauli term.
+    ///     Tuple of ``(pauli_string, coefficient)``. A Majorana product always
+    ///     encodes to exactly one Pauli term, so no `QubitHamiltonian` is needed
+    ///     to hold the result.
     ///
     /// Raises:
     ///     ValueError: If any index is negative or beyond ``2 * n_modes``.
@@ -642,7 +644,7 @@ impl PyMajoranaEncoding {
         &self,
         majorana_indices: Vec<i64>,
         coeff: Complex64,
-    ) -> Result<PyQubitHamiltonian, CoreError> {
+    ) -> Result<(String, Complex64), CoreError> {
         let n_operators = 2 * self.0.n_modes as i64;
         if let Some(&bad) = majorana_indices
             .iter()
@@ -656,7 +658,11 @@ impl PyMajoranaEncoding {
         }
         let indices: Vec<usize> = majorana_indices.into_iter().map(|i| i as usize).collect();
         let mproduct = MajoranaProduct::new(indices, coeff);
-        Ok(PyQubitHamiltonian(self.0.encode(mproduct)))
+        // `Encode<MajoranaProduct, _>` inserts exactly one entry, so the map
+        // always yields a single term.
+        self.0.encode(mproduct).0.into_iter().next().ok_or_else(|| {
+            CoreError::Value("Majorana product encoded to no Pauli term.".to_string())
+        })
     }
 
     /// Compute plain and coefficient-weighted Pauli weights for a batch of

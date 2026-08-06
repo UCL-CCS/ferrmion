@@ -318,24 +318,32 @@ def test_encode_rejects_unsupported_type(jw_four):
         jw_four.encode("not an operator")
 
 
+def test_encode_majorana_product_returns_pauli_coefficient_pair(jw_four):
+    """A Majorana product is always a single Pauli term, returned as a tuple."""
+    result = jw_four.encode_majorana_product([0])
+    assert isinstance(result, tuple) and len(result) == 2
+    pauli, coeff = result
+    assert isinstance(pauli, str)
+    assert isinstance(coeff, complex)
+
+
 def test_encode_majorana_product_jordan_wigner_convention(jw_four):
     """Under JW the first two Majoranas are X and Y on qubit 0."""
-    assert jw_four.encode_majorana_product([0]).to_dict() == {"XIII": 1 + 0j}
-    assert jw_four.encode_majorana_product([1]).to_dict() == {"YIII": 1 + 0j}
+    assert jw_four.encode_majorana_product([0]) == ("XIII", 1 + 0j)
+    assert jw_four.encode_majorana_product([1]) == ("YIII", 1 + 0j)
     # X * Y = iZ
-    assert jw_four.encode_majorana_product([0, 1]).to_dict() == {"ZIII": 1j}
+    assert jw_four.encode_majorana_product([0, 1]) == ("ZIII", 1j)
 
 
 def test_encode_majorana_product_anticommutes(jw_four):
     """Swapping two distinct Majoranas flips the sign; squaring gives identity."""
-    forward = jw_four.encode_majorana_product([0, 1]).to_dict()
-    reversed_ = jw_four.encode_majorana_product([1, 0]).to_dict()
-    assert forward.keys() == reversed_.keys()
-    for pauli, coeff in forward.items():
-        assert reversed_[pauli] == pytest.approx(-coeff)
+    forward_pauli, forward_coeff = jw_four.encode_majorana_product([0, 1])
+    reversed_pauli, reversed_coeff = jw_four.encode_majorana_product([1, 0])
+    assert forward_pauli == reversed_pauli
+    assert reversed_coeff == pytest.approx(-forward_coeff)
 
-    assert jw_four.encode_majorana_product([0, 0]).to_dict() == {"IIII": 1 + 0j}
-    assert jw_four.encode_majorana_product([]).to_dict() == {"IIII": 1 + 0j}
+    assert jw_four.encode_majorana_product([0, 0]) == ("IIII", 1 + 0j)
+    assert jw_four.encode_majorana_product([]) == ("IIII", 1 + 0j)
 
 
 @pytest.mark.parametrize("factory", FACTORIES)
@@ -348,17 +356,20 @@ def test_encode_majorana_product_matches_number_operator(factory):
     encoding = factory(n_modes)
     identity = "I" * encoding.n_qubits
     for mode in range(n_modes):
-        gamma = encoding.encode_majorana_product([2 * mode, 2 * mode + 1], 0.5j)
-        expected = {identity: 0.5 + 0j, **gamma.to_dict()}
-        assert encoding.number_operator(mode).to_dict() == expected
+        pauli, coeff = encoding.encode_majorana_product(
+            [2 * mode, 2 * mode + 1], 0.5j
+        )
+        assert encoding.number_operator(mode).to_dict() == {
+            identity: 0.5 + 0j,
+            pauli: coeff,
+        }
 
 
 def test_encode_majorana_product_scales_coefficient(jw_four):
-    base = jw_four.encode_majorana_product([0, 2]).to_dict()
-    scaled = jw_four.encode_majorana_product([0, 2], 2.5 - 1j).to_dict()
-    assert base.keys() == scaled.keys()
-    for pauli, coeff in base.items():
-        assert scaled[pauli] == pytest.approx(coeff * (2.5 - 1j))
+    base_pauli, base_coeff = jw_four.encode_majorana_product([0, 2])
+    scaled_pauli, scaled_coeff = jw_four.encode_majorana_product([0, 2], 2.5 - 1j)
+    assert base_pauli == scaled_pauli
+    assert scaled_coeff == pytest.approx(base_coeff * (2.5 - 1j))
 
 
 @pytest.mark.parametrize("bad_index", [-1, 8, 100])

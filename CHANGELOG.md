@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `MajoranaEncoding.encode_majorana_product(majorana_indices, coeff)` encodes a
+  single product of Majorana operators, the Majorana counterpart of
+  `encode_fermion_product`. Majorana operators are hermitian, so the product is
+  described by its indices alone with no ladder signature. Operators are
+  multiplied in the order given, and indices outside `[0, 2 * n_modes)` raise
+  `ValueError`.
 - `MajoranaEncoding.encode` now accepts a `MajoranaSparse` as well as a
   `FermionHamiltonian`. The Majorana representation was already the internal
   encoding path, so callers holding a `MajoranaSparse` (from

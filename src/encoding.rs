@@ -7,7 +7,9 @@ use ferrmion_core::encode::majorana::{Encode, MajoranaEncoding, TryEncode};
 use ferrmion_core::encode::maxnto::maxnto_symplectic_matrix;
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
-use ferrmion_core::operators::{FermionProduct, LadderOperator, MajoranaSparse, SymplecticMatrix};
+use ferrmion_core::operators::{
+    FermionProduct, LadderOperator, MajoranaProduct, MajoranaSparse, SymplecticMatrix,
+};
 use ferrmion_core::optimise::{anneal_enumerations, AnnealingParameters};
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ndarray::{s, Array1, Array2, ArrayView1, ArrayView2};
@@ -613,6 +615,48 @@ impl PyMajoranaEncoding {
             coeff,
             with_conjugate,
         )?))
+    }
+
+    /// Encode a single product of Majorana operators.
+    ///
+    /// Majorana operators are hermitian, so unlike `encode_fermion_product`
+    /// there is no ladder signature — the product is fully described by its
+    /// Majorana indices.
+    ///
+    /// The operators are multiplied in the order given; reordering is not
+    /// applied, since the symplectic product already tracks the phase picked up
+    /// by each multiplication.
+    ///
+    /// Args:
+    ///     `majorana_indices`: The index of each Majorana operator in the
+    ///         product, each in ``[0, 2 * n_modes)``.
+    ///     coeff: The operator coefficient.
+    ///
+    /// Returns:
+    ///     The encoded ``QubitHamiltonian``, a single Pauli term.
+    ///
+    /// Raises:
+    ///     ValueError: If any index is negative or beyond ``2 * n_modes``.
+    #[pyo3(signature = (majorana_indices, coeff = Complex64::new(1.0, 0.0)))]
+    fn encode_majorana_product(
+        &self,
+        majorana_indices: Vec<i64>,
+        coeff: Complex64,
+    ) -> Result<PyQubitHamiltonian, CoreError> {
+        let n_operators = 2 * self.0.n_modes as i64;
+        if let Some(&bad) = majorana_indices
+            .iter()
+            .find(|&&i| i < 0 || i >= n_operators)
+        {
+            return Err(CoreError::Value(format!(
+                "Majorana index {bad} out of range for an encoding with {} modes \
+                 ({n_operators} Majorana operators).",
+                self.0.n_modes
+            )));
+        }
+        let indices: Vec<usize> = majorana_indices.into_iter().map(|i| i as usize).collect();
+        let mproduct = MajoranaProduct::new(indices, coeff);
+        Ok(PyQubitHamiltonian(self.0.encode(mproduct)))
     }
 
     /// Compute plain and coefficient-weighted Pauli weights for a batch of

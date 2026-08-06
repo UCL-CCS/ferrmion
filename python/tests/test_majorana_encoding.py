@@ -316,3 +316,56 @@ def test_encode_majorana_sparse_rejects_out_of_range_indices(jw_four):
 def test_encode_rejects_unsupported_type(jw_four):
     with pytest.raises(TypeError):
         jw_four.encode("not an operator")
+
+
+def test_encode_majorana_product_jordan_wigner_convention(jw_four):
+    """Under JW the first two Majoranas are X and Y on qubit 0."""
+    assert jw_four.encode_majorana_product([0]).to_dict() == {"XIII": 1 + 0j}
+    assert jw_four.encode_majorana_product([1]).to_dict() == {"YIII": 1 + 0j}
+    # X * Y = iZ
+    assert jw_four.encode_majorana_product([0, 1]).to_dict() == {"ZIII": 1j}
+
+
+def test_encode_majorana_product_anticommutes(jw_four):
+    """Swapping two distinct Majoranas flips the sign; squaring gives identity."""
+    forward = jw_four.encode_majorana_product([0, 1]).to_dict()
+    reversed_ = jw_four.encode_majorana_product([1, 0]).to_dict()
+    assert forward.keys() == reversed_.keys()
+    for pauli, coeff in forward.items():
+        assert reversed_[pauli] == pytest.approx(-coeff)
+
+    assert jw_four.encode_majorana_product([0, 0]).to_dict() == {"IIII": 1 + 0j}
+    assert jw_four.encode_majorana_product([]).to_dict() == {"IIII": 1 + 0j}
+
+
+@pytest.mark.parametrize("factory", FACTORIES)
+def test_encode_majorana_product_matches_number_operator(factory):
+    """n_i = 1/2 - (i/2) * y_2i * y_2i+1, independently of the encoding.
+
+    Cross-checks encode_majorana_product against the number_operator path.
+    """
+    n_modes = 4
+    encoding = factory(n_modes)
+    identity = "I" * encoding.n_qubits
+    for mode in range(n_modes):
+        gamma = encoding.encode_majorana_product([2 * mode, 2 * mode + 1], 0.5j)
+        expected = {identity: 0.5 + 0j, **gamma.to_dict()}
+        assert encoding.number_operator(mode).to_dict() == expected
+
+
+def test_encode_majorana_product_scales_coefficient(jw_four):
+    base = jw_four.encode_majorana_product([0, 2]).to_dict()
+    scaled = jw_four.encode_majorana_product([0, 2], 2.5 - 1j).to_dict()
+    assert base.keys() == scaled.keys()
+    for pauli, coeff in base.items():
+        assert scaled[pauli] == pytest.approx(coeff * (2.5 - 1j))
+
+
+@pytest.mark.parametrize("bad_index", [-1, 8, 100])
+def test_encode_majorana_product_rejects_out_of_range(jw_four, bad_index):
+    """Indices run over 2 * n_modes Majoranas, not n_modes."""
+    assert jw_four.n_modes == 4
+    # The last valid index is 7; nothing beyond it may reach the symplectic rows.
+    jw_four.encode_majorana_product([7])
+    with pytest.raises(ValueError):
+        jw_four.encode_majorana_product([0, bad_index])

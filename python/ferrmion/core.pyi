@@ -165,6 +165,11 @@ class MajoranaEncoding:
         coeff: complex = 1.0,
         with_conjugate: bool = False,
     ) -> QubitHamiltonian: ...
+    def encode_majorana_product(
+        self,
+        majorana_indices: list[int],
+        coeff: complex = 1.0,
+    ) -> QubitHamiltonian: ...
     def batch_pauli_weights(
         self,
         fham: FermionHamiltonian,

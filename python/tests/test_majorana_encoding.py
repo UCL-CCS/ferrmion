@@ -7,7 +7,12 @@ import numpy as np
 import pytest
 from hypothesis import given, strategies as st
 
-from ferrmion.core import FermionHamiltonian, MajoranaEncoding, QubitHamiltonian
+from ferrmion.core import (
+    FermionHamiltonian,
+    MajoranaEncoding,
+    MajoranaSparse,
+    QubitHamiltonian,
+)
 from ferrmion.encode import MaxNTO
 
 np.random.seed(1710)
@@ -262,3 +267,116 @@ def test_fermion_hamiltonian_pickle_roundtrip():
     assert rebuilt == fham
     assert rebuilt.n_modes == 4
     assert rebuilt.constant_energy == 0.25
+
+
+def test_encode_accepts_majorana_sparse(jw_four):
+    fham = FermionHamiltonian(terms={"+-": np.eye(4)})
+    msparse = fham.to_majorana_sparse()
+    assert isinstance(msparse, MajoranaSparse)
+    assert jw_four.encode(msparse) == jw_four.encode(fham)
+
+
+@pytest.mark.parametrize("factory", FACTORIES)
+def test_encode_majorana_sparse_matches_fermion_path(factory):
+    n_modes = 4
+    encoding = factory(n_modes)
+    fham = FermionHamiltonian(
+        terms={"+-": np.random.rand(n_modes, n_modes)},
+    )
+    assert encoding.encode(fham.to_majorana_sparse()) == encoding.encode(fham)
+
+
+def test_encode_majorana_sparse_preserves_constant(jw_four):
+    """The MajoranaSparse constant must reach the identity Pauli string."""
+    terms = {"+-": np.eye(4)}
+    plain = FermionHamiltonian(terms=terms)
+    with_constant = FermionHamiltonian(terms=terms, constant_energy=0.75)
+
+    msparse = with_constant.to_majorana_sparse()
+    assert msparse.constant == pytest.approx(0.75)
+
+    qham = jw_four.encode(msparse)
+    assert qham == jw_four.encode(with_constant)
+    # The identity coefficient also collects the 1/2-per-mode from each a†a, so
+    # compare against the same Hamiltonian without a constant energy.
+    identity_shift = qham["IIII"] - jw_four.encode(plain.to_majorana_sparse())["IIII"]
+    assert identity_shift == pytest.approx(0.75)
+
+
+def test_encode_majorana_sparse_rejects_out_of_range_indices(jw_four):
+    """Out-of-range Majorana indices must raise, not panic in a rayon worker."""
+    six_mode = FermionHamiltonian(terms={"+-": np.eye(6)})
+    msparse = six_mode.to_majorana_sparse()
+    assert max(max(term) for term in msparse.indices) >= 2 * jw_four.n_modes
+    with pytest.raises(ValueError) as excinfo:
+        jw_four.encode(msparse)
+    assert "modes" in str(excinfo.value)
+
+
+def test_encode_rejects_unsupported_type(jw_four):
+    with pytest.raises(TypeError):
+        jw_four.encode("not an operator")
+
+
+def test_encode_majorana_product_returns_pauli_coefficient_pair(jw_four):
+    """A Majorana product is always a single Pauli term, returned as a tuple."""
+    result = jw_four.encode_majorana_product([0])
+    assert isinstance(result, tuple) and len(result) == 2
+    pauli, coeff = result
+    assert isinstance(pauli, str)
+    assert isinstance(coeff, complex)
+
+
+def test_encode_majorana_product_jordan_wigner_convention(jw_four):
+    """Under JW the first two Majoranas are X and Y on qubit 0."""
+    assert jw_four.encode_majorana_product([0]) == ("XIII", 1 + 0j)
+    assert jw_four.encode_majorana_product([1]) == ("YIII", 1 + 0j)
+    # X * Y = iZ
+    assert jw_four.encode_majorana_product([0, 1]) == ("ZIII", 1j)
+
+
+def test_encode_majorana_product_anticommutes(jw_four):
+    """Swapping two distinct Majoranas flips the sign; squaring gives identity."""
+    forward_pauli, forward_coeff = jw_four.encode_majorana_product([0, 1])
+    reversed_pauli, reversed_coeff = jw_four.encode_majorana_product([1, 0])
+    assert forward_pauli == reversed_pauli
+    assert reversed_coeff == pytest.approx(-forward_coeff)
+
+    assert jw_four.encode_majorana_product([0, 0]) == ("IIII", 1 + 0j)
+    assert jw_four.encode_majorana_product([]) == ("IIII", 1 + 0j)
+
+
+@pytest.mark.parametrize("factory", FACTORIES)
+def test_encode_majorana_product_matches_number_operator(factory):
+    """n_i = 1/2 - (i/2) * y_2i * y_2i+1, independently of the encoding.
+
+    Cross-checks encode_majorana_product against the number_operator path.
+    """
+    n_modes = 4
+    encoding = factory(n_modes)
+    identity = "I" * encoding.n_qubits
+    for mode in range(n_modes):
+        pauli, coeff = encoding.encode_majorana_product(
+            [2 * mode, 2 * mode + 1], 0.5j
+        )
+        assert encoding.number_operator(mode).to_dict() == {
+            identity: 0.5 + 0j,
+            pauli: coeff,
+        }
+
+
+def test_encode_majorana_product_scales_coefficient(jw_four):
+    base_pauli, base_coeff = jw_four.encode_majorana_product([0, 2])
+    scaled_pauli, scaled_coeff = jw_four.encode_majorana_product([0, 2], 2.5 - 1j)
+    assert base_pauli == scaled_pauli
+    assert scaled_coeff == pytest.approx(base_coeff * (2.5 - 1j))
+
+
+@pytest.mark.parametrize("bad_index", [-1, 8, 100])
+def test_encode_majorana_product_rejects_out_of_range(jw_four, bad_index):
+    """Indices run over 2 * n_modes Majoranas, not n_modes."""
+    assert jw_four.n_modes == 4
+    # The last valid index is 7; nothing beyond it may reach the symplectic rows.
+    jw_four.encode_majorana_product([7])
+    with pytest.raises(ValueError):
+        jw_four.encode_majorana_product([0, bad_index])

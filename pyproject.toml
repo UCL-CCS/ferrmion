@@ -9,7 +9,7 @@ classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
     "deap>=1.4.3",
     "rustworkx>=0.16.0",

@@ -2,11 +2,14 @@
 
 use crate::error::CoreError;
 use crate::hamiltonians::{PyFermionHamiltonian, PyQubitHamiltonian};
+use crate::operators::PyMajoranaSparse;
 use ferrmion_core::encode::majorana::{Encode, MajoranaEncoding, TryEncode};
 use ferrmion_core::encode::maxnto::maxnto_symplectic_matrix;
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
-use ferrmion_core::operators::{FermionProduct, LadderOperator, SymplecticMatrix};
+use ferrmion_core::operators::{
+    FermionProduct, LadderOperator, MajoranaProduct, MajoranaSparse, SymplecticMatrix,
+};
 use ferrmion_core::optimise::{anneal_enumerations, AnnealingParameters};
 use ferrmion_core::states::{FockState, State, ZBasisEnsemble, ZBasisState};
 use ndarray::{s, Array1, Array2, ArrayView1, ArrayView2};
@@ -21,6 +24,19 @@ use std::collections::HashSet;
 #[pyclass(name = "MajoranaEncoding", module = "ferrmion.core")]
 #[derive(Clone, Debug)]
 pub struct PyMajoranaEncoding(pub MajoranaEncoding);
+
+/// The operator types accepted by [`PyMajoranaEncoding::encode`].
+///
+/// Python has no overload resolution and `#[pymethods]` cannot expose a generic
+/// method, so the two accepted types are dispatched at runtime by trying each
+/// variant's extraction in turn.
+#[derive(FromPyObject)]
+enum EncodeInput<'py> {
+    #[pyo3(annotation = "FermionHamiltonian")]
+    Fermion(PyRef<'py, PyFermionHamiltonian>),
+    #[pyo3(annotation = "MajoranaSparse")]
+    Majorana(PyRef<'py, PyMajoranaSparse>),
+}
 
 /// Build a [`MajoranaEncoding`] from the `[x|z]` numpy exchange layout.
 ///
@@ -118,6 +134,32 @@ impl PyMajoranaEncoding {
             qham.0.retain(|_, v| *v != Complex64::ZERO);
         }
         Ok(qham)
+    }
+
+    /// Check that every Majorana index in `hamiltonian` addresses a row of this
+    /// encoding's symplectic matrix.
+    ///
+    /// [`MajoranaSparse`] carries no mode count of its own, and the core encode
+    /// indexes `operators` unguarded, so an out-of-range index would panic inside
+    /// a rayon worker rather than raise. Terms are ordered lexicographically
+    /// rather than by magnitude, so the whole index set has to be scanned; the
+    /// cost is negligible beside the symplectic multiplies it guards.
+    fn check_majorana_indices(&self, hamiltonian: &MajoranaSparse) -> Result<(), CoreError> {
+        let n_operators = 2 * self.0.n_modes;
+        match hamiltonian
+            .indices
+            .iter()
+            .flat_map(|term| term.iter())
+            .copied()
+            .max()
+        {
+            Some(max_index) if max_index as usize >= n_operators => Err(CoreError::Value(format!(
+                "MajoranaSparse has Majorana index {max_index} but encoding has {} modes \
+                 ({n_operators} Majorana operators).",
+                self.0.n_modes
+            ))),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -308,21 +350,42 @@ impl PyMajoranaEncoding {
         self.0.vacuum_state.state_bools().into_pyarray(py)
     }
 
-    /// Encode a fermionic Hamiltonian into a qubit Hamiltonian.
+    /// Encode a fermionic operator into a qubit Hamiltonian.
+    ///
+    /// Args:
+    ///     operator: The operator to encode, either a ``FermionHamiltonian`` or a
+    ///         ``MajoranaSparse``. A ``FermionHamiltonian`` is converted to its
+    ///         Majorana representation first; passing a ``MajoranaSparse``
+    ///         directly skips that conversion.
+    ///
+    /// Returns:
+    ///     The encoded ``QubitHamiltonian``.
+    ///
+    /// Raises:
+    ///     ValueError: If the operator does not match the mode count of this encoding.
     fn encode(
         &self,
         py: Python<'_>,
-        fham: PyRef<'_, PyFermionHamiltonian>,
+        operator: EncodeInput<'_>,
     ) -> Result<PyQubitHamiltonian, CoreError> {
-        let fham_n_modes = fham.inner.n_modes();
-        if fham_n_modes != 0 && fham_n_modes != self.0.n_modes {
-            return Err(CoreError::Value(format!(
-                "FermionHamiltonian has {fham_n_modes} modes but encoding has {} modes.",
-                self.0.n_modes
-            )));
-        }
-        let hamiltonian = fham.inner.to_majorana_sparse();
-        let qham = py.allow_threads(|| self.0.encode(&hamiltonian));
+        let qham = match operator {
+            EncodeInput::Fermion(fham) => {
+                let fham_n_modes = fham.inner.n_modes();
+                if fham_n_modes != 0 && fham_n_modes != self.0.n_modes {
+                    return Err(CoreError::Value(format!(
+                        "FermionHamiltonian has {fham_n_modes} modes but encoding has {} modes.",
+                        self.0.n_modes
+                    )));
+                }
+                let hamiltonian = fham.inner.to_majorana_sparse();
+                py.allow_threads(|| self.0.encode(&hamiltonian))
+            }
+            EncodeInput::Majorana(msparse) => {
+                let hamiltonian: &MajoranaSparse = &msparse.0;
+                self.check_majorana_indices(hamiltonian)?;
+                py.allow_threads(|| self.0.encode(hamiltonian))
+            }
+        };
         Ok(PyQubitHamiltonian(qham))
     }
 
@@ -552,6 +615,54 @@ impl PyMajoranaEncoding {
             coeff,
             with_conjugate,
         )?))
+    }
+
+    /// Encode a single product of Majorana operators.
+    ///
+    /// Majorana operators are hermitian, so unlike `encode_fermion_product`
+    /// there is no ladder signature — the product is fully described by its
+    /// Majorana indices.
+    ///
+    /// The operators are multiplied in the order given; reordering is not
+    /// applied, since the symplectic product already tracks the phase picked up
+    /// by each multiplication.
+    ///
+    /// Args:
+    ///     `majorana_indices`: The index of each Majorana operator in the
+    ///         product, each in ``[0, 2 * n_modes)``.
+    ///     coeff: The operator coefficient.
+    ///
+    /// Returns:
+    ///     Tuple of ``(pauli_string, coefficient)``. A Majorana product always
+    ///     encodes to exactly one Pauli term, so no `QubitHamiltonian` is needed
+    ///     to hold the result.
+    ///
+    /// Raises:
+    ///     ValueError: If any index is negative or beyond ``2 * n_modes``.
+    #[pyo3(signature = (majorana_indices, coeff = Complex64::new(1.0, 0.0)))]
+    fn encode_majorana_product(
+        &self,
+        majorana_indices: Vec<i64>,
+        coeff: Complex64,
+    ) -> Result<(String, Complex64), CoreError> {
+        let n_operators = 2 * self.0.n_modes as i64;
+        if let Some(&bad) = majorana_indices
+            .iter()
+            .find(|&&i| i < 0 || i >= n_operators)
+        {
+            return Err(CoreError::Value(format!(
+                "Majorana index {bad} out of range for an encoding with {} modes \
+                 ({n_operators} Majorana operators).",
+                self.0.n_modes
+            )));
+        }
+        let indices: Vec<usize> = majorana_indices.into_iter().map(|i| i as usize).collect();
+        let mproduct = MajoranaProduct::new(indices, coeff);
+        // `Encode<MajoranaProduct, _>` inserts exactly one entry, so the map
+        // always yields a single term.
+        self.0.encode(mproduct).0.into_iter().next().ok_or_else(|| {
+            CoreError::Value("Majorana product encoded to no Pauli term.".to_string())
+        })
     }
 
     /// Compute plain and coefficient-weighted Pauli weights for a batch of

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-06
+
+### Added
+
+- `MajoranaEncoding.encode_majorana_product(majorana_indices, coeff)` encodes a
+  single product of Majorana operators, the Majorana counterpart of
+  `encode_fermion_product`. Majorana operators are hermitian, so the product is
+  described by its indices alone with no ladder signature. Operators are
+  multiplied in the order given, and indices outside `[0, 2 * n_modes)` raise
+  `ValueError`. Such a product is always a single Pauli term, so the result is
+  returned as a `(pauli_string, coefficient)` tuple rather than a
+  `QubitHamiltonian`.
+- `TernaryTree.encode_majorana_product` exposes the same operation from a tree,
+  building the encoding on demand, so callers no longer reach into the private
+  `_encoding` attribute.
+- `MajoranaEncoding.encode` now accepts a `MajoranaSparse` as well as a
+  `FermionHamiltonian`. The Majorana representation was already the internal
+  encoding path, so callers holding a `MajoranaSparse` (from
+  `FermionHamiltonian.to_majorana_sparse()`, or alongside `topphatt`) no longer
+  have to round-trip through a `FermionHamiltonian`. `TernaryTree.encode_naive`
+  accepts both types for the same reason.
+- Encoding a `MajoranaSparse` whose Majorana indices exceed the encoding's
+  `2 * n_modes` operators now raises `ValueError` instead of panicking.
+
+### Changed
+
+- The `MajoranaEncoding.encode` parameter is renamed `fham` to `operator`, since
+  it is no longer restricted to a `FermionHamiltonian`. Positional calls are
+  unaffected; callers passing it by keyword need updating.
+
 ## [0.12.0] - 2026-07-27
 
 ### Changed

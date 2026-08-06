@@ -119,7 +119,9 @@ class MajoranaEncoding:
     def symplectic_matrix(self) -> npt.NDArray[np.bool]: ...
     @property
     def vacuum_state(self) -> npt.NDArray[np.bool]: ...
-    def encode(self, fham: FermionHamiltonian) -> QubitHamiltonian: ...
+    def encode(
+        self, operator: FermionHamiltonian | MajoranaSparse
+    ) -> QubitHamiltonian: ...
     def encode_annealed(
         self,
         fham: FermionHamiltonian,
@@ -163,6 +165,11 @@ class MajoranaEncoding:
         coeff: complex = 1.0,
         with_conjugate: bool = False,
     ) -> QubitHamiltonian: ...
+    def encode_majorana_product(
+        self,
+        majorana_indices: list[int],
+        coeff: complex = 1.0,
+    ) -> tuple[str, complex]: ...
     def batch_pauli_weights(
         self,
         fham: FermionHamiltonian,

@@ -12,7 +12,12 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ferrmion import core
-from ferrmion.core import FermionHamiltonian, MajoranaEncoding, QubitHamiltonian
+from ferrmion.core import (
+    FermionHamiltonian,
+    MajoranaEncoding,
+    MajoranaSparse,
+    QubitHamiltonian,
+)
 
 from .ternary_tree_node import TTNode, node_sorter
 
@@ -161,18 +166,22 @@ class TernaryTree:
         """The vacuum state of the encoding represented by this tree."""
         return self._encoding.vacuum_state
 
-    def encode_naive(self, fham: FermionHamiltonian) -> QubitHamiltonian:
-        """Encode a fermionic Hamiltonian into a qubit Hamiltonian.
+    def encode_naive(
+        self, operator: FermionHamiltonian | MajoranaSparse
+    ) -> QubitHamiltonian:
+        """Encode a fermionic operator into a qubit Hamiltonian.
 
         Args:
-            fham (FermionHamiltonian): The fermionic Hamiltonian to encode.
+            operator (FermionHamiltonian | MajoranaSparse): The operator to encode.
+                A ``FermionHamiltonian`` is converted to its Majorana representation
+                first; passing a ``MajoranaSparse`` directly skips that conversion.
 
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian.
         """
         if not hasattr(self, "_encoding"):
             self.build_encoding()
-        return self._encoding.encode(fham)
+        return self._encoding.encode(operator)
 
     def encode_annealed(
         self,

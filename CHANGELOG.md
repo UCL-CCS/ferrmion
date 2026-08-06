@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-06
+
+### Added
+
+- `MajoranaEncoding.encode` now accepts a `MajoranaSparse` as well as a
+  `FermionHamiltonian`. The Majorana representation was already the internal
+  encoding path, so callers holding a `MajoranaSparse` (from
+  `FermionHamiltonian.to_majorana_sparse()`, or alongside `topphatt`) no longer
+  have to round-trip through a `FermionHamiltonian`. `TernaryTree.encode_naive`
+  accepts both types for the same reason.
+- Encoding a `MajoranaSparse` whose Majorana indices exceed the encoding's
+  `2 * n_modes` operators now raises `ValueError` instead of panicking.
+
+### Changed
+
+- The `MajoranaEncoding.encode` parameter is renamed `fham` to `operator`, since
+  it is no longer restricted to a `FermionHamiltonian`. Positional calls are
+  unaffected; callers passing it by keyword need updating.
+
 ## [0.12.0] - 2026-07-27
 
 ### Changed

@@ -7,7 +7,12 @@ import numpy as np
 import pytest
 from hypothesis import given, strategies as st
 
-from ferrmion.core import FermionHamiltonian, MajoranaEncoding, QubitHamiltonian
+from ferrmion.core import (
+    FermionHamiltonian,
+    MajoranaEncoding,
+    MajoranaSparse,
+    QubitHamiltonian,
+)
 from ferrmion.encode import MaxNTO
 
 np.random.seed(1710)
@@ -262,3 +267,52 @@ def test_fermion_hamiltonian_pickle_roundtrip():
     assert rebuilt == fham
     assert rebuilt.n_modes == 4
     assert rebuilt.constant_energy == 0.25
+
+
+def test_encode_accepts_majorana_sparse(jw_four):
+    fham = FermionHamiltonian(terms={"+-": np.eye(4)})
+    msparse = fham.to_majorana_sparse()
+    assert isinstance(msparse, MajoranaSparse)
+    assert jw_four.encode(msparse) == jw_four.encode(fham)
+
+
+@pytest.mark.parametrize("factory", FACTORIES)
+def test_encode_majorana_sparse_matches_fermion_path(factory):
+    n_modes = 4
+    encoding = factory(n_modes)
+    fham = FermionHamiltonian(
+        terms={"+-": np.random.rand(n_modes, n_modes)},
+    )
+    assert encoding.encode(fham.to_majorana_sparse()) == encoding.encode(fham)
+
+
+def test_encode_majorana_sparse_preserves_constant(jw_four):
+    """The MajoranaSparse constant must reach the identity Pauli string."""
+    terms = {"+-": np.eye(4)}
+    plain = FermionHamiltonian(terms=terms)
+    with_constant = FermionHamiltonian(terms=terms, constant_energy=0.75)
+
+    msparse = with_constant.to_majorana_sparse()
+    assert msparse.constant == pytest.approx(0.75)
+
+    qham = jw_four.encode(msparse)
+    assert qham == jw_four.encode(with_constant)
+    # The identity coefficient also collects the 1/2-per-mode from each a†a, so
+    # compare against the same Hamiltonian without a constant energy.
+    identity_shift = qham["IIII"] - jw_four.encode(plain.to_majorana_sparse())["IIII"]
+    assert identity_shift == pytest.approx(0.75)
+
+
+def test_encode_majorana_sparse_rejects_out_of_range_indices(jw_four):
+    """Out-of-range Majorana indices must raise, not panic in a rayon worker."""
+    six_mode = FermionHamiltonian(terms={"+-": np.eye(6)})
+    msparse = six_mode.to_majorana_sparse()
+    assert max(max(term) for term in msparse.indices) >= 2 * jw_four.n_modes
+    with pytest.raises(ValueError) as excinfo:
+        jw_four.encode(msparse)
+    assert "modes" in str(excinfo.value)
+
+
+def test_encode_rejects_unsupported_type(jw_four):
+    with pytest.raises(TypeError):
+        jw_four.encode("not an operator")

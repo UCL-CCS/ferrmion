@@ -385,7 +385,10 @@ impl PyFermionHamiltonian {
     /// Returns:
     ///     `MajoranaSparse`: The sparse Majorana representation of this Hamiltonian.
     fn to_majorana_sparse(&self) -> PyMajoranaSparse {
-        PyMajoranaSparse(self.inner.to_majorana_sparse())
+        PyMajoranaSparse {
+            inner: self.inner.to_majorana_sparse(),
+            n_modes: self.inner.n_modes(),
+        }
     }
 
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {

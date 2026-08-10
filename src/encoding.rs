@@ -31,7 +31,7 @@ pub struct PyMajoranaEncoding(pub MajoranaEncoding);
 /// method, so the two accepted types are dispatched at runtime by trying each
 /// variant's extraction in turn.
 #[derive(FromPyObject)]
-enum EncodeInput<'py> {
+pub(crate) enum EncodeInput<'py> {
     #[pyo3(annotation = "FermionHamiltonian")]
     Fermion(PyRef<'py, PyFermionHamiltonian>),
     #[pyo3(annotation = "MajoranaSparse")]
@@ -136,30 +136,17 @@ impl PyMajoranaEncoding {
         Ok(qham)
     }
 
-    /// Check that every Majorana index in `hamiltonian` addresses a row of this
-    /// encoding's symplectic matrix.
-    ///
-    /// [`MajoranaSparse`] carries no mode count of its own, and the core encode
-    /// indexes `operators` unguarded, so an out-of-range index would panic inside
-    /// a rayon worker rather than raise. Terms are ordered lexicographically
-    /// rather than by magnitude, so the whole index set has to be scanned; the
-    /// cost is negligible beside the symplectic multiplies it guards.
-    fn check_majorana_indices(&self, hamiltonian: &MajoranaSparse) -> Result<(), CoreError> {
-        let n_operators = 2 * self.0.n_modes;
-        match hamiltonian
-            .indices
-            .iter()
-            .flat_map(|term| term.iter())
-            .copied()
-            .max()
-        {
-            Some(max_index) if max_index as usize >= n_operators => Err(CoreError::Value(format!(
-                "MajoranaSparse has Majorana index {max_index} but encoding has {} modes \
-                 ({n_operators} Majorana operators).",
+    /// Check that a `PyMajoranaSparse`'s mode count matches this encoding's,
+    /// unless it is `0` (unspecified). Mirrors the equivalent check performed
+    /// against `FermionHamiltonian::n_modes()`.
+    fn check_majorana_n_modes(&self, msparse_n_modes: usize) -> Result<(), CoreError> {
+        if msparse_n_modes != 0 && msparse_n_modes != self.0.n_modes {
+            return Err(CoreError::Value(format!(
+                "MajoranaSparse has {msparse_n_modes} modes but encoding has {} modes.",
                 self.0.n_modes
-            ))),
-            _ => Ok(()),
+            )));
         }
+        Ok(())
     }
 }
 
@@ -381,8 +368,8 @@ impl PyMajoranaEncoding {
                 py.allow_threads(|| self.0.encode(&hamiltonian))
             }
             EncodeInput::Majorana(msparse) => {
-                let hamiltonian: &MajoranaSparse = &msparse.0;
-                self.check_majorana_indices(hamiltonian)?;
+                self.check_majorana_n_modes(msparse.n_modes)?;
+                let hamiltonian: &MajoranaSparse = &msparse.inner;
                 py.allow_threads(|| self.0.encode(hamiltonian))
             }
         };
@@ -392,7 +379,10 @@ impl PyMajoranaEncoding {
     /// Encode a Hamiltonian, optimising mode enumeration via simulated annealing.
     ///
     /// Args:
-    ///     fham: The fermionic Hamiltonian to encode.
+    ///     operator: The operator to encode, either a ``FermionHamiltonian`` or a
+    ///         ``MajoranaSparse``. A ``FermionHamiltonian`` is converted to its
+    ///         Majorana representation first; passing a ``MajoranaSparse``
+    ///         directly skips that conversion.
     ///     temperature: Initial annealing temperature. Defaults to ``n_modes // 2``.
     ///     `initial_guess`: Starting permutation. Defaults to identity.
     ///     `coefficient_weighted`: If ``True``, minimise coefficient-weighted Pauli weight.
@@ -401,18 +391,21 @@ impl PyMajoranaEncoding {
     /// Returns:
     ///     Tuple of ``(QubitHamiltonian, MajoranaEncoding)`` — the encoded
     ///     Hamiltonian and the encoding with the optimised mode enumeration.
-    #[pyo3(signature = (fham, temperature = None, initial_guess = None, coefficient_weighted = true, seed = None))]
+    #[pyo3(signature = (operator, temperature = None, initial_guess = None, coefficient_weighted = true, seed = None))]
     fn encode_annealed(
         &mut self,
         py: Python<'_>,
-        fham: PyRef<'_, PyFermionHamiltonian>,
+        operator: EncodeInput<'_>,
         temperature: Option<f64>,
         initial_guess: Option<Vec<usize>>,
         coefficient_weighted: bool,
         seed: Option<usize>,
     ) -> Result<PyQubitHamiltonian, CoreError> {
-        let hamiltonian = fham.inner.to_majorana_sparse();
-        let temperature = temperature.unwrap_or((fham.inner.n_modes() / 2) as f64);
+        let (hamiltonian, operator_n_modes) = match operator {
+            EncodeInput::Fermion(fham) => (fham.inner.to_majorana_sparse(), fham.inner.n_modes()),
+            EncodeInput::Majorana(msparse) => (msparse.inner.clone(), msparse.n_modes),
+        };
+        let temperature = temperature.unwrap_or((operator_n_modes / 2) as f64);
         let initial_guess =
             Array1::from(initial_guess.unwrap_or_else(|| (0..self.0.n_modes).collect()));
         let params = AnnealingParameters::new(temperature, 1000, seed.unwrap_or(1017));
@@ -440,7 +433,10 @@ impl PyMajoranaEncoding {
     /// Optimise the mode enumeration via simulated annealing without encoding.
     ///
     /// Args:
-    ///     fham: The fermionic Hamiltonian whose Pauli weight drives the search.
+    ///     operator: The operator whose Pauli weight drives the search, either a
+    ///         ``FermionHamiltonian`` or a ``MajoranaSparse``. A
+    ///         ``FermionHamiltonian`` is converted to its Majorana representation
+    ///         first; passing a ``MajoranaSparse`` directly skips that conversion.
     ///     temperature: Initial annealing temperature. Defaults to ``n_modes``.
     ///     `initial_guess`: Starting permutation. Defaults to identity.
     ///     `coefficient_weighted`: If ``True``, minimise coefficient-weighted Pauli weight.
@@ -448,19 +444,22 @@ impl PyMajoranaEncoding {
     ///
     /// Returns:
     ///     Tuple of ``(best_cost, MajoranaEncoding)``.
-    #[pyo3(signature = (fham, temperature = None, initial_guess = None, coefficient_weighted = false, seed = None))]
+    #[pyo3(signature = (operator, temperature = None, initial_guess = None, coefficient_weighted = false, seed = None))]
     fn anneal_enumeration(
         &mut self,
         py: Python<'_>,
-        fham: PyRef<'_, PyFermionHamiltonian>,
+        operator: EncodeInput<'_>,
         temperature: Option<f64>,
         initial_guess: Option<Vec<usize>>,
         coefficient_weighted: bool,
         seed: Option<usize>,
     ) -> Result<f64, CoreError> {
-        let mut hamiltonian = fham.inner.to_majorana_sparse();
+        let (mut hamiltonian, operator_n_modes) = match operator {
+            EncodeInput::Fermion(fham) => (fham.inner.to_majorana_sparse(), fham.inner.n_modes()),
+            EncodeInput::Majorana(msparse) => (msparse.inner.clone(), msparse.n_modes),
+        };
         hamiltonian.constant = 0.0;
-        let temperature = temperature.unwrap_or(fham.inner.n_modes() as f64);
+        let temperature = temperature.unwrap_or(operator_n_modes as f64);
         let initial_guess =
             Array1::from(initial_guess.unwrap_or_else(|| (0..self.0.n_modes).collect()));
         let params = AnnealingParameters::new(temperature, 1000, seed.unwrap_or(1017));
@@ -669,7 +668,10 @@ impl PyMajoranaEncoding {
     /// mode permutations in a single parallelised call.
     ///
     /// Args:
-    ///     fham: The fermionic Hamiltonian to weigh.
+    ///     operator: The operator to weigh, either a ``FermionHamiltonian`` or a
+    ///         ``MajoranaSparse``. A ``FermionHamiltonian`` is converted to its
+    ///         Majorana representation first; passing a ``MajoranaSparse``
+    ///         directly skips that conversion.
     ///     permutations: 2D uint array of shape ``(n_perms, n_modes)``.
     ///
     /// Returns:
@@ -678,10 +680,13 @@ impl PyMajoranaEncoding {
     fn batch_pauli_weights<'py>(
         &self,
         py: Python<'py>,
-        fham: PyRef<'_, PyFermionHamiltonian>,
+        operator: EncodeInput<'_>,
         permutations: PyReadonlyArray2<'py, usize>,
     ) -> Result<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>), CoreError> {
-        let mut hamiltonian = fham.inner.to_majorana_sparse();
+        let mut hamiltonian = match operator {
+            EncodeInput::Fermion(fham) => fham.inner.to_majorana_sparse(),
+            EncodeInput::Majorana(msparse) => msparse.inner.clone(),
+        };
         hamiltonian.constant = 0.0;
         let perms: Vec<Vec<usize>> = permutations
             .as_array()

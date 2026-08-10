@@ -185,7 +185,7 @@ class TernaryTree:
 
     def encode_annealed(
         self,
-        fham: FermionHamiltonian,
+        operator: FermionHamiltonian | MajoranaSparse,
         temperature: int | None = None,
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
@@ -194,7 +194,9 @@ class TernaryTree:
         """Encode a Hamiltonian, optimising mode enumeration via simulated annealing.
 
         Args:
-            fham (FermionHamiltonian): The fermionic Hamiltonian to encode.
+            operator (FermionHamiltonian | MajoranaSparse): The operator to encode.
+                A ``FermionHamiltonian`` is converted to its Majorana representation
+                first; passing a ``MajoranaSparse`` directly skips that conversion.
             temperature (int | None): Initial annealing temperature. Defaults to ``n_modes // 2``.
             initial_guess (list[int] | None): Starting permutation. Defaults to identity.
             coefficient_weighted (bool): If True, minimise coefficient-weighted Pauli weight.
@@ -205,7 +207,7 @@ class TernaryTree:
             QubitHamiltonian: The encoded qubit Hamiltonian.
         """
         qham = self._encoding.encode_annealed(
-            fham,
+            operator,
             temperature=temperature,
             initial_guess=initial_guess,
             coefficient_weighted=coefficient_weighted,
@@ -215,7 +217,7 @@ class TernaryTree:
 
     def topphatt(
         self,
-        fham: FermionHamiltonian,
+        operator: FermionHamiltonian | MajoranaSparse,
         parallelize: bool = True,
         heuristic: str = "min_weight",
         seed: int | None = None,
@@ -224,7 +226,10 @@ class TernaryTree:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
         Args:
-            fham: The FermionHamiltonian to encode.
+            operator: The operator to encode, either a ``FermionHamiltonian`` or a
+                ``MajoranaSparse``. A ``FermionHamiltonian`` is converted to its
+                Majorana representation first; passing a ``MajoranaSparse``
+                directly skips that conversion.
             parallelize: Whether to parallelize the encoding.
             heuristic: Node-selection strategy. One of ``"min_weight"``
                 (evaluate every active node and keep the lowest Pauli weight),
@@ -243,10 +248,15 @@ class TernaryTree:
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian.
         """
+        hamiltonian = (
+            operator
+            if isinstance(operator, MajoranaSparse)
+            else operator.to_majorana_sparse()
+        )
         return core.topphatt(
             flatpack=self.flatpack(),
             n_qubits=self.n_qubits,
-            hamiltonian=fham.to_majorana_sparse(),
+            hamiltonian=hamiltonian,
             parallelize=parallelize,
             heuristic=heuristic,
             seed=seed,
@@ -255,7 +265,7 @@ class TernaryTree:
 
     def encode(
         self,
-        fham: FermionHamiltonian,
+        operator: FermionHamiltonian | MajoranaSparse,
         parallelize: bool = True,
         heuristic: str = "min_weight",
         seed: int | None = None,
@@ -264,7 +274,10 @@ class TernaryTree:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
         Args:
-            fham: The FermionHamiltonian to encode.
+            operator: The operator to encode, either a ``FermionHamiltonian`` or a
+                ``MajoranaSparse``. A ``FermionHamiltonian`` is converted to its
+                Majorana representation first; passing a ``MajoranaSparse``
+                directly skips that conversion.
             parallelize: Whether to parallelize the encoding.
             heuristic: Node-selection strategy. One of ``"min_weight"``
                 (evaluate every active node and keep the lowest Pauli weight),
@@ -286,7 +299,7 @@ class TernaryTree:
         qham, enc = core.encode_topphatt(
             flatpack=self.flatpack(),
             n_qubits=self.n_qubits,
-            fham=fham,
+            operator=operator,
             parallelize=parallelize,
             heuristic=heuristic,
             seed=seed,

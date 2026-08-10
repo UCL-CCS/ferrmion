@@ -21,7 +21,7 @@ use pyo3::types::{PyComplex, PyInt, PyString};
 /// Apply γ²=1 simplification, merge duplicate Majorana keys, and drop
 /// terms whose summed coefficient falls below the near-zero threshold.
 ///
-/// Both `FermionHamiltonian.to_sparse_majorana` and `hatt` consume the result;
+/// Both `MajoranaSparse.to_dict()` and `hatt` consume the result;
 /// going through a single helper guarantees they see identical term sets
 /// (a per-entry accumulate-and-filter loop can leave stale entries when a
 /// running coefficient cancels below the threshold).

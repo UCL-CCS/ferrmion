@@ -1,7 +1,6 @@
 //! `pyclass` wrappers for the core Hamiltonian types.
 
 use crate::error::CoreError;
-use crate::functions::simplified_majorana_terms;
 use crate::operators::PyMajoranaSparse;
 use ferrmion_core::hamiltonians::{FermionHamiltonian, QubitHamiltonian, SymplecticHamiltonian};
 use ferrmion_core::operators::{CoefficientPauliWeight, PauliWeight};
@@ -379,19 +378,6 @@ impl PyFermionHamiltonian {
             coeffs.push(term.coefficients().to_owned().into_pyarray(py));
         }
         (sigs, coeffs)
-    }
-
-    /// Convert to a sparse Majorana representation.
-    ///
-    /// Returns:
-    ///     Dictionary mapping tuples of Majorana indices to complex coefficients.
-    fn to_sparse_majorana<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let hamiltonian = self.inner.to_majorana_sparse();
-        let output = PyDict::new(py);
-        for (key, val) in simplified_majorana_terms(hamiltonian) {
-            output.set_item(PyTuple::new(py, key.as_slice())?, val)?;
-        }
-        Ok(output)
     }
 
     /// Convert to a sparse Majorana representation.

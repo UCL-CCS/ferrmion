@@ -1,8 +1,8 @@
 //! Free functions exposed in the `ferrmion.core` module.
 
-use crate::encoding::PyMajoranaEncoding;
+use crate::encoding::{EncodeInput, PyMajoranaEncoding};
 use crate::error::CoreError;
-use crate::hamiltonians::{PyFermionHamiltonian, PyQubitHamiltonian};
+use crate::hamiltonians::PyQubitHamiltonian;
 use crate::operators::PyMajoranaSparse;
 use ferrmion_core::encode::majorana::Encode;
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
@@ -21,7 +21,7 @@ use pyo3::types::{PyComplex, PyInt, PyString};
 /// Apply γ²=1 simplification, merge duplicate Majorana keys, and drop
 /// terms whose summed coefficient falls below the near-zero threshold.
 ///
-/// Both `FermionHamiltonian.to_sparse_majorana` and `hatt` consume the result;
+/// Both `MajoranaSparse.to_dict()` and `hatt` consume the result;
 /// going through a single helper guarantees they see identical term sets
 /// (a per-entry accumulate-and-filter loop can leave stale entries when a
 /// running coefficient cancels below the threshold).
@@ -183,23 +183,30 @@ pub(crate) fn symplectic_to_sparse<'py>(
 /// from scratch.
 ///
 /// Args:
-///     fham: The fermionic Hamiltonian whose terms drive the greedy search.
-///     `n_modes`: Number of fermionic modes. Defaults to ``fham.n_modes``.
+///     operator: The operator whose terms drive the greedy search, either a
+///         ``FermionHamiltonian`` or a ``MajoranaSparse``. A
+///         ``FermionHamiltonian`` is converted to its Majorana representation
+///         first; passing a ``MajoranaSparse`` directly skips that conversion.
+///     `n_modes`: Number of fermionic modes. Defaults to the operator's own
+///         mode count.
 ///
 /// Returns:
 ///     Tuple of ``(flatpack, total_pauli_weight)`` where ``flatpack`` is
 ///     the ternary-tree flatpack representation and the weight is the
 ///     total Pauli weight of the greedy selections.
 #[pyfunction(name = "hatt")]
-#[pyo3(signature = (fham, n_modes = None))]
+#[pyo3(signature = (operator, n_modes = None))]
 pub(crate) fn hatt_py(
     py: Python<'_>,
-    fham: PyRef<'_, PyFermionHamiltonian>,
+    operator: EncodeInput<'_>,
     n_modes: Option<usize>,
 ) -> Result<(TTFlatpack, usize), CoreError> {
     debug!("Starting HATT");
-    let n_modes = n_modes.unwrap_or(fham.inner.n_modes());
-    let mut hamiltonian = fham.inner.to_majorana_sparse();
+    let (mut hamiltonian, operator_n_modes) = match operator {
+        EncodeInput::Fermion(fham) => (fham.inner.to_majorana_sparse(), fham.inner.n_modes()),
+        EncodeInput::Majorana(msparse) => (msparse.inner.clone(), msparse.n_modes),
+    };
+    let n_modes = n_modes.unwrap_or(operator_n_modes);
     hamiltonian.constant = 0.0;
     let (tree, weight) = py.allow_threads(|| -> Result<_, CoreError> {
         let simplified_terms: Vec<tinyvec::ArrayVec<[u16; 7]>> =
@@ -288,12 +295,12 @@ pub(crate) fn topphatt_py(
     backend: &str,
 ) -> Result<PyMajoranaEncoding, CoreError> {
     debug!("Starting TOPPHATT");
-    // let mut hamiltonian = hamiltonian.0;
+    // let mut hamiltonian = hamiltonian.inner;
     // hamiltonian.constant = 0.0;
 
     let encoding = py.allow_threads(|| -> Result<_, CoreError> {
         let tree = run_topphatt(
-            hamiltonian.0,
+            hamiltonian.inner,
             flatpack,
             parallelize,
             heuristic,
@@ -312,7 +319,10 @@ pub(crate) fn topphatt_py(
 /// Args:
 ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples — initial tree.
 ///     `n_qubits`: Total number of qubits in the system.
-///     fham: The fermionic Hamiltonian to optimise for and encode.
+///     operator: The operator to optimise for and encode, either a
+///         ``FermionHamiltonian`` or a ``MajoranaSparse``. A
+///         ``FermionHamiltonian`` is converted to its Majorana representation
+///         first; passing a ``MajoranaSparse`` directly skips that conversion.
 ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
@@ -323,13 +333,13 @@ pub(crate) fn topphatt_py(
 /// Returns:
 ///     Tuple of ``(QubitHamiltonian, MajoranaEncoding)``.
 #[pyfunction(name = "encode_topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, fham, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
+#[pyo3(signature = (flatpack, n_qubits, operator, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn encode_topphatt_py(
     py: Python<'_>,
     flatpack: TTFlatpack,
     n_qubits: usize,
-    fham: PyRef<'_, PyFermionHamiltonian>,
+    operator: EncodeInput<'_>,
     parallelize: bool,
     heuristic: &str,
     seed: Option<u64>,
@@ -337,7 +347,10 @@ pub(crate) fn encode_topphatt_py(
 ) -> Result<(PyQubitHamiltonian, PyMajoranaEncoding), CoreError> {
     debug!("Starting TOPPHATT");
     // let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
-    let hamiltonian = fham.inner.to_majorana_sparse();
+    let hamiltonian = match operator {
+        EncodeInput::Fermion(fham) => fham.inner.to_majorana_sparse(),
+        EncodeInput::Majorana(msparse) => msparse.inner.clone(),
+    };
 
     let (qham, encoding) = py.allow_threads(|| -> Result<_, CoreError> {
         let tree = run_topphatt(

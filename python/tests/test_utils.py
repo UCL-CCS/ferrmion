@@ -36,7 +36,7 @@ def test_fermionic_to_sparse_majorana() -> None:
     ones[0, 0] = 1
     twos[1, 2, 1, 2] = 2
 
-    majorana_ham = FermionHamiltonian(terms={"+-": ones, "++--": twos}).to_sparse_majorana()
+    majorana_ham = FermionHamiltonian(terms={"+-": ones, "++--": twos}).to_majorana_sparse().to_dict()
     assert majorana_ham == {
         (0, 1): np.complex128(0.5j),
         (4, 5): np.complex128(-0.5j),

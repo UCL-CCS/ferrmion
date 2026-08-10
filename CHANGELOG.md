@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-08-10
+
+### Added
+
+- `MajoranaEncoding.encode_annealed`, `.anneal_enumeration`,
+  `.batch_pauli_weights`, and the `hatt` / `encode_topphatt` module functions
+  now accept a `MajoranaSparse` as well as a `FermionHamiltonian`, matching
+  `MajoranaEncoding.encode`. `TernaryTree.encode_annealed`, `.topphatt`,
+  `.encode`, and `hamiltonian_adaptive_ternary_tree` accept both types for the
+  same reason.
+- `MajoranaSparse.n_modes` exposes the mode count of the `FermionHamiltonian`
+  it was converted from.
+- `MajoranaSparse.to_dict()` converts to a dictionary mapping Majorana index
+  tuples to coefficients.
+
+### Changed
+
+- The `fham` parameter on `MajoranaEncoding.encode_annealed`,
+  `.anneal_enumeration`, `.batch_pauli_weights`, `hatt`, and `encode_topphatt`
+  is renamed `operator`, matching `encode`. Positional calls are unaffected;
+  callers passing it by keyword need updating.
+
+### Fixed
+
+- `TernaryTree.encode` previously raised `TypeError` when passed a
+  `MajoranaSparse` despite its type hint claiming support; it now works as
+  documented.
+
+### Removed
+
+- `FermionHamiltonian.to_sparse_majorana()` is removed. Use
+  `FermionHamiltonian.to_majorana_sparse().to_dict()` instead.
+
 ## [0.13.0] - 2026-08-06
 
 ### Added

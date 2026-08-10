@@ -2,7 +2,7 @@
 
 The greedy tree construction runs in native Rust (`ferrmion.core.hatt`);
 this module exposes a thin Python wrapper that takes a `FermionHamiltonian`
-and returns a fully-populated `TernaryTree`.
+or `MajoranaSparse` and returns a fully-populated `TernaryTree`.
 """
 
 from typing import TYPE_CHECKING
@@ -11,11 +11,12 @@ from ferrmion.encode import TernaryTree
 from ferrmion.encode.ternary_tree_node import node_sorter
 
 if TYPE_CHECKING:
+    from ferrmion.core import MajoranaSparse
     from ferrmion.hamiltonians import FermionHamiltonian
 
 
 def hamiltonian_adaptive_ternary_tree(
-    fham: "FermionHamiltonian", n_modes: int
+    fham: "FermionHamiltonian | MajoranaSparse", n_modes: int
 ) -> TernaryTree:
     """Construct an adaptive ternary tree from a fermionic Hamiltonian.
 
@@ -24,8 +25,10 @@ def hamiltonian_adaptive_ternary_tree(
     (:func:`ferrmion.core.hatt`).
 
     Args:
-        fham (FermionHamiltonian): The Hamiltonian whose terms drive the
-            greedy Pauli-weight minimisation.
+        fham (FermionHamiltonian | MajoranaSparse): The operator whose terms
+            drive the greedy Pauli-weight minimisation. A
+            ``FermionHamiltonian`` is converted to its Majorana representation
+            first; passing a ``MajoranaSparse`` directly skips that conversion.
         n_modes (int): Number of fermionic modes in the system.
 
     Returns:

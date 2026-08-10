@@ -72,7 +72,7 @@ def water_fham(water_data) -> FermionHamiltonian:
 def water_sparse_majorana(water_data) -> dict:
     return FermionHamiltonian(
         terms={"+-": water_data["ones"], "++--": water_data["twos"]}
-    ).to_sparse_majorana()
+    ).to_majorana_sparse().to_dict()
 
 def diagonalise_pauli_hamiltonian(qham, neigvals:int):
     ofop = QubitOperator()

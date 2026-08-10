@@ -66,7 +66,6 @@ class FermionHamiltonian:
         self, coefficients: npt.NDArray[np.float64]
     ) -> "FermionHamiltonian": ...
     def add_constant(self, constant_energy: float) -> "FermionHamiltonian": ...
-    def to_sparse_majorana(self) -> dict[tuple[int, ...], complex]: ...
     def to_majorana_sparse(self) -> "MajoranaSparse": ...
 
 class MajoranaSparse:
@@ -78,6 +77,9 @@ class MajoranaSparse:
     def coefficients(self) -> npt.NDArray[np.complex128]: ...
     @property
     def constant(self) -> float: ...
+    @property
+    def n_modes(self) -> int: ...
+    def to_dict(self) -> dict[tuple[int, ...], complex]: ...
 
 class MajoranaEncoding:
     """A fermion-to-qubit encoding defined by its Majorana operators."""
@@ -124,7 +126,7 @@ class MajoranaEncoding:
     ) -> QubitHamiltonian: ...
     def encode_annealed(
         self,
-        fham: FermionHamiltonian,
+        operator: FermionHamiltonian | MajoranaSparse,
         temperature: float | None = None,
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = True,
@@ -132,7 +134,7 @@ class MajoranaEncoding:
     ) -> QubitHamiltonian: ...
     def anneal_enumeration(
         self,
-        fham: FermionHamiltonian,
+        operator: FermionHamiltonian | MajoranaSparse,
         temperature: float | None = None,
         initial_guess: list[int] | None = None,
         coefficient_weighted: bool = False,
@@ -172,7 +174,7 @@ class MajoranaEncoding:
     ) -> tuple[str, complex]: ...
     def batch_pauli_weights(
         self,
-        fham: FermionHamiltonian,
+        operator: FermionHamiltonian | MajoranaSparse,
         permutations: npt.NDArray[np.uint],
     ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
     def apply_mode_enumeration(self, mode_op_map: list[int]) -> "MajoranaEncoding": ...
@@ -191,7 +193,7 @@ def symplectic_to_sparse(
     ipower: int,
 ) -> tuple[str, npt.NDArray[np.uintp], complex]: ...
 def hatt(
-    fham: FermionHamiltonian,
+    operator: FermionHamiltonian | MajoranaSparse,
     n_modes: int | None = None,
 ) -> tuple[TTFlatpack, int]: ...
 def topphatt(
@@ -206,7 +208,7 @@ def topphatt(
 def encode_topphatt(
     flatpack: TTFlatpack,
     n_qubits: int,
-    fham: FermionHamiltonian,
+    operator: FermionHamiltonian | MajoranaSparse,
     parallelize: bool = True,
     heuristic: str = "min_weight",
     seed: int | None = None,

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `FermionHamiltonian.to_majorana_sparse` (and the other `MajoranaSparse`
+  conversion paths) no longer produce duplicate/redundant terms when a
+  Majorana index appears more than once within an expanded term, e.g. `(0, 0,
+  i, j)` now correctly cancels (`gamma_0^2 = I`) and merges into `(i, j)`
+  instead of remaining a separate term. This also fixes a related bug where
+  the resulting identity/constant coefficient could pick up the wrong sign.
+
 ## [0.13.1] - 2026-08-10
 
 ### Added

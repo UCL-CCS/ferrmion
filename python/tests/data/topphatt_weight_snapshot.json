@@ -1,8 +1,8 @@
 {
-  "JW": { "pauli_weight": 0.741, "coefficient_pauli_weight": 0.758 },
-  "BK": { "pauli_weight": 0.985, "coefficient_pauli_weight": 0.667 },
-  "PE": { "pauli_weight": 0.759, "coefficient_pauli_weight": 0.829 },
-  "JKMN": { "pauli_weight": 0.936, "coefficient_pauli_weight": 0.792 },
-  "HATT": { "pauli_weight": 1.116, "coefficient_pauli_weight": 1.103 },
-  "Huffman": { "pauli_weight": 0.946, "coefficient_pauli_weight": 0.955 }
+  "JW": { "pauli_weight": 0.823, "coefficient_pauli_weight": 0.796 },
+  "BK": { "pauli_weight": 0.992, "coefficient_pauli_weight": 0.76 },
+  "PE": { "pauli_weight": 0.834, "coefficient_pauli_weight": 0.838 },
+  "JKMN": { "pauli_weight": 0.934, "coefficient_pauli_weight": 0.753 },
+  "HATT": { "pauli_weight": 1.12, "coefficient_pauli_weight": 1.095 },
+  "Huffman": { "pauli_weight": 0.958, "coefficient_pauli_weight": 1.126 }
 }

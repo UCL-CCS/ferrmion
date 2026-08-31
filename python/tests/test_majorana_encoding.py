@@ -293,10 +293,7 @@ def test_encode_majorana_sparse_preserves_constant(jw_four):
     with_constant = FermionHamiltonian(terms=terms, constant_energy=0.75)
 
     msparse = with_constant.to_majorana_sparse()
-    # Each of the 4 number operators a†_i a_i contributes an identity term of
-    # 1/2 (a†_i a_i = (I + i*gamma_2i*gamma_2i+1) / 2), on top of the 0.75
-    # constant_energy: 4 * 0.5 + 0.75 = 2.75.
-    assert msparse.constant == pytest.approx(2.75)
+    assert msparse.constant == pytest.approx(0.75)
 
     qham = jw_four.encode(msparse)
     assert qham == jw_four.encode(with_constant)

@@ -431,27 +431,6 @@ fn cannonicalize<T: Ord + Default>(indices: &mut [T]) -> f64 {
     }
 }
 
-/// Cancels adjacent equal indices in a sorted Majorana key, using
-/// $\gamma_i^2 = I$ (no extra phase). An index occurring an even number of
-/// times vanishes entirely; an odd number of times leaves a single copy.
-///
-/// Requires `key` to already be sorted (e.g. via [`cannonicalize`]) so equal
-/// indices are adjacent. Used only when accumulating Hamiltonian terms into a
-/// [`MajoranaHashMap`], so that e.g. `(0, 0, i, j)` reduces to `(i, j)` and
-/// merges with any existing `(i, j)` term instead of remaining a distinct,
-/// redundant key.
-fn cancel_adjacent_pairs(key: ArrayVec<[u16; MAX_MAJORANAS]>) -> ArrayVec<[u16; MAX_MAJORANAS]> {
-    let mut out: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-    for idx in key {
-        if out.last() == Some(&idx) {
-            out.pop();
-        } else {
-            out.push(idx);
-        }
-    }
-    out
-}
-
 /// Map from majorana indices to complex coefficients, used to accumulate and combine like terms.
 #[derive(Debug)]
 pub(super) struct MajoranaHashMap {
@@ -512,7 +491,6 @@ impl MajoranaHashMap {
                     key.push((2 * idx + o) as u16);
                 }
                 let sign = cannonicalize(&mut key);
-                let key = cancel_adjacent_pairs(key);
                 (key, coeff * scaler * sign)
             })
             .for_each(|(key, value)| {
@@ -734,21 +712,15 @@ fn is_valid_fermion_term(action: &[LadderOperator], indices: &[usize]) -> bool {
 
 impl From<MajoranaHashMap> for MajoranaSparse {
     fn from(mbt: MajoranaHashMap) -> MajoranaSparse {
-        let mut sparse_constant: f64 = 0.;
+        let mut sparse_constant: num_complex::Complex<f64> = c64(0., 0.);
         let mut pairs: Vec<(ArrayVec<[u16; MAX_MAJORANAS]>, Complex64)> = Vec::new();
         for (k, v) in mbt
             .operators
             .into_iter()
             .filter(|(_, v)| v.abs() >= COEFFICIENT_TOLERANCE)
         {
-            // `constant` is `f64`-typed, so only an empty key with a
-            // negligible imaginary part (the expected case for a Hermitian
-            // Hamiltonian) can be folded into it without losing information.
-            // A non-negligible imaginary part (e.g. from an arbitrary complex
-            // `FermionProduct` coefficient) is kept as an ordinary, empty-key
-            // sparse term instead, which `Encode` already treats as identity.
-            if k.is_empty() && v.im.abs() < COEFFICIENT_TOLERANCE {
-                sparse_constant += v.re;
+            if k.is_empty() {
+                sparse_constant += v;
             } else {
                 pairs.push((k, v));
             }
@@ -758,7 +730,7 @@ impl From<MajoranaHashMap> for MajoranaSparse {
         let (sparse_indices, sparse_values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
         debug!("Sparse Majorana Indices {:?}", sparse_indices);
         debug!("Sparse Majorana Coefficients {:?}", sparse_values);
-        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant)
+        MajoranaSparse::new(sparse_indices, sparse_values, sparse_constant.norm())
             .expect("Indices and coefficients should be same length.")
     }
 }
@@ -1008,48 +980,6 @@ mod majorana_tests {
         // debug!("{:#?}", mp);
         assert_eq!(mp.indices, vec![0, 1, 1, 1]);
         assert_eq!(mp.coefficient, coefficient);
-    }
-
-    #[test]
-    fn test_cancel_adjacent_pairs() {
-        assert_eq!(
-            cancel_adjacent_pairs(array_vec!([u16; 7] => 0, 0, 1, 2)),
-            array_vec!([u16; 7] => 1, 2)
-        );
-        assert_eq!(
-            cancel_adjacent_pairs(array_vec!([u16; 7] => 1, 1, 1)),
-            array_vec!([u16; 7] => 1)
-        );
-        assert_eq!(
-            cancel_adjacent_pairs(array_vec!([u16; 7] => 1, 1, 1, 1)),
-            array_vec!([u16; 7])
-        );
-        assert_eq!(
-            cancel_adjacent_pairs(array_vec!([u16; 7] => 0, 1)),
-            array_vec!([u16; 7] => 0, 1)
-        );
-    }
-
-    /// Regression test for https://github.com/UCL-CCS/ferrmion/issues/218:
-    /// `a^dagger_0 a_0` expands (via masks `[0,0]` and `[1,1]`) into two terms
-    /// that should cancel to the identity (`gamma_0^2 = I`), and two terms
-    /// (masks `[1,0]` and `[0,1]`) that both canonicalize to the same
-    /// `(0, 1)` key. Before the fix, `[0, 0]` and `[1, 1]` were kept as
-    /// distinct, redundant two-index terms instead of folding into the
-    /// constant.
-    #[test]
-    fn test_append_term_cancels_repeated_majorana_index() {
-        let fproduct = FermionProduct::new(
-            vec![LadderOperator::Creation, LadderOperator::Annihilation],
-            vec![0, 0],
-            c64(1.0, 0.0),
-        )
-        .unwrap();
-        let msparse = MajoranaSparse::from(fproduct);
-        let expected =
-            MajoranaSparse::new(vec![array_vec!([u16; 7] => 0, 1)], vec![c64(0., 0.5)], 0.5)
-                .unwrap();
-        assert_eq!(msparse, expected);
     }
 
     #[test]

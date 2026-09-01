@@ -25,11 +25,19 @@ use pyo3::types::{PyComplex, PyInt, PyString};
 /// going through a single helper guarantees they see identical term sets
 /// (a per-entry accumulate-and-filter loop can leave stale entries when a
 /// running coefficient cancels below the threshold).
+///
+/// A term whose indices fully cancel (γ²=I) contributes to the identity —
+/// folded, together with `hamiltonian.constant`, into the returned map's
+/// empty-tuple `()` key when the combined result is non-negligible. A
+/// self-cancelling term with a non-negligible imaginary part is instead
+/// kept as an ordinary empty-key entry, so complex precision from e.g. an
+/// arbitrary (non-Hermitian) coefficient isn't silently discarded either.
 pub(crate) fn simplified_majorana_terms(
     hamiltonian: MajoranaSparse,
 ) -> std::collections::BTreeMap<Vec<u16>, Complex64> {
     let mut merged: std::collections::BTreeMap<Vec<u16>, Complex64> =
         std::collections::BTreeMap::new();
+    let mut constant = hamiltonian.constant;
     for (key, val) in std::iter::zip(hamiltonian.indices, hamiltonian.coefficients) {
         let mut simplified: Vec<u16> = Vec::with_capacity(key.len());
         for &idx in key.as_slice() {
@@ -39,10 +47,15 @@ pub(crate) fn simplified_majorana_terms(
                 simplified.push(idx);
             }
         }
-        if simplified.is_empty() {
-            continue;
+        if simplified.is_empty() && val.im.abs() < utils::COEFFICIENT_TOLERANCE {
+            constant += val.re;
+        } else {
+            *merged.entry(simplified).or_insert(Complex64::new(0., 0.)) += val;
         }
-        *merged.entry(simplified).or_insert(Complex64::new(0., 0.)) += val;
+    }
+    if constant.abs() > utils::COEFFICIENT_TOLERANCE {
+        *merged.entry(Vec::new()).or_insert(Complex64::new(0., 0.)) +=
+            Complex64::new(constant, 0.0);
     }
     merged.retain(|_, v| v.norm() > utils::COEFFICIENT_TOLERANCE);
     merged

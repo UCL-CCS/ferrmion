@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `MajoranaSparse.to_dict()` no longer silently drops terms that fully
+  cancel to the identity via `gamma^2 = 1` (e.g. from diagonal one-body
+  terms like `a_i^dagger a_i`), nor the Hamiltonian's own constant energy —
+  both are now folded into the result and surfaced as the empty-tuple `()`
+  key when the combined value is non-negligible.
+  (An earlier attempt at this fix forced the same `gamma^2 = 1`
+  simplification unconditionally into `to_majorana_sparse()`'s own
+  construction path, but this was reverted: TOPPHATT's graph-coloring
+  optimiser reads `MajoranaSparse.indices` directly as its problem size,
+  and performs measurably better on the original, non-deduplicated term
+  set. `to_majorana_sparse()` and the other `MajoranaSparse` conversions
+  therefore keep producing their original term set; `to_dict()` remains
+  the one place responsible for deduplication, as it already was.)
+
 ## [0.13.1] - 2026-08-10
 
 ### Added

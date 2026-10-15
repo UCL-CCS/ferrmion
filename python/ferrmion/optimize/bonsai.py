@@ -40,7 +40,10 @@ def bonsai_algorithm(
     nodes[root_index].root_path = ""
     nodes[root_index].qubit_label = root_index
 
-    while len(node_queue) > 0:
+    def limit_reached() -> bool:
+        return max_nodes is not None and len(used_indices) >= max_nodes
+
+    while len(node_queue) > 0 and not limit_reached():
         logger.debug(f"{node_queue=}")
         logger.debug(f"{used_indices=}")
         node: int = node_queue.pop(0)
@@ -50,9 +53,9 @@ def bonsai_algorithm(
         neighbors = sorted(list(set(graph.neighbors(node)).difference(used_indices)))
         logger.debug(f"{neighbors=}")
 
-        n_neighbors = len(neighbors)
-
-        for neighbor, char in zip(neighbors[:3], chars[:n_neighbors]):
+        for neighbor, char in zip(neighbors[:3], chars):
+            if limit_reached():
+                break
             node_queue.append(neighbor)
             used_indices.add(neighbor)
 
@@ -64,37 +67,36 @@ def bonsai_algorithm(
             )
             nodes[neighbor].parent = parent
 
-            if max_nodes is not None and len(used_indices) == max_nodes:
-                break
-
-        if max_nodes is not None and len(used_indices) == max_nodes:
-            break
         logger.debug(node_queue)
         logger.debug("")
 
-    if max_nodes is not None and len(used_indices) == max_nodes:
+    if limit_reached():
         logger.debug(f"Found {max_nodes} nodes.")
     elif len(used_indices) == graph.num_nodes():
         logger.debug("Found spanning tree")
     else:
         logger.debug("Tree does not span the graph.")
-        unused_indices = set(range(graph.num_nodes())).difference(used_indices)
-        for unused in unused_indices:
-            closest = np.argsort(distances[unused])
-            for used in closest:
+        for unused in sorted(set(range(graph.num_nodes())).difference(used_indices)):
+            if limit_reached():
+                break
+            # Attach to the closest node already in the tree with a free branch.
+            for used in np.argsort(distances[unused], kind="stable"):
+                used = int(used)
+                if used not in used_indices:
+                    continue
                 used_node: TTNode = nodes[used]
-                for child_branch in chars:
-                    if getattr(used_node, child_branch) is None:
-                        used_node.add_child(
-                            child_branch,
-                            child_node=nodes[unused],
-                            root_path=f"{used_node.root_path}{child_branch}",
-                            qubit_label=unused,
-                        )
-                        unused_indices.remove(used)
-                        break
+                free_branch = next(
+                    (c for c in chars if getattr(used_node, c) is None), None
+                )
+                if free_branch is None:
+                    continue
+                used_node.add_child(
+                    free_branch, child_node=nodes[unused], qubit_label=unused
+                )
+                used_indices.add(unused)
+                break
 
-        if len(unused_indices) > 0:
+        if len(used_indices) < graph.num_nodes() and not limit_reached():
             logger.debug("Error, not all qubits assigned to nodes.")
         else:
             logger.debug("All graph nodes assigned to tree.")

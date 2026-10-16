@@ -1,0 +1,36 @@
+[package]
+name = "ferrmion-gpu"
+version = "0.13.1"
+edition = "2024"
+description = "Experimental NVIDIA GPU acceleration for ferrmion encodings, built with cuda-oxide."
+publish = false
+
+# Standalone workspace: cuda-oxide needs its own pinned nightly toolchain
+# (see rust-toolchain.toml), so this crate is kept out of the main workspace.
+[workspace]
+
+[features]
+# `cuda` builds the device kernels and `GpuEncoder`; it needs `cargo oxide`.
+# Without it, only the packing, reduction and CPU emulation of the kernel are
+# built, which is enough to test them on stable Rust.
+default = ["cuda"]
+cuda = ["dep:cuda-device", "dep:cuda-host", "dep:cuda-core"]
+
+[dependencies]
+ferrmion-core = { path = "../ferrmion-core" }
+num-complex = "0.4.6"
+rayon = "1.11.0"
+# All three must come from the same cuda-rust commit; the codegen backend that
+# `cargo oxide` builds follows this revision.
+cuda-device = { git = "https://github.com/NVIDIA/cuda-rust.git", rev = "e84e5b3d74014fcca36ffcf1b8d603c197cc7c8f", optional = true }
+cuda-host = { git = "https://github.com/NVIDIA/cuda-rust.git", rev = "e84e5b3d74014fcca36ffcf1b8d603c197cc7c8f", optional = true }
+cuda-core = { git = "https://github.com/NVIDIA/cuda-rust.git", rev = "e84e5b3d74014fcca36ffcf1b8d603c197cc7c8f", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.9.0"
+tinyvec = "1.10.0"
+
+[[bench]]
+name = "gpu_batch_weights"
+harness = false

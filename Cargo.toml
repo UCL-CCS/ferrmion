@@ -1,5 +1,7 @@
 [workspace]
 members = [".", "crates/ferrmion-core"]
+# Needs cuda-oxide's nightly toolchain; built from its own directory.
+exclude = ["crates/ferrmion-gpu"]
 resolver = "2"
 
 [package]

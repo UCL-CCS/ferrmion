@@ -1,0 +1,5 @@
+# The nightly that cuda-oxide at the pinned cuda-rust revision requires.
+# Run stable-only checks with `cargo +stable test --no-default-features`.
+[toolchain]
+channel = "nightly-2026-10-11"
+components = ["rust-src", "rustc-dev", "llvm-tools"]

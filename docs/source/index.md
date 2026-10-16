@@ -25,4 +25,5 @@ core
 interop
 development
 rust_internals
+gpu_acceleration
 ```

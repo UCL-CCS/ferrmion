@@ -3,6 +3,7 @@
 from ferrmion.optimize.bonsai import bonsai_algorithm
 import rustworkx as rx
 import numpy as np
+import pytest
 from pytest import fixture
 
 @fixture
@@ -530,3 +531,27 @@ def test_emerald_hom_max_nodes(emerald_graph):
         'xxy',
         'xyx',
         'xyy']
+
+
+@pytest.mark.parametrize("homogenous", [True, False])
+def test_star_graph_cleanup(homogenous):
+    """Nodes not reached by the BFS are attached without creating a cycle."""
+    graph = rx.PyGraph()
+    graph.add_nodes_from(range(5))
+    graph.add_edges_from_no_data([(0, 1), (0, 2), (0, 3), (0, 4)])
+    tree = bonsai_algorithm(graph, homogenous=homogenous)
+    assert len(tree.root_node.child_strings) == 5
+    assert sorted(tree.root_node.child_qubit_labels.values()) == [0, 1, 2, 3, 4]
+
+
+@pytest.mark.parametrize("max_nodes", [1, 4, 6])
+def test_grid_max_nodes(max_nodes):
+    """The tree has exactly max_nodes nodes, including max_nodes=1."""
+    graph = rx.PyGraph()
+    graph.add_nodes_from(range(9))
+    graph.add_edges_from_no_data(
+        [(0, 1), (1, 2), (3, 4), (4, 5), (6, 7), (7, 8),
+         (0, 3), (3, 6), (1, 4), (4, 7), (2, 5), (5, 8)]
+    )
+    tree = bonsai_algorithm(graph, max_nodes=max_nodes)
+    assert len(tree.root_node.child_strings) == max_nodes

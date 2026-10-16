@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `bonsai_algorithm` no longer hits a `RecursionError` on graphs with nodes of
+  degree above 3, and now respects `max_nodes=1`.
 - `MajoranaSparse.to_dict()` no longer silently drops terms that fully
   cancel to the identity via `gamma^2 = 1` (e.g. from diagonal one-body
   terms like `a_i^dagger a_i`), nor the Hamiltonian's own constant energy —

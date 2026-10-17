@@ -1,11 +1,11 @@
 //! Simulated annealing optimisation of [`MajoranaEncoding`].
 //!
 //! Permutes modes enumerations to find optimal cost in terms of
-//! [`PauliWeight`] or [`CoefficientPauliWeight`]
+//! [`PauliWeight`](crate::operators::PauliWeight) or
+//! [`CoefficientPauliWeight`](crate::operators::CoefficientPauliWeight)
 
-use crate::encode::majorana::Encode;
-use crate::encode::majorana::MajoranaEncoding;
-use crate::operators::{CoefficientPauliWeight, MajoranaSparse, PauliWeight};
+use crate::encode::majorana::{MajoranaEncoding, PauliWeightTerms};
+use crate::operators::MajoranaSparse;
 use argmin::{
     core::{CostFunction, Error, Executor},
     solver::simulatedannealing::{Anneal, SATempFunc, SimulatedAnnealing},
@@ -38,7 +38,7 @@ impl AnnealingParameters {
 }
 
 struct OptimalEnumeration {
-    msparse: MajoranaSparse,
+    terms: PauliWeightTerms,
     encoding: MajoranaEncoding,
     coefficient_weighted: bool,
     rng: Arc<Mutex<Xoshiro256PlusPlus>>,
@@ -52,7 +52,7 @@ impl OptimalEnumeration {
         seed: u64,
     ) -> Self {
         OptimalEnumeration {
-            msparse,
+            terms: encoding.pauli_weight_terms(&msparse),
             encoding,
             coefficient_weighted,
             rng: Arc::new(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(seed))),
@@ -65,13 +65,13 @@ impl CostFunction for OptimalEnumeration {
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, Error> {
-        let enumerated_encoding = self.encoding.apply_mode_enumeration(param.to_vec());
-        let qham = enumerated_encoding.encode(&self.msparse);
-        let weight = match self.coefficient_weighted {
-            true => qham.coeff_pauli_weight(),
-            false => qham.pauli_weight() as f64,
-        };
-        Ok(weight)
+        let (plain, weighted) = self
+            .encoding
+            .enumerated_pauli_weights(&self.terms, &param.to_vec());
+        Ok(match self.coefficient_weighted {
+            true => weighted,
+            false => plain,
+        })
     }
 }
 

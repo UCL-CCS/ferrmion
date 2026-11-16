@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Experimental coefficient-aware TOPP-HATT backends: `backend="weighted"` and `backend="split"` (with `split_budget`) on `TernaryTree.topphatt`/`encode`.
+
 ### Fixed
 
 - `bonsai_algorithm` no longer hits a `RecursionError` on graphs with nodes of

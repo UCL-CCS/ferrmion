@@ -5,7 +5,7 @@ use rand::seq::IteratorRandom;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::prelude::*;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, VecDeque};
 use std::iter::zip;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -99,6 +99,303 @@ impl Backend for MajoranaSparse {
         let parent = (min_parent + n_leaves) as u16;
         let terms = std::mem::take(&mut self.indices);
         self.indices = reduce_hamiltonian(terms, parent, selection);
+        parent
+    }
+}
+
+/// Default quantisation resolution for [`WeightedSparseBackend::from_coefficients`]:
+/// the largest-magnitude term is mapped to this integer weight.
+pub const DEFAULT_COEFFICIENT_RESOLUTION: u32 = 1 << 20;
+
+/// Errors constructing a [`WeightedSparseBackend`].
+#[derive(Debug, Error, PartialEq)]
+pub enum WeightedBackendError {
+    #[error("Split budget {budget} is smaller than the number of terms {n_terms}.")]
+    BudgetTooSmall { budget: usize, n_terms: usize },
+    #[error("Coefficient resolution must be non-zero.")]
+    ZeroResolution,
+}
+
+/// Coefficient-aware TOPP-HATT backend (experimental).
+///
+/// Each term carries a signed integer value. A term contributes `|value|`
+/// (rather than `1`) to the weight of every qubit it acts on non-trivially, so
+/// TOPP-HATT minimises `Σ_j |c_j| · weight(P_j)` — the expected per-step cost of
+/// a qDRIFT circuit, where term `j` is sampled with probability `|c_j| / λ`.
+///
+/// When reduction makes two terms identical they are merged by **adding their
+/// signed values**, so contributions from different starting terms may cancel;
+/// a merged term reaching zero is dropped.
+///
+/// Values are built either by quantising coefficients
+/// ([`Self::from_coefficients`]) or by splitting terms into equal-coefficient
+/// pieces under a budget ([`Self::from_split_budget`]).
+pub struct WeightedSparseBackend {
+    /// Sorted Majorana indices of each term.
+    indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+    /// Signed integer weight of each term.
+    values: Vec<i64>,
+}
+
+impl WeightedSparseBackend {
+    /// Signed real value of a coefficient: its larger-magnitude component.
+    ///
+    /// Majorana terms of Hermitian Hamiltonians are purely real or purely
+    /// imaginary, so this is the coefficient up to a factor of `i`.
+    fn signed_real(c: num_complex::Complex64) -> f64 {
+        if c.re.abs() >= c.im.abs() {
+            c.re
+        } else {
+            c.im
+        }
+    }
+
+    /// Build from explicit terms and signed values.
+    ///
+    /// Each term is canonicalised (see [`canonicalise`], flipping the value's
+    /// sign for an odd reordering); identical terms are merged by summing
+    /// values and identity terms are dropped.
+    pub fn from_values(indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>, values: Vec<i64>) -> Self {
+        let pairs = zip(indices, values)
+            .map(|(t, v)| {
+                let (t, odd) = canonicalise(t);
+                (t, if odd { -v } else { v })
+            })
+            .filter(|(t, _)| !t.is_empty())
+            .collect();
+        let (indices, values) = Self::merge(pairs);
+        Self { indices, values }
+    }
+
+    /// Sort `(term, value)` pairs, sum the values of equal terms and drop
+    /// those that cancel to zero.
+    fn merge<V: Copy + PartialEq + Default + std::ops::AddAssign>(
+        mut pairs: Vec<(ArrayVec<[u16; MAX_MAJORANAS]>, V)>,
+    ) -> (Vec<ArrayVec<[u16; MAX_MAJORANAS]>>, Vec<V>) {
+        pairs.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        let mut indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> = Vec::with_capacity(pairs.len());
+        let mut values: Vec<V> = Vec::with_capacity(pairs.len());
+        for (term, value) in pairs {
+            match indices.last() {
+                Some(last) if *last == term => {
+                    *values.last_mut().expect("values track indices") += value;
+                }
+                _ => {
+                    indices.push(term);
+                    values.push(value);
+                }
+            }
+        }
+        let (indices, values) = indices
+            .into_iter()
+            .zip(values)
+            .filter(|&(_, v)| v != V::default())
+            .unzip();
+        (indices, values)
+    }
+
+    /// Canonicalised input terms with duplicates merged by summing signed real
+    /// coefficients (see [`Self::signed_real`]); identity and cancelled terms
+    /// are dropped.
+    fn merged_real_terms(
+        hamiltonian: &MajoranaSparse,
+    ) -> (Vec<ArrayVec<[u16; MAX_MAJORANAS]>>, Vec<f64>) {
+        let pairs = hamiltonian
+            .indices
+            .iter()
+            .zip(&hamiltonian.coefficients)
+            .map(|(&t, &c)| {
+                let (t, odd) = canonicalise(t);
+                let v = Self::signed_real(c);
+                (t, if odd { -v } else { v })
+            })
+            .filter(|(t, _)| !t.is_empty())
+            .collect();
+        Self::merge(pairs)
+    }
+
+    /// Approach 1: weight each term by its quantised signed coefficient.
+    ///
+    /// The term with the largest `|c|` gets weight `resolution`; others are
+    /// scaled proportionally and rounded (terms rounding to zero are dropped).
+    pub fn from_coefficients(
+        hamiltonian: &MajoranaSparse,
+        resolution: u32,
+    ) -> Result<Self, WeightedBackendError> {
+        if resolution == 0 {
+            return Err(WeightedBackendError::ZeroResolution);
+        }
+        let (indices, reals) = Self::merged_real_terms(hamiltonian);
+        let max_abs = reals.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        let scale = if max_abs > 0.0 {
+            resolution as f64 / max_abs
+        } else {
+            0.0
+        };
+        let values = reals.iter().map(|v| (v * scale).round() as i64).collect();
+        Ok(Self::from_values(indices, values))
+    }
+
+    /// Approach 2: split terms into equal-coefficient pieces.
+    ///
+    /// Duplicate input terms are merged first, so `budget` must be at least the
+    /// number of distinct terms. Every term starts as one piece; until `budget` pieces exist, the term
+    /// with the largest per-piece coefficient `|c|/k` is split once more.
+    /// Each term's value is `sign(c) · k`.
+    pub fn from_split_budget(
+        hamiltonian: &MajoranaSparse,
+        budget: usize,
+    ) -> Result<Self, WeightedBackendError> {
+        let (indices, reals) = Self::merged_real_terms(hamiltonian);
+        let pieces = split_pieces(&reals, budget)?;
+        let values = reals
+            .iter()
+            .zip(pieces)
+            .map(|(&c, k)| if c < 0.0 { -(k as i64) } else { k as i64 })
+            .collect();
+        Ok(Self::from_values(indices, values))
+    }
+
+    /// Terms currently held.
+    pub fn indices(&self) -> &[ArrayVec<[u16; MAX_MAJORANAS]>] {
+        &self.indices
+    }
+
+    /// Signed value of each term currently held.
+    pub fn values(&self) -> &[i64] {
+        &self.values
+    }
+}
+
+/// Canonicalise a Majorana product: sort it and cancel repeated pairs
+/// (`γ_a γ_a = I`).
+///
+/// Returns the reduced term and whether the sort was an odd permutation
+/// (i.e. the product picked up a factor of `-1`).
+pub fn canonicalise(
+    mut term: ArrayVec<[u16; MAX_MAJORANAS]>,
+) -> (ArrayVec<[u16; MAX_MAJORANAS]>, bool) {
+    // Insertion sort counting transpositions; terms hold at most
+    // `MAX_MAJORANAS` indices.
+    let mut odd = false;
+    for i in 1..term.len() {
+        let mut j = i;
+        while j > 0 && term[j - 1] > term[j] {
+            term.swap(j - 1, j);
+            odd = !odd;
+            j -= 1;
+        }
+    }
+    let mut out: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+    for x in term {
+        if out.last() == Some(&x) {
+            out.pop();
+        } else {
+            out.push(x);
+        }
+    }
+    (out, odd)
+}
+
+/// Number of equal-coefficient pieces per term for a split budget.
+///
+/// Greedy: repeatedly split the term with the largest `|c|/k`. Ties go to the
+/// lowest term index, so the result is deterministic.
+pub fn split_pieces(
+    coefficients: &[f64],
+    budget: usize,
+) -> Result<Vec<usize>, WeightedBackendError> {
+    let n_terms = coefficients.len();
+    if budget < n_terms {
+        return Err(WeightedBackendError::BudgetTooSmall { budget, n_terms });
+    }
+    let abs: Vec<f64> = coefficients.iter().map(|c| c.abs()).collect();
+    let mut pieces = vec![1usize; n_terms];
+
+    /// Heap entry ordered by per-piece magnitude, then lowest index.
+    #[derive(PartialEq)]
+    struct Entry(f64, usize);
+    impl Eq for Entry {}
+    impl PartialOrd for Entry {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    impl Ord for Entry {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            self.0
+                .total_cmp(&other.0)
+                .then_with(|| other.1.cmp(&self.1))
+        }
+    }
+
+    let mut heap: BinaryHeap<Entry> = abs.iter().enumerate().map(|(i, &a)| Entry(a, i)).collect();
+    for _ in n_terms..budget {
+        let Some(Entry(_, i)) = heap.pop() else {
+            break;
+        };
+        pieces[i] += 1;
+        heap.push(Entry(abs[i] / pieces[i] as f64, i));
+    }
+    Ok(pieces)
+}
+
+impl Sealed for WeightedSparseBackend {}
+
+impl Backend for WeightedSparseBackend {
+    fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize {
+        let mut sorted_comb: [u16; 3] = comb;
+        sorted_comb.sort_unstable();
+        let comb_min = sorted_comb[0];
+        let comb_max = sorted_comb[2];
+
+        let min_weight = bound.load(Ordering::Relaxed);
+
+        let mut weight = 0usize;
+        for (inds, &value) in zip(&self.indices, &self.values) {
+            // Terms are sorted and non-empty (see `from_values` / `reduce`).
+            let inds_min = inds[0];
+            let inds_max = inds[inds.len() - 1];
+            if comb_min > inds_max || comb_max < inds_min {
+                continue;
+            }
+            if qubit_term_weight(inds, &comb) == 1 {
+                weight += value.unsigned_abs() as usize;
+                if weight > min_weight {
+                    break;
+                }
+            }
+        }
+
+        bound.fetch_min(weight, Ordering::Relaxed);
+        weight
+    }
+
+    fn reduce(&mut self, min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
+        let parent = (min_parent + n_leaves) as u16;
+        let terms = std::mem::take(&mut self.indices);
+        let values = std::mem::take(&mut self.values);
+        // Substitute the parent token, then parity-reduce: a repeated token is
+        // the same Pauli string on every ancestor qubit, so the pair is the
+        // identity there. Terms reduced to the identity no longer contribute.
+        // The reordering sign is *not* applied here: the token stands in for a
+        // Pauli path whose phases are not tracked, so merged signs are heuristic.
+        let pairs = zip(terms, values)
+            .filter_map(|(mut t, v)| {
+                t.iter_mut()
+                    .filter(|x| selection.contains(x))
+                    .for_each(|x| *x = parent);
+                let (t, _) = canonicalise(t);
+                (!t.is_empty()).then_some((t, v))
+            })
+            .collect();
+        let (indices, values) = Self::merge(pairs);
+        self.indices = indices;
+        self.values = values;
         parent
     }
 }
@@ -1311,7 +1608,7 @@ mod tests {
     use num_complex::Complex64;
     use tinyvec::array_vec;
 
-    fn weight_via_store<S: Backend>(store: &S, comb: &[u16]) -> usize {
+    pub(super) fn weight_via_store<S: Backend>(store: &S, comb: &[u16]) -> usize {
         let bound = AtomicUsize::new(usize::MAX);
         let comb = normalise_comb(comb);
         if let Some(comb) = comb {
@@ -2156,6 +2453,164 @@ mod test_topphatt {
                     il.operators.z_block.to_bool_matrix(),
                     "sparse vs index_list z {name} seed {seed}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn weighted_unit_values_match_index_list() {
+        let terms = vec![
+            array_vec!([u16; 7] => 0u16, 1),
+            array_vec!([u16; 7] => 0u16, 1, 2),
+            array_vec!([u16; 7] => 0u16, 3, 4, 5),
+        ];
+        let av =
+            MajoranaSparse::new(terms.clone(), vec![Complex64::ONE; terms.len()], 0.0).unwrap();
+        let weighted = WeightedSparseBackend::from_split_budget(&av, terms.len()).unwrap();
+        assert_eq!(weighted.values(), &[1, 1, 1]);
+        for comb in [[0u16, 1, 2], [0, 1, 3], [2, 3, 4], [1, 4, 5]] {
+            assert_eq!(
+                super::tests::weight_via_store(&av, &comb),
+                super::tests::weight_via_store(&weighted, &comb),
+                "weighted backend differs for comb {comb:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn weighted_counts_coefficient_magnitude() {
+        let ham = MajoranaSparse::new(
+            vec![
+                array_vec!([u16; 7] => 0u16, 1),
+                array_vec!([u16; 7] => 0u16, 2),
+            ],
+            vec![Complex64::new(-4.0, 0.0), Complex64::new(0.0, 1.0)],
+            0.0,
+        )
+        .unwrap();
+        let w = WeightedSparseBackend::from_coefficients(&ham, 8).unwrap();
+        assert_eq!(w.values(), &[-8, 2]);
+        // comb [0, 3, 4]: both terms act on the qubit.
+        assert_eq!(super::tests::weight_via_store(&w, &[0, 3, 4]), 10);
+        // comb [1, 3, 4]: only the first term does.
+        assert_eq!(super::tests::weight_via_store(&w, &[1, 3, 4]), 8);
+    }
+
+    #[test]
+    fn split_pieces_follow_largest_coefficient() {
+        let coeffs = [3.0, -1.0, 0.5];
+        assert_eq!(
+            split_pieces(&coeffs, 2),
+            Err(WeightedBackendError::BudgetTooSmall {
+                budget: 2,
+                n_terms: 3
+            })
+        );
+        let pieces = split_pieces(&coeffs, 8).unwrap();
+        assert_eq!(pieces.iter().sum::<usize>(), 8);
+        // 3/5 = 0.6 > 1/2 = 0.5 = 0.5/1, so pieces are [5, 2, 1].
+        assert_eq!(pieces, vec![5, 2, 1]);
+        // Large budgets approach proportional splitting.
+        let pieces = split_pieces(&coeffs, 9000).unwrap();
+        assert_eq!(pieces, vec![6000, 2000, 1000]);
+    }
+
+    #[test]
+    fn canonicalise_sorts_with_sign_and_cancels_pairs() {
+        assert_eq!(
+            canonicalise(array_vec!([u16; 7] => 1u16, 0)),
+            (array_vec!([u16; 7] => 0u16, 1), true)
+        );
+        assert_eq!(
+            canonicalise(array_vec!([u16; 7] => 0u16, 0, 2, 3)),
+            (array_vec!([u16; 7] => 2u16, 3), false)
+        );
+        assert_eq!(
+            canonicalise(array_vec!([u16; 7] => 3u16, 0, 3, 0)),
+            (ArrayVec::new(), true)
+        );
+    }
+
+    #[test]
+    fn split_merges_duplicate_inputs_first() {
+        let ham = MajoranaSparse::new(
+            vec![
+                array_vec!([u16; 7] => 0u16, 1),
+                array_vec!([u16; 7] => 0u16, 1),
+                array_vec!([u16; 7] => 2u16, 3),
+            ],
+            vec![
+                Complex64::new(-1.0, 0.0),
+                Complex64::new(-2.0, 0.0),
+                Complex64::new(1.0, 0.0),
+            ],
+            0.0,
+        )
+        .unwrap();
+        // Two distinct terms, so a budget of 2 is enough.
+        let w = WeightedSparseBackend::from_split_budget(&ham, 4).unwrap();
+        assert_eq!(w.values(), &[-3, 1]);
+    }
+
+    #[test]
+    fn weighted_merge_sums_signed_values() {
+        // Duplicate input terms merge (γ1γ0 = -γ0γ1); opposite signs cancel.
+        let w = WeightedSparseBackend::from_values(
+            vec![
+                array_vec!([u16; 7] => 1u16, 0),
+                array_vec!([u16; 7] => 0u16, 1),
+                array_vec!([u16; 7] => 2u16, 3),
+                array_vec!([u16; 7] => 2u16, 3),
+            ],
+            vec![3, 2, 4, -4],
+        );
+        assert_eq!(w.indices(), &[array_vec!([u16; 7] => 0u16, 1)]);
+        assert_eq!(w.values(), &[-1]);
+
+        // Terms that become identical on reduction merge with signed sum.
+        let mut w = WeightedSparseBackend::from_values(
+            vec![
+                array_vec!([u16; 7] => 0u16, 4),
+                array_vec!([u16; 7] => 1u16, 4),
+                array_vec!([u16; 7] => 2u16, 4),
+            ],
+            vec![5, -2, 1],
+        );
+        let parent = w.reduce(0, [0, 1, 2], 9);
+        assert_eq!(parent, 9);
+        assert_eq!(w.indices(), &[array_vec!([u16; 7] => 4u16, 9)]);
+        assert_eq!(w.values(), &[4]);
+    }
+
+    #[test]
+    fn weighted_backends_give_valid_encodings() {
+        let n_modes = 6;
+        for seed in 0..5u64 {
+            let mut ham = random_majorana(n_modes, 6 * n_modes, seed);
+            // Spread coefficients over two orders of magnitude, mixed sign.
+            for (i, c) in ham.coefficients.iter_mut().enumerate() {
+                let sign = if i % 3 == 0 { -1.0 } else { 1.0 };
+                *c = Complex64::new(sign * 10f64.powf((i % 7) as f64 / 3.0), 0.0);
+            }
+            for name in ["jordan_wigner", "bravyi_kitaev", "jkmn"] {
+                let build = || match name {
+                    "jordan_wigner" => TernaryTree::naive_jordan_wigner(n_modes),
+                    "bravyi_kitaev" => TernaryTree::naive_bravyi_kitaev(n_modes),
+                    _ => TernaryTree::naive_jkmn(n_modes),
+                };
+                let n_terms = ham.indices.len();
+                let backends = [
+                    WeightedSparseBackend::from_coefficients(&ham, DEFAULT_COEFFICIENT_RESOLUTION)
+                        .unwrap(),
+                    WeightedSparseBackend::from_split_budget(&ham, 4 * n_terms).unwrap(),
+                ];
+                for backend in backends {
+                    let enc = topphatt(backend, build(), false, NodeOrderHeuristic::MinWeight)
+                        .unwrap()
+                        .build_encoding(n_modes)
+                        .unwrap();
+                    assert_eq!(enc.operators.ipowers.len(), 2 * n_modes, "{name} {seed}");
+                }
             }
         }
     }

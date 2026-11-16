@@ -10,6 +10,7 @@ use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{MajoranaSparse, SymplecticOperator};
 use ferrmion_core::optimise::{
     hatt, topphatt, DenseTransposeBackend, NodeOrderHeuristic, SparseTransposeBackend,
+    WeightedSparseBackend, DEFAULT_COEFFICIENT_RESOLUTION,
 };
 use ferrmion_core::utils;
 use log::debug;
@@ -247,6 +248,11 @@ pub(crate) fn hatt_py(
 /// (one sorted list of term indices per Majorana index). The transposed backends
 /// do no term deduplication, so they can produce a different (but valid) encoding
 /// — they are provided for performance comparison.
+///
+/// `"weighted"` and `"split"` are experimental coefficient-aware backends: terms
+/// count with their quantised coefficient magnitude, or with the number of
+/// equal-coefficient pieces they are split into under `split_budget`
+/// (default `4 * n_terms`).
 fn run_topphatt(
     hamiltonian: MajoranaSparse,
     flatpack: TTFlatpack,
@@ -254,6 +260,7 @@ fn run_topphatt(
     heuristic: &str,
     backend: &str,
     seed: Option<u64>,
+    split_budget: Option<usize>,
 ) -> Result<TernaryTree, CoreError> {
     let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
     let tree = TernaryTree::from_flatpack_naive(&flatpack)?;
@@ -268,9 +275,24 @@ fn run_topphatt(
             let store = SparseTransposeBackend::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
             Ok(topphatt(store, tree, parallelize, heuristic)?)
         }
+        "weighted" => {
+            let store = WeightedSparseBackend::from_coefficients(
+                &hamiltonian,
+                DEFAULT_COEFFICIENT_RESOLUTION,
+            )
+            .map_err(|e| CoreError::Value(e.to_string()))?;
+            Ok(topphatt(store, tree, parallelize, heuristic)?)
+        }
+        "split" => {
+            let budget = split_budget.unwrap_or(4 * hamiltonian.indices.len());
+            let store = WeightedSparseBackend::from_split_budget(&hamiltonian, budget)
+                .map_err(|e| CoreError::Value(e.to_string()))?;
+            Ok(topphatt(store, tree, parallelize, heuristic)?)
+        }
         other => Err(CoreError::Value(format!(
             "unknown topphatt backend: {other:?} \
-             (expected \"sparse\", \"dense_transpose\" or \"sparse_transpose\")"
+             (expected \"sparse\", \"dense_transpose\", \"sparse_transpose\", \
+             \"weighted\" or \"split\")"
         ))),
     }
 }
@@ -290,12 +312,15 @@ fn run_topphatt(
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
 ///     backend: Term-store backend, ``"sparse"`` (default) or
-///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
+///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking),
+///         or the experimental coefficient-aware ``"weighted"`` / ``"split"``.
+///     split_budget: Total number of term pieces for ``backend="split"``
+///         (default ``4 * n_terms``). Ignored otherwise.
 ///
 /// Returns:
 ///     `MajoranaEncoding`: The optimised encoding.
 #[pyfunction(name = "topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
+#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose", split_budget = None))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn topphatt_py(
     py: Python<'_>,
@@ -306,6 +331,7 @@ pub(crate) fn topphatt_py(
     heuristic: &str,
     seed: Option<u64>,
     backend: &str,
+    split_budget: Option<usize>,
 ) -> Result<PyMajoranaEncoding, CoreError> {
     debug!("Starting TOPPHATT");
     // let mut hamiltonian = hamiltonian.inner;
@@ -319,6 +345,7 @@ pub(crate) fn topphatt_py(
             heuristic,
             backend,
             seed,
+            split_budget,
         )?;
         Ok(tree.build_encoding(n_qubits)?)
     })?;
@@ -341,12 +368,15 @@ pub(crate) fn topphatt_py(
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
 ///     backend: Term-store backend, ``"sparse"`` (default) or
-///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
+///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking),
+///         or the experimental coefficient-aware ``"weighted"`` / ``"split"``.
+///     split_budget: Total number of term pieces for ``backend="split"``
+///         (default ``4 * n_terms``). Ignored otherwise.
 ///
 /// Returns:
 ///     Tuple of ``(QubitHamiltonian, MajoranaEncoding)``.
 #[pyfunction(name = "encode_topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, operator, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
+#[pyo3(signature = (flatpack, n_qubits, operator, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose", split_budget = None))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn encode_topphatt_py(
     py: Python<'_>,
@@ -357,6 +387,7 @@ pub(crate) fn encode_topphatt_py(
     heuristic: &str,
     seed: Option<u64>,
     backend: &str,
+    split_budget: Option<usize>,
 ) -> Result<(PyQubitHamiltonian, PyMajoranaEncoding), CoreError> {
     debug!("Starting TOPPHATT");
     // let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
@@ -373,6 +404,7 @@ pub(crate) fn encode_topphatt_py(
             heuristic,
             backend,
             seed,
+            split_budget,
         )?;
         let encoding = tree.build_encoding(n_qubits)?;
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);

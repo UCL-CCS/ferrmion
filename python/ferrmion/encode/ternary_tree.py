@@ -222,6 +222,7 @@ class TernaryTree:
         heuristic: str = "min_weight",
         seed: int | None = None,
         backend: str = "dense_transpose",
+        split_budget: int | None = None,
     ) -> MajoranaEncoding:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
@@ -244,6 +245,12 @@ class TernaryTree:
                 a sorted list of term indices per Majorana). The transposed
                 backends do no term deduplication and may produce a different but
                 valid encoding; they are provided for performance comparison.
+                The experimental ``"weighted"`` and ``"split"`` backends weight
+                each term by its coefficient magnitude (``"weighted"``) or by
+                the number of equal-coefficient pieces it is split into
+                (``"split"``), targeting the qDRIFT cost ``sum |c| * weight``.
+            split_budget: Total number of term pieces for ``backend="split"``;
+                defaults to four times the number of terms. Ignored otherwise.
 
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian.
@@ -261,6 +268,7 @@ class TernaryTree:
             heuristic=heuristic,
             seed=seed,
             backend=backend,
+            split_budget=split_budget,
         )
 
     def encode(
@@ -270,6 +278,7 @@ class TernaryTree:
         heuristic: str = "min_weight",
         seed: int | None = None,
         backend: str = "dense_transpose",
+        split_budget: int | None = None,
     ) -> QubitHamiltonian:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
@@ -292,6 +301,12 @@ class TernaryTree:
                 a sorted list of term indices per Majorana). The transposed
                 backends do no term deduplication and may produce a different but
                 valid encoding; they are provided for performance comparison.
+                The experimental ``"weighted"`` and ``"split"`` backends weight
+                each term by its coefficient magnitude (``"weighted"``) or by
+                the number of equal-coefficient pieces it is split into
+                (``"split"``), targeting the qDRIFT cost ``sum |c| * weight``.
+            split_budget: Total number of term pieces for ``backend="split"``;
+                defaults to four times the number of terms. Ignored otherwise.
 
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian.
@@ -304,6 +319,7 @@ class TernaryTree:
             heuristic=heuristic,
             seed=seed,
             backend=backend,
+            split_budget=split_budget,
         )
         self._encoding = enc
         return qham

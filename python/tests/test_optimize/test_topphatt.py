@@ -9,6 +9,8 @@ from ferrmion.optimize.hatt import hamiltonian_adaptive_ternary_tree
 from openfermion import QubitOperator, get_sparse_operator
 from scipy.sparse.linalg import eigsh
 
+from ..conftest import diagonalise_pauli_hamiltonian
+
 
 @pytest.mark.parametrize(
     "encoding",
@@ -249,3 +251,49 @@ def test_topphatt_heuristic_distribution_h2o_jkmn(water_data):
     # The best deterministic heuristic on this dataset should match or beat the
     # mean of uniformly-random node selection.
     assert deterministic_min <= random_weights.mean()
+
+
+@pytest.mark.parametrize("backend", ["weighted", "split"])
+@pytest.mark.parametrize("encoding", ["JW", "BK", "JKMN"])
+def test_topphatt_coefficient_backends_h2_eigvals(backend, encoding, h2_mol_data_sets):
+    """Coefficient-aware backends produce valid encodings (spectrum preserved)."""
+    fham = fr.molecular_hamiltonian(
+        h2_mol_data_sets["ones"],
+        h2_mol_data_sets["twos"],
+        h2_mol_data_sets["constant_energy"],
+    )
+    tree = {
+        "JW": TernaryTree.JordanWigner,
+        "BK": TernaryTree.BravyiKitaev,
+        "JKMN": TernaryTree.JKMN,
+    }[encoding](fham.n_modes)
+    qham = tree.encode(fham, backend=backend)
+    diag = diagonalise_pauli_hamiltonian(qham, 2 * fham.n_modes)
+    assert np.allclose(np.sort(diag), np.sort(h2_mol_data_sets["eigvals"]))
+
+
+@pytest.mark.parametrize("encoding", ["JW", "BK", "JKMN"])
+def test_topphatt_coefficient_backends_h2o_topology_and_cost(encoding, water_data):
+    """Coefficient-aware backends keep the tree and do not raise the qDRIFT cost much."""
+    fham = fr.molecular_hamiltonian(
+        water_data["ones"], water_data["twos"], water_data["constant_energy"]
+    )
+    make = {
+        "JW": TernaryTree.JordanWigner,
+        "BK": TernaryTree.BravyiKitaev,
+        "JKMN": TernaryTree.JKMN,
+    }[encoding]
+    naive = make(14).encode_naive(fham).coeff_pauli_weight()
+    for backend in ["weighted", "split"]:
+        tree = make(14)
+        qham = tree.encode(fham, backend=backend)
+        assert tree.root_node.child_strings == make(14).root_node.child_strings
+        assert qham.coeff_pauli_weight() <= naive
+
+
+def test_topphatt_split_budget_validation(water_data):
+    fham = fr.molecular_hamiltonian(
+        water_data["ones"], water_data["twos"], water_data["constant_energy"]
+    )
+    with pytest.raises(ValueError, match="budget"):
+        TernaryTree.JordanWigner(14).encode(fham, backend="split", split_budget=1)

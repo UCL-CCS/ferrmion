@@ -204,6 +204,7 @@ def topphatt(
     heuristic: str = "min_weight",
     seed: int | None = None,
     backend: str = "dense_transpose",
+    split_budget: int | None = None,
 ) -> MajoranaEncoding: ...
 def encode_topphatt(
     flatpack: TTFlatpack,
@@ -213,4 +214,5 @@ def encode_topphatt(
     heuristic: str = "min_weight",
     seed: int | None = None,
     backend: str = "dense_transpose",
+    split_budget: int | None = None,
 ) -> tuple[QubitHamiltonian, MajoranaEncoding]: ...

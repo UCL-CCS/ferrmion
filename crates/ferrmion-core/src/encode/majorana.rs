@@ -4,8 +4,9 @@
 //! for transforming fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    CoefficientPauliWeight, DenseBlock, FermionProduct, MajoranaProduct, MajoranaSparse,
-    PauliWeight, SymplecticMatrix, SymplecticOperator,
+    hermitian_phase_power, wrap_angle, CoefficientPauliWeight, DenseBlock, FermionProduct,
+    MajoranaCircuit, MajoranaProduct, MajoranaSparse, PauliCircuit, PauliWeight, SymplecticMatrix,
+    SymplecticOperator,
 };
 use crate::spaces::{Fermion, Qubit};
 use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
@@ -100,6 +101,10 @@ pub enum MajoranaEncodingError {
     NoVacuumStateError,
     #[error("Cannot encode Fock state {0:?} to a valid Z basis state.")]
     NullStateError(Array1<bool>),
+    #[error("Circuit acts on {circuit} modes but the encoding has {encoding}.")]
+    CircuitModeMismatch { circuit: usize, encoding: usize },
+    #[error("Gate {0} does not encode to a real Pauli rotation.")]
+    NonRealRotation(usize),
 }
 
 impl MajoranaEncoding {
@@ -533,6 +538,69 @@ impl Encode<&MajoranaSparse, QubitHamiltonian> for MajoranaEncoding {
                 .filter(|(_, v)| v.norm() > COEFFICIENT_TOLERANCE)
                 .collect(),
         )
+    }
+}
+
+/// Encode an ordered [`MajoranaCircuit`] gate by gate.
+///
+/// Gate `exp(-iθ Γ_S)` with `Γ_S = i^{m(k)} γ_S` encodes to `exp(-i sθ P)`,
+/// where `γ_S ↦ i^p P` under the encoding and `s = i^{m(k)+p} = ±1`. Order and
+/// multiplicity are preserved: unlike encoding a [`MajoranaSparse`], nothing
+/// passes through a [`QubitHamiltonian`] map, so repeated gates stay separate.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion_core::encode::majorana::TryEncode;
+/// use ferrmion_core::encode::ternarytree::TernaryTree;
+/// use ferrmion_core::operators::{MajoranaCircuit, PauliCircuit};
+/// use tinyvec::array_vec;
+///
+/// let encoding = TernaryTree::naive_jordan_wigner(2).build_encoding(2).unwrap();
+/// let circuit = MajoranaCircuit::new(
+///     vec![array_vec!([u16; 7] => 0, 1), array_vec!([u16; 7] => 0, 1)],
+///     vec![0.5, 0.5],
+///     2,
+/// )
+/// .unwrap();
+/// let pauli_circuit: PauliCircuit = encoding.try_encode(&circuit).unwrap();
+/// assert_eq!(pauli_circuit.len(), 2);
+/// assert_eq!(pauli_circuit.paulis[0], pauli_circuit.paulis[1]);
+/// ```
+impl TryEncode<&MajoranaCircuit, PauliCircuit> for MajoranaEncoding {
+    fn try_encode(&self, input: &MajoranaCircuit) -> Result<PauliCircuit, MajoranaEncodingError> {
+        if input.n_modes > self.n_modes {
+            return Err(MajoranaEncodingError::CircuitModeMismatch {
+                circuit: input.n_modes,
+                encoding: self.n_modes,
+            });
+        }
+        let gates: Vec<(String, f64)> = input
+            .terms
+            .par_iter()
+            .zip(&input.angles)
+            .enumerate()
+            .map(|(gate, (indices, &theta))| {
+                let mut operator = SymplecticOperator::identity(self.n_qubits);
+                for &ind in indices.iter() {
+                    operator.mul_assign_view(&self.operators.view_row(ind as usize));
+                }
+                let (pauli, ipower) = operator.to_pauli_string();
+                let phase = (hermitian_phase_power(indices.len()) + ipower) % 4;
+                let sign = match phase {
+                    0 => 1.0,
+                    2 => -1.0,
+                    _ => return Err(MajoranaEncodingError::NonRealRotation(gate)),
+                };
+                Ok((pauli, wrap_angle(sign * theta)))
+            })
+            .collect::<Result<_, _>>()?;
+        let (paulis, angles) = gates.into_iter().unzip();
+        Ok(PauliCircuit {
+            n_qubits: self.n_qubits,
+            paulis,
+            angles,
+        })
     }
 }
 

@@ -11,12 +11,14 @@
 //! with a small number of free functions for symplectic utilities and
 //! tree-construction algorithms.
 
+mod circuit;
 mod encoding;
 mod error;
 mod functions;
 mod hamiltonians;
 mod operators;
 
+pub use circuit::{PyMajoranaCircuit, PyPauliCircuit};
 pub use encoding::PyMajoranaEncoding;
 pub use hamiltonians::{PyFermionHamiltonian, PyQubitHamiltonian};
 pub use operators::PyMajoranaSparse;
@@ -35,6 +37,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<hamiltonians::PyFermionHamiltonian>()?;
     m.add_class::<encoding::PyMajoranaEncoding>()?;
     m.add_class::<operators::PyMajoranaSparse>()?;
+    m.add_class::<circuit::PyMajoranaCircuit>()?;
+    m.add_class::<circuit::PyPauliCircuit>()?;
 
     m.add_function(wrap_pyfunction!(functions::symplectic_product, m)?)?;
     m.add_function(wrap_pyfunction!(functions::symplectic_to_pauli, m)?)?;
@@ -43,5 +47,6 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(functions::hatt_py, m)?)?;
     m.add_function(wrap_pyfunction!(functions::topphatt_py, m)?)?;
     m.add_function(wrap_pyfunction!(functions::encode_topphatt_py, m)?)?;
+    m.add_function(wrap_pyfunction!(circuit::compile_circuit_py, m)?)?;
     Ok(())
 }

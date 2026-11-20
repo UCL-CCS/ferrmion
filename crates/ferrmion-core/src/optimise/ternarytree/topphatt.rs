@@ -13,7 +13,9 @@ use thiserror::Error;
 use tinyvec::ArrayVec;
 
 use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
-use crate::operators::{MajoranaDenseTranspose, MajoranaSparse, MajoranaSparseTranspose};
+use crate::operators::{
+    canonicalise_indices, MajoranaDenseTranspose, MajoranaSparse, MajoranaSparseTranspose,
+};
 
 use super::hatt::{qubit_term_weight, reduce_hamiltonian, MAX_MAJORANAS};
 
@@ -130,11 +132,29 @@ pub enum WeightedBackendError {
 /// Values are built either by quantising coefficients
 /// ([`Self::from_coefficients`]) or by splitting terms into equal-coefficient
 /// pieces under a budget ([`Self::from_split_budget`]).
+///
+/// For circuits, [`Self::from_multiplicities`] builds an
+/// [`ValueMerge::Additive`] backend instead: every value is a non-negative
+/// gate multiplicity, canonicalisation signs are ignored, and terms that
+/// become identical always *add* — two gates are never combined into one.
 pub struct WeightedSparseBackend {
     /// Sorted Majorana indices of each term.
     indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
     /// Signed integer weight of each term.
     values: Vec<i64>,
+    /// How values of terms that become identical are combined.
+    merge_rule: ValueMerge,
+}
+
+/// How a [`WeightedSparseBackend`] combines the values of identical terms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueMerge {
+    /// Sum signed values; opposite signs cancel. Appropriate for Hamiltonians,
+    /// where like terms are genuinely the same operator.
+    Signed,
+    /// Sum non-negative multiplicities; nothing cancels. Appropriate for
+    /// circuits, where each occurrence is a separate gate that must be paid for.
+    Additive,
 }
 
 impl WeightedSparseBackend {
@@ -164,7 +184,42 @@ impl WeightedSparseBackend {
             .filter(|(t, _)| !t.is_empty())
             .collect();
         let (indices, values) = Self::merge(pairs);
-        Self { indices, values }
+        Self {
+            indices,
+            values,
+            merge_rule: ValueMerge::Signed,
+        }
+    }
+
+    /// Build an [`ValueMerge::Additive`] backend from terms and gate
+    /// multiplicities (e.g. split piece counts for a circuit).
+    ///
+    /// Terms are canonicalised but the reordering sign is discarded: a
+    /// multiplicity counts gates, it has no sign. Identical terms are merged by
+    /// adding their counts, identity terms and zero counts are dropped.
+    pub fn from_multiplicities(
+        indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+        counts: Vec<u64>,
+    ) -> Self {
+        let pairs = zip(indices, counts)
+            .map(|(t, c)| {
+                let (t, _) = canonicalise(t);
+                let c = i64::try_from(c).expect("multiplicity should fit in i64");
+                (t, c)
+            })
+            .filter(|(t, c)| !t.is_empty() && *c > 0)
+            .collect();
+        let (indices, values) = Self::merge(pairs);
+        Self {
+            indices,
+            values,
+            merge_rule: ValueMerge::Additive,
+        }
+    }
+
+    /// The rule used to combine values of identical terms.
+    pub fn merge_rule(&self) -> ValueMerge {
+        self.merge_rule
     }
 
     /// Sort `(term, value)` pairs, sum the values of equal terms and drop
@@ -275,26 +330,9 @@ impl WeightedSparseBackend {
 pub fn canonicalise(
     mut term: ArrayVec<[u16; MAX_MAJORANAS]>,
 ) -> (ArrayVec<[u16; MAX_MAJORANAS]>, bool) {
-    // Insertion sort counting transpositions; terms hold at most
-    // `MAX_MAJORANAS` indices.
-    let mut odd = false;
-    for i in 1..term.len() {
-        let mut j = i;
-        while j > 0 && term[j - 1] > term[j] {
-            term.swap(j - 1, j);
-            odd = !odd;
-            j -= 1;
-        }
-    }
-    let mut out: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
-    for x in term {
-        if out.last() == Some(&x) {
-            out.pop();
-        } else {
-            out.push(x);
-        }
-    }
-    (out, odd)
+    let (kept, sign) = canonicalise_indices(term.as_mut_slice());
+    term.truncate(kept);
+    (term, sign < 0.0)
 }
 
 /// Number of equal-coefficient pieces per term for a split budget.
@@ -377,6 +415,8 @@ impl Backend for WeightedSparseBackend {
 
     fn reduce(&mut self, min_parent: usize, selection: [u16; 3], n_leaves: usize) -> u16 {
         let parent = (min_parent + n_leaves) as u16;
+        #[cfg(debug_assertions)]
+        let total_before: i64 = self.values.iter().sum();
         let terms = std::mem::take(&mut self.indices);
         let values = std::mem::take(&mut self.values);
         // Substitute the parent token, then parity-reduce: a repeated token is
@@ -394,6 +434,13 @@ impl Backend for WeightedSparseBackend {
             })
             .collect();
         let (indices, values) = Self::merge(pairs);
+        if self.merge_rule == ValueMerge::Additive {
+            // Multiplicities only ever add: no value goes negative, and the
+            // total can only fall when a term reduces to the identity.
+            debug_assert!(values.iter().all(|&v| v > 0));
+            #[cfg(debug_assertions)]
+            debug_assert!(values.iter().sum::<i64>() <= total_before);
+        }
         self.indices = indices;
         self.values = values;
         parent

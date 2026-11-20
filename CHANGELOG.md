@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Experimental coefficient-aware TOPP-HATT backends: `backend="weighted"` and `backend="split"` (with `split_budget`) on `TernaryTree.topphatt`/`encode`.
+- `MajoranaCircuit`: an ordered circuit of Majorana rotation gates `exp(-iθΓ_S)` that keeps gate order and repeats, with `from_hamiltonian`, `merge_adjacent` and `operator_weights`.
+- `PauliCircuit` and `MajoranaEncoding.encode_circuit`, which encode a `MajoranaCircuit` gate by gate into ordered Pauli rotations.
+- TOPP-HATT circuit compiler: `compile_circuit` and `TernaryTree.compile_circuit`. Each operator is weighted by its summed absolute angle, split qDRIFT-style up to `split_factor` pieces per distinct operator, and counted once per piece during optimisation (pieces are never combined).
 
 ### Fixed
 

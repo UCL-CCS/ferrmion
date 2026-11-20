@@ -161,7 +161,7 @@ impl Child {
 }
 
 /// Represents a ternary tree structure for fermion-to-qubit encodings.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TernaryTree {
     pub(crate) parent_of: Vec<Option<Parent>>,
     pub(crate) x_child_of: Vec<Option<Child>>,

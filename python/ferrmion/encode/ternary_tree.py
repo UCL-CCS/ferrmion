@@ -14,8 +14,10 @@ from numpy.typing import NDArray
 from ferrmion import core
 from ferrmion.core import (
     FermionHamiltonian,
+    MajoranaCircuit,
     MajoranaEncoding,
     MajoranaSparse,
+    PauliCircuit,
     QubitHamiltonian,
 )
 
@@ -323,6 +325,46 @@ class TernaryTree:
         )
         self._encoding = enc
         return qham
+
+    def compile_circuit(
+        self,
+        circuit: MajoranaCircuit,
+        split_factor: float = 4.0,
+        parallelize: bool = True,
+        heuristic: str = "min_weight",
+        seed: int | None = None,
+    ) -> PauliCircuit:
+        """Compile a Majorana circuit, using TOPP-HATT optimisation.
+
+        The absolute rotation applied with each distinct operator is summed,
+        and the heaviest operators are split until there are
+        ``ceil(split_factor * n_distinct)`` pieces. TOPP-HATT then optimises
+        this tree's leaf assignment with each operator counted once per piece,
+        and the circuit is encoded gate by gate, keeping order and repeats.
+
+        Args:
+            circuit: The ``MajoranaCircuit`` to compile.
+            split_factor: Ratio of split pieces to distinct operators (>= 1).
+                ``1`` weights every distinct operator equally.
+            parallelize: Whether to parallelize the optimisation.
+            heuristic: Node-selection strategy. One of ``"min_weight"``,
+                ``"x_first"``, ``"z_first"``, or ``"random"``.
+            seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
+
+        Returns:
+            PauliCircuit: The compiled circuit of Pauli rotations.
+        """
+        compiled, enc = core.compile_circuit(
+            flatpack=self.flatpack(),
+            n_qubits=self.n_qubits,
+            circuit=circuit,
+            split_factor=split_factor,
+            parallelize=parallelize,
+            heuristic=heuristic,
+            seed=seed,
+        )
+        self._encoding = enc
+        return compiled
 
     def decode(self, states: NDArray[np.bool]) -> NDArray[np.bool]:
         """Decode Z-basis states into fermionic occupation vectors.

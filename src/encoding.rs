@@ -1,5 +1,6 @@
 //! `pyclass` wrapper for the core [`MajoranaEncoding`] type.
 
+use crate::circuit::{PyMajoranaCircuit, PyPauliCircuit};
 use crate::error::CoreError;
 use crate::hamiltonians::{PyFermionHamiltonian, PyQubitHamiltonian};
 use crate::operators::PyMajoranaSparse;
@@ -614,6 +615,29 @@ impl PyMajoranaEncoding {
             coeff,
             with_conjugate,
         )?))
+    }
+
+    /// Encode an ordered Majorana circuit gate by gate.
+    ///
+    /// Gate ``exp(-iθ Γ_S)`` becomes ``exp(-iθ' P)``, where ``Γ_S`` encodes to
+    /// ``±P`` and ``θ' = ±θ``. Gate order and repeats are preserved.
+    ///
+    /// Args:
+    ///     circuit: The ``MajoranaCircuit`` to encode.
+    ///
+    /// Returns:
+    ///     PauliCircuit: The encoded circuit.
+    ///
+    /// Raises:
+    ///     ValueError: If the circuit has more modes than the encoding.
+    fn encode_circuit(
+        &self,
+        py: Python<'_>,
+        circuit: PyRef<'_, PyMajoranaCircuit>,
+    ) -> Result<PyPauliCircuit, CoreError> {
+        let circuit = circuit.0.clone();
+        let encoded = py.allow_threads(|| self.0.try_encode(&circuit))?;
+        Ok(PyPauliCircuit(encoded))
     }
 
     /// Encode a single product of Majorana operators.

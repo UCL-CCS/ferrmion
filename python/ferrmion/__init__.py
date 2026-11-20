@@ -6,7 +6,9 @@ rust functions before importing functions from the python module.
 
 from .core import (
     FermionHamiltonian,
+    MajoranaCircuit,
     MajoranaEncoding,
+    PauliCircuit,
     QubitHamiltonian,
     symplectic_product,
     pauli_to_symplectic,
@@ -32,6 +34,8 @@ from .utils import (
 
 __all__ = [
     "MajoranaEncoding",
+    "MajoranaCircuit",
+    "PauliCircuit",
     "TernaryTree",
     "TTNode",
     "node_sorter",

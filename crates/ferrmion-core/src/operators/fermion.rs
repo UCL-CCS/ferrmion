@@ -13,7 +13,7 @@ use std::result::Result;
 use tinyvec::ArrayVec;
 
 /// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
-const MAX_MAJORANAS: usize = 7;
+pub const MAX_MAJORANAS: usize = 7;
 
 /// Minimum number of independent terms in a [`FermionSparse`] before
 /// `append_fermion_sparse` expands them across rayon worker threads. Below this,
@@ -407,6 +407,46 @@ impl MajoranaProduct {
 /// Majorana operators obey the commutation relation $\{\gamma_i,\gamma_j\} =
 /// 2\delta_{i,j}$, so a product can be reordered into ascending index order by
 /// adjacent swaps, picking up a `-1` for each swap of unequal indices.
+/// Fully canonicalise a Majorana index product in place: sort into ascending
+/// order tracking the anticommutation sign, then cancel repeated indices
+/// pairwise.
+///
+/// Returns `(kept, sign)`, where the surviving indices are the first `kept`
+/// entries of `indices` and `sign` is `-1.0` when the sort took an odd number
+/// of adjacent swaps of unequal indices. `kept == 0` means the product reduced
+/// to the identity.
+///
+/// Reordering costs a `-1` per swap of unequal indices
+/// ($\{\gamma_i,\gamma_j\} = 2\delta_{i,j}$), but the cancellation costs
+/// nothing: $\gamma^2 = I$ exactly.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion_core::operators::canonicalise_indices;
+///
+/// // γ3γ0γ3γ1 = -γ0γ3γ3γ1 = -γ0γ1
+/// let mut term = [3u16, 0, 3, 1];
+/// let (kept, sign) = canonicalise_indices(&mut term);
+/// assert_eq!(&term[..kept], &[0, 1]);
+/// assert_eq!(sign, -1.0);
+/// ```
+pub fn canonicalise_indices<T: Ord + Default + Copy>(indices: &mut [T]) -> (usize, f64) {
+    let sign = cannonicalize(indices);
+    let mut kept = 0;
+    for position in 0..indices.len() {
+        let index = indices[position];
+        // Sorted equal indices are adjacent, so a single pass suffices.
+        if kept > 0 && indices[kept - 1] == index {
+            kept -= 1;
+        } else {
+            indices[kept] = index;
+            kept += 1;
+        }
+    }
+    (kept, sign)
+}
+
 fn cannonicalize<T: Ord + Default>(indices: &mut [T]) -> f64 {
     if indices.is_empty() {
         return 1.0;

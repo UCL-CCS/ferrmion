@@ -5,7 +5,7 @@ use crate::error::CoreError;
 use crate::operators::PyMajoranaSparse;
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::operators::{MajoranaCircuit, PauliCircuit};
-use ferrmion_core::optimise::{compile_circuit, NodeOrderHeuristic, DEFAULT_SPLIT_FACTOR};
+use ferrmion_core::optimise::{compile_circuit, NodeOrderHeuristic};
 use numpy::{IntoPyArray, PyArray1};
 use pyo3::prelude::*;
 
@@ -121,6 +121,55 @@ impl PyMajoranaCircuit {
         )
     }
 
+    /// Relabel the Majorana operators: every ``γ_a`` becomes ``γ_perm[a]``.
+    ///
+    /// Gate order and repeats are kept; a gate's angle is negated when its
+    /// relabelled indices sort with an odd permutation. With ``perm`` from
+    /// ``MajoranaEncoding.majorana_permutation_to``, this moves a circuit
+    /// between two encodings of the same tree.
+    ///
+    /// Args:
+    ///     perm: A permutation of ``range(2 * n_modes)``.
+    ///
+    /// Returns:
+    ///     MajoranaCircuit: The relabelled circuit.
+    ///
+    /// Raises:
+    ///     ValueError: If ``perm`` is not a permutation of the right size.
+    fn permuted(&self, perm: Vec<usize>) -> Result<Self, CoreError> {
+        Ok(Self(self.0.permuted(&perm)?))
+    }
+
+    /// Reorder the gates by where their Majoranas sit in an encoding's tree.
+    ///
+    /// Gates are stably sorted by their Majoranas' depth-first ranks
+    /// (``MajoranaEncoding.majorana_tree_order``), so rotations acting near
+    /// each other in the tree become neighbours and a transpiler can cancel
+    /// their shared CNOT ladders.
+    ///
+    /// This changes the circuit's unitary unless the gates commute. Use it
+    /// only where gate order is free, such as within one Trotter step.
+    ///
+    /// Args:
+    ///     encoding: The encoding whose tree defines the order.
+    ///
+    /// Returns:
+    ///     MajoranaCircuit: A new circuit with the same gates, reordered.
+    fn sorted_by_tree_order(
+        &self,
+        encoding: PyRef<'_, PyMajoranaEncoding>,
+    ) -> Result<Self, CoreError> {
+        if encoding.0.n_modes < self.0.n_modes {
+            return Err(CoreError::Value(format!(
+                "circuit acts on {} modes but the encoding has {}",
+                self.0.n_modes, encoding.0.n_modes
+            )));
+        }
+        Ok(Self(
+            self.0.sorted_by_rank(&encoding.0.majorana_tree_order()),
+        ))
+    }
+
     /// The gate generators ``θ · i^m · γ_S`` as a ``MajoranaSparse``, one
     /// term per gate, unmerged.
     fn to_majorana_sparse(&self) -> PyMajoranaSparse {
@@ -214,16 +263,13 @@ impl PyPauliCircuit {
 
 /// Compile a Majorana circuit with TOPP-HATT.
 ///
-/// Sums the absolute angle applied with each distinct operator, splits the
-/// heaviest operators until there are ``ceil(split_factor * n_distinct)``
-/// pieces, and runs TOPP-HATT with each operator counted once per piece
-/// (pieces are never combined). The circuit is then encoded gate by gate.
+/// Runs ``topphatt`` on the circuit, counting each distinct operator once per
+/// gate that applies it, then encodes the circuit gate by gate.
 ///
 /// Args:
 ///     flatpack: Initial ternary tree; its topology and qubit labels are kept.
 ///     `n_qubits`: Total number of qubits.
 ///     circuit: The ``MajoranaCircuit`` to compile.
-///     `split_factor`: Ratio of split pieces to distinct operators (>= 1).
 ///     parallelize: Use multi-threaded evaluation via Rayon.
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
@@ -232,14 +278,12 @@ impl PyPauliCircuit {
 /// Returns:
 ///     Tuple of ``(PauliCircuit, MajoranaEncoding)``.
 #[pyfunction(name = "compile_circuit")]
-#[pyo3(signature = (flatpack, n_qubits, circuit, split_factor = DEFAULT_SPLIT_FACTOR, parallelize = true, heuristic = "min_weight", seed = None))]
-#[allow(clippy::too_many_arguments)] // signature mirrors the Python API
+#[pyo3(signature = (flatpack, n_qubits, circuit, parallelize = true, heuristic = "min_weight", seed = None))]
 pub(crate) fn compile_circuit_py(
     py: Python<'_>,
     flatpack: TTFlatpack,
     n_qubits: usize,
     circuit: PyRef<'_, PyMajoranaCircuit>,
-    split_factor: f64,
     parallelize: bool,
     heuristic: &str,
     seed: Option<u64>,
@@ -252,7 +296,6 @@ pub(crate) fn compile_circuit_py(
             &circuit,
             tree,
             n_qubits,
-            split_factor,
             parallelize,
             heuristic,
         )?)

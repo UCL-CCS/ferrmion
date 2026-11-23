@@ -2,41 +2,28 @@
 //!
 //! A [`MajoranaCircuit`] is treated as a Hamiltonian in its own right, with
 //! three differences: its terms are ordered, repeated terms are allowed, and
-//! its coefficients are rotation angles modulo 2π. Compilation proceeds as:
+//! its coefficients are rotation angles modulo 2π. Every gate costs a CNOT
+//! ladder whatever its angle, so compilation weights each distinct operator by
+//! the number of gates that apply it:
 //!
-//! 1. Sum the absolute angle applied with each distinct operator, giving `V`
-//!    ([`MajoranaCircuit::operator_weights`]).
-//! 2. Split operators qDRIFT-style: starting from the heaviest, give an
-//!    operator one more piece while the total number of pieces is below
-//!    `split_factor · len(V)` ([`split_pieces`], greedy on the largest `V_j/k_j`).
-//! 3. Run TOPP-HATT with each operator counting `k_j` times. Splitting into
-//!    `k_j` uncombined copies is the same as giving one term the integer
-//!    weight `k_j`, so the copies are never materialised; the
-//!    [`ValueMerge::Additive`] backend makes sure terms that become identical
-//!    during reduction add their counts instead of collapsing.
-//! 4. Encode the circuit gate by gate into an ordered [`PauliCircuit`].
+//! 1. Run TOPP-HATT with each operator counting once per occurrence
+//!    ([`circuit_backend`]). The [`ValueMerge::Additive`] backend makes sure
+//!    terms that become identical during reduction add their counts instead
+//!    of collapsing, so every gate keeps contributing.
+//! 2. Encode the circuit gate by gate into an ordered [`PauliCircuit`].
+//!
+//! [`ValueMerge::Additive`]: super::ValueMerge::Additive
 
 use crate::encode::majorana::{MajoranaEncoding, MajoranaEncodingError, TryEncode};
 use crate::encode::ternarytree::{TernaryTree, TernaryTreeError};
-use crate::operators::{MajoranaCircuit, PauliCircuit, MAX_MAJORANAS};
+use crate::operators::{MajoranaCircuit, PauliCircuit};
 use thiserror::Error;
-use tinyvec::ArrayVec;
 
-use super::{
-    split_pieces, topphatt, NodeOrderHeuristic, ToppHattError, WeightedBackendError,
-    WeightedSparseBackend,
-};
-
-/// Default ratio of split pieces to distinct circuit operators.
-pub const DEFAULT_SPLIT_FACTOR: f64 = 4.0;
+use super::{topphatt, NodeOrderHeuristic, ToppHattError, WeightedSparseBackend};
 
 /// Errors produced while compiling a circuit.
 #[derive(Debug, Error)]
 pub enum CircuitCompileError {
-    #[error("split_factor must be finite and at least 1; got {0}.")]
-    InvalidSplitFactor(f64),
-    #[error(transparent)]
-    Weighted(#[from] WeightedBackendError),
     #[error(transparent)]
     ToppHatt(#[from] ToppHattError),
     #[error(transparent)]
@@ -45,36 +32,37 @@ pub enum CircuitCompileError {
     Encoding(#[from] MajoranaEncodingError),
 }
 
-/// Number of split pieces for each distinct operator of a circuit.
+/// Build the TOPP-HATT backend for a circuit: each distinct operator weighted
+/// by the number of gates that apply it.
 ///
-/// Returns the distinct operators (first-occurrence order) and their piece
-/// counts, which sum to `ceil(split_factor · n_distinct)`.
-pub fn circuit_split_pieces(
-    circuit: &MajoranaCircuit,
-    split_factor: f64,
-) -> Result<(Vec<ArrayVec<[u16; MAX_MAJORANAS]>>, Vec<u64>), CircuitCompileError> {
-    if !split_factor.is_finite() || split_factor < 1.0 {
-        return Err(CircuitCompileError::InvalidSplitFactor(split_factor));
-    }
-    let (terms, weights) = circuit.operator_weights();
-    let budget = (split_factor * terms.len() as f64).ceil() as usize;
-    let pieces = split_pieces(&weights, budget)?;
-    Ok((terms, pieces.into_iter().map(|k| k as u64).collect()))
-}
-
-/// Build the additive weighted TOPP-HATT backend for a circuit.
-pub fn circuit_backend(
-    circuit: &MajoranaCircuit,
-    split_factor: f64,
-) -> Result<WeightedSparseBackend, CircuitCompileError> {
-    let (terms, pieces) = circuit_split_pieces(circuit, split_factor)?;
-    Ok(WeightedSparseBackend::from_multiplicities(terms, pieces))
+/// # Examples
+///
+/// ```
+/// use ferrmion_core::operators::MajoranaCircuit;
+/// use ferrmion_core::optimise::circuit_backend;
+/// use tinyvec::array_vec;
+///
+/// let circuit = MajoranaCircuit::new(
+///     vec![
+///         array_vec!([u16; 7] => 0, 1),
+///         array_vec!([u16; 7] => 2, 3),
+///         array_vec!([u16; 7] => 1, 0),
+///     ],
+///     vec![0.1, 0.2, 0.3],
+///     2,
+/// )
+/// .unwrap();
+/// // γ1γ0 is the same operator as γ0γ1: two gates, whatever their angles.
+/// assert_eq!(circuit_backend(&circuit).values(), &[2, 1]);
+/// ```
+pub fn circuit_backend(circuit: &MajoranaCircuit) -> WeightedSparseBackend {
+    WeightedSparseBackend::from_multiplicities(circuit.terms.clone(), vec![1; circuit.n_terms()])
 }
 
 /// Compile a [`MajoranaCircuit`] with TOPP-HATT.
 ///
-/// Optimises the leaf assignment of `tree` (keeping its topology) for the
-/// split, angle-weighted circuit operators, then encodes the circuit in order.
+/// Optimises the leaf assignment of `tree` (keeping its topology) with each
+/// operator counted once per gate, then encodes the circuit in order.
 ///
 /// # Examples
 ///
@@ -94,7 +82,6 @@ pub fn circuit_backend(
 ///     &circuit,
 ///     TernaryTree::naive_jordan_wigner(3),
 ///     3,
-///     4.0,
 ///     false,
 ///     NodeOrderHeuristic::MinWeight,
 /// )
@@ -106,12 +93,10 @@ pub fn compile_circuit(
     circuit: &MajoranaCircuit,
     tree: TernaryTree,
     n_qubits: usize,
-    split_factor: f64,
     parallelize: bool,
     heuristic: NodeOrderHeuristic,
 ) -> Result<(MajoranaEncoding, PauliCircuit), CircuitCompileError> {
-    let backend = circuit_backend(circuit, split_factor)?;
-    let tree = topphatt(backend, tree, parallelize, heuristic)?;
+    let tree = topphatt(circuit_backend(circuit), tree, parallelize, heuristic)?;
     let encoding = tree.build_encoding(n_qubits)?;
     let compiled = encoding.try_encode(circuit)?;
     Ok((encoding, compiled))
@@ -130,6 +115,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::atomic::AtomicUsize;
     use tinyvec::array_vec;
+    use tinyvec::ArrayVec;
 
     type Term = ArrayVec<[u16; 7]>;
 
@@ -254,10 +240,10 @@ mod tests {
     }
 
     #[test]
-    fn split_factor_one_with_equal_angles_matches_unweighted() {
+    fn distinct_operators_count_like_the_unweighted_store() {
         let terms = vec![term(&[0, 1]), term(&[0, 1, 2]), term(&[0, 3, 4, 5])];
-        let circuit = MajoranaCircuit::new(terms.clone(), vec![0.3; 3], 3).unwrap();
-        let backend = circuit_backend(&circuit, 1.0).unwrap();
+        let circuit = MajoranaCircuit::new(terms.clone(), vec![0.3, 2.0, -0.01], 3).unwrap();
+        let backend = circuit_backend(&circuit);
         assert_eq!(backend.values(), &[1, 1, 1]);
         let plain = MajoranaSparse::new(terms, vec![Complex64::ONE; 3], 0.0).unwrap();
         for comb in [[0u16, 1, 2], [0, 1, 3], [2, 3, 4], [1, 4, 5]] {
@@ -266,21 +252,20 @@ mod tests {
     }
 
     #[test]
-    fn repeats_and_large_angles_get_more_pieces() {
+    fn operators_are_weighted_by_occurrences_not_angles() {
         let circuit = MajoranaCircuit::new(
-            vec![term(&[0, 1]), term(&[2, 3]), term(&[0, 1]), term(&[4, 5])],
-            vec![0.5, 0.1, 0.5, 2.0],
+            vec![term(&[0, 1]), term(&[2, 3]), term(&[1, 0]), term(&[4, 5])],
+            vec![0.5, 0.1, 0.5, 3.0],
             3,
         )
         .unwrap();
-        let (terms, pieces) = circuit_split_pieces(&circuit, 4.0).unwrap();
-        assert_eq!(terms, vec![term(&[0, 1]), term(&[2, 3]), term(&[4, 5])]);
-        assert_eq!(pieces.iter().sum::<u64>(), 12);
-        assert!(pieces[2] > pieces[0] && pieces[0] > pieces[1]);
-        assert!(matches!(
-            circuit_split_pieces(&circuit, 0.5),
-            Err(CircuitCompileError::InvalidSplitFactor(_))
-        ));
+        let backend = circuit_backend(&circuit);
+        assert_eq!(
+            backend.indices(),
+            &[term(&[0, 1]), term(&[2, 3]), term(&[4, 5])]
+        );
+        assert_eq!(backend.values(), &[2, 1, 1]);
+        assert_eq!(backend.merge_rule(), ValueMerge::Additive);
     }
 
     #[test]
@@ -335,29 +320,26 @@ mod tests {
         for seed in 0..4u64 {
             let circuit = random_circuit(n_modes, 30, seed);
             for tree in trees(n_modes) {
-                for split_factor in [1.0, 2.0, 4.0] {
-                    let (encoding, compiled) = compile_circuit(
-                        &circuit,
-                        tree.clone(),
-                        n_modes,
-                        split_factor,
-                        false,
-                        NodeOrderHeuristic::MinWeight,
-                    )
-                    .unwrap();
-                    assert_eq!(encoding.operators.ipowers.len(), 2 * n_modes);
-                    assert_eq!(compiled.len(), circuit.n_terms());
-                    // The compiled circuit is the same as encoding afresh.
-                    assert_eq!(compiled, encoding.try_encode(&circuit).unwrap());
-                }
+                let (encoding, compiled) = compile_circuit(
+                    &circuit,
+                    tree,
+                    n_modes,
+                    false,
+                    NodeOrderHeuristic::MinWeight,
+                )
+                .unwrap();
+                assert_eq!(encoding.operators.ipowers.len(), 2 * n_modes);
+                assert_eq!(compiled.len(), circuit.n_terms());
+                // The compiled circuit is the same as encoding afresh.
+                assert_eq!(compiled, encoding.try_encode(&circuit).unwrap());
             }
         }
     }
 
     #[test]
-    fn compile_circuit_weights_heavy_operators() {
-        // Two operators compete for the cheap qubit; the heavily rotated one
-        // should end up no heavier than when angles are ignored.
+    fn compile_circuit_weights_repeated_operators() {
+        // Two operators compete for the cheap qubit; the repeated one should
+        // leave the whole circuit no heavier than when repeats are ignored.
         let n_modes = 4;
         let circuit = MajoranaCircuit::new(
             vec![
@@ -368,7 +350,7 @@ mod tests {
                 term(&[3, 4]),
                 term(&[5, 6]),
             ],
-            vec![1.5, 1.5, 1.5, 0.01, 0.01, 0.01],
+            vec![0.01, 0.01, 0.01, 1.5, 1.5, 1.5],
             n_modes,
         )
         .unwrap();
@@ -384,21 +366,169 @@ mod tests {
         .unwrap()
         .try_encode(&circuit)
         .unwrap();
-        let (_, weighted) = compile_circuit(
+        let (_, counted) = compile_circuit(
             &circuit,
             tree,
             n_modes,
-            4.0,
             false,
             NodeOrderHeuristic::MinWeight,
         )
         .unwrap();
         assert!(
-            weighted.angle_weighted_pauli_weight() <= plain.angle_weighted_pauli_weight() + 1e-12,
-            "weighted {} > plain {}",
-            weighted.angle_weighted_pauli_weight(),
-            plain.angle_weighted_pauli_weight()
+            counted.pauli_weight() <= plain.pauli_weight(),
+            "counted {} > plain {}",
+            counted.pauli_weight(),
+            plain.pauli_weight()
         );
+    }
+
+    /// Majorana indices in a depth-first (X, Y, Z) walk of the tree itself.
+    fn dfs_majoranas(tree: &TernaryTree) -> Vec<usize> {
+        use crate::encode::ternarytree::Child;
+        fn walk(tree: &TernaryTree, node: usize, out: &mut Vec<usize>) {
+            for child_of in [&tree.x_child_of, &tree.y_child_of, &tree.z_child_of] {
+                match child_of[node] {
+                    Some(Child::Node(c)) => walk(tree, c as usize, out),
+                    Some(Child::XLeaf(m)) => out.push(2 * m as usize),
+                    Some(Child::YLeaf(m)) => out.push(2 * m as usize + 1),
+                    None => {}
+                }
+            }
+        }
+        let root = (0..tree.n_nodes)
+            .find(|&i| tree.parent_of[i].is_none())
+            .expect("a tree has a root");
+        let mut out = Vec::new();
+        walk(tree, root, &mut out);
+        out
+    }
+
+    #[test]
+    fn tree_order_matches_a_depth_first_walk() {
+        let n_modes = 6;
+        let circuit = random_circuit(n_modes, 40, 11);
+        for tree in trees(n_modes) {
+            // Before and after TOPP-HATT relabels the leaves.
+            let optimised = topphatt(
+                circuit_backend(&circuit),
+                tree.clone(),
+                false,
+                NodeOrderHeuristic::MinWeight,
+            )
+            .unwrap();
+            for t in [tree, optimised] {
+                let rank = t.build_encoding(n_modes).unwrap().majorana_tree_order();
+                let mut by_rank: Vec<usize> = (0..2 * n_modes).collect();
+                by_rank.sort_by_key(|&a| rank[a]);
+                assert_eq!(by_rank, dfs_majoranas(&t));
+            }
+        }
+        let jw = TernaryTree::naive_jordan_wigner(4)
+            .build_encoding(4)
+            .unwrap();
+        assert_eq!(jw.majorana_tree_order(), (0..8).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn sorting_a_compiled_trotter_step_keeps_every_gate() {
+        let n_modes = 4;
+        let circuit = random_circuit(n_modes, 25, 3);
+        let (encoding, _) = compile_circuit(
+            &circuit,
+            TernaryTree::naive_jkmn(n_modes),
+            n_modes,
+            false,
+            NodeOrderHeuristic::MinWeight,
+        )
+        .unwrap();
+        let sorted = circuit.sorted_by_rank(&encoding.majorana_tree_order());
+        assert_eq!(sorted.n_terms(), circuit.n_terms());
+        let mut before: Vec<(Term, u64)> = circuit
+            .terms
+            .iter()
+            .zip(&circuit.angles)
+            .map(|(t, a)| (*t, a.to_bits()))
+            .collect();
+        let mut after: Vec<(Term, u64)> = sorted
+            .terms
+            .iter()
+            .zip(&sorted.angles)
+            .map(|(t, a)| (*t, a.to_bits()))
+            .collect();
+        before.sort();
+        after.sort();
+        assert_eq!(before, after);
+        // Encoding the sorted step is valid too.
+        assert_eq!(
+            encoding.try_encode(&sorted).unwrap().len(),
+            circuit.n_terms()
+        );
+    }
+
+    #[test]
+    fn permuting_to_the_naive_encoding_reproduces_the_compiled_circuit() {
+        let n_modes = 5;
+        let circuit = random_circuit(n_modes, 40, 21);
+        for tree in trees(n_modes) {
+            let naive = tree.build_encoding(n_modes).unwrap();
+            let (optimised, compiled) = compile_circuit(
+                &circuit,
+                tree,
+                n_modes,
+                false,
+                NodeOrderHeuristic::MinWeight,
+            )
+            .unwrap();
+            let perm = optimised.majorana_permutation_to(&naive).unwrap();
+            let relabelled = circuit.permuted(&perm).unwrap();
+            assert_eq!(naive.try_encode(&relabelled).unwrap(), compiled);
+            // The relabelling also carries tree order across: sorting the
+            // relabelled circuit by the naive tree matches relabelling the
+            // circuit sorted by the optimised tree.
+            assert_eq!(
+                relabelled.sorted_by_rank(&naive.majorana_tree_order()),
+                circuit
+                    .sorted_by_rank(&optimised.majorana_tree_order())
+                    .permuted(&perm)
+                    .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn mode_enumeration_is_a_pairwise_relabelling() {
+        let n_modes = 4;
+        let map = vec![3, 0, 2, 1];
+        let circuit = random_circuit(n_modes, 20, 4);
+        for tree in trees(n_modes) {
+            let naive = tree.build_encoding(n_modes).unwrap();
+            let enumerated = naive.apply_mode_enumeration(map.clone());
+            let perm = enumerated.majorana_permutation_to(&naive).unwrap();
+            let expected: Vec<usize> = map.iter().flat_map(|&m| [2 * m, 2 * m + 1]).collect();
+            assert_eq!(perm, expected);
+            assert_eq!(
+                naive.try_encode(&circuit.permuted(&perm).unwrap()).unwrap(),
+                enumerated.try_encode(&circuit).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn different_trees_are_not_relabellings() {
+        let jw = TernaryTree::naive_jordan_wigner(3)
+            .build_encoding(3)
+            .unwrap();
+        let bk = TernaryTree::naive_bravyi_kitaev(3)
+            .build_encoding(3)
+            .unwrap();
+        assert!(matches!(
+            bk.majorana_permutation_to(&jw),
+            Err(MajoranaEncodingError::NotARelabelling(_))
+        ));
+        let jw4 = TernaryTree::naive_jordan_wigner(4)
+            .build_encoding(4)
+            .unwrap();
+        assert!(jw.majorana_permutation_to(&jw4).is_err());
     }
 
     #[test]

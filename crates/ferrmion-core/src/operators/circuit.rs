@@ -52,6 +52,8 @@ pub enum MajoranaCircuitError {
     NonFiniteAngle(usize),
     #[error("term {term} with coefficient {coefficient} is not Hermitian, so is not a rotation")]
     NonHermitianTerm { term: usize, coefficient: Complex64 },
+    #[error("expected a permutation of 0..{expected}")]
+    InvalidPermutation { expected: usize },
 }
 
 /// Power of `i` that makes a product of `k` distinct Majoranas Hermitian.
@@ -343,6 +345,96 @@ impl MajoranaCircuit {
         }
         (terms, weights)
     }
+
+    /// Relabel the Majorana operators: every `γ_a` becomes `γ_{perm[a]}`.
+    ///
+    /// Gate order and multiplicity are unchanged. Relabelled terms are
+    /// re-canonicalised, so a gate's angle is negated when its new indices
+    /// sort with an odd permutation.
+    ///
+    /// With `perm` from
+    /// [`crate::encode::majorana::MajoranaEncoding::majorana_permutation_to`],
+    /// encoding `self` under one encoding equals encoding the permuted circuit
+    /// under the other, which puts circuits optimised for different encodings
+    /// into a common labelling for comparison.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::operators::MajoranaCircuit;
+    /// use tinyvec::array_vec;
+    ///
+    /// let circuit =
+    ///     MajoranaCircuit::new(vec![array_vec!([u16; 7] => 0, 1)], vec![0.5], 2).unwrap();
+    /// // Swap γ0 and γ1: γ1γ0 = -γ0γ1.
+    /// let swapped = circuit.permuted(&[1, 0, 2, 3]).unwrap();
+    /// assert_eq!(swapped.angles, vec![-0.5]);
+    /// // Move the gate onto γ2γ3.
+    /// let moved = circuit.permuted(&[2, 3, 0, 1]).unwrap();
+    /// assert_eq!(moved.terms[0].as_slice(), &[2, 3]);
+    /// ```
+    pub fn permuted(&self, perm: &[usize]) -> Result<MajoranaCircuit, MajoranaCircuitError> {
+        let n_majoranas = 2 * self.n_modes;
+        let mut seen = vec![false; n_majoranas];
+        if perm.len() != n_majoranas {
+            return Err(MajoranaCircuitError::InvalidPermutation {
+                expected: n_majoranas,
+            });
+        }
+        for &b in perm {
+            if b >= n_majoranas || std::mem::replace(&mut seen[b], true) {
+                return Err(MajoranaCircuitError::InvalidPermutation {
+                    expected: n_majoranas,
+                });
+            }
+        }
+        let terms = self
+            .terms
+            .iter()
+            .map(|term| term.iter().map(|&a| perm[a as usize] as u16).collect())
+            .collect();
+        MajoranaCircuit::new(terms, self.angles.clone(), self.n_modes)
+    }
+
+    /// Reorder the gates by where their Majoranas sit in an encoding tree.
+    ///
+    /// `rank[a]` is the position of Majorana `a` in the tree, e.g. from
+    /// [`crate::encode::majorana::MajoranaEncoding::majorana_tree_order`]. Gates
+    /// are stably sorted by their Majoranas' ranks (each gate's ranks sorted,
+    /// then compared lexicographically), so gates acting near each other in
+    /// the tree become neighbours and their CNOT ladders can cancel.
+    ///
+    /// **This changes the circuit's unitary** unless the gates commute. It is
+    /// meant for circuits whose order is free, such as a single Trotter step,
+    /// where any order is an equally valid product formula.
+    ///
+    /// # Panics
+    ///
+    /// If `rank` has fewer than `2 * n_modes` entries.
+    pub fn sorted_by_rank(&self, rank: &[usize]) -> MajoranaCircuit {
+        assert!(
+            rank.len() >= 2 * self.n_modes,
+            "rank needs an entry for each of the {} Majoranas",
+            2 * self.n_modes
+        );
+        let keys: Vec<ArrayVec<[usize; MAX_MAJORANAS]>> = self
+            .terms
+            .iter()
+            .map(|term| {
+                let mut key: ArrayVec<[usize; MAX_MAJORANAS]> =
+                    term.iter().map(|&a| rank[a as usize]).collect();
+                key.sort_unstable();
+                key
+            })
+            .collect();
+        let mut order: Vec<usize> = (0..self.terms.len()).collect();
+        order.sort_by(|&i, &j| keys[i].cmp(&keys[j]));
+        MajoranaCircuit {
+            terms: order.iter().map(|&i| self.terms[i]).collect(),
+            angles: order.iter().map(|&i| self.angles[i]).collect(),
+            n_modes: self.n_modes,
+        }
+    }
 }
 
 /// An ordered circuit of Pauli rotation gates `exp(-iθ P)`.
@@ -560,6 +652,53 @@ mod tests {
             MajoranaCircuit::from_majorana_sparse(&bad, 1),
             Err(MajoranaCircuitError::NonHermitianTerm { term: 0, .. })
         ));
+    }
+
+    #[test]
+    fn sorted_by_rank_reorders_stably() {
+        let circuit = MajoranaCircuit::new(
+            vec![term(&[2, 3]), term(&[0, 3]), term(&[0, 1]), term(&[2, 3])],
+            vec![0.1, 0.2, 0.3, 0.4],
+            2,
+        )
+        .unwrap();
+        // Identity ranks: lexicographic order of the (sorted) index tuples.
+        let sorted = circuit.sorted_by_rank(&[0, 1, 2, 3]);
+        assert_eq!(
+            sorted.terms,
+            vec![term(&[0, 1]), term(&[0, 3]), term(&[2, 3]), term(&[2, 3])]
+        );
+        assert_eq!(sorted.angles, vec![0.3, 0.2, 0.1, 0.4]);
+        // Reversed ranks put Majoranas 2, 3 first.
+        let reversed = circuit.sorted_by_rank(&[3, 2, 1, 0]);
+        assert_eq!(reversed.terms[0], term(&[2, 3]));
+        assert_eq!(reversed.angles[..2], [0.1, 0.4]);
+        assert_eq!(reversed.terms[3], term(&[0, 1]));
+    }
+
+    #[test]
+    fn permuted_validates_and_inverts() {
+        let circuit = MajoranaCircuit::new(
+            vec![term(&[0, 3]), term(&[1, 2]), term(&[0, 1, 2, 3])],
+            vec![0.1, 0.2, 0.3],
+            2,
+        )
+        .unwrap();
+        for bad in [vec![0, 1, 2], vec![0, 1, 1, 3], vec![0, 1, 2, 4]] {
+            assert_eq!(
+                circuit.permuted(&bad),
+                Err(MajoranaCircuitError::InvalidPermutation { expected: 4 })
+            );
+        }
+        let perm = [2, 0, 3, 1];
+        let mut inverse = [0; 4];
+        for (a, &b) in perm.iter().enumerate() {
+            inverse[b] = a;
+        }
+        let there = circuit.permuted(&perm).unwrap();
+        assert_ne!(there, circuit);
+        assert_eq!(there.permuted(&inverse).unwrap(), circuit);
+        assert_eq!(circuit.permuted(&[0, 1, 2, 3]).unwrap(), circuit);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 //! Free functions exposed in the `ferrmion.core` module.
 
+use crate::circuit::PyMajoranaCircuit;
 use crate::encoding::{EncodeInput, PyMajoranaEncoding};
 use crate::error::CoreError;
 use crate::hamiltonians::PyQubitHamiltonian;
@@ -9,8 +10,8 @@ use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{MajoranaSparse, SymplecticOperator};
 use ferrmion_core::optimise::{
-    hatt, topphatt, DenseTransposeBackend, NodeOrderHeuristic, SparseTransposeBackend,
-    WeightedSparseBackend, DEFAULT_COEFFICIENT_RESOLUTION,
+    circuit_backend, hatt, topphatt, DenseTransposeBackend, NodeOrderHeuristic,
+    SparseTransposeBackend, WeightedSparseBackend, DEFAULT_COEFFICIENT_RESOLUTION,
 };
 use ferrmion_core::utils;
 use log::debug;
@@ -297,58 +298,96 @@ fn run_topphatt(
     }
 }
 
+/// What ``topphatt`` optimises for: a Hamiltonian or an ordered circuit.
+#[derive(FromPyObject)]
+pub(crate) enum ToppHattInput<'py> {
+    #[pyo3(annotation = "MajoranaSparse")]
+    Hamiltonian(PyRef<'py, PyMajoranaSparse>),
+    #[pyo3(annotation = "MajoranaCircuit")]
+    Circuit(PyRef<'py, PyMajoranaCircuit>),
+}
+
 /// Run the TOPPHATT algorithm to optimise a ternary-tree encoding structure.
 ///
 /// TOPPHATT (Tree-Optimised Pauli-weight for Hamiltonian-Adapted Ternary Trees)
 /// modifies the ternary tree topology to minimise the Pauli weight of the
 /// encoded Hamiltonian.
 ///
+/// Given a ``MajoranaCircuit``, each distinct operator counts once per gate
+/// that applies it, whatever the gate's angle, and operators that become
+/// identical during optimisation keep both counts. This minimises the summed
+/// Pauli weight of the circuit's gates.
+///
 /// Args:
 ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples — initial tree.
 ///     `n_qubits`: Total number of qubits in the system.
-///     hamiltonian: The Majorana sparse Hamiltonian driving the optimisation.
+///     hamiltonian: The ``MajoranaSparse`` Hamiltonian or ``MajoranaCircuit``
+///         driving the optimisation.
 ///     parallelize: If ``True``, use multi-threaded evaluation via Rayon.
 ///     heuristic: Node-selection strategy. One of ``"min_weight"``
 ///         (default), ``"x_first"``, ``"z_first"``, or ``"random"``.
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
-///     backend: Term-store backend, ``"sparse"`` (default) or
-///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking),
-///         or the experimental coefficient-aware ``"weighted"`` / ``"split"``.
+///     backend: Term-store backend for a Hamiltonian: ``"dense_transpose"``
+///         (default), ``"sparse"`` or ``"sparse_transpose"`` (for
+///         benchmarking), or the experimental coefficient-aware ``"weighted"``
+///         / ``"split"``. Not accepted for a circuit.
 ///     split_budget: Total number of term pieces for ``backend="split"``
 ///         (default ``4 * n_terms``). Ignored otherwise.
 ///
 /// Returns:
 ///     `MajoranaEncoding`: The optimised encoding.
+///
+/// Raises:
+///     ValueError: If ``backend`` or ``split_budget`` is given with a circuit.
 #[pyfunction(name = "topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose", split_budget = None))]
+#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = None, split_budget = None))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn topphatt_py(
     py: Python<'_>,
     flatpack: TTFlatpack,
     n_qubits: usize,
-    hamiltonian: PyMajoranaSparse,
+    hamiltonian: ToppHattInput<'_>,
     parallelize: bool,
     heuristic: &str,
     seed: Option<u64>,
-    backend: &str,
+    backend: Option<&str>,
     split_budget: Option<usize>,
 ) -> Result<PyMajoranaEncoding, CoreError> {
     debug!("Starting TOPPHATT");
-    // let mut hamiltonian = hamiltonian.inner;
-    // hamiltonian.constant = 0.0;
-
-    let encoding = py.allow_threads(|| -> Result<_, CoreError> {
-        let tree = run_topphatt(
-            hamiltonian.inner,
-            flatpack,
-            parallelize,
-            heuristic,
-            backend,
-            seed,
-            split_budget,
-        )?;
-        Ok(tree.build_encoding(n_qubits)?)
-    })?;
+    let encoding = match hamiltonian {
+        ToppHattInput::Hamiltonian(msparse) => {
+            let hamiltonian = msparse.inner.clone();
+            let backend = backend.unwrap_or("dense_transpose");
+            py.allow_threads(|| -> Result<_, CoreError> {
+                let tree = run_topphatt(
+                    hamiltonian,
+                    flatpack,
+                    parallelize,
+                    heuristic,
+                    backend,
+                    seed,
+                    split_budget,
+                )?;
+                Ok(tree.build_encoding(n_qubits)?)
+            })?
+        }
+        ToppHattInput::Circuit(circuit) => {
+            if backend.is_some() || split_budget.is_some() {
+                return Err(CoreError::Value(
+                    "backend and split_budget apply to Hamiltonians only; a circuit's \
+                     operators are weighted by how many gates apply them"
+                        .to_string(),
+                ));
+            }
+            let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
+            let store = circuit_backend(&circuit.0);
+            py.allow_threads(|| -> Result<_, CoreError> {
+                let tree = TernaryTree::from_flatpack_naive(&flatpack)?;
+                let tree = topphatt(store, tree, parallelize, heuristic)?;
+                Ok(tree.build_encoding(n_qubits)?)
+            })?
+        }
+    };
     Ok(PyMajoranaEncoding(encoding))
 }
 

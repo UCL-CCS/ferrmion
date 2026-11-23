@@ -179,6 +179,8 @@ class MajoranaEncoding:
     ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
     def apply_mode_enumeration(self, mode_op_map: list[int]) -> "MajoranaEncoding": ...
     def encode_circuit(self, circuit: "MajoranaCircuit") -> "PauliCircuit": ...
+    def majorana_tree_order(self) -> list[int]: ...
+    def majorana_permutation_to(self, other: "MajoranaEncoding") -> list[int]: ...
 
 class MajoranaCircuit:
     """An ordered circuit of Majorana rotation gates ``exp(-iθ Γ_S)``.
@@ -208,6 +210,8 @@ class MajoranaCircuit:
         self, normalise: bool = False
     ) -> tuple[list[list[int]], npt.NDArray[np.float64]]: ...
     def to_majorana_sparse(self) -> MajoranaSparse: ...
+    def sorted_by_tree_order(self, encoding: MajoranaEncoding) -> "MajoranaCircuit": ...
+    def permuted(self, perm: list[int]) -> "MajoranaCircuit": ...
 
 class PauliCircuit:
     """An ordered circuit of Pauli rotation gates ``exp(-iθ P)``.
@@ -246,11 +250,11 @@ def hatt(
 def topphatt(
     flatpack: TTFlatpack,
     n_qubits: int,
-    hamiltonian: MajoranaSparse,
+    hamiltonian: MajoranaSparse | MajoranaCircuit,
     parallelize: bool = True,
     heuristic: str = "min_weight",
     seed: int | None = None,
-    backend: str = "dense_transpose",
+    backend: str | None = None,
     split_budget: int | None = None,
 ) -> MajoranaEncoding: ...
 def encode_topphatt(
@@ -267,7 +271,6 @@ def compile_circuit(
     flatpack: TTFlatpack,
     n_qubits: int,
     circuit: MajoranaCircuit,
-    split_factor: float = 4.0,
     parallelize: bool = True,
     heuristic: str = "min_weight",
     seed: int | None = None,

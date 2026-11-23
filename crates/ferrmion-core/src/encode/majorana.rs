@@ -105,6 +105,8 @@ pub enum MajoranaEncodingError {
     CircuitModeMismatch { circuit: usize, encoding: usize },
     #[error("Gate {0} does not encode to a real Pauli rotation.")]
     NonRealRotation(usize),
+    #[error("Encodings do not place their Majoranas on the same leaves: {0}")]
+    NotARelabelling(String),
 }
 
 impl MajoranaEncoding {
@@ -538,6 +540,130 @@ impl Encode<&MajoranaSparse, QubitHamiltonian> for MajoranaEncoding {
                 .filter(|(_, v)| v.norm() > COEFFICIENT_TOLERANCE)
                 .collect(),
         )
+    }
+}
+
+impl MajoranaEncoding {
+    /// The relabelling that turns this encoding into `other`.
+    ///
+    /// Two encodings of the same tree differ only in which Majorana index sits
+    /// on each leaf (e.g. a naive tree and its TOPP-HATT optimisation, or an
+    /// encoding and a mode enumeration of it). A leaf is identified by the
+    /// Pauli operator it encodes, phase included, so `perm[a]` is the index
+    /// `b` with `other` encoding `γ_b` exactly as `self` encodes `γ_a`.
+    ///
+    /// Consequently `self` encoding a circuit `C` equals `other` encoding
+    /// `C.permuted(&perm)` (see
+    /// [`crate::operators::MajoranaCircuit::permuted`]).
+    ///
+    /// # Errors
+    ///
+    /// [`MajoranaEncodingError::NotARelabelling`] if the encodings differ in
+    /// size or some Majorana of `self` has no identical operator in `other`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
+    ///
+    /// let naive = TernaryTree::naive_jordan_wigner(3).build_encoding(3).unwrap();
+    /// let enumerated = naive.apply_mode_enumeration(vec![2, 0, 1]);
+    /// let perm = enumerated.majorana_permutation_to(&naive).unwrap();
+    /// assert_eq!(perm, vec![4, 5, 0, 1, 2, 3]);
+    /// ```
+    pub fn majorana_permutation_to(
+        &self,
+        other: &MajoranaEncoding,
+    ) -> Result<Vec<usize>, MajoranaEncodingError> {
+        if self.n_modes != other.n_modes || self.n_qubits != other.n_qubits {
+            return Err(MajoranaEncodingError::NotARelabelling(format!(
+                "sizes differ ({} modes on {} qubits vs {} on {})",
+                self.n_modes, self.n_qubits, other.n_modes, other.n_qubits
+            )));
+        }
+        let n_majoranas = 2 * self.n_modes;
+        let leaf = |encoding: &MajoranaEncoding, a: usize| {
+            encoding.operators.view_row(a).to_pauli_string()
+        };
+        let mut index_of: std::collections::HashMap<(String, u8), usize> =
+            std::collections::HashMap::with_capacity(n_majoranas);
+        for b in 0..n_majoranas {
+            index_of.insert(leaf(other, b), b);
+        }
+        (0..n_majoranas)
+            .map(|a| {
+                let operator = leaf(self, a);
+                index_of.get(&operator).copied().ok_or_else(|| {
+                    MajoranaEncodingError::NotARelabelling(format!(
+                        "Majorana {a} encodes to {}·i^{}, which the other encoding lacks",
+                        operator.0, operator.1
+                    ))
+                })
+            })
+            .collect()
+    }
+
+    /// Rank of each Majorana operator in a depth-first walk of the encoding's
+    /// ternary tree.
+    ///
+    /// In a ternary-tree encoding, Majorana `a`'s Pauli string carries, on each
+    /// node of its root-to-leaf path, the letter of the edge taken there. A
+    /// node's qubit is acted on by every Majorana below it, so this support
+    /// strictly decreases from root to leaf; sorting a string's non-identity
+    /// qubits by descending support therefore recovers the path. Leaves are
+    /// ranked by their paths compared lexicographically with `X < Y < Z`, which
+    /// is a depth-first (pre-order) walk visiting X, then Y, then Z children.
+    ///
+    /// Majoranas adjacent in this order share long path prefixes, so their
+    /// Pauli strings share long Z ladders; ordering commuting rotations by it
+    /// lets a transpiler cancel those ladders between neighbouring gates.
+    ///
+    /// For an encoding that is not a ternary tree the result is still a
+    /// permutation, but carries no structural meaning.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
+    ///
+    /// // Jordan-Wigner: Majorana 2i is Z…ZX on qubit i, 2i+1 is Z…ZY.
+    /// let encoding = TernaryTree::naive_jordan_wigner(3).build_encoding(3).unwrap();
+    /// assert_eq!(encoding.majorana_tree_order(), vec![0, 1, 2, 3, 4, 5]);
+    /// ```
+    pub fn majorana_tree_order(&self) -> Vec<usize> {
+        let n_majoranas = 2 * self.n_modes;
+        let strings: Vec<Vec<u8>> = (0..n_majoranas)
+            .map(|a| {
+                let (pauli, _) = self.operators.view_row(a).to_pauli_string();
+                pauli.into_bytes()
+            })
+            .collect();
+        let mut support = vec![0usize; self.n_qubits];
+        for string in &strings {
+            for (q, &c) in string.iter().enumerate() {
+                if c != b'I' {
+                    support[q] += 1;
+                }
+            }
+        }
+        let paths: Vec<Vec<u8>> = strings
+            .iter()
+            .map(|string| {
+                let mut qubits: Vec<usize> =
+                    (0..string.len()).filter(|&q| string[q] != b'I').collect();
+                // Root first; ties (only possible off-tree) break by qubit index.
+                qubits.sort_by_key(|&q| (std::cmp::Reverse(support[q]), q));
+                // 'X' < 'Y' < 'Z' as bytes.
+                qubits.into_iter().map(|q| string[q]).collect()
+            })
+            .collect();
+        let mut order: Vec<usize> = (0..n_majoranas).collect();
+        order.sort_by(|&a, &b| paths[a].cmp(&paths[b]).then(a.cmp(&b)));
+        let mut rank = vec![0usize; n_majoranas];
+        for (position, a) in order.into_iter().enumerate() {
+            rank[a] = position;
+        }
+        rank
     }
 }
 

@@ -219,20 +219,22 @@ class TernaryTree:
 
     def topphatt(
         self,
-        operator: FermionHamiltonian | MajoranaSparse,
+        operator: FermionHamiltonian | MajoranaSparse | MajoranaCircuit,
         parallelize: bool = True,
         heuristic: str = "min_weight",
         seed: int | None = None,
-        backend: str = "dense_transpose",
+        backend: str | None = None,
         split_budget: int | None = None,
     ) -> MajoranaEncoding:
-        """Encode a Hamiltonian, using TOPP-HATT optimisation.
+        """Optimise this tree's encoding for a Hamiltonian or a circuit, using TOPP-HATT.
 
         Args:
-            operator: The operator to encode, either a ``FermionHamiltonian`` or a
-                ``MajoranaSparse``. A ``FermionHamiltonian`` is converted to its
-                Majorana representation first; passing a ``MajoranaSparse``
-                directly skips that conversion.
+            operator: What to optimise for: a ``FermionHamiltonian``, a
+                ``MajoranaSparse`` or a ``MajoranaCircuit``. A
+                ``FermionHamiltonian`` is converted to its Majorana
+                representation first. For a ``MajoranaCircuit``, each distinct
+                operator counts once per gate that applies it, whatever its
+                angle, so the summed Pauli weight of the gates is minimised.
             parallelize: Whether to parallelize the encoding.
             heuristic: Node-selection strategy. One of ``"min_weight"``
                 (evaluate every active node and keep the lowest Pauli weight),
@@ -241,9 +243,9 @@ class TernaryTree:
                 (uniformly random active node using ``seed``).
             seed: RNG seed for ``heuristic="random"``. Ignored otherwise;
                 defaults to ``0`` when omitted.
-            backend: Term-store backend driving the optimisation,
-                ``"sparse"`` (default), ``"dense_transpose"`` (transposed
-                bit-vector layout) or ``"sparse_transpose"`` (sparse inverted index:
+            backend: Term-store backend for a Hamiltonian:
+                ``"dense_transpose"`` (default, transposed bit-vector layout),
+                ``"sparse"`` or ``"sparse_transpose"`` (sparse inverted index:
                 a sorted list of term indices per Majorana). The transposed
                 backends do no term deduplication and may produce a different but
                 valid encoding; they are provided for performance comparison.
@@ -251,21 +253,19 @@ class TernaryTree:
                 each term by its coefficient magnitude (``"weighted"``) or by
                 the number of equal-coefficient pieces it is split into
                 (``"split"``), targeting the qDRIFT cost ``sum |c| * weight``.
+                Not accepted for a circuit.
             split_budget: Total number of term pieces for ``backend="split"``;
                 defaults to four times the number of terms. Ignored otherwise.
 
         Returns:
-            QubitHamiltonian: The encoded qubit Hamiltonian.
+            MajoranaEncoding: The optimised encoding.
         """
-        hamiltonian = (
-            operator
-            if isinstance(operator, MajoranaSparse)
-            else operator.to_majorana_sparse()
-        )
+        if isinstance(operator, FermionHamiltonian):
+            operator = operator.to_majorana_sparse()
         return core.topphatt(
             flatpack=self.flatpack(),
             n_qubits=self.n_qubits,
-            hamiltonian=hamiltonian,
+            hamiltonian=operator,
             parallelize=parallelize,
             heuristic=heuristic,
             seed=seed,
@@ -329,23 +329,18 @@ class TernaryTree:
     def compile_circuit(
         self,
         circuit: MajoranaCircuit,
-        split_factor: float = 4.0,
         parallelize: bool = True,
         heuristic: str = "min_weight",
         seed: int | None = None,
     ) -> PauliCircuit:
         """Compile a Majorana circuit, using TOPP-HATT optimisation.
 
-        The absolute rotation applied with each distinct operator is summed,
-        and the heaviest operators are split until there are
-        ``ceil(split_factor * n_distinct)`` pieces. TOPP-HATT then optimises
-        this tree's leaf assignment with each operator counted once per piece,
-        and the circuit is encoded gate by gate, keeping order and repeats.
+        TOPP-HATT optimises this tree's leaf assignment with each distinct
+        operator counted once per gate that applies it (see ``topphatt``), and
+        the circuit is encoded gate by gate, keeping order and repeats.
 
         Args:
             circuit: The ``MajoranaCircuit`` to compile.
-            split_factor: Ratio of split pieces to distinct operators (>= 1).
-                ``1`` weights every distinct operator equally.
             parallelize: Whether to parallelize the optimisation.
             heuristic: Node-selection strategy. One of ``"min_weight"``,
                 ``"x_first"``, ``"z_first"``, or ``"random"``.
@@ -358,7 +353,6 @@ class TernaryTree:
             flatpack=self.flatpack(),
             n_qubits=self.n_qubits,
             circuit=circuit,
-            split_factor=split_factor,
             parallelize=parallelize,
             heuristic=heuristic,
             seed=seed,

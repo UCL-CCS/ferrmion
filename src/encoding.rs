@@ -617,6 +617,41 @@ impl PyMajoranaEncoding {
         )?))
     }
 
+    /// The relabelling of Majorana indices that turns this encoding into ``other``.
+    ///
+    /// For two encodings of the same tree (e.g. a naive tree and its TOPP-HATT
+    /// optimisation, or a mode enumeration), ``perm[a]`` is the index ``b``
+    /// that ``other`` places on the leaf where this encoding places ``a``.
+    /// Then ``self.encode_circuit(c) == other.encode_circuit(c.permuted(perm))``.
+    ///
+    /// Args:
+    ///     other: An encoding of the same tree.
+    ///
+    /// Returns:
+    ///     list[int]: The permutation.
+    ///
+    /// Raises:
+    ///     ValueError: If the encodings do not use the same leaves.
+    fn majorana_permutation_to(
+        &self,
+        other: PyRef<'_, PyMajoranaEncoding>,
+    ) -> Result<Vec<usize>, CoreError> {
+        Ok(self.0.majorana_permutation_to(&other.0)?)
+    }
+
+    /// Rank of each Majorana operator in a depth-first walk of the encoding tree.
+    ///
+    /// Leaves are visited X, then Y, then Z child first. For Jordan-Wigner this
+    /// is ``[0, 1, …, 2 n_modes - 1]``. Use with
+    /// ``MajoranaCircuit.sorted_by_tree_order`` to place gates acting near each
+    /// other in the tree next to each other.
+    ///
+    /// Returns:
+    ///     list[int]: ``rank[a]`` is the position of Majorana ``a``.
+    fn majorana_tree_order(&self) -> Vec<usize> {
+        self.0.majorana_tree_order()
+    }
+
     /// Encode an ordered Majorana circuit gate by gate.
     ///
     /// Gate ``exp(-iθ Γ_S)`` becomes ``exp(-iθ' P)``, where ``Γ_S`` encodes to

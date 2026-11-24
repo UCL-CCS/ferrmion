@@ -91,7 +91,8 @@ impl PyMajoranaCircuit {
     /// Merge consecutive gates on the same term by summing their angles.
     ///
     /// Non-adjacent repeats are not merged. Gates whose merged angle is ~0
-    /// are dropped.
+    /// are dropped, and the gates either side of them then become adjacent:
+    /// ``A, B(θ), B(-θ), A`` merges to a single ``A``.
     fn merge_adjacent(&self) -> Self {
         Self(self.0.merge_adjacent())
     }
@@ -264,7 +265,8 @@ impl PyPauliCircuit {
 /// Compile a Majorana circuit with TOPP-HATT.
 ///
 /// Runs ``topphatt`` on the circuit, counting each distinct operator once per
-/// gate that applies it, then encodes the circuit gate by gate.
+/// gate that applies it after merging adjacent gates on the same operator,
+/// then encodes every input gate in order.
 ///
 /// Args:
 ///     flatpack: Initial ternary tree; its topology and qubit labels are kept.

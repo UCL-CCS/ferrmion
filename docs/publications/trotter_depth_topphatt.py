@@ -22,7 +22,9 @@ CNOT ladder (``chain`` or ``fountain``) gives the lower depth.
 
 Two TOPP-HATT variants are shown: ``TOPP-HATT`` (default, optimised for the
 Hamiltonian) and ``circuit`` (``topphatt`` on the step itself, counting each
-operator once per gate; terms that merge during optimisation keep both counts).
+operator once per gate. Unlike Hamiltonian terms, gates combine only with adjacent
+gates on the same operator, so terms that coincide during optimisation keep both
+counts.)
 
 Run with ``uv run python docs/publications/trotter_depth_topphatt.py``.
 Pass molecule names to restrict the run and ``--json PATH`` to save results.

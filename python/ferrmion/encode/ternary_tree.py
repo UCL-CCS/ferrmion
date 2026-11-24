@@ -234,7 +234,8 @@ class TernaryTree:
                 ``FermionHamiltonian`` is converted to its Majorana
                 representation first. For a ``MajoranaCircuit``, each distinct
                 operator counts once per gate that applies it, whatever its
-                angle, so the summed Pauli weight of the gates is minimised.
+                angle, after merging adjacent gates on the same operator, so
+                the summed Pauli weight of the gates is minimised.
             parallelize: Whether to parallelize the encoding.
             heuristic: Node-selection strategy. One of ``"min_weight"``
                 (evaluate every active node and keep the lowest Pauli weight),
@@ -336,8 +337,9 @@ class TernaryTree:
         """Compile a Majorana circuit, using TOPP-HATT optimisation.
 
         TOPP-HATT optimises this tree's leaf assignment with each distinct
-        operator counted once per gate that applies it (see ``topphatt``), and
-        the circuit is encoded gate by gate, keeping order and repeats.
+        operator counted once per gate that applies it, after merging adjacent
+        gates on the same operator (see ``topphatt``). The circuit is then
+        encoded gate by gate, keeping every input gate in order.
 
         Args:
             circuit: The ``MajoranaCircuit`` to compile.

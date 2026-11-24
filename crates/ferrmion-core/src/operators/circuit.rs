@@ -289,7 +289,8 @@ impl MajoranaCircuit {
     ///
     /// Non-adjacent repeats are not merged (in general they do not commute
     /// with the gates in between). Gates whose merged angle wraps to ~0 are
-    /// dropped.
+    /// dropped, and the gates either side of them then become adjacent:
+    /// `A, B(θ), B(-θ), A` merges to a single `A`.
     pub fn merge_adjacent(&self) -> MajoranaCircuit {
         let mut terms: Vec<ArrayVec<[u16; MAX_MAJORANAS]>> = Vec::with_capacity(self.terms.len());
         let mut angles: Vec<f64> = Vec::with_capacity(self.angles.len());
@@ -297,16 +298,15 @@ impl MajoranaCircuit {
             if terms.last() == Some(term) {
                 let last = angles.last_mut().expect("terms and angles stay parallel");
                 *last = wrap_angle(*last + angle);
+                if last.abs() < COEFFICIENT_TOLERANCE {
+                    terms.pop();
+                    angles.pop();
+                }
             } else {
                 terms.push(*term);
                 angles.push(angle);
             }
         }
-        let (terms, angles) = terms
-            .into_iter()
-            .zip(angles)
-            .filter(|(_, angle)| angle.abs() >= COEFFICIENT_TOLERANCE)
-            .unzip();
         MajoranaCircuit {
             terms,
             angles,
@@ -600,6 +600,21 @@ mod tests {
         let merged = circuit.merge_adjacent();
         assert_eq!(merged.n_terms(), 1);
         assert_eq!(merged.terms[0].as_slice(), &[2, 3]);
+    }
+
+    #[test]
+    fn merge_adjacent_cascades_through_cancellations() {
+        // B(θ)B(-θ) = I, so the two A gates either side become adjacent.
+        let circuit = MajoranaCircuit::new(
+            vec![term(&[0, 1]), term(&[2, 3]), term(&[3, 2]), term(&[1, 0])],
+            vec![0.25, 0.5, 0.5, -0.5],
+            2,
+        )
+        .unwrap();
+        let merged = circuit.merge_adjacent();
+        assert_eq!(merged.n_terms(), 1);
+        assert_eq!(merged.terms[0].as_slice(), &[0, 1]);
+        assert!((merged.angles[0] - 0.75).abs() < 1e-12);
     }
 
     #[test]

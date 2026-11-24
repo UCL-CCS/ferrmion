@@ -314,9 +314,11 @@ pub(crate) enum ToppHattInput<'py> {
 /// encoded Hamiltonian.
 ///
 /// Given a ``MajoranaCircuit``, each distinct operator counts once per gate
-/// that applies it, whatever the gate's angle, and operators that become
-/// identical during optimisation keep both counts. This minimises the summed
-/// Pauli weight of the circuit's gates.
+/// that applies it, whatever the gate's angle. Unlike Hamiltonian terms,
+/// gates only combine with adjacent gates on the same operator: these are
+/// merged first (see ``MajoranaCircuit.merge_adjacent``), and operators that
+/// become identical during optimisation keep both counts. This minimises the
+/// summed Pauli weight of the circuit's gates.
 ///
 /// Args:
 ///     flatpack: List of ``(qubit_index, (left, mid, right))`` tuples — initial tree.

@@ -4,13 +4,20 @@
 //! three differences: its terms are ordered, repeated terms are allowed, and
 //! its coefficients are rotation angles modulo 2π. Every gate costs a CNOT
 //! ladder whatever its angle, so compilation weights each distinct operator by
-//! the number of gates that apply it:
+//! the number of gates that apply it.
 //!
-//! 1. Run TOPP-HATT with each operator counting once per occurrence
+//! In a Hamiltonian, terms that become identical during reduction combine. In
+//! a circuit, gates only combine with *adjacent* gates on the same operator
+//! (`exp(-iαΓ) exp(-iβΓ) = exp(-i(α+β)Γ)`); any others stay separate gates and
+//! each still costs. So compilation:
+//!
+//! 1. Merges adjacent gates on the same operator
+//!    ([`MajoranaCircuit::merge_adjacent`]).
+//! 2. Runs TOPP-HATT with each operator counting once per remaining gate
 //!    ([`circuit_backend`]). The [`ValueMerge::Additive`] backend makes sure
 //!    terms that become identical during reduction add their counts instead
-//!    of collapsing, so every gate keeps contributing.
-//! 2. Encode the circuit gate by gate into an ordered [`PauliCircuit`].
+//!    of collapsing.
+//! 3. Encodes the circuit gate by gate into an ordered [`PauliCircuit`].
 //!
 //! [`ValueMerge::Additive`]: super::ValueMerge::Additive
 
@@ -33,7 +40,8 @@ pub enum CircuitCompileError {
 }
 
 /// Build the TOPP-HATT backend for a circuit: each distinct operator weighted
-/// by the number of gates that apply it.
+/// by the number of gates that apply it, after merging adjacent gates on the
+/// same operator.
 ///
 /// # Examples
 ///
@@ -47,22 +55,28 @@ pub enum CircuitCompileError {
 ///         array_vec!([u16; 7] => 0, 1),
 ///         array_vec!([u16; 7] => 2, 3),
 ///         array_vec!([u16; 7] => 1, 0),
+///         array_vec!([u16; 7] => 0, 1),
 ///     ],
-///     vec![0.1, 0.2, 0.3],
+///     vec![0.1, 0.2, 0.3, 0.4],
 ///     2,
 /// )
 /// .unwrap();
-/// // γ1γ0 is the same operator as γ0γ1: two gates, whatever their angles.
+/// // γ1γ0 is the same operator as γ0γ1. The last two gates are adjacent and
+/// // merge, leaving two separate gates on it, whatever their angles.
 /// assert_eq!(circuit_backend(&circuit).values(), &[2, 1]);
 /// ```
 pub fn circuit_backend(circuit: &MajoranaCircuit) -> WeightedSparseBackend {
-    WeightedSparseBackend::from_multiplicities(circuit.terms.clone(), vec![1; circuit.n_terms()])
+    let merged = circuit.merge_adjacent();
+    let n_gates = merged.n_terms();
+    WeightedSparseBackend::from_multiplicities(merged.terms, vec![1; n_gates])
 }
 
 /// Compile a [`MajoranaCircuit`] with TOPP-HATT.
 ///
 /// Optimises the leaf assignment of `tree` (keeping its topology) with each
-/// operator counted once per gate, then encodes the circuit in order.
+/// operator counted once per gate after merging adjacent repeats (see
+/// [`circuit_backend`]), then encodes the circuit in order. The encoded
+/// circuit keeps every input gate; merging is left to the transpiler.
 ///
 /// # Examples
 ///
@@ -269,6 +283,27 @@ mod tests {
     }
 
     #[test]
+    fn adjacent_repeats_count_as_one_gate() {
+        let circuit = MajoranaCircuit::new(
+            vec![
+                term(&[0, 1]),
+                term(&[0, 1]),
+                term(&[2, 3]),
+                term(&[0, 1]),
+                term(&[4, 5]),
+                term(&[5, 4]),
+            ],
+            vec![0.5, 0.5, 0.1, 0.5, 0.3, 0.3],
+            3,
+        )
+        .unwrap();
+        // [0, 1] runs twice; [4, 5] then [5, 4] cancel (θ - θ) and vanish.
+        let backend = circuit_backend(&circuit);
+        assert_eq!(backend.indices(), &[term(&[0, 1]), term(&[2, 3])]);
+        assert_eq!(backend.values(), &[2, 1]);
+    }
+
+    #[test]
     fn jordan_wigner_encodes_known_rotations() {
         let encoding = TernaryTree::naive_jordan_wigner(2)
             .build_encoding(2)
@@ -342,15 +377,16 @@ mod tests {
         // leave the whole circuit no heavier than when repeats are ignored.
         let n_modes = 4;
         let circuit = MajoranaCircuit::new(
+            // Repeats are spread out: adjacent ones would merge into one gate.
             vec![
                 term(&[0, 7]),
-                term(&[0, 7]),
-                term(&[0, 7]),
                 term(&[1, 2]),
+                term(&[0, 7]),
                 term(&[3, 4]),
+                term(&[0, 7]),
                 term(&[5, 6]),
             ],
-            vec![0.01, 0.01, 0.01, 1.5, 1.5, 1.5],
+            vec![0.01, 1.5, 0.01, 1.5, 0.01, 1.5],
             n_modes,
         )
         .unwrap();

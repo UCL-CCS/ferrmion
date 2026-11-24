@@ -130,9 +130,10 @@ def test_compile_circuit_from_h2(encoding, h2_mol_data_sets):
 def test_compile_circuit_weights_repeated_operators():
     """Counting repeats should not cost more than counting each operator once."""
     n_modes = 4
+    # Repeats are spread out: adjacent ones would merge into one gate.
     circuit = MajoranaCircuit(
-        [[0, 7]] * 3 + [[1, 2], [3, 4], [5, 6]],
-        [0.01] * 3 + [1.5] * 3,
+        [[0, 7], [1, 2], [0, 7], [3, 4], [0, 7], [5, 6]],
+        [0.01, 1.5] * 3,
         n_modes,
     )
     tree = TernaryTree.JordanWigner(n_modes)
@@ -162,6 +163,29 @@ def test_topphatt_takes_a_circuit_directly(encoding):
     )
     again = topphatt(flatpack, 5, reangled, parallelize=False)
     assert again.majorana_permutation_to(direct) == list(range(10))
+
+
+def test_adjacent_repeats_merge_before_counting():
+    """Adjacent gates on one operator are one gate; others stay separate."""
+    circuit = random_circuit(5, 40, 8)
+    terms, angles = circuit.terms, circuit.angles.tolist()
+    doubled = MajoranaCircuit(
+        [t for t in terms for _ in range(2)],
+        [a / 2 for a in angles for _ in range(2)],
+        5,
+    )
+    flatpack = TernaryTree.JKMN(5).flatpack()
+    single = topphatt(flatpack, 5, circuit, parallelize=False)
+    assert topphatt(flatpack, 5, doubled, parallelize=False).majorana_permutation_to(
+        single
+    ) == list(range(10))
+    # A gate followed by its inverse cancels and costs nothing.
+    inverse_pair = MajoranaCircuit(
+        terms[:1] + [[0, 1], [0, 1]] + terms[1:], angles[:1] + [0.4, -0.4] + angles[1:], 5
+    )
+    assert topphatt(
+        flatpack, 5, inverse_pair, parallelize=False
+    ).majorana_permutation_to(single) == list(range(10))
 
 
 def test_topphatt_rejects_backend_for_a_circuit():

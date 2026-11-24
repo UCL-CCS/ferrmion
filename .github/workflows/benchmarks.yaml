@@ -20,7 +20,8 @@ permissions:
 jobs:
   codspeed:
     name: Run benchmarks
-    runs-on: ubuntu-latest
+    # Pinned: CodSpeed runner v4.19.1 rejects ubuntu-26.04 ("Unsupported system").
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,7 +38,7 @@ jobs:
           uv venv .venv/
           uv sync --all-extras --all-groups
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v4
+        uses: CodSpeedHQ/action@f22792bfac16f3e14eb9fbea76f4a48e9cc22b93 # v4
         with:
           mode: simulation
           run: uv run pytest python/tests/ -k "benchmark" --codspeed

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CI: the CodSpeed benchmarks job now runs on `ubuntu-24.04` instead of
+  `ubuntu-latest`, which moved to Ubuntu 26.04, a system the CodSpeed runner
+  does not support. The CodSpeed action is now pinned to a commit SHA.
 - `bonsai_algorithm` no longer hits a `RecursionError` on graphs with nodes of
   degree above 3, and now respects `max_nodes=1`.
 - `MajoranaSparse.to_dict()` no longer silently drops terms that fully

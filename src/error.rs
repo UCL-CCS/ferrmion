@@ -4,8 +4,10 @@ use ferrmion_core::encode::majorana::MajoranaEncodingError;
 use ferrmion_core::encode::maxnto::MaxNTOError;
 use ferrmion_core::encode::ternarytree::TernaryTreeError;
 use ferrmion_core::hamiltonians::FermionHamiltonianError;
-use ferrmion_core::operators::FermionProductError;
-use ferrmion_core::optimise::{CliffordHeuristicError, HattError, ToppHattError};
+use ferrmion_core::operators::{FermionProductError, MajoranaCircuitError};
+use ferrmion_core::optimise::{
+    CircuitCompileError, CliffordHeuristicError, HattError, ToppHattError,
+};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::PyErr;
 
@@ -85,5 +87,20 @@ impl From<MaxNTOError> for CoreError {
 impl From<CliffordHeuristicError> for CoreError {
     fn from(e: CliffordHeuristicError) -> Self {
         CoreError::Value(e.to_string())
+    }
+}
+
+impl From<MajoranaCircuitError> for CoreError {
+    fn from(e: MajoranaCircuitError) -> Self {
+        CoreError::Value(e.to_string())
+    }
+}
+
+impl From<CircuitCompileError> for CoreError {
+    fn from(e: CircuitCompileError) -> Self {
+        match e {
+            CircuitCompileError::ToppHatt(e) => e.into(),
+            other => CoreError::Value(other.to_string()),
+        }
     }
 }

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Experimental coefficient-aware TOPP-HATT backends: `backend="weighted"` and `backend="split"` (with `split_budget`) on `TernaryTree.topphatt`/`encode`.
+- `MajoranaCircuit`: an ordered circuit of Majorana rotation gates `exp(-iθΓ_S)` that keeps gate order and repeats, with `from_hamiltonian`, `merge_adjacent` (which cascades through gates that cancel) and `operator_weights`.
+- `PauliCircuit` and `MajoranaEncoding.encode_circuit`, which encode a `MajoranaCircuit` gate by gate into ordered Pauli rotations.
+- TOPP-HATT for circuits: `topphatt` and `TernaryTree.topphatt` accept a `MajoranaCircuit`, counting each distinct operator once per gate that applies it. Adjacent gates on the same operator are merged first; operators that become identical during optimisation keep both counts, since non-adjacent gates never combine. `compile_circuit` and `TernaryTree.compile_circuit` optimise and encode in one call.
+- `ferrmion.interop.circuits.pauli_circuit_to_qiskit`: converts a `PauliCircuit` to a Qiskit `QuantumCircuit` with a `"chain"` or `"fountain"` CNOT ladder per rotation.
+- `MajoranaEncoding.majorana_tree_order` and `MajoranaCircuit.sorted_by_tree_order`: order the gates of a Trotter step by where their Majoranas sit in the encoding tree, so neighbouring rotations share CNOT ladders.
+- `MajoranaCircuit.permuted` and `MajoranaEncoding.majorana_permutation_to`: relabel a circuit's Majorana indices, with the permutation found by matching leaves between two encodings of the same tree (e.g. naive and TOPP-HATT-optimised, or a mode enumeration).
+
 ### Fixed
 
 - CI: the CodSpeed benchmarks job now runs on `ubuntu-24.04` instead of

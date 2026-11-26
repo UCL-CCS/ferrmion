@@ -178,6 +178,57 @@ class MajoranaEncoding:
         permutations: npt.NDArray[np.uint],
     ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
     def apply_mode_enumeration(self, mode_op_map: list[int]) -> "MajoranaEncoding": ...
+    def encode_circuit(self, circuit: "MajoranaCircuit") -> "PauliCircuit": ...
+    def majorana_tree_order(self) -> list[int]: ...
+    def majorana_permutation_to(self, other: "MajoranaEncoding") -> list[int]: ...
+
+class MajoranaCircuit:
+    """An ordered circuit of Majorana rotation gates ``exp(-iθ Γ_S)``.
+
+    ``Γ_S = i^m γ_{s1}⋯γ_{sk}`` with ``m = k(k-1)/2 mod 2`` is Hermitian.
+    Gate order and multiplicity are preserved. Terms are canonicalised (sorted
+    with sign, ``γ² = I`` pairs cancelled), angles wrapped into ``(-π, π]``, and
+    identity or zero-angle gates dropped.
+    """
+
+    def __init__(
+        self, terms: list[list[int]], angles: list[float], n_modes: int
+    ) -> None: ...
+    @staticmethod
+    def from_hamiltonian(
+        operator: FermionHamiltonian | MajoranaSparse, n_modes: int | None = None
+    ) -> "MajoranaCircuit": ...
+    @property
+    def terms(self) -> list[list[int]]: ...
+    @property
+    def angles(self) -> npt.NDArray[np.float64]: ...
+    @property
+    def n_modes(self) -> int: ...
+    def __len__(self) -> int: ...
+    def merge_adjacent(self) -> "MajoranaCircuit": ...
+    def operator_weights(
+        self, normalise: bool = False
+    ) -> tuple[list[list[int]], npt.NDArray[np.float64]]: ...
+    def to_majorana_sparse(self) -> MajoranaSparse: ...
+    def sorted_by_tree_order(self, encoding: MajoranaEncoding) -> "MajoranaCircuit": ...
+    def permuted(self, perm: list[int]) -> "MajoranaCircuit": ...
+
+class PauliCircuit:
+    """An ordered circuit of Pauli rotation gates ``exp(-iθ P)``.
+
+    Pauli strings are qubit-0-first.
+    """
+
+    @property
+    def paulis(self) -> list[str]: ...
+    @property
+    def angles(self) -> npt.NDArray[np.float64]: ...
+    @property
+    def n_qubits(self) -> int: ...
+    def __len__(self) -> int: ...
+    def pauli_weight(self) -> int: ...
+    def angle_weighted_pauli_weight(self) -> float: ...
+    def to_list(self) -> list[tuple[str, float]]: ...
 
 def symplectic_product(
     left: npt.NDArray[np.bool], right: npt.NDArray[np.bool]
@@ -199,11 +250,12 @@ def hatt(
 def topphatt(
     flatpack: TTFlatpack,
     n_qubits: int,
-    hamiltonian: MajoranaSparse,
+    hamiltonian: MajoranaSparse | MajoranaCircuit,
     parallelize: bool = True,
     heuristic: str = "min_weight",
     seed: int | None = None,
-    backend: str = "dense_transpose",
+    backend: str | None = None,
+    split_budget: int | None = None,
 ) -> MajoranaEncoding: ...
 def encode_topphatt(
     flatpack: TTFlatpack,
@@ -213,4 +265,13 @@ def encode_topphatt(
     heuristic: str = "min_weight",
     seed: int | None = None,
     backend: str = "dense_transpose",
+    split_budget: int | None = None,
 ) -> tuple[QubitHamiltonian, MajoranaEncoding]: ...
+def compile_circuit(
+    flatpack: TTFlatpack,
+    n_qubits: int,
+    circuit: MajoranaCircuit,
+    parallelize: bool = True,
+    heuristic: str = "min_weight",
+    seed: int | None = None,
+) -> tuple[PauliCircuit, MajoranaEncoding]: ...

@@ -13,7 +13,7 @@ use std::result::Result;
 use tinyvec::ArrayVec;
 
 /// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
-const MAX_MAJORANAS: usize = 7;
+pub const MAX_MAJORANAS: usize = 7;
 
 /// Minimum number of independent terms in a [`FermionSparse`] before
 /// `append_fermion_sparse` expands them across rayon worker threads. Below this,
@@ -401,13 +401,28 @@ impl MajoranaProduct {
     }
 }
 
-/// Sorts a stack-allocated Majorana index key in place, returning the sign
-/// introduced by the swaps (`1.0` for an even number of swaps, `-1.0` for odd).
+/// Sorts a Majorana index product in place, returning the sign introduced by
+/// the swaps (`1.0` for an even number of swaps, `-1.0` for odd).
 ///
-/// Majorana operators obey the commutation relation $\{\gamma_i,\gamma_j\} =
+/// Majorana operators obey the anticommutation relation $\{\gamma_i,\gamma_j\} =
 /// 2\delta_{i,j}$, so a product can be reordered into ascending index order by
-/// adjacent swaps, picking up a `-1` for each swap of unequal indices.
-fn cannonicalize<T: Ord + Default>(indices: &mut [T]) -> f64 {
+/// adjacent swaps, picking up a `-1` for each swap of unequal indices. Repeated
+/// indices are kept (adjacent after sorting); apply [`cancel_pairs`] afterwards
+/// to reduce them with $\gamma^2 = I$.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion_core::operators::{cancel_pairs, cannonicalize};
+///
+/// // γ3γ0γ3γ1 = -γ0γ1γ3γ3 = -γ0γ1
+/// let mut term = [3u16, 0, 3, 1];
+/// assert_eq!(cannonicalize(&mut term), -1.0);
+/// assert_eq!(term, [0, 1, 3, 3]);
+/// let kept = cancel_pairs(&mut term);
+/// assert_eq!(&term[..kept], &[0, 1]);
+/// ```
+pub fn cannonicalize<T: Ord + Default>(indices: &mut [T]) -> f64 {
     if indices.is_empty() {
         return 1.0;
     }
@@ -429,6 +444,40 @@ fn cannonicalize<T: Ord + Default>(indices: &mut [T]) -> f64 {
     } else {
         1.0
     }
+}
+
+/// Cancel repeated indices of a sorted Majorana product pairwise, in place.
+///
+/// Apply after [`cannonicalize`]: sorting makes equal indices adjacent, and
+/// each pair reduces to the identity with no change of sign ($\gamma^2 = I$).
+/// Returns how many indices survive; they are the first `kept` entries of
+/// `indices`. `kept == 0` means the product reduced to the identity.
+///
+/// # Examples
+///
+/// ```
+/// use ferrmion_core::operators::cancel_pairs;
+///
+/// let mut term = [0u16, 1, 1, 1, 2, 2];
+/// let kept = cancel_pairs(&mut term);
+/// assert_eq!(&term[..kept], &[0, 1]);
+/// ```
+pub fn cancel_pairs<T: Ord + Copy>(indices: &mut [T]) -> usize {
+    debug_assert!(
+        indices.windows(2).all(|w| w[0] <= w[1]),
+        "cancel_pairs needs sorted indices; call cannonicalize first"
+    );
+    let mut kept = 0;
+    for position in 0..indices.len() {
+        let index = indices[position];
+        if kept > 0 && indices[kept - 1] == index {
+            kept -= 1;
+        } else {
+            indices[kept] = index;
+            kept += 1;
+        }
+    }
+    kept
 }
 
 /// Map from majorana indices to complex coefficients, used to accumulate and combine like terms.

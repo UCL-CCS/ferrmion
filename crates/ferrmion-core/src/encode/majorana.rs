@@ -4,8 +4,8 @@
 //! for transforming fermionic operators into qubit Hamiltonians via Majorana representations.
 use crate::hamiltonians::QubitHamiltonian;
 use crate::operators::{
-    CoefficientPauliWeight, DenseBlock, FermionProduct, MajoranaProduct, MajoranaSparse,
-    PauliWeight, SymplecticMatrix, SymplecticOperator,
+    DenseBlock, FermionProduct, MajoranaProduct, MajoranaSparse, PauliWeight, SymplecticMatrix,
+    SymplecticOperator, MAX_MAJORANAS,
 };
 use crate::spaces::{Fermion, Qubit};
 use crate::states::{FockState, ZBasisEnsemble, ZBasisState};
@@ -15,7 +15,9 @@ use log::{debug, error};
 use ndarray::{Array1, Array2, Axis};
 use num_complex::{c64, Complex64};
 use rayon::prelude::*;
+use std::collections::HashMap;
 use thiserror::Error;
+use tinyvec::ArrayVec;
 
 /// Trait for encoding fermionic operators into qubit Hamiltonians.
 ///
@@ -461,15 +463,182 @@ impl MajoranaEncoding {
         msparse: &MajoranaSparse,
         permutations: &[Vec<usize>],
     ) -> (Vec<f64>, Vec<f64>) {
+        let terms = self.pauli_weight_terms(msparse);
         permutations
             .par_iter()
-            .map(|perm| {
-                let enumerated_encoding = self.apply_mode_enumeration(perm.clone());
-                let qham: QubitHamiltonian = enumerated_encoding.encode(msparse);
-                (qham.pauli_weight() as f64, qham.coeff_pauli_weight())
-            })
+            .map(|perm| self.enumerated_pauli_weights(&terms, perm))
             .unzip()
     }
+
+    /// Reduce `msparse` to the terms its Pauli weights depend on.
+    ///
+    /// Encoding merges terms that map to the same Pauli string and drops
+    /// merged coefficients with norm at most [`COEFFICIENT_TOLERANCE`]. The
+    /// rows of a valid encoding are linearly independent and pairwise
+    /// anticommuting, so two terms map to the same Pauli string exactly when
+    /// their Majorana index sets agree up to repeated pairs, and their
+    /// relative phase follows from the Majorana algebra alone. Which terms
+    /// merge, and the norm of each merged coefficient, are therefore the same
+    /// under every mode enumeration and are computed here once.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
+    /// use ferrmion_core::operators::MajoranaSparse;
+    /// use num_complex::Complex64;
+    /// use tinyvec::array_vec;
+    ///
+    /// let encoding = TernaryTree::naive_jordan_wigner(2).build_encoding(2).unwrap();
+    /// let ms = MajoranaSparse::new(
+    ///     vec![array_vec!([u16; 7] => 0, 2), array_vec!([u16; 7] => 0, 2)],
+    ///     vec![Complex64::new(2.0, 0.), Complex64::new(1.0, 0.)],
+    ///     0.,
+    /// ).unwrap();
+    /// let terms = encoding.pauli_weight_terms(&ms);
+    /// assert_eq!(terms.norms, vec![3.0]);
+    /// ```
+    pub fn pauli_weight_terms(&self, msparse: &MajoranaSparse) -> PauliWeightTerms {
+        let operators: Vec<SymplecticOperator> = msparse
+            .indices
+            .par_iter()
+            .map(|indices| {
+                let mut operator = SymplecticOperator::identity(self.n_qubits);
+                for &ind in indices.iter() {
+                    operator.mul_assign_view(&self.operators.view_row(ind as usize));
+                }
+                operator
+            })
+            .collect();
+
+        // Accumulate in input order, as `Encode::encode` does, keeping the
+        // first term of each group as its representative.
+        let mut merged: HashMap<(DenseBlock, DenseBlock), (usize, Complex64), ahash::RandomState> =
+            HashMap::default();
+        for (term, (operator, &coefficient)) in
+            operators.into_iter().zip(&msparse.coefficients).enumerate()
+        {
+            if operator.pauli_weight() == 0 {
+                continue;
+            }
+            let sign = icount_to_sign(operator.pauli_ipower() as usize);
+            merged
+                .entry((operator.x, operator.z))
+                .or_insert((term, c64(0., 0.)))
+                .1 += coefficient * sign;
+        }
+        let mut kept: Vec<(usize, f64)> = merged
+            .into_values()
+            .map(|(term, coefficient)| (term, coefficient.norm()))
+            .filter(|&(_, norm)| norm > COEFFICIENT_TOLERANCE)
+            .collect();
+        kept.sort_unstable_by_key(|&(term, _)| term);
+
+        PauliWeightTerms {
+            indices: kept.iter().map(|&(t, _)| msparse.indices[t]).collect(),
+            norms: kept.iter().map(|&(_, norm)| norm).collect(),
+        }
+    }
+
+    /// Plain and coefficient-weighted Pauli weights of the Hamiltonian behind
+    /// `terms` encoded under the mode enumeration `mode_op_map`.
+    ///
+    /// Equal to encoding with [`Self::apply_mode_enumeration`] and taking
+    /// [`PauliWeight::pauli_weight`] and
+    /// [`CoefficientPauliWeight::coeff_pauli_weight`](crate::operators::CoefficientPauliWeight::coeff_pauli_weight)
+    /// of the result, up to floating-point summation order in the latter. Only
+    /// the Pauli weight of each term is computed, from the permuted rows in
+    /// place: no reordered encoding, phases or Pauli strings are built.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mode_op_map` does not have length `n_modes`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrmion_core::encode::ternarytree::TernaryTree;
+    /// use ferrmion_core::operators::MajoranaSparse;
+    /// use num_complex::Complex64;
+    /// use tinyvec::array_vec;
+    ///
+    /// let encoding = TernaryTree::naive_jordan_wigner(2).build_encoding(2).unwrap();
+    /// let ms = MajoranaSparse::new(
+    ///     vec![array_vec!([u16; 7] => 0, 2)],
+    ///     vec![Complex64::new(2.0, 0.)],
+    ///     0.,
+    /// ).unwrap();
+    /// let terms = encoding.pauli_weight_terms(&ms);
+    /// // γ0 γ2 under JW is Y⊗X up to phase: weight 2, coefficient norm 2.
+    /// assert_eq!(encoding.enumerated_pauli_weights(&terms, &[0, 1]), (2.0, 4.0));
+    /// // Swapping the modes multiplies the same two rows in the other order.
+    /// assert_eq!(encoding.enumerated_pauli_weights(&terms, &[1, 0]), (2.0, 4.0));
+    /// ```
+    pub fn enumerated_pauli_weights(
+        &self,
+        terms: &PauliWeightTerms,
+        mode_op_map: &[usize],
+    ) -> (f64, f64) {
+        assert_eq!(
+            2 * mode_op_map.len(),
+            self.operators.n_rows,
+            "Mode op map not same length as n_modes"
+        );
+        let x_rows = self.operators.x_block.to_u64_words();
+        let z_rows = self.operators.z_block.to_u64_words();
+        let words = self.operators.x_block.term_width();
+        let term_weight = |indices: &ArrayVec<[u16; MAX_MAJORANAS]>| -> usize {
+            (0..words)
+                .map(|word| {
+                    let (mut x, mut z) = (0u64, 0u64);
+                    for &ind in indices.iter() {
+                        let ind = ind as usize;
+                        let row = 2 * mode_op_map[ind / 2] + ind % 2;
+                        x ^= x_rows[row * words + word];
+                        z ^= z_rows[row * words + word];
+                    }
+                    (x | z).count_ones() as usize
+                })
+                .sum()
+        };
+
+        // Fixed-size chunks summed in order keep the result deterministic.
+        let partials: Vec<(f64, f64)> = terms
+            .indices
+            .par_chunks(PAULI_WEIGHT_CHUNK)
+            .zip(terms.norms.par_chunks(PAULI_WEIGHT_CHUNK))
+            .map(|(indices, norms)| {
+                indices
+                    .iter()
+                    .zip(norms)
+                    .fold((0., 0.), |(plain, weighted), (indices, norm)| {
+                        let weight = term_weight(indices) as f64;
+                        (plain + weight, weighted + weight * norm)
+                    })
+            })
+            .collect();
+        partials
+            .into_iter()
+            .fold((0., 0.), |(plain, weighted), (p, w)| {
+                (plain + p, weighted + w)
+            })
+    }
+}
+
+/// Terms per parallel chunk in [`MajoranaEncoding::enumerated_pauli_weights`].
+const PAULI_WEIGHT_CHUNK: usize = 2048;
+
+/// A Hamiltonian reduced to what its Pauli weight depends on under any mode
+/// enumeration, built by [`MajoranaEncoding::pauli_weight_terms`].
+///
+/// Holds one representative term per distinct, non-identity Pauli string
+/// that survives merging, in input order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PauliWeightTerms {
+    /// Majorana indices of each representative term.
+    pub indices: Vec<ArrayVec<[u16; MAX_MAJORANAS]>>,
+    /// Norm of each merged coefficient.
+    pub norms: Vec<f64>,
 }
 
 impl Encode<MajoranaProduct, QubitHamiltonian> for MajoranaEncoding {
@@ -1257,7 +1426,7 @@ mod batch_tests {
     use crate::operators::{CoefficientPauliWeight, PauliWeight};
     use num_complex::Complex64;
     use proptest::prelude::*;
-    use tinyvec::array_vec;
+    use tinyvec::{array_vec, ArrayVec};
 
     /// Generates a permutation of `0..n` by sorting indices by random keys.
     ///
@@ -1341,20 +1510,130 @@ mod batch_tests {
             let encoding = tree.build_encoding(n_modes).unwrap();
 
             let (plain, weighted) = encoding.batch_pauli_weights(&ms, &perms);
+            prop_assert_batch_matches_individual(&encoding, &ms, &perms, &plain, &weighted)?;
+        }
 
-            prop_assert_eq!(plain.len(), perms.len());
-            prop_assert_eq!(weighted.len(), perms.len());
-            for (perm, (&plain_weight, &coeff_weight)) in
-                perms.iter().zip(plain.iter().zip(weighted.iter()))
-            {
-                let enumerated = encoding.apply_mode_enumeration(perm.clone());
-                let qham = enumerated.encode(&ms);
-                prop_assert_eq!(qham.pauli_weight() as f64, plain_weight);
-                prop_assert!(
-                    (qham.coeff_pauli_weight() - coeff_weight).abs() < crate::utils::WEIGHT_TOLERANCE,
-                    "expected coeff weight {}, got {}", qham.coeff_pauli_weight(), coeff_weight
-                );
-            }
+        /// The batch path matches individual encoding for every standard encoding
+        /// with up-to-four-index terms, including qubit counts spanning two words.
+        #[test]
+        fn test_batch_matches_individual_all_encodings(
+            (n_modes, perms, ms) in prop_oneof![2usize..=6, 63usize..=66].prop_flat_map(|n| {
+                (
+                    Just(n),
+                    proptest::collection::vec(arb_perm(n), 1..=3usize),
+                    arb_majorana_sparse_quartic(n),
+                )
+            }),
+            builder in 0usize..4,
+        ) {
+            let tree = match builder {
+                0 => TernaryTree::naive_jordan_wigner(n_modes),
+                1 => TernaryTree::naive_parity(n_modes),
+                2 => TernaryTree::naive_bravyi_kitaev(n_modes),
+                _ => TernaryTree::naive_jkmn(n_modes),
+            };
+            let encoding = tree.build_encoding(n_modes).unwrap();
+
+            let (plain, weighted) = encoding.batch_pauli_weights(&ms, &perms);
+            prop_assert_batch_matches_individual(&encoding, &ms, &perms, &plain, &weighted)?;
+        }
+    }
+
+    /// Generates a [`MajoranaSparse`] with 1–20 terms of two or four distinct,
+    /// sorted Majorana indices, with possibly repeated terms so merging is exercised.
+    fn arb_majorana_sparse_quartic(n_modes: usize) -> impl Strategy<Value = MajoranaSparse> {
+        let n_ops = (2 * n_modes) as u16;
+        proptest::collection::vec(
+            (
+                proptest::sample::subsequence((0..n_ops).collect::<Vec<u16>>(), 4),
+                any::<bool>(),
+                -5i32..=5i32,
+            )
+                .prop_filter("non-zero coefficient", |(_, _, c)| *c != 0)
+                .prop_map(|(inds, quartic, coeff)| {
+                    let inds: ArrayVec<[u16; 7]> = if quartic {
+                        inds.into_iter().collect()
+                    } else {
+                        inds.into_iter().take(2).collect()
+                    };
+                    (inds, Complex64::new(coeff as f64, 0.))
+                }),
+            1..=20usize,
+        )
+        .prop_map(|terms| {
+            let (indices, coeffs): (Vec<_>, Vec<_>) = terms.into_iter().unzip();
+            MajoranaSparse::new(indices, coeffs, 1.5).unwrap()
+        })
+    }
+
+    fn prop_assert_batch_matches_individual(
+        encoding: &MajoranaEncoding,
+        ms: &MajoranaSparse,
+        perms: &[Vec<usize>],
+        plain: &[f64],
+        weighted: &[f64],
+    ) -> Result<(), TestCaseError> {
+        prop_assert_eq!(plain.len(), perms.len());
+        prop_assert_eq!(weighted.len(), perms.len());
+        for (perm, (&plain_weight, &coeff_weight)) in
+            perms.iter().zip(plain.iter().zip(weighted.iter()))
+        {
+            let enumerated = encoding.apply_mode_enumeration(perm.clone());
+            let qham = enumerated.encode(ms);
+            prop_assert_eq!(qham.pauli_weight() as f64, plain_weight);
+            prop_assert!(
+                (qham.coeff_pauli_weight() - coeff_weight).abs() < crate::utils::WEIGHT_TOLERANCE,
+                "expected coeff weight {}, got {}",
+                qham.coeff_pauli_weight(),
+                coeff_weight
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_enumerated_weights_drop_cancelled_terms() {
+        let encoding = TernaryTree::naive_bravyi_kitaev(3)
+            .build_encoding(3)
+            .unwrap();
+        // The first two terms cancel; the third and fourth are the same Pauli
+        // string reached through a different index order and a repeated pair,
+        // and the fifth is the identity.
+        let ms = MajoranaSparse::new(
+            vec![
+                array_vec!([u16; 7] => 0, 3),
+                array_vec!([u16; 7] => 0, 3),
+                array_vec!([u16; 7] => 1, 4),
+                array_vec!([u16; 7] => 4, 2, 2, 1),
+                array_vec!([u16; 7] => 5, 5),
+            ],
+            vec![
+                c64(2., 0.),
+                c64(-2., 0.),
+                c64(0., 3.),
+                c64(1., -1.),
+                c64(4., 0.),
+            ],
+            0.5,
+        )
+        .unwrap();
+        let terms = encoding.pauli_weight_terms(&ms);
+        assert_eq!(terms.indices.len(), 1);
+        for perm in [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ] {
+            let qham = encoding.apply_mode_enumeration(perm.to_vec()).encode(&ms);
+            let (plain, weighted) = encoding.enumerated_pauli_weights(&terms, &perm);
+            assert_eq!(plain, qham.pauli_weight() as f64, "perm {perm:?}");
+            assert!(
+                (weighted - qham.coeff_pauli_weight()).abs() < crate::utils::WEIGHT_TOLERANCE,
+                "perm {perm:?}"
+            );
         }
     }
 }

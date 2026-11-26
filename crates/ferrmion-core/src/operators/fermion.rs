@@ -12,8 +12,8 @@ use rayon::prelude::*;
 use std::result::Result;
 use tinyvec::ArrayVec;
 
-/// Maximum length of majorana indices which are allowed in stack-allocated ArrayVecs.
-const MAX_MAJORANAS: usize = 7;
+/// Maximum number of Majorana indices in one [`MajoranaSparse`] term.
+pub const MAX_MAJORANAS: usize = 7;
 
 /// Minimum number of independent terms in a [`FermionSparse`] before
 /// `append_fermion_sparse` expands them across rayon worker threads. Below this,

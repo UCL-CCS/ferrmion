@@ -174,6 +174,13 @@ impl<S: AsRef<[DenseIndex]>> DenseBlock<S> {
         DenseIndex::words_for(self.n_indices())
     }
 
+    /// Copy the packed words out as `u64`s, e.g. for transfer to a device buffer.
+    ///
+    /// Terms stay row-major with [`Self::term_width`] words each.
+    pub fn to_u64_words(&self) -> Vec<u64> {
+        self.terms.as_ref().iter().map(|w| w.0 as u64).collect()
+    }
+
     /// Whether the block has zero qubits.
     #[inline]
     pub fn is_empty(&self) -> bool {

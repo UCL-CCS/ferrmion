@@ -245,6 +245,11 @@ impl SymplecticOperator {
         self.z.as_ref()
     }
 
+    /// The `i`-power that [`Self::to_pauli_string`] returns, without building the string.
+    pub fn pauli_ipower(&self) -> u8 {
+        ((self.ipower as usize + 3 * self.x.and_count_ones(&self.z)) % 4) as u8
+    }
+
     /// Convert to a Pauli string representation and its associated `i`-power.
     ///
     /// # Examples

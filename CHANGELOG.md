@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `MajoranaEncoding.batch_pauli_weights` and enumeration annealing are 25–30x faster.
+
 ### Fixed
 
 - CI: the CodSpeed benchmarks job now runs on `ubuntu-24.04` instead of

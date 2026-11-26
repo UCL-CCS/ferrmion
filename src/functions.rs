@@ -8,8 +8,13 @@ use ferrmion_core::encode::majorana::Encode;
 use ferrmion_core::encode::ternarytree::{TTFlatpack, TernaryTree};
 use ferrmion_core::hamiltonians::QubitHamiltonian;
 use ferrmion_core::operators::{MajoranaSparse, SymplecticOperator};
+use ferrmion_core::optimise::geometry::{
+    exhaustive, parity_canonical_terms, topdown, topdown_expected, tree_pauli_weight,
+    HammingColumns, SlotModel,
+};
 use ferrmion_core::optimise::{
-    hatt, topphatt, DenseTransposeBackend, NodeOrderHeuristic, SparseTransposeBackend,
+    hatt, topphatt_with_options, DenseTransposeBackend, NodeOrderHeuristic, SparseTransposeBackend,
+    ToppHattOptions,
 };
 use ferrmion_core::utils;
 use log::debug;
@@ -247,30 +252,139 @@ pub(crate) fn hatt_py(
 /// (one sorted list of term indices per Majorana index). The transposed backends
 /// do no term deduplication, so they can produce a different (but valid) encoding
 /// — they are provided for performance comparison.
+/// Options shared by the TOPP-HATT entry points.
+pub(crate) struct ToppHattArgs<'a> {
+    pub parallelize: bool,
+    pub heuristic: &'a str,
+    pub backend: &'a str,
+    pub seed: Option<u64>,
+    pub strategy: &'a str,
+    pub options: ToppHattOptions,
+}
+
+fn run_bottom_up(
+    hamiltonian: &MajoranaSparse,
+    tree: TernaryTree,
+    args: &ToppHattArgs<'_>,
+) -> Result<TernaryTree, CoreError> {
+    let heuristic =
+        NodeOrderHeuristic::parse(args.heuristic, args.seed).map_err(CoreError::Value)?;
+    let options = args.options;
+    // With deduplication off, canonicalise to parity sets once: the exact term set.
+    let terms = if options.dedup {
+        hamiltonian.indices.clone()
+    } else {
+        parity_canonical_terms(hamiltonian)
+    };
+    let n = tree.n_nodes;
+    let p = args.parallelize;
+    let result = match args.backend {
+        "sparse" => {
+            if !options.dedup {
+                return Err(CoreError::Value(
+                    "dedup=False requires a transposed backend (\"dense_transpose\" or \"sparse_transpose\")".to_string(),
+                ));
+            }
+            topphatt_with_options(hamiltonian.clone(), tree, p, heuristic, options)?
+        }
+        "dense_transpose" => {
+            let store = DenseTransposeBackend::with_dedup(&terms, n, options.dedup);
+            topphatt_with_options(store, tree, p, heuristic, options)?
+        }
+        "sparse_transpose" => {
+            let store = SparseTransposeBackend::with_dedup(&terms, n, options.dedup);
+            topphatt_with_options(store, tree, p, heuristic, options)?
+        }
+        other => {
+            return Err(CoreError::Value(format!(
+                "unknown topphatt backend: {other:?} \
+                 (expected \"sparse\", \"dense_transpose\" or \"sparse_transpose\")"
+            )))
+        }
+    };
+    Ok(result.0)
+}
+
 fn run_topphatt(
     hamiltonian: MajoranaSparse,
     flatpack: TTFlatpack,
-    parallelize: bool,
-    heuristic: &str,
-    backend: &str,
-    seed: Option<u64>,
+    args: &ToppHattArgs<'_>,
 ) -> Result<TernaryTree, CoreError> {
-    let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
     let tree = TernaryTree::from_flatpack_naive(&flatpack)?;
-
-    match backend {
-        "sparse" => Ok(topphatt(hamiltonian, tree, parallelize, heuristic)?),
-        "dense_transpose" => {
-            let store = DenseTransposeBackend::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
-            Ok(topphatt(store, tree, parallelize, heuristic)?)
+    let geometry_err =
+        |e: ferrmion_core::optimise::geometry::GeometryError| CoreError::Value(e.to_string());
+    match args.strategy {
+        "bottom_up" => run_bottom_up(&hamiltonian, tree, args),
+        "top_down" | "top_down_seeded" | "top_down_expected" | "exact" => {
+            let model = SlotModel::new(&tree).map_err(geometry_err)?;
+            let cols = HammingColumns::from_hamiltonian(&hamiltonian, tree.n_nodes);
+            let seed: Vec<usize> = if args.strategy == "top_down_seeded" {
+                let greedy = run_bottom_up(&hamiltonian, tree.clone(), args)?;
+                match model.mode_of_slot_from(&greedy) {
+                    Some(perm) => perm,
+                    // The greedy may flip a pair's orientation, which is outside
+                    // the slot model; fall back to its result unchanged.
+                    None => return Ok(greedy),
+                }
+            } else {
+                (0..tree.n_nodes).collect()
+            };
+            let perm = if args.strategy == "exact" {
+                exhaustive(&model, &cols).map_err(geometry_err)?.0
+            } else if args.strategy == "top_down_expected" {
+                topdown_expected(
+                    &model,
+                    &parity_canonical_terms(&hamiltonian),
+                    &seed,
+                    20,
+                    512,
+                )
+            } else {
+                topdown(&model, &cols, &seed, 20, args.options.lookahead)
+            };
+            Ok(model.apply(&tree, &perm))
         }
-        "sparse_transpose" => {
-            let store = SparseTransposeBackend::from_arrayvecs(&hamiltonian.indices, tree.n_nodes);
-            Ok(topphatt(store, tree, parallelize, heuristic)?)
+        "best" => {
+            // Every candidate is scored exactly on the Hamming cube. The input
+            // assignment (the flatpack's own leaves, when it has a complete set)
+            // is both a candidate and a top-down seed, so the result is never
+            // worse than the tree passed in.
+            let model = SlotModel::new(&tree).map_err(geometry_err)?;
+            let terms = parity_canonical_terms(&hamiltonian);
+            let cols = HammingColumns::new(&terms, tree.n_nodes);
+            let mu = if args.options.lookahead > 0.0 {
+                args.options.lookahead
+            } else {
+                1.0
+            };
+            let mut candidates = vec![tree.clone()];
+            let mut seeds: Vec<Vec<usize>> = vec![(0..tree.n_nodes).collect()];
+            if let Ok(input) = TernaryTree::from_flatpack(&flatpack) {
+                if tree_pauli_weight(&cols, &input).is_ok() {
+                    if let Some(perm) = model.mode_of_slot_from(&input) {
+                        seeds.push(perm);
+                    }
+                    candidates.push(input);
+                }
+            }
+            for seed in &seeds {
+                candidates.push(model.apply(&tree, &topdown(&model, &cols, seed, 20, mu)));
+                candidates
+                    .push(model.apply(&tree, &topdown_expected(&model, &terms, seed, 20, 512)));
+            }
+            candidates.push(run_bottom_up(&hamiltonian, tree, args)?);
+            let mut best: Option<(usize, TernaryTree)> = None;
+            for candidate in candidates {
+                let w = tree_pauli_weight(&cols, &candidate).map_err(geometry_err)?;
+                if best.as_ref().is_none_or(|(bw, _)| w < *bw) {
+                    best = Some((w, candidate));
+                }
+            }
+            Ok(best.expect("at least one candidate").1)
         }
         other => Err(CoreError::Value(format!(
-            "unknown topphatt backend: {other:?} \
-             (expected \"sparse\", \"dense_transpose\" or \"sparse_transpose\")"
+            "unknown topphatt strategy: {other:?} (expected \"bottom_up\", \"top_down\", \
+             \"top_down_seeded\", \"top_down_expected\", \"best\" or \"exact\")"
         ))),
     }
 }
@@ -291,11 +405,25 @@ fn run_topphatt(
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
 ///     backend: Term-store backend, ``"sparse"`` (default) or
 ///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
+///     dedup: Merge terms that coincide after each contraction (original
+///         behaviour). ``False`` counts every distinct Pauli string exactly.
+///     lookahead: Weight of the parent-edge penalty (terms left "open" by a
+///         node's children). ``0.0`` is the original greedy.
+///     `depth_scaled`: Scale ``lookahead`` by node depth.
+///     `contract_forced`: Contract nodes whose leaves were fixed by pair
+///         propagation, so ancestors see their subtree (exact objective).
+///     strategy: ``"bottom_up"`` (TOPP-HATT), ``"top_down"`` (hierarchical
+///         partition from the root), ``"top_down_seeded"`` (top-down refinement
+///         seeded with the bottom-up result), ``"top_down_expected"`` (top-down
+///         scored by exact node weight plus expected random-completion weight of
+///         each child subtree), ``"best"`` (run naive, bottom-up and both
+///         top-down variants and keep the lowest exact weight) or ``"exact"``
+///         (exhaustive, ≤ 10 modes).
 ///
 /// Returns:
 ///     `MajoranaEncoding`: The optimised encoding.
 #[pyfunction(name = "topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
+#[pyo3(signature = (flatpack, n_qubits, hamiltonian, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose", dedup = true, lookahead = 0.0, depth_scaled = false, contract_forced = false, strategy = "bottom_up"))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn topphatt_py(
     py: Python<'_>,
@@ -306,6 +434,11 @@ pub(crate) fn topphatt_py(
     heuristic: &str,
     seed: Option<u64>,
     backend: &str,
+    dedup: bool,
+    lookahead: f64,
+    depth_scaled: bool,
+    contract_forced: bool,
+    strategy: &str,
 ) -> Result<PyMajoranaEncoding, CoreError> {
     debug!("Starting TOPPHATT");
     // let mut hamiltonian = hamiltonian.inner;
@@ -315,10 +448,19 @@ pub(crate) fn topphatt_py(
         let tree = run_topphatt(
             hamiltonian.inner,
             flatpack,
-            parallelize,
-            heuristic,
-            backend,
-            seed,
+            &ToppHattArgs {
+                parallelize,
+                heuristic,
+                backend,
+                seed,
+                strategy,
+                options: ToppHattOptions {
+                    dedup,
+                    lookahead,
+                    depth_scaled,
+                    contract_forced,
+                },
+            },
         )?;
         Ok(tree.build_encoding(n_qubits)?)
     })?;
@@ -342,11 +484,22 @@ pub(crate) fn topphatt_py(
 ///     seed: RNG seed for ``heuristic="random"``. Ignored otherwise.
 ///     backend: Term-store backend, ``"sparse"`` (default) or
 ///         ``"dense_transpose"`` / ``"sparse_transpose"`` (transposed layouts, for benchmarking).
+///     dedup: Merge terms that coincide after each contraction (original
+///         behaviour). ``False`` counts every distinct Pauli string exactly.
+///     lookahead: Weight of the parent-edge penalty (terms left "open" by a
+///         node's children). ``0.0`` is the original greedy.
+///     `depth_scaled`: Scale ``lookahead`` by node depth.
+///     `contract_forced`: Contract nodes whose leaves were fixed by pair
+///         propagation, so ancestors see their subtree (exact objective).
+///     strategy: ``"bottom_up"`` (TOPP-HATT), ``"top_down"`` (hierarchical
+///         partition from the root), ``"top_down_seeded"`` (top-down refinement
+///         seeded with the bottom-up result), ``"top_down_expected"``,
+///         ``"best"`` or ``"exact"``; see ``topphatt``.
 ///
 /// Returns:
 ///     Tuple of ``(QubitHamiltonian, MajoranaEncoding)``.
 #[pyfunction(name = "encode_topphatt")]
-#[pyo3(signature = (flatpack, n_qubits, operator, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose"))]
+#[pyo3(signature = (flatpack, n_qubits, operator, parallelize = true, heuristic = "min_weight", seed = None, backend = "dense_transpose", dedup = true, lookahead = 0.0, depth_scaled = false, contract_forced = false, strategy = "bottom_up"))]
 #[allow(clippy::too_many_arguments)] // signature mirrors the Python API
 pub(crate) fn encode_topphatt_py(
     py: Python<'_>,
@@ -357,6 +510,11 @@ pub(crate) fn encode_topphatt_py(
     heuristic: &str,
     seed: Option<u64>,
     backend: &str,
+    dedup: bool,
+    lookahead: f64,
+    depth_scaled: bool,
+    contract_forced: bool,
+    strategy: &str,
 ) -> Result<(PyQubitHamiltonian, PyMajoranaEncoding), CoreError> {
     debug!("Starting TOPPHATT");
     // let heuristic = NodeOrderHeuristic::parse(heuristic, seed).map_err(CoreError::Value)?;
@@ -369,10 +527,19 @@ pub(crate) fn encode_topphatt_py(
         let tree = run_topphatt(
             hamiltonian.clone(),
             flatpack,
-            parallelize,
-            heuristic,
-            backend,
-            seed,
+            &ToppHattArgs {
+                parallelize,
+                heuristic,
+                backend,
+                seed,
+                strategy,
+                options: ToppHattOptions {
+                    dedup,
+                    lookahead,
+                    depth_scaled,
+                    contract_forced,
+                },
+            },
         )?;
         let encoding = tree.build_encoding(n_qubits)?;
         let qham: QubitHamiltonian = encoding.encode(&hamiltonian);

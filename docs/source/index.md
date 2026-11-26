@@ -25,4 +25,5 @@ core
 interop
 development
 rust_internals
+topphatt_analysis
 ```

@@ -249,3 +249,98 @@ def test_topphatt_heuristic_distribution_h2o_jkmn(water_data):
     # The best deterministic heuristic on this dataset should match or beat the
     # mean of uniformly-random node selection.
     assert deterministic_min <= random_weights.mean()
+
+
+def _tree(encoding, n_modes):
+    return {
+        "JW": TernaryTree.JordanWigner,
+        "BK": TernaryTree.BravyiKitaev,
+        "PE": TernaryTree.Parity,
+        "JKMN": TernaryTree.JKMN,
+    }[encoding](n_modes)
+
+
+def _eigvals(qham, n_modes):
+    ofop = QubitOperator()
+    for k, v in qham.items():
+        string = " ".join(
+            f"{char.upper()}{pos}" for pos, char in enumerate(k) if char != "I"
+        )
+        ofop += QubitOperator(term=string, coefficient=v)
+    diag, _ = eigsh(get_sparse_operator(ofop), k=2 * n_modes, which="SA")
+    return np.sort(diag)
+
+
+STRATEGY_OPTIONS = [
+    dict(strategy="bottom_up", lookahead=0.5),
+    dict(strategy="bottom_up", contract_forced=True, dedup=False),
+    dict(strategy="bottom_up", lookahead=1.0, depth_scaled=True, contract_forced=True),
+    dict(strategy="top_down"),
+    dict(strategy="top_down", lookahead=1.0),
+    dict(strategy="top_down_expected"),
+    dict(strategy="top_down_seeded"),
+    dict(strategy="best"),
+    dict(strategy="exact"),
+]
+
+
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+@pytest.mark.parametrize("options", STRATEGY_OPTIONS)
+def test_topphatt_strategies_preserve_spectrum_and_topology(
+    encoding, options, h2_mol_data_sets
+):
+    ones = h2_mol_data_sets["ones"]
+    twos = h2_mol_data_sets["twos"]
+    fham = fr.molecular_hamiltonian(ones, twos, h2_mol_data_sets["constant_energy"])
+    tree = _tree(encoding, fham.n_modes)
+    qham = tree.encode(fham, parallelize=False, **options)
+    reference = _tree(encoding, fham.n_modes)
+    assert tree.root_node.branch_strings == reference.root_node.branch_strings
+    assert np.allclose(
+        _eigvals(qham, fham.n_modes), np.sort(h2_mol_data_sets["eigvals"])
+    )
+
+
+@pytest.mark.parametrize("encoding", ["JW", "BK", "PE", "JKMN"])
+def test_topphatt_best_never_worse(encoding, water_data):
+    fham = fr.molecular_hamiltonian(
+        water_data["ones"], water_data["twos"], water_data["constant_energy"]
+    )
+    naive = _tree(encoding, fham.n_modes).encode_naive(fham).pauli_weight()
+    default = _tree(encoding, fham.n_modes).encode(fham).pauli_weight()
+    best = _tree(encoding, fham.n_modes).encode(fham, strategy="best").pauli_weight()
+    assert best <= min(naive, default)
+
+
+def test_topphatt_exact_is_optimal_lower_bound(h2_631g_data):
+    fham = fr.molecular_hamiltonian(
+        h2_631g_data["ones"], h2_631g_data["twos"], h2_631g_data["constant_energy"]
+    )
+    for encoding in ["JW", "BK", "PE", "JKMN"]:
+        exact = _tree(encoding, fham.n_modes).encode(fham, strategy="exact").pauli_weight()
+        for options in STRATEGY_OPTIONS[:-1]:
+            other = _tree(encoding, fham.n_modes).encode(fham, **options).pauli_weight()
+            assert exact <= other
+
+
+def test_topphatt_unknown_strategy_raises(h2_mol_data_sets):
+    fham = fr.molecular_hamiltonian(
+        h2_mol_data_sets["ones"],
+        h2_mol_data_sets["twos"],
+        h2_mol_data_sets["constant_energy"],
+    )
+    with pytest.raises(ValueError):
+        TernaryTree.JKMN(fham.n_modes).encode(fham, strategy="sideways")
+    with pytest.raises(ValueError):
+        TernaryTree.JKMN(fham.n_modes).encode(fham, dedup=False, backend="sparse")
+
+
+def test_topphatt_best_keeps_input_assignment_of_hatt_tree(water_data):
+    fham = fr.molecular_hamiltonian(
+        water_data["ones"], water_data["twos"], water_data["constant_energy"]
+    )
+    tree = hamiltonian_adaptive_ternary_tree(fham, fham.n_modes)
+    flatpack = tree.flatpack()
+    naive = TernaryTree.from_flatpack(flatpack).encode_naive(fham).pauli_weight()
+    best = TernaryTree.from_flatpack(flatpack).encode(fham, strategy="best").pauli_weight()
+    assert best <= naive

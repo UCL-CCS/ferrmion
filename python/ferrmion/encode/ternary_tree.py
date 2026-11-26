@@ -222,6 +222,11 @@ class TernaryTree:
         heuristic: str = "min_weight",
         seed: int | None = None,
         backend: str = "dense_transpose",
+        dedup: bool = True,
+        lookahead: float = 0.0,
+        depth_scaled: bool = False,
+        contract_forced: bool = False,
+        strategy: str = "bottom_up",
     ) -> MajoranaEncoding:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
@@ -244,6 +249,26 @@ class TernaryTree:
                 a sorted list of term indices per Majorana). The transposed
                 backends do no term deduplication and may produce a different but
                 valid encoding; they are provided for performance comparison.
+            dedup: Merge terms that coincide after each contraction (the
+                original behaviour). ``False`` counts every distinct Pauli
+                string exactly, which removes a bias against upper qubits.
+                Requires a transposed backend.
+            lookahead: Weight of the parent-edge penalty: the number of terms
+                left with odd parity on a node's children, each of which must
+                act on at least one more qubit. ``0.0`` is the original greedy.
+            depth_scaled: Scale ``lookahead`` by the node's depth.
+            contract_forced: Contract nodes whose leaves were all fixed by
+                pair propagation. The original method drops them, so their
+                parents score that subtree as empty.
+            strategy: ``"bottom_up"`` (TOPP-HATT), ``"top_down"``
+                (hierarchical partition from the root, scored by node weight
+                plus ``lookahead`` times the open terms of each child),
+                ``"top_down_expected"`` (top-down, scored by node weight plus
+                the expected weight of a random completion of each child),
+                ``"top_down_seeded"`` (top-down seeded by the bottom-up result),
+                ``"best"`` (run naive, bottom-up and both top-down variants
+                and keep the lowest exact weight; never worse than the input
+                tree) or ``"exact"`` (exhaustive search, at most 10 modes).
 
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian.
@@ -261,6 +286,11 @@ class TernaryTree:
             heuristic=heuristic,
             seed=seed,
             backend=backend,
+            dedup=dedup,
+            lookahead=lookahead,
+            depth_scaled=depth_scaled,
+            contract_forced=contract_forced,
+            strategy=strategy,
         )
 
     def encode(
@@ -270,6 +300,11 @@ class TernaryTree:
         heuristic: str = "min_weight",
         seed: int | None = None,
         backend: str = "dense_transpose",
+        dedup: bool = True,
+        lookahead: float = 0.0,
+        depth_scaled: bool = False,
+        contract_forced: bool = False,
+        strategy: str = "bottom_up",
     ) -> QubitHamiltonian:
         """Encode a Hamiltonian, using TOPP-HATT optimisation.
 
@@ -292,6 +327,26 @@ class TernaryTree:
                 a sorted list of term indices per Majorana). The transposed
                 backends do no term deduplication and may produce a different but
                 valid encoding; they are provided for performance comparison.
+            dedup: Merge terms that coincide after each contraction (the
+                original behaviour). ``False`` counts every distinct Pauli
+                string exactly, which removes a bias against upper qubits.
+                Requires a transposed backend.
+            lookahead: Weight of the parent-edge penalty: the number of terms
+                left with odd parity on a node's children, each of which must
+                act on at least one more qubit. ``0.0`` is the original greedy.
+            depth_scaled: Scale ``lookahead`` by the node's depth.
+            contract_forced: Contract nodes whose leaves were all fixed by
+                pair propagation. The original method drops them, so their
+                parents score that subtree as empty.
+            strategy: ``"bottom_up"`` (TOPP-HATT), ``"top_down"``
+                (hierarchical partition from the root, scored by node weight
+                plus ``lookahead`` times the open terms of each child),
+                ``"top_down_expected"`` (top-down, scored by node weight plus
+                the expected weight of a random completion of each child),
+                ``"top_down_seeded"`` (top-down seeded by the bottom-up result),
+                ``"best"`` (run naive, bottom-up and both top-down variants
+                and keep the lowest exact weight; never worse than the input
+                tree) or ``"exact"`` (exhaustive search, at most 10 modes).
 
         Returns:
             QubitHamiltonian: The encoded qubit Hamiltonian.
@@ -304,6 +359,11 @@ class TernaryTree:
             heuristic=heuristic,
             seed=seed,
             backend=backend,
+            dedup=dedup,
+            lookahead=lookahead,
+            depth_scaled=depth_scaled,
+            contract_forced=contract_forced,
+            strategy=strategy,
         )
         self._encoding = enc
         return qham

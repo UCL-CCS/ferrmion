@@ -78,6 +78,25 @@ pub(crate) fn qubit_term_weight(
     !odd_parity_paulis.is_multiple_of(3) as usize
 }
 
+/// Like [`qubit_term_weight`], but also returns whether the term has odd
+/// parity on `children` (1) or not (0). After contraction, the odd-parity
+/// terms are the ones still "open" at the new node: they will act
+/// non-trivially on at least one more ancestor qubit.
+#[inline(always)]
+pub(crate) fn qubit_term_weight_and_parent(
+    term: &ArrayVec<[u16; MAX_MAJORANAS]>,
+    children: &[u16; 3],
+) -> (usize, usize) {
+    let mut odd = [false; 3];
+    for t in term {
+        for (o, c) in odd.iter_mut().zip(children) {
+            *o ^= t == c;
+        }
+    }
+    let n_odd = odd.iter().filter(|&&o| o).count();
+    ((!n_odd.is_multiple_of(3)) as usize, n_odd & 1)
+}
+
 /// Simplify the Majorana operator Hamiltonian.
 ///
 /// As we traverse from leaves to root, we can simplify the Hamiltonian.

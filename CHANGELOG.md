@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `TernaryTree.encode`/`topphatt` take a `strategy` argument (`"top_down"`, `"top_down_expected"`, `"best"`, `"exact"`) plus `lookahead`, `depth_scaled`, `dedup` and `contract_forced` options; `strategy="best"` cuts Pauli weight by up to 10% and is never worse than the input tree.
+
 ### Fixed
 
 - CI: the CodSpeed benchmarks job now runs on `ubuntu-24.04` instead of

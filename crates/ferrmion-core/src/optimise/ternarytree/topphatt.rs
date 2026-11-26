@@ -15,9 +15,49 @@ use tinyvec::ArrayVec;
 use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
 use crate::operators::{MajoranaDenseTranspose, MajoranaSparse, MajoranaSparseTranspose};
 
-use super::hatt::{qubit_term_weight, reduce_hamiltonian, MAX_MAJORANAS};
+use super::hatt::{qubit_term_weight_and_parent, reduce_hamiltonian, MAX_MAJORANAS};
 
 trait Sealed {}
+
+/// Fixed-point scale of the per-qubit weight in a combination score, so that
+/// fractional lookahead coefficients stay in integer arithmetic (and the
+/// branch-and-bound early exit keeps working).
+pub const SCORE_SCALE: usize = 64;
+
+/// Options for the bottom-up TOPP-HATT assignment.
+#[derive(Debug, Clone, Copy)]
+pub struct ToppHattOptions {
+    /// Merge terms that become identical (as multisets) after each node is
+    /// contracted, as HATT does. Such terms are distinct Pauli strings that
+    /// all act on every ancestor qubit, so merging them undercounts the weight
+    /// of upper qubits and biases the greedy. `false` instead canonicalises
+    /// terms to parity sets once, up front (exact), and never merges again.
+    /// Only the transposed backends support `false`.
+    pub dedup: bool,
+    /// Weight `λ` of the parent-edge term `|π_v|`: the number of terms left
+    /// with odd parity on the chosen children, each of which must pay for at
+    /// least one more qubit higher up. `0.0` reproduces the original method.
+    pub lookahead: f64,
+    /// Scale `λ` by `depth(v) / max_depth`, so deep nodes (whose open terms
+    /// still have a long way to the root) are penalised more.
+    pub depth_scaled: bool,
+    /// Contract nodes whose leaves were all fixed by pair propagation, instead
+    /// of dropping them. Without this, the parent of such a node sees an empty
+    /// child point, so the greedy's objective is not the Pauli weight on any
+    /// node above it.
+    pub contract_forced: bool,
+}
+
+impl Default for ToppHattOptions {
+    fn default() -> Self {
+        Self {
+            dedup: true,
+            lookahead: 0.0,
+            depth_scaled: false,
+            contract_forced: false,
+        }
+    }
+}
 
 /// Storage and hot-path operations for a Majorana Hamiltonian during TOPP-HATT.
 ///
@@ -41,7 +81,20 @@ pub trait Backend: Sealed {
     /// only abandons combinations whose partial weight already exceeds `bound`,
     /// no combination that ties or beats the running minimum is discarded, so the
     /// selection stays deterministic.
-    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize;
+    ///
+    /// The returned value is a *score*: `SCORE_SCALE * w + parent_coeff * p`,
+    /// where `w` is the weight on this node's qubit (the half-perimeter of the
+    /// children's Hamming points) and `p` is the number of terms with odd parity
+    /// on the selection. `p` is the Hamming weight of the new node's point, i.e.
+    /// the number of terms whose T-join continues up the parent edge, each of
+    /// which costs at least one more qubit later. `parent_coeff = 0` reproduces
+    /// the original objective.
+    fn evaluate_combination(
+        &self,
+        comb: [u16; 3],
+        bound: &AtomicUsize,
+        parent_coeff: usize,
+    ) -> usize;
 
     /// Simplify the Hamiltonian after a node's children have been chosen.
     ///
@@ -58,7 +111,12 @@ impl Backend for MajoranaSparse {
         self.indices.len()
     }
 
-    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize {
+    fn evaluate_combination(
+        &self,
+        comb: [u16; 3],
+        bound: &AtomicUsize,
+        parent_coeff: usize,
+    ) -> usize {
         let mut sorted_comb: [u16; 3] = comb;
         sorted_comb.sort_unstable();
         let comb_min = sorted_comb[0];
@@ -85,7 +143,8 @@ impl Backend for MajoranaSparse {
                 if acc > min_weight {
                     Done(acc)
                 } else {
-                    Continue(acc + qubit_term_weight(inds, &comb))
+                    let (w, p) = qubit_term_weight_and_parent(inds, &comb);
+                    Continue(acc + SCORE_SCALE * w + parent_coeff * p)
                 }
             })
             .into_inner();
@@ -114,10 +173,12 @@ impl Backend for MajoranaSparse {
 /// index-list backend's encodings exactly.
 pub struct DenseTransposeBackend {
     transpose: MajoranaDenseTranspose,
-    dedup: MultisetDedup,
+    dedup_state: MultisetDedup,
     /// Word-packed liveness mask mirroring `dedup.live`; bit `t` set ⇔ term `t`
     /// is still counted.
     live_words: Vec<u64>,
+    /// Whether to merge multiset-duplicate terms after each contraction.
+    dedup: bool,
 }
 
 impl DenseTransposeBackend {
@@ -125,18 +186,31 @@ impl DenseTransposeBackend {
     /// transpose, the multiset dedup, and the derived liveness mask. Duplicate
     /// and identity input terms are merged at build time by the [`MultisetDedup`].
     pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAX_MAJORANAS]>], n_modes: usize) -> Self {
+        Self::with_dedup(terms, n_modes, true)
+    }
+
+    /// As [`Self::from_arrayvecs`], choosing whether terms that coincide after a
+    /// contraction are merged (see [`ToppHattOptions::dedup`]). With
+    /// `dedup = false` the terms should already be parity-canonical and
+    /// distinct, e.g. from [`super::geometry::parity_canonical_terms`].
+    pub fn with_dedup(
+        terms: &[ArrayVec<[u16; MAX_MAJORANAS]>],
+        n_modes: usize,
+        dedup: bool,
+    ) -> Self {
         let transpose = MajoranaDenseTranspose::from_arrayvecs(terms, n_modes);
-        let dedup = MultisetDedup::new(terms);
+        let multiset = MultisetDedup::new(terms);
         let mut live_words = vec![0u64; transpose.n_words];
-        for (t, &alive) in dedup.live.iter().enumerate() {
+        for (t, &alive) in multiset.live.iter().enumerate() {
             if alive {
                 live_words[t / 64] |= 1u64 << (t % 64);
             }
         }
         Self {
             transpose,
-            dedup,
+            dedup_state: multiset,
             live_words,
+            dedup,
         }
     }
 }
@@ -148,7 +222,12 @@ impl Backend for DenseTransposeBackend {
         self.transpose.n_terms
     }
 
-    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize {
+    fn evaluate_combination(
+        &self,
+        comb: [u16; 3],
+        bound: &AtomicUsize,
+        parent_coeff: usize,
+    ) -> usize {
         let a = &self.transpose.columns[comb[0] as usize];
         let b = &self.transpose.columns[comb[1] as usize];
         let c = &self.transpose.columns[comb[2] as usize];
@@ -163,7 +242,11 @@ impl Backend for DenseTransposeBackend {
         for w in 0..self.transpose.n_words {
             let any = a[w] | b[w] | c[w];
             let all = a[w] & b[w] & c[w];
-            weight += (any & !all & self.live_words[w]).count_ones() as usize;
+            weight += SCORE_SCALE * (any & !all & self.live_words[w]).count_ones() as usize;
+            if parent_coeff > 0 {
+                weight += parent_coeff
+                    * ((a[w] ^ b[w] ^ c[w]) & self.live_words[w]).count_ones() as usize;
+            }
             if weight > min_weight {
                 break;
             }
@@ -189,8 +272,10 @@ impl Backend for DenseTransposeBackend {
         // Multiset (whole-term) deduplication: map selection members to `repr`
         // in every live term's multiset signature and merge duplicates, matching
         // the index-list backend. Clear the live bit of each newly-dead term.
-        for t in self.dedup.reduce(selection, repr) {
-            self.live_words[(t / 64) as usize] &= !(1u64 << (t % 64));
+        if self.dedup {
+            for t in self.dedup_state.reduce(selection, repr) {
+                self.live_words[(t / 64) as usize] &= !(1u64 << (t % 64));
+            }
         }
 
         // Per term, the representative carries the parity of the removed indices
@@ -222,7 +307,9 @@ impl Backend for DenseTransposeBackend {
 /// 3-way merge.
 pub struct SparseTransposeBackend {
     transpose: MajoranaSparseTranspose,
-    dedup: MultisetDedup,
+    dedup_state: MultisetDedup,
+    /// Whether to merge multiset-duplicate terms after each contraction.
+    dedup: bool,
 }
 
 impl SparseTransposeBackend {
@@ -230,9 +317,20 @@ impl SparseTransposeBackend {
     /// transpose and the multiset dedup (built from the raw terms, matching the
     /// index-list rule).
     pub fn from_arrayvecs(terms: &[ArrayVec<[u16; MAX_MAJORANAS]>], n_modes: usize) -> Self {
+        Self::with_dedup(terms, n_modes, true)
+    }
+
+    /// As [`Self::from_arrayvecs`], choosing whether terms that coincide after a
+    /// contraction are merged (see [`ToppHattOptions::dedup`]).
+    pub fn with_dedup(
+        terms: &[ArrayVec<[u16; MAX_MAJORANAS]>],
+        n_modes: usize,
+        dedup: bool,
+    ) -> Self {
         Self {
             transpose: MajoranaSparseTranspose::from_arrayvecs(terms, n_modes),
-            dedup: MultisetDedup::new(terms),
+            dedup_state: MultisetDedup::new(terms),
+            dedup,
         }
     }
 }
@@ -244,7 +342,12 @@ impl Backend for SparseTransposeBackend {
         self.transpose.n_terms
     }
 
-    fn evaluate_combination(&self, comb: [u16; 3], bound: &AtomicUsize) -> usize {
+    fn evaluate_combination(
+        &self,
+        comb: [u16; 3],
+        bound: &AtomicUsize,
+        parent_coeff: usize,
+    ) -> usize {
         let a = &self.transpose.lists[comb[0] as usize];
         let b = &self.transpose.lists[comb[1] as usize];
         let c = &self.transpose.lists[comb[2] as usize];
@@ -280,8 +383,13 @@ impl Backend for SparseTransposeBackend {
             }
             // Skip deduplicated terms; otherwise weight 1 unless count is a
             // multiple of 3 (here, 3).
-            if self.dedup.live[m as usize] && !count.is_multiple_of(3) {
-                weight += 1;
+            if self.dedup_state.live[m as usize] {
+                if !count.is_multiple_of(3) {
+                    weight += SCORE_SCALE;
+                }
+                if count & 1 == 1 {
+                    weight += parent_coeff;
+                }
             }
             if weight > min_weight {
                 break;
@@ -305,7 +413,9 @@ impl Backend for SparseTransposeBackend {
         // Multiset (whole-term) deduplication, matching the index-list backend:
         // map selection members to `repr` in every live term's multiset and merge
         // duplicates. Updates `self.dedup.live`.
-        let _ = self.dedup.reduce(selection, repr);
+        if self.dedup {
+            let _ = self.dedup_state.reduce(selection, repr);
+        }
 
         // 3-way merge over the three selected parity lists; the representative
         // carries each term that appears in an ODD number of them (matching the
@@ -337,7 +447,7 @@ impl Backend for SparseTransposeBackend {
                     k += 1;
                     count += 1;
                 }
-                if count & 1 == 1 && self.dedup.live[m as usize] {
+                if count & 1 == 1 && self.dedup_state.live[m as usize] {
                     parity.push(m);
                 }
             }
@@ -1003,11 +1113,34 @@ impl NodeDependencies {
 /// [`MajoranaSparse`] backend. See [`topphatt_impl`] to run it over an
 /// alternative [`MajoranaTermStore`] (e.g. the bit-packed prototype).
 pub fn topphatt<S: Backend + Sync>(
+    backend: S,
+    tree: TernaryTree,
+    parallelize: bool,
+    heuristic: NodeOrderHeuristic,
+) -> Result<TernaryTree, ToppHattError> {
+    topphatt_with_options(
+        backend,
+        tree,
+        parallelize,
+        heuristic,
+        ToppHattOptions::default(),
+    )
+    .map(|(tree, _)| tree)
+}
+
+/// TOPP-HATT with [`ToppHattOptions`].
+///
+/// Returns the optimised tree together with the greedy's own estimate of the
+/// Pauli weight: the sum of the per-step weights it minimised. With
+/// `dedup = false` this estimate equals the true Pauli weight of the encoded
+/// (parity-canonical) Hamiltonian; with `dedup = true` it undercounts.
+pub fn topphatt_with_options<S: Backend + Sync>(
     mut backend: S,
     mut tree: TernaryTree,
     parallelize: bool,
     heuristic: NodeOrderHeuristic,
-) -> Result<TernaryTree, ToppHattError> {
+    options: ToppHattOptions,
+) -> Result<(TernaryTree, usize), ToppHattError> {
     let mut restrictions = TreeRestrictions::new(&tree);
     let mut node_dependencies = NodeDependencies::new(&tree);
 
@@ -1037,6 +1170,13 @@ pub fn topphatt<S: Backend + Sync>(
         .collect();
 
     let mut total_weight = 0;
+    let max_depth = node_dependencies
+        .root_distances
+        .values()
+        .copied()
+        .max()
+        .unwrap_or(0)
+        .max(1);
     debug!("Number of hamiltonian terms {:?}", backend.len());
     'assign: for loop_index in 0..tree.n_nodes {
         debug!("loop {:}", loop_index);
@@ -1100,6 +1240,16 @@ pub fn topphatt<S: Backend + Sync>(
 
         debug!("Active Nodes {:?}", active_nodes);
         for active in active_nodes {
+            // Lookahead coefficient for this node's parent edge (none at the root).
+            let depth = node_dependencies.root_distances[&active];
+            let lambda = if depth == 0 {
+                0.0
+            } else if options.depth_scaled {
+                options.lookahead * depth as f64 / max_depth as f64
+            } else {
+                options.lookahead
+            };
+            let parent_coeff = (lambda * SCORE_SCALE as f64).round().max(0.0) as usize;
             let mut allowed_x = restrictions.x[active].get_index_subset(
                 &unassigned_modes,
                 tree.n_nodes,
@@ -1156,7 +1306,7 @@ pub fn topphatt<S: Backend + Sync>(
                     .par_iter()
                     .filter_map(|comb| normalise_comb(comb))
                     .map(|comb| {
-                        let weight = backend.evaluate_combination(comb, &bound);
+                        let weight = backend.evaluate_combination(comb, &bound, parent_coeff);
                         Selection {
                             min_weight: weight,
                             min_parent: active,
@@ -1169,7 +1319,7 @@ pub fn topphatt<S: Backend + Sync>(
                     .iter()
                     .filter_map(|comb| normalise_comb(comb))
                     .map(|comb| {
-                        let weight = backend.evaluate_combination(comb, &bound);
+                        let weight = backend.evaluate_combination(comb, &bound, parent_coeff);
                         Selection {
                             min_weight: weight,
                             min_parent: active,
@@ -1199,7 +1349,10 @@ pub fn topphatt<S: Backend + Sync>(
             }
         }
         debug!("Unassigned {:?}", unassigned_modes);
-        total_weight += selection.min_weight;
+        // The greedy's own estimate of this step's qubit weight (lookahead-free).
+        total_weight +=
+            backend.evaluate_combination(selection.leaf_indices, &AtomicUsize::new(usize::MAX), 0)
+                / SCORE_SCALE;
         debug!("Total weight {:?}", total_weight);
 
         match selection.min_parent {
@@ -1273,9 +1426,16 @@ pub fn topphatt<S: Backend + Sync>(
             })
             .collect();
         debug!("Complete nodes {:?}", complete_nodes);
-        complete_nodes
-            .iter()
-            .for_each(|&ind| node_dependencies.drop_node(ind));
+        // Original behaviour: drop nodes completed by pair propagation without
+        // contracting them. Their children's points then never reach the
+        // representative, so ancestors score that subtree as empty. With
+        // `contract_forced` they stay queued, become active once their children
+        // are done, and are contracted with their single forced combination.
+        if !options.contract_forced {
+            complete_nodes
+                .iter()
+                .for_each(|&ind| node_dependencies.drop_node(ind));
+        }
 
         let representative = backend.reduce(selection.min_parent, selection.leaf_indices, n_leaves);
         representatives[selection.min_parent] = representative;
@@ -1288,7 +1448,7 @@ pub fn topphatt<S: Backend + Sync>(
         }
         debug!("Reduced Hamiltonian to {} terms", backend.len());
         debug!("Finished loop\n\n\n");
-        if unassigned_modes.is_empty() {
+        if unassigned_modes.is_empty() && !options.contract_forced {
             break 'assign;
         }
     }
@@ -1302,7 +1462,7 @@ pub fn topphatt<S: Backend + Sync>(
     debug!("Update tree");
     restrictions.update_tree(&mut tree)?;
     debug!("Tree {:?}", tree);
-    Ok(tree)
+    Ok((tree, total_weight))
 }
 
 #[cfg(test)]
@@ -1315,7 +1475,7 @@ mod tests {
         let bound = AtomicUsize::new(usize::MAX);
         let comb = normalise_comb(comb);
         if let Some(comb) = comb {
-            store.evaluate_combination(comb, &bound)
+            store.evaluate_combination(comb, &bound, 0) / SCORE_SCALE
         } else {
             usize::MAX
         }
@@ -2157,6 +2317,104 @@ mod test_topphatt {
                     "sparse vs index_list z {name} seed {seed}"
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod objective_tests {
+    use super::*;
+    use crate::encode::majorana::Encode;
+    use crate::operators::PauliWeight;
+    use crate::optimise::ternarytree::geometry::parity_canonical_terms;
+    use num_complex::Complex64;
+    use rand::{Rng, SeedableRng};
+
+    fn random_hamiltonian(n_modes: usize, n_terms: usize, seed: u64) -> MajoranaSparse {
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+        let mut terms = Vec::new();
+        for _ in 0..n_terms {
+            let len = if rng.random_bool(0.4) { 2 } else { 4 };
+            let mut t: ArrayVec<[u16; MAX_MAJORANAS]> = ArrayVec::new();
+            while t.len() < len {
+                let x = rng.random_range(0..2 * n_modes) as u16;
+                if !t.contains(&x) {
+                    t.push(x);
+                }
+            }
+            t.sort_unstable();
+            terms.push(t);
+        }
+        let n = terms.len();
+        MajoranaSparse::new(terms, vec![Complex64::ONE; n], 0.0).unwrap()
+    }
+
+    /// Without post-contraction deduplication the greedy's running estimate
+    /// is exactly the true Pauli weight. With it (the HATT rule) the estimate
+    /// undercounts, because merged terms are distinct Pauli strings that all
+    /// act on the ancestor qubits.
+    #[test]
+    fn dedup_undercounts_and_exact_objective_matches_true_weight() {
+        let mut saw_undercount = false;
+        for seed in 0..6 {
+            let n = 7;
+            let h = random_hamiltonian(n, 120, seed);
+            let canon = parity_canonical_terms(&h);
+            for tree_fn in [
+                TernaryTree::naive_jordan_wigner,
+                TernaryTree::naive_bravyi_kitaev,
+                TernaryTree::naive_jkmn,
+            ] {
+                for dedup in [true, false] {
+                    let store = DenseTransposeBackend::with_dedup(&canon, n, dedup);
+                    let options = ToppHattOptions {
+                        dedup,
+                        contract_forced: true,
+                        ..Default::default()
+                    };
+                    let (tree, estimate) = topphatt_with_options(
+                        store,
+                        tree_fn(n),
+                        false,
+                        NodeOrderHeuristic::MinWeight,
+                        options,
+                    )
+                    .unwrap();
+                    let truth = tree.build_encoding(n).unwrap().encode(&h).pauli_weight();
+                    if dedup {
+                        assert!(estimate <= truth);
+                        saw_undercount |= estimate < truth;
+                    } else {
+                        assert_eq!(estimate, truth, "seed {seed}");
+                    }
+                }
+            }
+        }
+        assert!(saw_undercount, "expected the HATT dedup rule to undercount");
+    }
+
+    #[test]
+    fn lookahead_produces_valid_trees() {
+        let n = 8;
+        let h = random_hamiltonian(n, 150, 3);
+        let canon = parity_canonical_terms(&h);
+        for depth_scaled in [false, true] {
+            let store = DenseTransposeBackend::with_dedup(&canon, n, false);
+            let options = ToppHattOptions {
+                dedup: false,
+                lookahead: 1.0,
+                depth_scaled,
+                contract_forced: true,
+            };
+            let (tree, _) = topphatt_with_options(
+                store,
+                TernaryTree::naive_bravyi_kitaev(n),
+                false,
+                NodeOrderHeuristic::MinWeight,
+                options,
+            )
+            .unwrap();
+            assert!(tree.build_encoding(n).is_ok());
         }
     }
 }

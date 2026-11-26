@@ -14,7 +14,7 @@ use tinyvec::ArrayVec;
 
 use crate::encode::ternarytree::{Child, Edge, TernaryTree, YParity};
 use crate::operators::{
-    canonicalise_indices, MajoranaDenseTranspose, MajoranaSparse, MajoranaSparseTranspose,
+    cancel_pairs, cannonicalize, MajoranaDenseTranspose, MajoranaSparse, MajoranaSparseTranspose,
 };
 
 use super::hatt::{qubit_term_weight, reduce_hamiltonian, MAX_MAJORANAS};
@@ -330,7 +330,8 @@ impl WeightedSparseBackend {
 pub fn canonicalise(
     mut term: ArrayVec<[u16; MAX_MAJORANAS]>,
 ) -> (ArrayVec<[u16; MAX_MAJORANAS]>, bool) {
-    let (kept, sign) = canonicalise_indices(term.as_mut_slice());
+    let sign = cannonicalize(term.as_mut_slice());
+    let kept = cancel_pairs(term.as_mut_slice());
     term.truncate(kept);
     (term, sign < 0.0)
 }

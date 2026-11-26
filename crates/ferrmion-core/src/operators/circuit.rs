@@ -20,7 +20,7 @@
 //! for real `θ`. A [`PauliCircuit`] gate is `exp(-iθ P)` for a Pauli string `P`.
 //! Angles are stored wrapped into `(-π, π]`.
 
-use super::{canonicalise_indices, MajoranaSparse, MAX_MAJORANAS};
+use super::{cancel_pairs, cannonicalize, MajoranaSparse, MAX_MAJORANAS};
 use crate::spaces::{Fermion, Qubit};
 use crate::utils::COEFFICIENT_TOLERANCE;
 use num_complex::Complex64;
@@ -175,7 +175,8 @@ impl MajoranaCircuit {
                     n_modes,
                 });
             }
-            let (kept, sign) = canonicalise_indices(term.as_mut_slice());
+            let sign = cannonicalize(term.as_mut_slice());
+            let kept = cancel_pairs(term.as_mut_slice());
             if kept == 0 {
                 continue;
             }
@@ -233,7 +234,8 @@ impl MajoranaCircuit {
         for (t, (term, &coefficient)) in sparse.indices.iter().zip(&sparse.coefficients).enumerate()
         {
             let mut term = *term;
-            let (kept, sign) = canonicalise_indices(term.as_mut_slice());
+            let sign = cannonicalize(term.as_mut_slice());
+            let kept = cancel_pairs(term.as_mut_slice());
             if kept == 0 {
                 // A pure constant: a global phase.
                 continue;
